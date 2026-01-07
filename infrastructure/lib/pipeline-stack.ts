@@ -1,10 +1,13 @@
 import * as cdk from "aws-cdk-lib";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as cloudwatchActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as sns from "aws-cdk-lib/aws-sns";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as lambdaEventSources from "aws-cdk-lib/aws-lambda-event-sources";
 import { Construct } from "constructs";
@@ -198,12 +201,186 @@ export class PipelineStack extends cdk.Stack {
     });
 
     // ===========================================
-    // CloudWatch Alarms
+    // CloudWatch Alarms & Monitoring
     // ===========================================
-    // TODO: Add alarms for:
-    // - DLQ message count > 0
-    // - Lambda error rate > 1%
-    // - DynamoDB throttling
+
+    // SNS Topic for alerts
+    const alertTopic = new sns.Topic(this, "AlertTopic", {
+      topicName: "dephealth-alerts",
+      displayName: "DepHealth Alerts",
+    });
+
+    // 1. DLQ Messages Alarm (Critical - indicates processing failures)
+    const dlqAlarm = new cloudwatch.Alarm(this, "DlqAlarm", {
+      alarmName: "dephealth-dlq-messages",
+      alarmDescription:
+        "Messages in DLQ - package collection failing after retries",
+      metric: dlq.metricApproximateNumberOfMessagesVisible({
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    dlqAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+    dlqAlarm.addOkAction(new cloudwatchActions.SnsAction(alertTopic));
+
+    // 2. Refresh Dispatcher Error Alarm (Critical - single point of failure)
+    const dispatcherErrorAlarm = new cloudwatch.Alarm(
+      this,
+      "DispatcherErrorAlarm",
+      {
+        alarmName: "dephealth-dispatcher-errors",
+        alarmDescription:
+          "Refresh dispatcher failing - pipeline not triggering",
+        metric: refreshDispatcher.metricErrors({
+          period: cdk.Duration.minutes(5),
+        }),
+        threshold: 1,
+        evaluationPeriods: 1,
+        comparisonOperator:
+          cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }
+    );
+    dispatcherErrorAlarm.addAlarmAction(
+      new cloudwatchActions.SnsAction(alertTopic)
+    );
+    dispatcherErrorAlarm.addOkAction(new cloudwatchActions.SnsAction(alertTopic));
+
+    // 3. Package Collector Error Rate
+    const collectorErrorAlarm = new cloudwatch.Alarm(
+      this,
+      "CollectorErrorAlarm",
+      {
+        alarmName: "dephealth-collector-errors",
+        alarmDescription: "High error rate in package collector Lambda",
+        metric: packageCollector.metricErrors({
+          period: cdk.Duration.minutes(5),
+        }),
+        threshold: 5,
+        evaluationPeriods: 2,
+        comparisonOperator:
+          cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }
+    );
+    collectorErrorAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+    collectorErrorAlarm.addOkAction(new cloudwatchActions.SnsAction(alertTopic));
+
+    // 4. Score Calculator Error Rate
+    const scoreErrorAlarm = new cloudwatch.Alarm(this, "ScoreErrorAlarm", {
+      alarmName: "dephealth-score-calculator-errors",
+      alarmDescription: "High error rate in score calculator Lambda",
+      metric: scoreCalculator.metricErrors({
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 5,
+      evaluationPeriods: 2,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    scoreErrorAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+    scoreErrorAlarm.addOkAction(new cloudwatchActions.SnsAction(alertTopic));
+
+    // 5. DynamoDB Throttling Alarm
+    const throttleAlarm = new cloudwatch.Alarm(this, "DynamoThrottleAlarm", {
+      alarmName: "dephealth-dynamo-throttling",
+      alarmDescription: "DynamoDB throttling detected - may need capacity increase",
+      metric: packagesTable.metricThrottledRequestsForOperations({
+        operations: [
+          dynamodb.Operation.PUT_ITEM,
+          dynamodb.Operation.GET_ITEM,
+          dynamodb.Operation.QUERY,
+        ],
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 10,
+      evaluationPeriods: 2,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    throttleAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+    throttleAlarm.addOkAction(new cloudwatchActions.SnsAction(alertTopic));
+
+    // 6. Operations Dashboard
+    new cloudwatch.Dashboard(this, "OperationsDashboard", {
+      dashboardName: "DepHealth-Operations",
+      widgets: [
+        // Row 1: Queue metrics
+        [
+          new cloudwatch.GraphWidget({
+            title: "SQS Queue Depth",
+            left: [
+              packageQueue.metricApproximateNumberOfMessagesVisible(),
+              dlq.metricApproximateNumberOfMessagesVisible(),
+            ],
+            width: 12,
+          }),
+          new cloudwatch.GraphWidget({
+            title: "Messages Processed",
+            left: [packageQueue.metricNumberOfMessagesReceived()],
+            width: 12,
+          }),
+        ],
+        // Row 2: Lambda metrics
+        [
+          new cloudwatch.GraphWidget({
+            title: "Lambda Invocations",
+            left: [
+              packageCollector.metricInvocations(),
+              scoreCalculator.metricInvocations(),
+              refreshDispatcher.metricInvocations(),
+            ],
+            width: 8,
+          }),
+          new cloudwatch.GraphWidget({
+            title: "Lambda Errors",
+            left: [
+              packageCollector.metricErrors(),
+              scoreCalculator.metricErrors(),
+            ],
+            width: 8,
+          }),
+          new cloudwatch.GraphWidget({
+            title: "Lambda Duration (P99)",
+            left: [
+              packageCollector.metricDuration({ statistic: "p99" }),
+              scoreCalculator.metricDuration({ statistic: "p99" }),
+            ],
+            width: 8,
+          }),
+        ],
+        // Row 3: DynamoDB metrics
+        [
+          new cloudwatch.GraphWidget({
+            title: "DynamoDB Consumed Capacity",
+            left: [
+              packagesTable.metricConsumedReadCapacityUnits(),
+              packagesTable.metricConsumedWriteCapacityUnits(),
+            ],
+            width: 12,
+          }),
+          new cloudwatch.GraphWidget({
+            title: "DynamoDB Throttled Requests",
+            left: [
+              packagesTable.metricThrottledRequestsForOperations({
+                operations: [
+                  dynamodb.Operation.PUT_ITEM,
+                  dynamodb.Operation.GET_ITEM,
+                  dynamodb.Operation.QUERY,
+                ],
+              }),
+            ],
+            width: 12,
+          }),
+        ],
+      ],
+    })
 
     // ===========================================
     // Outputs
@@ -218,6 +395,12 @@ export class PipelineStack extends cdk.Stack {
       value: githubTokenSecret.secretArn,
       description: "GitHub token secret ARN (set value manually)",
       exportName: "DepHealthGitHubTokenSecretArn",
+    });
+
+    new cdk.CfnOutput(this, "AlertTopicArn", {
+      value: alertTopic.topicArn,
+      description: "SNS topic ARN for alerts (subscribe email/Slack)",
+      exportName: "DepHealthAlertTopicArn",
     });
   }
 }

@@ -34,15 +34,12 @@ def calculate_abandonment_risk(data: dict, months: int = 12) -> dict:
     bus_factor_risk = math.exp(-maintainers / 2)
 
     # 3. Adoption risk: low downloads indicate abandonment risk
+    # Use continuous logarithmic function instead of discrete steps
+    # for consistency with other algorithms
     downloads = data.get("weekly_downloads", 0) or 0
-    if downloads < 100:
-        adoption_risk = 0.8
-    elif downloads < 1000:
-        adoption_risk = 0.5
-    elif downloads < 10000:
-        adoption_risk = 0.3
-    else:
-        adoption_risk = 0.1
+    # Scale: 10 downloads = 0.8 risk, 10K downloads = 0.2 risk, 1M+ = 0.1 risk
+    # Formula: max(0.1, 0.9 - log10(downloads + 1) / 7)
+    adoption_risk = max(0.1, min(0.9, 0.9 - math.log10(downloads + 1) / 7))
 
     # 4. Release cadence risk
     days_since_release = 365  # Default

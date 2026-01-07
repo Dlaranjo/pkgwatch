@@ -36,6 +36,7 @@ packages.json
 coverage/
 .coverage
 htmlcov/
+.pytest_cache/
 
 # CDK context
 cdk.context.json

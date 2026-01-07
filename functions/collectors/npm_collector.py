@@ -107,15 +107,32 @@ async def get_npm_metadata(name: str) -> dict:
         latest = data.get("dist-tags", {}).get("latest", "")
         time_data = data.get("time", {})
 
-        # Check deprecation status
+        # Check deprecation status and extract version-specific fields
         is_deprecated = False
         deprecation_message = None
+        has_types = False
+        module_type = "commonjs"
+        has_exports = False
+        engines = None
+
         if latest and "versions" in data:
             version_info = data.get("versions", {}).get(latest, {})
+
+            # Deprecation
             deprecated_field = version_info.get("deprecated")
             if deprecated_field:
                 is_deprecated = True
                 deprecation_message = deprecated_field if isinstance(deprecated_field, str) else None
+
+            # TypeScript support detection
+            has_types = bool(version_info.get("types") or version_info.get("typings"))
+
+            # Module system detection (ESM vs CJS)
+            module_type = version_info.get("type", "commonjs")
+            has_exports = "exports" in version_info
+
+            # Node.js engine requirements
+            engines = version_info.get("engines")
 
         # Get maintainers
         maintainers = [m.get("name") for m in data.get("maintainers", []) if m.get("name")]
@@ -159,6 +176,13 @@ async def get_npm_metadata(name: str) -> dict:
             "license": data.get("license"),
             "description": data.get("description", ""),
             "keywords": data.get("keywords", []),
+            # TypeScript support
+            "has_types": has_types,
+            # Module system
+            "module_type": module_type,
+            "has_exports": has_exports,
+            # Engine requirements
+            "engines": engines,
             "source": "npm",
         }
 

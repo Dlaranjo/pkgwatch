@@ -25,6 +25,7 @@ logger.setLevel(logging.INFO)
 from depsdev_collector import get_package_info as get_depsdev_info
 from npm_collector import get_npm_metadata
 from github_collector import GitHubCollector, parse_github_url
+from bundlephobia_collector import get_bundle_size
 
 dynamodb = boto3.resource("dynamodb")
 s3 = boto3.client("s3")
@@ -105,6 +106,11 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
             combined_data["deprecation_message"] = npm_data.get("deprecation_message")
             combined_data["created_at"] = npm_data.get("created_at")
             combined_data["last_published"] = npm_data.get("last_published")
+            # TypeScript and module system
+            combined_data["has_types"] = npm_data.get("has_types", False)
+            combined_data["module_type"] = npm_data.get("module_type", "commonjs")
+            combined_data["has_exports"] = npm_data.get("has_exports", False)
+            combined_data["engines"] = npm_data.get("engines")
 
             # Use npm repo URL as fallback
             if not combined_data.get("repository_url"):
@@ -150,6 +156,26 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
             except Exception as e:
                 logger.error(f"Failed to fetch GitHub data for {owner}/{repo}: {e}")
                 combined_data["github_error"] = str(e)
+
+    # 4. Bundlephobia data (bundle size - for npm packages only)
+    if ecosystem == "npm":
+        try:
+            bundle_data = await get_bundle_size(name)
+            if "error" not in bundle_data:
+                combined_data["bundlephobia"] = bundle_data
+                combined_data["sources"].append("bundlephobia")
+                # Copy key bundle size fields
+                combined_data["bundle_size"] = bundle_data.get("size", 0)
+                combined_data["bundle_size_gzip"] = bundle_data.get("gzip", 0)
+                combined_data["bundle_size_category"] = bundle_data.get("size_category")
+                combined_data["bundle_dependency_count"] = bundle_data.get(
+                    "dependency_count", 0
+                )
+            else:
+                combined_data["bundlephobia_error"] = bundle_data.get("error")
+        except Exception as e:
+            logger.warning(f"Failed to fetch bundle size for {name}: {e}")
+            combined_data["bundlephobia_error"] = str(e)
 
     return combined_data
 
@@ -203,6 +229,16 @@ def store_package_data(ecosystem: str, name: str, data: dict, tier: int):
         # Status flags
         "is_deprecated": data.get("is_deprecated", False),
         "archived": data.get("archived", False),
+        # TypeScript and module system (DX signals)
+        "has_types": data.get("has_types", False),
+        "module_type": data.get("module_type", "commonjs"),
+        "has_exports": data.get("has_exports", False),
+        "engines": data.get("engines"),
+        # Bundle size (DX signals)
+        "bundle_size": data.get("bundle_size"),
+        "bundle_size_gzip": data.get("bundle_size_gzip"),
+        "bundle_size_category": data.get("bundle_size_category"),
+        "bundle_dependency_count": data.get("bundle_dependency_count"),
         # Metadata
         "repository_url": data.get("repository_url"),
         "licenses": data.get("licenses", []),
