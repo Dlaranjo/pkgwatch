@@ -11,14 +11,7 @@ Predict which open-source packages are at risk of abandonment, maintenance decli
 
 ```
 dephealth/
-├── infrastructure/          # AWS CDK infrastructure
-│   ├── lib/
-│   │   ├── storage-stack.ts    # DynamoDB + S3
-│   │   ├── api-stack.ts        # API Gateway + Lambda
-│   │   └── pipeline-stack.ts   # EventBridge + SQS + Collectors
-│   ├── bin/app.ts
-│   └── cdk.json
-├── functions/               # Lambda functions
+├── functions/               # Lambda functions (Python)
 │   ├── api/                 # API handlers
 │   │   ├── health.py           # GET /health
 │   │   ├── get_package.py      # GET /packages/{ecosystem}/{name}
@@ -39,6 +32,17 @@ dephealth/
 │       ├── auth.py              # API key auth
 │       ├── dynamo.py            # DynamoDB helpers
 │       └── errors.py            # Error responses
+├── landing-page/            # Astro landing page
+│   ├── src/                 # Astro source files
+│   ├── terraform/           # S3 + CloudFront infrastructure
+│   └── deploy.sh            # Deployment script
+├── infrastructure/          # AWS CDK (API infrastructure)
+│   ├── lib/
+│   │   ├── storage-stack.ts    # DynamoDB + S3
+│   │   ├── api-stack.ts        # API Gateway + Lambda
+│   │   └── pipeline-stack.ts   # EventBridge + SQS + Collectors
+│   ├── bin/app.ts
+│   └── cdk.json
 ├── scripts/                 # Utility scripts
 │   ├── select_packages.py       # Select top 2,500 packages
 │   └── initial_load.py          # Bootstrap data load
@@ -98,6 +102,21 @@ python select_packages.py --limit 2500 --output packages.json
 # Load into DynamoDB (requires GitHub token)
 export GITHUB_TOKEN=ghp_your_token_here
 python initial_load.py --packages packages.json --table dephealth-packages
+```
+
+### Deploy Landing Page
+
+```bash
+cd landing-page
+
+# First time: Initialize Terraform
+cd terraform
+terraform init
+terraform apply
+cd ..
+
+# Deploy (builds and uploads to S3, invalidates CloudFront)
+./deploy.sh
 ```
 
 ## API Endpoints
