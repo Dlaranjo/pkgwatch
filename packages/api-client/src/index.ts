@@ -7,6 +7,7 @@
 
 const DEFAULT_API_BASE = "https://api.dephealth.laranjo.dev/v1";
 const DEFAULT_TIMEOUT_MS = 30000;
+const DEFAULT_MAX_RETRIES = 3;
 
 // ===========================================
 // Types
@@ -52,6 +53,7 @@ export interface HealthComponents {
   evolution_health: number;
   community_health: number;
   user_centric: number;
+  security_health: number;
 }
 
 export interface Confidence {
@@ -70,6 +72,8 @@ export interface Signals {
   is_deprecated: boolean;
   archived: boolean;
   openssf_score: number | null;
+  true_bus_factor?: number;
+  bus_factor_confidence?: "LOW" | "MEDIUM" | "HIGH";
 }
 
 export interface ScanResult {
@@ -99,6 +103,7 @@ export interface UsageStats {
 export interface ClientOptions {
   baseUrl?: string;
   timeout?: number;
+  maxRetries?: number;
 }
 
 // ===========================================
@@ -135,11 +140,28 @@ export class DepHealthClient {
   private apiKey: string;
   private baseUrl: string;
   private timeout: number;
+  private maxRetries: number;
 
   constructor(apiKey: string, options: ClientOptions = {}) {
     this.apiKey = apiKey;
     this.baseUrl = options.baseUrl ?? DEFAULT_API_BASE;
     this.timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
+    this.maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
+  }
+
+  /**
+   * Sleep for specified milliseconds.
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Check if status code is retryable.
+   */
+  private isRetryableStatus(status: number): boolean {
+    // Retry on server errors (5xx) and rate limits (429)
+    return status >= 500 || status === 429;
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -150,49 +172,79 @@ export class DepHealthClient {
       ...options.headers,
     };
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    let lastError: ApiClientError | null = null;
 
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        ...options,
-        headers,
-        signal: controller.signal,
-      });
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new ApiClientError(
-          `Request timed out after ${this.timeout / 1000} seconds`,
-          0,
-          "timeout"
-        );
-      }
-      throw new ApiClientError(
-        "Network error: Unable to reach DepHealth API",
-        0,
-        "network_error"
-      );
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-    if (!response.ok) {
-      const code = this.mapStatusToCode(response.status);
-      let message = response.statusText;
-
+      let response: Response;
       try {
-        const errorBody = await response.json() as { error?: { message?: string }; message?: string };
-        message = errorBody.error?.message ?? errorBody.message ?? message;
-      } catch {
-        // Use statusText if body parsing fails
+        response = await fetch(url, {
+          ...options,
+          headers,
+          signal: controller.signal,
+        });
+      } catch (error) {
+        clearTimeout(timeoutId);
+
+        if (error instanceof Error && error.name === "AbortError") {
+          lastError = new ApiClientError(
+            `Request timed out after ${this.timeout / 1000} seconds`,
+            0,
+            "timeout"
+          );
+        } else {
+          lastError = new ApiClientError(
+            "Network error: Unable to reach DepHealth API",
+            0,
+            "network_error"
+          );
+        }
+
+        // Retry on network errors
+        if (attempt < this.maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+          await this.sleep(delay);
+          continue;
+        }
+        throw lastError;
+      } finally {
+        clearTimeout(timeoutId);
       }
 
-      throw new ApiClientError(message, response.status, code);
+      // Check for retryable status codes (5xx, 429)
+      if (!response.ok && this.isRetryableStatus(response.status)) {
+        if (attempt < this.maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+          await this.sleep(delay);
+          continue;
+        }
+      }
+
+      // Handle non-retryable errors or final attempt
+      if (!response.ok) {
+        const code = this.mapStatusToCode(response.status);
+        let message = response.statusText;
+
+        try {
+          const errorBody = (await response.json()) as {
+            error?: { message?: string };
+            message?: string;
+          };
+          message = errorBody.error?.message ?? errorBody.message ?? message;
+        } catch {
+          // Use statusText if body parsing fails
+        }
+
+        throw new ApiClientError(message, response.status, code);
+      }
+
+      return response.json() as Promise<T>;
     }
 
-    return response.json() as Promise<T>;
+    // Should not reach here, but TypeScript needs this
+    throw lastError ?? new ApiClientError("Max retries exceeded", 0, "network_error");
   }
 
   private mapStatusToCode(status: number): ErrorCode {

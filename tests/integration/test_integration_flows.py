@@ -60,6 +60,7 @@ def mock_aws_services():
                 {"AttributeName": "key_hash", "AttributeType": "S"},
                 {"AttributeName": "email", "AttributeType": "S"},
                 {"AttributeName": "stripe_customer_id", "AttributeType": "S"},
+                {"AttributeName": "verification_token", "AttributeType": "S"},
             ],
             GlobalSecondaryIndexes=[
                 {
@@ -76,6 +77,11 @@ def mock_aws_services():
                     "IndexName": "stripe-customer-index",
                     "KeySchema": [{"AttributeName": "stripe_customer_id", "KeyType": "HASH"}],
                     "Projection": {"ProjectionType": "ALL"},
+                },
+                {
+                    "IndexName": "verification-token-index",
+                    "KeySchema": [{"AttributeName": "verification_token", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "KEYS_ONLY"},
                 },
             ],
             BillingMode="PAY_PER_REQUEST",
@@ -288,8 +294,9 @@ class TestNewUserSignupFlow:
 
         assert result["statusCode"] == 200
         body = json.loads(result["body"])
-        assert body["email"] == "newuser@example.com"
-        assert "email" in body["message"].lower()
+        # Response no longer includes email to prevent enumeration
+        assert "message" in body
+        assert "verification" in body["message"].lower() or "email" in body["message"].lower()
 
         # Verify pending user was created
         table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
@@ -321,13 +328,16 @@ class TestNewUserSignupFlow:
         location = result["headers"]["Location"]
         assert "dashboard" in location
         assert "verified=true" in location
-        assert "key=dh_" in location  # API key is passed in redirect
+        # API key is now passed in a secure cookie (not URL) to prevent exposure in logs/history
+        assert "Set-Cookie" in result["headers"]
+        cookie = result["headers"]["Set-Cookie"]
+        assert "new_api_key=dh_" in cookie
 
-        # Extract the API key from the redirect URL
-        from urllib.parse import parse_qs, urlparse
-        parsed = urlparse(location)
-        params = parse_qs(parsed.query)
-        api_key = params["key"][0]
+        # Extract the API key from the cookie header
+        import re
+        cookie_match = re.search(r"new_api_key=(dh_[^;]+)", cookie)
+        assert cookie_match is not None
+        api_key = cookie_match.group(1)
         assert api_key.startswith("dh_")
 
         # Verify PENDING record was deleted
@@ -397,8 +407,15 @@ class TestNewUserSignupFlow:
         assert user1 is not None
         assert user2 is not None
 
-    def test_signup_rejects_duplicate_verified_email(self, mock_aws_services, api_gateway_event):
-        """Test that signup rejects already verified emails."""
+    def test_signup_prevents_email_enumeration_for_existing_user(
+        self, mock_aws_services, api_gateway_event
+    ):
+        """Test that signup returns same response for existing and new emails (security).
+
+        Security: Returning different responses for existing vs non-existing emails
+        would allow attackers to enumerate valid email addresses. The signup endpoint
+        must return the same 200 response regardless of email existence.
+        """
         # First, create a verified user
         table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
         key_hash = hashlib.sha256(b"dh_existing_key").hexdigest()
@@ -421,9 +438,12 @@ class TestNewUserSignupFlow:
 
         result = signup_handler(api_gateway_event, {})
 
-        assert result["statusCode"] == 409
+        # Should return 200 (same as new signup) to prevent email enumeration
+        assert result["statusCode"] == 200
         body = json.loads(result["body"])
-        assert body["error"]["code"] == "email_exists"
+        # Generic message that doesn't reveal email existence
+        assert "message" in body
+        assert "verification" in body["message"].lower() or "email" in body["message"].lower()
 
 
 # =============================================================================

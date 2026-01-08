@@ -1284,9 +1284,11 @@ class TestCollectPackageData:
                 "PACKAGES_TABLE": "dephealth-packages",
                 "RAW_DATA_BUCKET": "dephealth-raw-data",
                 "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "dephealth-api-keys",
             },
         ):
-            with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            with patch.object(httpx.AsyncClient, "__init__", patched_init), \
+                 patch("package_collector._check_and_increment_github_rate_limit", return_value=True):
                 from package_collector import collect_package_data
 
                 result = run_async(collect_package_data("npm", "lodash"))
@@ -1746,3 +1748,278 @@ class TestRetryWithBackoff:
         result, count = run_async(test_coro())
         assert result == {"ok": True}
         assert count == 2
+
+
+# =============================================================================
+# DLQ Processor Tests
+# =============================================================================
+
+
+class TestDLQProcessor:
+    """Tests for the DLQ processor Lambda."""
+
+    @pytest.fixture(autouse=True)
+    def setup_env(self, monkeypatch):
+        """Set up environment variables for DLQ processor."""
+        monkeypatch.setenv("DLQ_URL", "https://sqs.us-east-1.amazonaws.com/123456789/test-dlq")
+        monkeypatch.setenv("MAIN_QUEUE_URL", "https://sqs.us-east-1.amazonaws.com/123456789/test-queue")
+        monkeypatch.setenv("PACKAGES_TABLE", "test-packages")
+        monkeypatch.setenv("MAX_DLQ_RETRIES", "5")
+
+    def test_handler_missing_dlq_url(self, monkeypatch):
+        """Handler should return error if DLQ_URL not configured."""
+        monkeypatch.delenv("DLQ_URL", raising=False)
+
+        # Force reimport to pick up new env
+        import importlib
+        import sys
+        if "dlq_processor" in sys.modules:
+            del sys.modules["dlq_processor"]
+
+        from dlq_processor import handler
+
+        result = handler({}, {})
+        assert result == {"error": "DLQ_URL not configured"}
+
+    def test_handler_missing_main_queue_url(self, monkeypatch):
+        """Handler should return error if MAIN_QUEUE_URL not configured."""
+        monkeypatch.delenv("MAIN_QUEUE_URL", raising=False)
+
+        import importlib
+        import sys
+        if "dlq_processor" in sys.modules:
+            del sys.modules["dlq_processor"]
+
+        from dlq_processor import handler
+
+        result = handler({}, {})
+        assert result == {"error": "MAIN_QUEUE_URL not configured"}
+
+    def test_process_dlq_message_invalid_json(self):
+        """Invalid JSON in message should be skipped and deleted."""
+        from dlq_processor import _process_dlq_message
+
+        with patch("dlq_processor._delete_dlq_message") as mock_delete:
+            message = {
+                "MessageId": "test-123",
+                "Body": "not valid json at all",
+                "ReceiptHandle": "test-handle",
+            }
+
+            result = _process_dlq_message(message)
+
+            assert result == "skipped"
+            mock_delete.assert_called_once_with(message)
+
+    def test_process_dlq_message_missing_body(self):
+        """Message without Body key should be skipped."""
+        from dlq_processor import _process_dlq_message
+
+        with patch("dlq_processor._delete_dlq_message") as mock_delete:
+            message = {
+                "MessageId": "test-123",
+                "ReceiptHandle": "test-handle",
+                # No "Body" key
+            }
+
+            result = _process_dlq_message(message)
+
+            assert result == "skipped"
+            mock_delete.assert_called_once()
+
+    def test_process_dlq_message_exceeds_max_retries(self):
+        """Message exceeding max retries should be stored as permanent failure."""
+        from dlq_processor import _process_dlq_message
+
+        with patch("dlq_processor._delete_dlq_message") as mock_delete, \
+             patch("dlq_processor._store_permanent_failure") as mock_store:
+            message = {
+                "MessageId": "test-123",
+                "Body": json.dumps({
+                    "ecosystem": "npm",
+                    "name": "test-package",
+                    "_retry_count": 5,  # At max
+                    "_last_error": "rate_limited",
+                }),
+                "ReceiptHandle": "test-handle",
+            }
+
+            result = _process_dlq_message(message)
+
+            assert result == "permanently_failed"
+            mock_store.assert_called_once()
+            mock_delete.assert_called_once_with(message)
+
+    def test_process_dlq_message_requeues_with_backoff(self):
+        """Message under max retries should be requeued with exponential backoff."""
+        from dlq_processor import _process_dlq_message
+
+        with patch("dlq_processor.sqs") as mock_sqs, \
+             patch("dlq_processor._delete_dlq_message") as mock_delete:
+            message = {
+                "MessageId": "test-123",
+                "Body": json.dumps({
+                    "ecosystem": "npm",
+                    "name": "test-package",
+                    "_retry_count": 2,
+                }),
+                "ReceiptHandle": "test-handle",
+            }
+
+            result = _process_dlq_message(message)
+
+            assert result == "requeued"
+            mock_sqs.send_message.assert_called_once()
+            call_kwargs = mock_sqs.send_message.call_args.kwargs
+
+            # Verify retry count was incremented
+            body = json.loads(call_kwargs["MessageBody"])
+            assert body["_retry_count"] == 3
+
+            # Verify exponential backoff: 60 * 2^2 = 240 seconds
+            assert call_kwargs["DelaySeconds"] == 240
+
+            mock_delete.assert_called_once_with(message)
+
+    def test_exponential_backoff_values(self):
+        """Verify exponential backoff calculation."""
+        from dlq_processor import _process_dlq_message
+
+        # Test backoff values for each retry count
+        expected_delays = {
+            0: 60,    # 60 * 2^0 = 60
+            1: 120,   # 60 * 2^1 = 120
+            2: 240,   # 60 * 2^2 = 240
+            3: 480,   # 60 * 2^3 = 480
+            4: 900,   # 60 * 2^4 = 960, but capped at 900
+        }
+
+        for retry_count, expected_delay in expected_delays.items():
+            with patch("dlq_processor.sqs") as mock_sqs, \
+                 patch("dlq_processor._delete_dlq_message"):
+                message = {
+                    "MessageId": f"test-{retry_count}",
+                    "Body": json.dumps({
+                        "ecosystem": "npm",
+                        "name": "test-package",
+                        "_retry_count": retry_count,
+                    }),
+                    "ReceiptHandle": "test-handle",
+                }
+
+                _process_dlq_message(message)
+
+                call_kwargs = mock_sqs.send_message.call_args.kwargs
+                assert call_kwargs["DelaySeconds"] == expected_delay, \
+                    f"Retry {retry_count}: expected {expected_delay}, got {call_kwargs['DelaySeconds']}"
+
+    def test_process_dlq_message_requeue_failure_doesnt_delete(self):
+        """If requeue fails, message should NOT be deleted from DLQ."""
+        from dlq_processor import _process_dlq_message
+
+        with patch("dlq_processor.sqs") as mock_sqs, \
+             patch("dlq_processor._delete_dlq_message") as mock_delete:
+            mock_sqs.send_message.side_effect = Exception("SQS error")
+
+            message = {
+                "MessageId": "test-123",
+                "Body": json.dumps({
+                    "ecosystem": "npm",
+                    "name": "test-package",
+                    "_retry_count": 0,
+                }),
+                "ReceiptHandle": "test-handle",
+            }
+
+            result = _process_dlq_message(message)
+
+            assert result == "skipped"
+            mock_delete.assert_not_called()  # Should NOT delete if requeue failed
+
+    def test_store_permanent_failure(self, mock_dynamodb, monkeypatch):
+        """Permanent failures should be stored in DynamoDB."""
+        # Create the packages table
+        mock_dynamodb.create_table(
+            TableName="test-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        # Reimport to pick up env
+        import sys
+        if "dlq_processor" in sys.modules:
+            del sys.modules["dlq_processor"]
+        from dlq_processor import _store_permanent_failure
+
+        body = {
+            "ecosystem": "npm",
+            "name": "failing-package",
+            "_retry_count": 5,
+        }
+
+        _store_permanent_failure(body, "msg-123", "rate_limited")
+
+        # Verify item was put into DynamoDB
+        table = mock_dynamodb.Table("test-packages")
+        response = table.scan()
+        items = response.get("Items", [])
+
+        # Find the FAILED# item
+        failed_items = [i for i in items if i.get("pk", "").startswith("FAILED#")]
+        assert len(failed_items) == 1
+        assert failed_items[0]["ecosystem"] == "npm"
+        assert failed_items[0]["name"] == "failing-package"
+        assert failed_items[0]["failure_reason"] == "rate_limited"
+
+    def test_handler_processes_empty_queue(self, monkeypatch):
+        """Handler should handle empty DLQ gracefully."""
+        # Ensure env vars are set
+        monkeypatch.setenv("DLQ_URL", "https://sqs.us-east-1.amazonaws.com/123456789/test-dlq")
+        monkeypatch.setenv("MAIN_QUEUE_URL", "https://sqs.us-east-1.amazonaws.com/123456789/test-queue")
+
+        import sys
+        if "dlq_processor" in sys.modules:
+            del sys.modules["dlq_processor"]
+        from dlq_processor import handler
+
+        with patch("dlq_processor.sqs") as mock_sqs:
+            mock_sqs.receive_message.return_value = {"Messages": []}
+
+            result = handler({}, {})
+
+            assert result["processed"] == 0
+            assert result["requeued"] == 0
+            assert result["permanently_failed"] == 0
+
+    def test_handler_processes_multiple_messages(self, monkeypatch):
+        """Handler should process multiple messages from DLQ."""
+        # Ensure env vars are set
+        monkeypatch.setenv("DLQ_URL", "https://sqs.us-east-1.amazonaws.com/123456789/test-dlq")
+        monkeypatch.setenv("MAIN_QUEUE_URL", "https://sqs.us-east-1.amazonaws.com/123456789/test-queue")
+
+        import sys
+        if "dlq_processor" in sys.modules:
+            del sys.modules["dlq_processor"]
+        from dlq_processor import handler
+
+        with patch("dlq_processor.sqs") as mock_sqs, \
+             patch("dlq_processor._process_dlq_message") as mock_process:
+            # First call returns 2 messages, second call returns empty
+            mock_sqs.receive_message.side_effect = [
+                {"Messages": [{"MessageId": "1"}, {"MessageId": "2"}]},
+                {"Messages": []},
+            ]
+            mock_process.return_value = "requeued"
+
+            result = handler({}, {})
+
+            assert result["processed"] == 2
+            assert result["requeued"] == 2
+            assert mock_process.call_count == 2

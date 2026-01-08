@@ -16,13 +16,14 @@ import * as path from "path";
 interface PipelineStackProps extends cdk.StackProps {
   packagesTable: dynamodb.Table;
   rawDataBucket: s3.Bucket;
+  apiKeysTable: dynamodb.Table; // For global GitHub rate limiting with sharded counters
 }
 
 export class PipelineStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: PipelineStackProps) {
     super(scope, id, props);
 
-    const { packagesTable, rawDataBucket } = props;
+    const { packagesTable, rawDataBucket, apiKeysTable } = props;
 
     // ===========================================
     // Secrets Manager: GitHub Token
@@ -104,6 +105,7 @@ export class PipelineStack extends cdk.Stack {
         RAW_DATA_BUCKET: rawDataBucket.bucketName,
         GITHUB_TOKEN_SECRET_ARN: githubTokenSecret.secretArn,
         PACKAGE_QUEUE_URL: packageQueue.queueUrl,
+        API_KEYS_TABLE: apiKeysTable.tableName, // For global GitHub rate limiting
       },
     };
 
@@ -138,6 +140,7 @@ export class PipelineStack extends cdk.Stack {
     packagesTable.grantReadWriteData(packageCollector);
     rawDataBucket.grantWrite(packageCollector);
     githubTokenSecret.grantRead(packageCollector);
+    apiKeysTable.grantReadWriteData(packageCollector); // For global GitHub rate limiting
 
     // Connect collector to SQS queue
     // Increased from maxConcurrency=2 to improve throughput
@@ -162,24 +165,46 @@ export class PipelineStack extends cdk.Stack {
       handler: "score_package.handler",
       code: scoringCode,
       description: "Calculates health scores for packages",
+      environment: {
+        ...commonLambdaProps.environment,
+        IDEMPOTENCY_WINDOW_SECONDS: "60", // Defense in depth for infinite loop prevention
+      },
     });
 
     packagesTable.grantReadWriteData(scoreCalculator);
 
+    // DLQ for DynamoDB Streams failures
+    const streamsDlq = new sqs.Queue(this, "StreamsDLQ", {
+      queueName: "dephealth-streams-dlq",
+      retentionPeriod: cdk.Duration.days(14),
+    });
+
     // Add DynamoDB Streams trigger to calculate scores after data collection
+    // Note: Loop prevention handled in Lambda code by checking if record has collected_at
+    // (score updates only set scored_at, not collected_at)
     scoreCalculator.addEventSource(
       new lambdaEventSources.DynamoEventSource(packagesTable, {
         startingPosition: lambda.StartingPosition.LATEST,
         batchSize: 10,
         retryAttempts: 3,
-        // Only trigger on INSERT and MODIFY, not DELETE
-        filters: [
-          lambda.FilterCriteria.filter({
-            eventName: lambda.FilterRule.or("INSERT", "MODIFY"),
-          }),
-        ],
+        onFailure: new lambdaEventSources.SqsDlq(streamsDlq),
       })
     );
+
+    // CloudWatch alarm for streams DLQ
+    const streamsDlqAlarm = new cloudwatch.Alarm(this, "StreamsDlqAlarm", {
+      alarmName: "dephealth-streams-dlq-messages",
+      alarmDescription: "Messages in Streams DLQ - score calculation failing",
+      metric: streamsDlq.metricApproximateNumberOfMessagesVisible({
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 10,
+      evaluationPeriods: 1,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    // Note: Alarm action added after alertTopic is defined (see CloudWatch section)
 
     // ===========================================
     // EventBridge: Scheduled Triggers
@@ -237,6 +262,38 @@ export class PipelineStack extends cdk.Stack {
     });
 
     // ===========================================
+    // Lambda: DLQ Processor
+    // ===========================================
+    // Reprocesses failed messages with exponential backoff and retry tracking
+    const dlqProcessor = new lambda.Function(this, "DLQProcessor", {
+      ...commonLambdaProps,
+      functionName: "dephealth-dlq-processor",
+      handler: "dlq_processor.handler",
+      code: collectorsCode,
+      description: "Processes failed messages from DLQ with retry tracking",
+      // Note: Removed reservedConcurrentExecutions to avoid account limit issues
+      environment: {
+        ...commonLambdaProps.environment,
+        DLQ_URL: dlq.queueUrl,
+        MAIN_QUEUE_URL: packageQueue.queueUrl,
+        MAX_DLQ_RETRIES: "5",
+      },
+    });
+
+    // Grant permissions
+    dlq.grantConsumeMessages(dlqProcessor);
+    packageQueue.grantSendMessages(dlqProcessor);
+    packagesTable.grantWriteData(dlqProcessor); // For storing permanent failures
+
+    // Schedule to run every 15 minutes
+    new events.Rule(this, "DLQProcessorSchedule", {
+      ruleName: "dephealth-dlq-processor",
+      schedule: events.Schedule.rate(cdk.Duration.minutes(15)),
+      description: "Triggers DLQ processor to reprocess failed messages",
+      targets: [new targets.LambdaFunction(dlqProcessor)],
+    });
+
+    // ===========================================
     // CloudWatch Alarms & Monitoring
     // ===========================================
 
@@ -262,6 +319,10 @@ export class PipelineStack extends cdk.Stack {
     });
     dlqAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
     dlqAlarm.addOkAction(new cloudwatchActions.SnsAction(alertTopic));
+
+    // Streams DLQ alarm (defined earlier, action added here after alertTopic exists)
+    streamsDlqAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
+    streamsDlqAlarm.addOkAction(new cloudwatchActions.SnsAction(alertTopic));
 
     // 2. Refresh Dispatcher Error Alarm (Critical - single point of failure)
     const dispatcherErrorAlarm = new cloudwatch.Alarm(

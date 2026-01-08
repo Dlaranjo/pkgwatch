@@ -199,6 +199,64 @@ def check_and_increment_usage(user_id: str, key_hash: str, limit: int) -> tuple[
         raise
 
 
+def check_and_increment_usage_batch(
+    user_id: str, key_hash: str, limit: int, count: int
+) -> tuple[bool, int]:
+    """
+    Atomically check limit and increment usage counter by a batch count.
+
+    This prevents race conditions where concurrent requests can exceed the limit.
+    Uses DynamoDB conditional expression to ensure the increment only happens
+    if the resulting count would still be within the limit.
+
+    Args:
+        user_id: User's partition key (pk)
+        key_hash: Key hash (sort key / sk)
+        limit: Maximum allowed requests
+        count: Number of requests to increment by (for batch operations)
+
+    Returns:
+        Tuple of (allowed: bool, new_count: int)
+        - allowed: True if request was within limit and counter was incremented
+        - new_count: The new usage count after increment (or current if denied)
+    """
+    table = dynamodb.Table(API_KEYS_TABLE)
+
+    # Calculate threshold: if current count is at or above this, we'd exceed limit
+    # This avoids arithmetic in condition expression (Moto compatibility)
+    threshold = limit - count + 1  # Current must be < threshold for increment to be allowed
+
+    try:
+        response = table.update_item(
+            Key={"pk": user_id, "sk": key_hash},
+            UpdateExpression="SET requests_this_month = if_not_exists(requests_this_month, :zero) + :inc",
+            ConditionExpression="attribute_not_exists(requests_this_month) OR requests_this_month < :threshold",
+            ExpressionAttributeValues={
+                ":inc": count,
+                ":threshold": threshold,
+                ":zero": 0,
+            },
+            ReturnValues="UPDATED_NEW",
+        )
+        new_count = response.get("Attributes", {}).get("requests_this_month", count)
+        return True, new_count
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            # Rate limit would be exceeded - get current count for accurate remaining
+            try:
+                get_response = table.get_item(
+                    Key={"pk": user_id, "sk": key_hash},
+                    ProjectionExpression="requests_this_month",
+                )
+                current_count = get_response.get("Item", {}).get(
+                    "requests_this_month", limit
+                )
+                return False, current_count
+            except Exception:
+                return False, limit
+        raise
+
+
 def reset_monthly_usage(user_id: str, key_hash: str) -> None:
     """
     Reset monthly usage counter (called at start of each month).

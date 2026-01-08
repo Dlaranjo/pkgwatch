@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # Import from shared module (bundled with Lambda)
-from shared.auth import validate_api_key, increment_usage
+from shared.auth import validate_api_key, check_and_increment_usage_batch
 
 
 def decimal_default(obj):
@@ -71,14 +71,22 @@ def handler(event, context):
             "No dependencies found. Provide 'content' (package.json string) or 'dependencies' object.",
         )
 
-    # Check rate limit (each package counts as one request)
-    remaining = user["monthly_limit"] - user["requests_this_month"]
-    if remaining < len(dependencies):
+    # Atomically check rate limit and reserve quota for this scan
+    # This prevents race conditions where concurrent scans can exceed the limit
+    allowed, new_count = check_and_increment_usage_batch(
+        user["user_id"],
+        user["key_hash"],
+        user["monthly_limit"],
+        len(dependencies),
+    )
+    if not allowed:
+        remaining = user["monthly_limit"] - new_count
         return _error_response(
             429,
             "rate_limit_exceeded",
             f"Scanning {len(dependencies)} packages would exceed your remaining {remaining} requests.",
         )
+    remaining = user["monthly_limit"] - new_count
 
     # Fetch scores for all dependencies using BatchGetItem for efficiency
     results = []
@@ -143,13 +151,8 @@ def handler(event, context):
             # Fall back to marking remaining items as not found on batch error
             not_found.extend(batch_set)
 
-    # Increment usage by the number of packages we looked up (not found + found)
-    # This prevents rate limit bypass by scanning many packages for 1 request
-    packages_looked_up = len(results) + len(not_found)
-    try:
-        increment_usage(user["user_id"], user["key_hash"], count=packages_looked_up)
-    except Exception as e:
-        logger.warning(f"Failed to increment usage: {e}")
+    # Usage was already atomically reserved at the start of the request
+    # based on len(dependencies) - this prevents race conditions
 
     # Calculate counts by risk level
     critical_count = sum(1 for r in results if r["risk_level"] == "CRITICAL")
@@ -168,7 +171,7 @@ def handler(event, context):
         "headers": {
             "Content-Type": "application/json",
             "X-RateLimit-Limit": str(user["monthly_limit"]),
-            "X-RateLimit-Remaining": str(remaining - packages_looked_up),
+            "X-RateLimit-Remaining": str(remaining),  # Already reflects reserved quota
         },
         "body": json.dumps({
             "total": len(dependencies),

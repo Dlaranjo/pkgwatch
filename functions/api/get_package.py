@@ -20,6 +20,7 @@ logger.setLevel(logging.INFO)
 
 # Import from shared module (bundled with Lambda)
 from shared.auth import validate_api_key, check_and_increment_usage
+from shared.response_utils import decimal_default, error_response
 
 # Demo mode settings
 DEMO_REQUESTS_PER_HOUR = 20
@@ -38,12 +39,6 @@ DEMO_ALLOWED_ORIGINS = (
     else _PROD_ORIGINS
 )
 
-
-def decimal_default(obj):
-    """JSON encoder for Decimal types from DynamoDB."""
-    if isinstance(obj, Decimal):
-        return int(obj) if obj % 1 == 0 else float(obj)
-    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 dynamodb = boto3.resource("dynamodb")
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")

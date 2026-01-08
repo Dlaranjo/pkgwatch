@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -34,11 +35,17 @@ secretsmanager = boto3.client("secretsmanager")
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")
 RAW_DATA_BUCKET = os.environ.get("RAW_DATA_BUCKET", "dephealth-raw-data")
 GITHUB_TOKEN_SECRET_ARN = os.environ.get("GITHUB_TOKEN_SECRET_ARN")
+API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
 
 # Semaphore to limit concurrent GitHub API calls per Lambda instance
 # With maxConcurrency=10 Lambdas * 5 = max 50 concurrent GitHub calls
 # GitHub allows 5000/hour = ~83/minute, so this keeps us well under the limit
 GITHUB_SEMAPHORE = asyncio.Semaphore(5)
+
+# Global rate limiting with sharded counters
+# Distributes writes across 10 partitions to avoid hot partition issues
+RATE_LIMIT_SHARDS = 10
+GITHUB_HOURLY_LIMIT = 4000  # Leave buffer from 5000/hour limit
 
 
 def get_github_token() -> Optional[str]:
@@ -62,6 +69,70 @@ def get_github_token() -> Optional[str]:
     except ClientError as e:
         logger.error(f"Failed to retrieve GitHub token: {e}")
         return None
+
+
+def _get_rate_limit_window_key() -> str:
+    """Get the current hourly window key for rate limiting."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d-%H")
+
+
+def _get_total_github_calls(window_key: str) -> int:
+    """Sum calls across all shards for the window."""
+    table = dynamodb.Table(API_KEYS_TABLE)
+    total = 0
+
+    for shard_id in range(RATE_LIMIT_SHARDS):
+        try:
+            response = table.get_item(
+                Key={"pk": f"github_rate_limit#{shard_id}", "sk": window_key},
+                ProjectionExpression="calls",
+            )
+            total += response.get("Item", {}).get("calls", 0)
+        except ClientError as e:
+            logger.debug(f"Shard {shard_id} not found or error: {e}")
+            pass  # Shard doesn't exist yet
+
+    return total
+
+
+def _check_and_increment_github_rate_limit() -> bool:
+    """
+    Check global GitHub rate limit using DynamoDB sharded counter.
+
+    Returns:
+        True if request is allowed, False if rate limit exceeded.
+    """
+    table = dynamodb.Table(API_KEYS_TABLE)
+    now = datetime.now(timezone.utc)
+    window_key = _get_rate_limit_window_key()
+    shard_id = random.randint(0, RATE_LIMIT_SHARDS - 1)
+
+    try:
+        # First, check total across all shards (read before write)
+        total_calls = _get_total_github_calls(window_key)
+        if total_calls >= GITHUB_HOURLY_LIMIT:
+            logger.warning(
+                f"GitHub rate limit reached globally: {total_calls}/{GITHUB_HOURLY_LIMIT}"
+            )
+            return False
+
+        # Increment random shard with TTL for automatic cleanup
+        table.update_item(
+            Key={"pk": f"github_rate_limit#{shard_id}", "sk": window_key},
+            UpdateExpression="SET calls = if_not_exists(calls, :zero) + :inc, #ttl = :ttl",
+            ExpressionAttributeNames={"#ttl": "ttl"},
+            ExpressionAttributeValues={
+                ":zero": 0,
+                ":inc": 1,
+                ":ttl": int(now.timestamp()) + 7200,  # TTL 2 hours after window
+            },
+        )
+        return True
+
+    except ClientError as e:
+        logger.error(f"DynamoDB error in rate limit check: {e}")
+        # Fail-closed for safety - don't allow if we can't verify limit
+        return False
 
 
 async def collect_package_data(ecosystem: str, name: str) -> dict:
@@ -104,10 +175,21 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
         logger.error(f"Failed to fetch deps.dev data for {ecosystem}/{name}: {e}")
         combined_data["depsdev_error"] = str(e)
 
-    # 2. npm data (supplementary for npm packages)
+    # 2. npm and bundlephobia data (run in parallel - they don't depend on each other)
     if ecosystem == "npm":
-        try:
-            npm_data = await get_npm_metadata(name)
+        # Start both requests concurrently
+        npm_task = get_npm_metadata(name)
+        bundle_task = get_bundle_size(name)
+        npm_result, bundle_result = await asyncio.gather(
+            npm_task, bundle_task, return_exceptions=True
+        )
+
+        # Process npm result
+        if isinstance(npm_result, Exception):
+            logger.error(f"Failed to fetch npm data for {name}: {npm_result}")
+            combined_data["npm_error"] = str(npm_result)
+        else:
+            npm_data = npm_result
             combined_data["npm"] = npm_data
             combined_data["sources"].append("npm")
 
@@ -129,67 +211,15 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
             if not combined_data.get("repository_url"):
                 combined_data["repository_url"] = npm_data.get("repository_url")
 
-        except Exception as e:
-            logger.error(f"Failed to fetch npm data for {name}: {e}")
-            combined_data["npm_error"] = str(e)
-
-    # 3. GitHub data (secondary - rate limited)
-    repo_url = combined_data.get("repository_url")
-    if repo_url:
-        parsed = parse_github_url(repo_url)
-        if parsed:
-            owner, repo = parsed
-            try:
-                # Use semaphore to limit concurrent GitHub API calls
-                async with GITHUB_SEMAPHORE:
-                    github_token = get_github_token()
-                    github_collector = GitHubCollector(token=github_token)
-                    github_data = await github_collector.get_repo_metrics(owner, repo)
-
-                if "error" not in github_data:
-                    combined_data["github"] = github_data
-                    combined_data["sources"].append("github")
-
-                    # Supplement with GitHub-specific data
-                    combined_data["stars"] = github_data.get("stars", 0)
-                    combined_data["forks"] = github_data.get("forks", 0)
-                    combined_data["open_issues"] = github_data.get("open_issues", 0)
-                    combined_data["days_since_last_commit"] = github_data.get(
-                        "days_since_last_commit"
-                    )
-                    combined_data["commits_90d"] = github_data.get("commits_90d", 0)
-                    combined_data["active_contributors_90d"] = github_data.get(
-                        "active_contributors_90d", 0
-                    )
-                    combined_data["total_contributors"] = github_data.get(
-                        "total_contributors", 0
-                    )
-                    # True bus factor (contribution distribution analysis)
-                    combined_data["true_bus_factor"] = github_data.get(
-                        "true_bus_factor", 1
-                    )
-                    combined_data["bus_factor_confidence"] = github_data.get(
-                        "bus_factor_confidence", "LOW"
-                    )
-                    combined_data["contribution_distribution"] = github_data.get(
-                        "contribution_distribution", []
-                    )
-                    combined_data["archived"] = github_data.get("archived", False)
-                else:
-                    combined_data["github_error"] = github_data["error"]
-
-            except Exception as e:
-                logger.error(f"Failed to fetch GitHub data for {owner}/{repo}: {e}")
-                combined_data["github_error"] = str(e)
-
-    # 4. Bundlephobia data (bundle size - for npm packages only)
-    if ecosystem == "npm":
-        try:
-            bundle_data = await get_bundle_size(name)
+        # Process bundlephobia result
+        if isinstance(bundle_result, Exception):
+            logger.warning(f"Failed to fetch bundle size for {name}: {bundle_result}")
+            combined_data["bundlephobia_error"] = str(bundle_result)
+        else:
+            bundle_data = bundle_result
             if "error" not in bundle_data:
                 combined_data["bundlephobia"] = bundle_data
                 combined_data["sources"].append("bundlephobia")
-                # Copy key bundle size fields
                 combined_data["bundle_size"] = bundle_data.get("size", 0)
                 combined_data["bundle_size_gzip"] = bundle_data.get("gzip", 0)
                 combined_data["bundle_size_category"] = bundle_data.get("size_category")
@@ -198,9 +228,73 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
                 )
             else:
                 combined_data["bundlephobia_error"] = bundle_data.get("error")
-        except Exception as e:
-            logger.warning(f"Failed to fetch bundle size for {name}: {e}")
-            combined_data["bundlephobia_error"] = str(e)
+
+    # 3. GitHub data (secondary - rate limited)
+    repo_url = combined_data.get("repository_url")
+    if repo_url:
+        parsed = parse_github_url(repo_url)
+        if parsed:
+            owner, repo = parsed
+            try:
+                # Use semaphore to limit concurrent GitHub API calls per Lambda instance
+                # AND global rate limiter to coordinate across all Lambda instances
+                async with GITHUB_SEMAPHORE:
+                    # Check global rate limit before making GitHub API call
+                    if not _check_and_increment_github_rate_limit():
+                        logger.warning(
+                            f"Skipping GitHub for {ecosystem}/{name} - global rate limit"
+                        )
+                        combined_data["github_error"] = "rate_limit_exceeded"
+                    else:
+                        github_token = get_github_token()
+                        github_collector = GitHubCollector(token=github_token)
+                        github_data = await github_collector.get_repo_metrics(
+                            owner, repo
+                        )
+
+                        if "error" not in github_data:
+                            combined_data["github"] = github_data
+                            combined_data["sources"].append("github")
+
+                            # Supplement with GitHub-specific data
+                            combined_data["stars"] = github_data.get("stars", 0)
+                            combined_data["forks"] = github_data.get("forks", 0)
+                            combined_data["open_issues"] = github_data.get(
+                                "open_issues", 0
+                            )
+                            combined_data["days_since_last_commit"] = github_data.get(
+                                "days_since_last_commit"
+                            )
+                            combined_data["commits_90d"] = github_data.get(
+                                "commits_90d", 0
+                            )
+                            combined_data["active_contributors_90d"] = github_data.get(
+                                "active_contributors_90d", 0
+                            )
+                            combined_data["total_contributors"] = github_data.get(
+                                "total_contributors", 0
+                            )
+                            # True bus factor (contribution distribution analysis)
+                            combined_data["true_bus_factor"] = github_data.get(
+                                "true_bus_factor", 1
+                            )
+                            combined_data["bus_factor_confidence"] = github_data.get(
+                                "bus_factor_confidence", "LOW"
+                            )
+                            combined_data[
+                                "contribution_distribution"
+                            ] = github_data.get("contribution_distribution", [])
+                            combined_data["archived"] = github_data.get(
+                                "archived", False
+                            )
+                        else:
+                            combined_data["github_error"] = github_data["error"]
+
+            except Exception as e:
+                logger.error(f"Failed to fetch GitHub data for {owner}/{repo}: {e}")
+                combined_data["github_error"] = str(e)
+
+    # Note: Bundlephobia is now fetched in parallel with npm data in section 2
 
     return combined_data
 

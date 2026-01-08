@@ -22,6 +22,10 @@ from abandonment_risk import calculate_abandonment_risk
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+# Defense in depth: skip scoring if package was scored recently
+# This prevents infinite loops if the DynamoDB Streams filter doesn't work as expected
+IDEMPOTENCY_WINDOW_SECONDS = int(os.environ.get("IDEMPOTENCY_WINDOW_SECONDS", "60"))
+
 
 def to_decimal(obj):
     """Convert floats to Decimal for DynamoDB compatibility."""
@@ -100,6 +104,25 @@ def _score_single_package(event: dict) -> dict:
 
     # Convert Decimals to floats for math operations
     item = from_decimal(item)
+
+    # Defense in depth: skip if recently scored (prevents infinite loop)
+    if IDEMPOTENCY_WINDOW_SECONDS > 0:
+        scored_at = item.get("scored_at")
+        if scored_at:
+            try:
+                scored_time = datetime.fromisoformat(
+                    scored_at.replace("Z", "+00:00") if isinstance(scored_at, str) else scored_at
+                )
+                seconds_since_scored = (datetime.now(timezone.utc) - scored_time).total_seconds()
+                if seconds_since_scored < IDEMPOTENCY_WINDOW_SECONDS:
+                    logger.debug(f"Skipping {name} - scored {seconds_since_scored:.1f}s ago")
+                    return {
+                        "statusCode": 200,
+                        "body": json.dumps({"skipped": True, "reason": "recently_scored"}),
+                    }
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Could not parse scored_at for {name}: {e}")
+                # Continue with scoring if we can't parse the timestamp
 
     # Calculate scores
     health_result = calculate_health_score(item)

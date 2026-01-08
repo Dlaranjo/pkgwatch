@@ -24,6 +24,7 @@ const pipelineStack = new PipelineStack(app, "DepHealthPipeline", {
   description: "DepHealth data collection pipeline",
   packagesTable: storageStack.packagesTable,
   rawDataBucket: storageStack.rawDataBucket,
+  apiKeysTable: storageStack.apiKeysTable, // For global GitHub rate limiting
 });
 
 // API stack (API Gateway + Lambda handlers)

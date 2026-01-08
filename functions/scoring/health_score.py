@@ -151,7 +151,10 @@ def _calculate_maturity_factor(data: dict) -> float:
 
     # Low activity check (also smooth sigmoid)
     # Centered at 10 commits - below 10 = high maturity eligibility
-    activity_low = 1 / (1 + math.exp((commits_90d - 10) / 3))
+    # Clamp sigmoid argument to prevent overflow (exp(700) is near max float)
+    sigmoid_arg = (commits_90d - 10) / 3
+    sigmoid_arg = max(-700, min(700, sigmoid_arg))
+    activity_low = 1 / (1 + math.exp(sigmoid_arg))
 
     # Maturity = high adoption AND low activity
     # Max factor of 0.7 to prevent gaming
@@ -243,7 +246,14 @@ def _security_health(data: dict) -> float:
         try:
             # Defensive: ensure openssf is numeric before division
             openssf_val = float(openssf)
-            openssf_score = max(0.0, min(openssf_val / 10.0, 1.0))
+            # Check for NaN and infinity which would propagate through calculations
+            if math.isnan(openssf_val) or math.isinf(openssf_val):
+                logger.warning(
+                    f"Invalid openssf_score value ({openssf_val}), using default"
+                )
+                openssf_score = 0.3
+            else:
+                openssf_score = max(0.0, min(openssf_val / 10.0, 1.0))
         except (TypeError, ValueError):
             logger.warning(f"Invalid openssf_score type: {type(openssf)}, using default")
             openssf_score = 0.3

@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlencode
 
 import boto3
-from boto3.dynamodb.conditions import Attr
+from boto3.dynamodb.conditions import Key
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -41,23 +41,39 @@ def handler(event, context):
     table = dynamodb.Table(API_KEYS_TABLE)
     now = datetime.now(timezone.utc)
 
-    # Scan for pending signup with this token
-    # Note: In production with many users, consider a GSI on verification_token
+    # Query GSI for pending signup with this token (O(1) instead of O(n) scan)
     try:
-        response = table.scan(
-            FilterExpression=Attr("verification_token").eq(token) & Attr("sk").eq("PENDING"),
-            ProjectionExpression="pk, email, verification_expires, verification_token",
+        response = table.query(
+            IndexName="verification-token-index",
+            KeyConditionExpression=Key("verification_token").eq(token),
         )
     except Exception as e:
-        logger.error(f"Error scanning for token: {e}")
+        logger.error(f"Error querying for token: {e}")
         return _redirect_with_error("internal_error", "Failed to verify token")
 
     items = response.get("Items", [])
     if not items:
         return _redirect_with_error("invalid_token", "Invalid or expired verification token")
 
-    pending_user = items[0]
-    user_id = pending_user["pk"]
+    # GSI returns KEYS_ONLY, so fetch full record
+    gsi_item = items[0]
+    user_id = gsi_item["pk"]
+    sk = gsi_item["sk"]
+
+    # Verify it's a PENDING record (not some other record with same token somehow)
+    if sk != "PENDING":
+        return _redirect_with_error("invalid_token", "Invalid or expired verification token")
+
+    # Fetch full record to get email and expiration
+    try:
+        full_response = table.get_item(Key={"pk": user_id, "sk": sk})
+        pending_user = full_response.get("Item")
+        if not pending_user:
+            return _redirect_with_error("invalid_token", "Invalid or expired verification token")
+    except Exception as e:
+        logger.error(f"Error fetching user record: {e}")
+        return _redirect_with_error("internal_error", "Failed to verify token")
+
     email = pending_user["email"]
 
     # Check expiration
@@ -91,17 +107,23 @@ def handler(event, context):
 
     logger.info(f"Email verified for {email}, API key created")
 
-    # Redirect to dashboard with the API key (show once)
-    # The dashboard should display this key and warn it won't be shown again
-    redirect_params = urlencode({
-        "verified": "true",
-        "key": api_key,  # Only shown once on first login
-    })
+    # Store API key in short-lived cookie for one-time display
+    # NOT HttpOnly - dashboard JS needs to read and display it once
+    # Short Max-Age (60s) + immediate deletion by JS minimizes exposure window
+    # More secure than passing key in URL which appears in logs/history/referrer
+    cookie_value = (
+        f"new_api_key={api_key}; "
+        f"Path=/dashboard; "  # Limit cookie scope to dashboard path
+        f"Secure; "
+        f"SameSite=Strict; "
+        f"Max-Age=60"  # Very short - 60 seconds
+    )
 
     return {
         "statusCode": 302,
         "headers": {
-            "Location": f"{BASE_URL}/dashboard?{redirect_params}",
+            "Location": f"{BASE_URL}/dashboard?verified=true",
+            "Set-Cookie": cookie_value,
             "Cache-Control": "no-store",
         },
         "body": "",

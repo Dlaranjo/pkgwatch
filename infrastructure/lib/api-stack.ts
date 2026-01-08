@@ -102,7 +102,7 @@ export class ApiStack extends cdk.Stack {
       handler: "get_package.handler",
       code: apiCodeWithShared,
       description: "Get package health score",
-      reservedConcurrentExecutions: 100, // Guaranteed capacity for critical path
+      // Note: Removed reservedConcurrentExecutions to avoid account limit issues
     });
 
     packagesTable.grantReadData(getPackageHandler);
@@ -117,7 +117,7 @@ export class ApiStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(60),
       memorySize: 512,
       description: "Scan package.json for health scores",
-      reservedConcurrentExecutions: 50, // Guaranteed capacity for critical path
+      // Note: Removed reservedConcurrentExecutions to avoid account limit issues
     });
 
     packagesTable.grantReadData(scanHandler);

@@ -22,6 +22,11 @@ def calculate_abandonment_risk(data: dict, months: int = 12) -> dict:
     Returns:
         Dictionary with probability, time horizon, and risk factors
     """
+    # Clamp months to valid range (minimum 1 to prevent negative/zero probabilities)
+    if months < 1:
+        logger.warning(f"Invalid months value {months}, clamping to 1")
+        months = max(1, months)
+
     # Risk signals (0-1 scale, higher = riskier)
 
     # 1. Inactivity risk: exponential increase with days since commit

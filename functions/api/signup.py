@@ -2,6 +2,7 @@
 Signup Endpoint - POST /signup
 
 Creates a pending user account and sends verification email.
+Security: Uses timing normalization and uniform responses to prevent email enumeration.
 """
 
 import hashlib
@@ -10,6 +11,7 @@ import logging
 import os
 import re
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 
 import boto3
@@ -17,6 +19,10 @@ from boto3.dynamodb.conditions import Key
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+# Minimum response time to normalize timing and prevent enumeration
+# Set to 1.5s to fully absorb worst-case SES latency variance (~200-500ms)
+MIN_RESPONSE_TIME_SECONDS = 1.5
 
 dynamodb = boto3.resource("dynamodb")
 ses = boto3.client("ses")
@@ -40,17 +46,31 @@ def handler(event, context):
     }
 
     Creates a pending user and sends verification email.
+
+    Security: Returns the same response whether email exists or not
+    to prevent email enumeration attacks. Uses timing normalization
+    to prevent timing-based enumeration.
     """
+    start_time = time.time()
+
+    # Generic success message - same whether email exists or not
+    success_message = (
+        "Check your email for a verification link. "
+        "If you already have an account, try logging in instead."
+    )
+
     # Parse request body
     try:
         body = json.loads(event.get("body", "{}"))
     except json.JSONDecodeError:
+        # Validation errors can return early - they don't reveal email existence
         return _error_response(400, "invalid_json", "Request body must be valid JSON")
 
     email = body.get("email", "").strip().lower()
 
     # Validate email format
     if not email or not EMAIL_REGEX.match(email):
+        # Validation errors can return early - they don't reveal email existence
         return _error_response(400, "invalid_email", "Please provide a valid email address")
 
     # Check if email already exists using email-index GSI
@@ -62,12 +82,12 @@ def handler(event, context):
         )
         existing_items = response.get("Items", [])
 
-        # Check for verified users
+        # Check for verified users - return same response to prevent enumeration
         for item in existing_items:
             if item.get("email_verified", False):
-                return _error_response(
-                    409, "email_exists", "This email is already registered. Try logging in instead."
-                )
+                logger.info(f"Signup attempted for existing verified email (not revealing)")
+                # Same response as new signup - no enumeration possible
+                return _timed_response(start_time, _success_response(success_message))
 
         # Clean up any stale pending signups (expired verification tokens)
         now = datetime.now(timezone.utc)
@@ -88,7 +108,10 @@ def handler(event, context):
 
     except Exception as e:
         logger.error(f"Error checking existing email: {e}")
-        return _error_response(500, "internal_error", "Failed to process signup")
+        return _timed_response(
+            start_time,
+            _error_response(500, "internal_error", "An error occurred. Please try again."),
+        )
 
     # Generate user ID and verification token
     user_id = f"user_{hashlib.sha256(email.encode()).hexdigest()[:16]}"
@@ -96,6 +119,10 @@ def handler(event, context):
     verification_expires = (now + timedelta(hours=24)).isoformat()
 
     # Create pending user record
+    # TTL is set to 25 hours after verification expires to allow for cleanup
+    verification_expires_dt = now + timedelta(hours=24)
+    ttl_timestamp = int((verification_expires_dt + timedelta(hours=1)).timestamp())
+
     try:
         table.put_item(
             Item={
@@ -106,15 +133,20 @@ def handler(event, context):
                 "verification_expires": verification_expires,
                 "created_at": now.isoformat(),
                 "email_verified": False,
+                "ttl": ttl_timestamp,  # Auto-cleanup of expired PENDING records
             },
             ConditionExpression="attribute_not_exists(pk) OR attribute_not_exists(sk)",
         )
     except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
-        # Rare race condition - another signup happened simultaneously
-        return _error_response(409, "email_exists", "This email is already registered")
+        # Race condition - same response to prevent enumeration
+        logger.info(f"Signup race condition for email (not revealing)")
+        return _timed_response(start_time, _success_response(success_message))
     except Exception as e:
         logger.error(f"Error creating pending user: {e}")
-        return _error_response(500, "internal_error", "Failed to create account")
+        return _timed_response(
+            start_time,
+            _error_response(500, "internal_error", "An error occurred. Please try again."),
+        )
 
     # Send verification email
     verification_url = f"{BASE_URL}/verify?token={verification_token}"
@@ -127,14 +159,7 @@ def handler(event, context):
 
     logger.info(f"Signup initiated for {email}")
 
-    return {
-        "statusCode": 200,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({
-            "message": "Check your email to verify your account",
-            "email": email,
-        }),
-    }
+    return _timed_response(start_time, _success_response(success_message))
 
 
 def _send_verification_email(email: str, verification_url: str):
@@ -192,3 +217,27 @@ def _error_response(status_code: int, code: str, message: str) -> dict:
         "headers": {"Content-Type": "application/json"},
         "body": json.dumps({"error": {"code": code, "message": message}}),
     }
+
+
+def _success_response(message: str) -> dict:
+    """Generate generic success response that doesn't reveal email existence."""
+    return {
+        "statusCode": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps({
+            "message": message,
+        }),
+    }
+
+
+def _timed_response(start_time: float, response: dict) -> dict:
+    """
+    Ensure response takes at least MIN_RESPONSE_TIME_SECONDS to prevent timing attacks.
+
+    Attackers could measure response times to determine if an email exists
+    (existing emails skip some operations). Normalizing timing eliminates this vector.
+    """
+    elapsed = time.time() - start_time
+    if elapsed < MIN_RESPONSE_TIME_SECONDS:
+        time.sleep(MIN_RESPONSE_TIME_SECONDS - elapsed)
+    return response

@@ -78,6 +78,17 @@ export class StorageStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // GSI for looking up pending signups by verification token
+    // Replaces O(n) table scan with O(1) query for email verification
+    this.apiKeysTable.addGlobalSecondaryIndex({
+      indexName: "verification-token-index",
+      partitionKey: {
+        name: "verification_token",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.KEYS_ONLY,
+    });
+
     // GSI for looking up user by Stripe customer ID
     // Required for subscription webhooks (upgrades/downgrades/cancellations)
     this.apiKeysTable.addGlobalSecondaryIndex({

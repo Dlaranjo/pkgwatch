@@ -61,10 +61,15 @@ class TestSignupHandler:
         assert body["error"]["code"] == "invalid_email"
 
     @mock_aws
-    def test_returns_409_for_existing_verified_user(
+    def test_returns_200_for_existing_verified_user_to_prevent_enumeration(
         self, seeded_api_keys_table, api_gateway_event
     ):
-        """Should return 409 if email already verified."""
+        """Should return 200 even for existing verified user (prevents email enumeration).
+
+        Security: Returning different responses for existing vs non-existing emails
+        would allow attackers to enumerate valid email addresses. The signup endpoint
+        now returns the same 200 response regardless of email existence.
+        """
         os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
 
         from api.signup import handler
@@ -74,9 +79,11 @@ class TestSignupHandler:
 
         result = handler(api_gateway_event, {})
 
-        assert result["statusCode"] == 409
+        # Should return 200 (same as new signup) to prevent email enumeration
+        assert result["statusCode"] == 200
         body = json.loads(result["body"])
-        assert body["error"]["code"] == "email_exists"
+        # Generic message that doesn't reveal email existence
+        assert "verification" in body["message"].lower() or "email" in body["message"].lower()
 
 
 class TestAuthMeHandler:

@@ -1187,29 +1187,32 @@ class TestAdditionalEdgeCases:
         # security component defaulting to 0.3 for missing OpenSSF score
         assert result["health_score"] >= 80
 
-    def test_extremely_high_commits_overflow_bug(self):
-        """BUG: Document overflow error in maturity factor with very high commits.
+    def test_extremely_high_commits_handled_gracefully(self):
+        """Very high commit counts should be handled gracefully without overflow.
 
-        This test documents a known bug where extremely high commit counts
-        (> ~700 in 90 days) cause an OverflowError in _calculate_maturity_factor.
+        Previously, extremely high commit counts (> ~700 in 90 days) caused an
+        OverflowError in _calculate_maturity_factor due to math.exp() overflow.
 
-        The issue is in this line:
-            activity_low = 1 / (1 + math.exp((commits_90d - 10) / 3))
-
-        When commits_90d is very large (e.g., 100,000), the exp() overflows.
-
-        Fix suggestion: Clamp the exponent argument or use a safe sigmoid.
+        Fix: Sigmoid argument is now clamped to [-700, 700] to prevent overflow.
         """
         data = {
             "weekly_downloads": 1_000_000,
             "dependents_count": 10_000,
-            "commits_90d": 100_000,  # Triggers overflow
+            "commits_90d": 100_000,  # Previously caused overflow
             "days_since_last_commit": 0,
         }
 
-        # This currently raises OverflowError - documenting expected behavior
-        with pytest.raises(OverflowError):
-            calculate_health_score(data)
+        # Should NOT raise OverflowError after fix
+        result = calculate_health_score(data)
+
+        # Score should be valid and bounded
+        assert 0 <= result["health_score"] <= 100
+        for name, value in result["components"].items():
+            assert 0 <= value <= 100, f"{name} out of bounds: {value}"
+
+        # With extreme values, activity_low approaches 0 (high commits = not "low activity")
+        # so maturity factor is minimal, but package still gets good score from other factors
+        assert result["health_score"] >= 50  # Still reasonable score
 
     def test_all_none_values(self):
         """Test with all None values."""

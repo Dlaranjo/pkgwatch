@@ -1,2 +1,3 @@
 # Scoring Lambda dependencies
-boto3>=1.34.0
+# Note: boto3 is pre-installed in Lambda runtime, no need to bundle
+# No additional dependencies required

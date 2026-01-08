@@ -42,6 +42,7 @@ def mock_dynamodb():
                 {"AttributeName": "key_hash", "AttributeType": "S"},
                 {"AttributeName": "email", "AttributeType": "S"},
                 {"AttributeName": "stripe_customer_id", "AttributeType": "S"},
+                {"AttributeName": "verification_token", "AttributeType": "S"},
             ],
             GlobalSecondaryIndexes=[
                 {
@@ -58,6 +59,11 @@ def mock_dynamodb():
                     "IndexName": "stripe-customer-index",
                     "KeySchema": [{"AttributeName": "stripe_customer_id", "KeyType": "HASH"}],
                     "Projection": {"ProjectionType": "ALL"},
+                },
+                {
+                    "IndexName": "verification-token-index",
+                    "KeySchema": [{"AttributeName": "verification_token", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "KEYS_ONLY"},
                 },
             ],
             BillingMode="PAY_PER_REQUEST",
