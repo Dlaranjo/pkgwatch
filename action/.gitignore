@@ -1,0 +1,2 @@
+node_modules/
+# dist/ is NOT ignored - must be committed for GitHub Actions

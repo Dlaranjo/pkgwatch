@@ -5,6 +5,10 @@
   "author": "DepHealth",
   "license": "MIT",
   "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./api": "./dist/api.js"
+  },
   "bin": {
     "dephealth": "./dist/index.js"
   },

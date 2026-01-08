@@ -1,0 +1,48 @@
+name: 'DepHealth Scan'
+description: 'Scan npm dependencies for health risks and security issues'
+author: 'DepHealth'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  api-key:
+    description: 'DepHealth API key. Get one at https://dephealth.laranjo.dev'
+    required: true
+  working-directory:
+    description: 'Directory containing package.json to scan'
+    required: false
+    default: '.'
+  fail-on:
+    description: 'Fail workflow if risk level reached: HIGH or CRITICAL'
+    required: false
+    default: ''
+  include-dev:
+    description: 'Include devDependencies in scan'
+    required: false
+    default: 'true'
+
+outputs:
+  total:
+    description: 'Total packages scanned'
+  critical:
+    description: 'Count of CRITICAL risk packages'
+  high:
+    description: 'Count of HIGH risk packages'
+  medium:
+    description: 'Count of MEDIUM risk packages'
+  low:
+    description: 'Count of LOW risk packages'
+  has-issues:
+    description: 'True if any CRITICAL or HIGH risk packages found'
+  highest-risk:
+    description: 'Highest risk level found (CRITICAL, HIGH, MEDIUM, LOW, NONE)'
+  failed:
+    description: 'True if fail-on threshold was exceeded'
+  results:
+    description: 'Full scan results as JSON string'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

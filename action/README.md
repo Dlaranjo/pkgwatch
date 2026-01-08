@@ -1,0 +1,176 @@
+# DepHealth GitHub Action
+
+[![GitHub Action](https://img.shields.io/badge/GitHub-Action-blue.svg)](https://github.com/features/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+Scan your npm dependencies for health risks and security issues in CI/CD.
+
+## Quick Start
+
+```yaml
+- name: Scan dependencies
+  uses: dephealth/action@v1
+  with:
+    api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+```
+
+Get your API key at [dephealth.laranjo.dev](https://dephealth.laranjo.dev).
+
+## Inputs
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `api-key` | Yes | - | DepHealth API key |
+| `working-directory` | No | `.` | Directory containing package.json |
+| `fail-on` | No | - | Fail if risk level reached: `HIGH` or `CRITICAL` |
+| `include-dev` | No | `true` | Include devDependencies in scan |
+
+## Outputs
+
+| Output | Description |
+|--------|-------------|
+| `total` | Total packages scanned |
+| `critical` | Count of CRITICAL risk packages |
+| `high` | Count of HIGH risk packages |
+| `medium` | Count of MEDIUM risk packages |
+| `low` | Count of LOW risk packages |
+| `has-issues` | `true` if any CRITICAL or HIGH risk packages found |
+| `highest-risk` | Highest risk level found (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, `NONE`) |
+| `failed` | `true` if fail-on threshold was exceeded |
+| `results` | Full scan results as JSON string |
+
+## Examples
+
+### Basic Scan
+
+```yaml
+name: Dependency Health Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  dephealth:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan dependencies
+        uses: dephealth/action@v1
+        with:
+          api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+```
+
+### Fail on HIGH Risk
+
+```yaml
+- name: Scan dependencies
+  id: dephealth
+  uses: dephealth/action@v1
+  with:
+    api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+    fail-on: HIGH
+
+- name: Notify on issues
+  if: steps.dephealth.outputs.has-issues == 'true'
+  run: echo "Found risky dependencies!"
+```
+
+### Monorepo (Multiple package.json)
+
+```yaml
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [frontend, backend, shared]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan ${{ matrix.package }}
+        uses: dephealth/action@v1
+        with:
+          api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+          working-directory: packages/${{ matrix.package }}
+          fail-on: CRITICAL
+```
+
+### Weekly Scheduled Scan
+
+```yaml
+name: Weekly Dependency Audit
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'  # Every Monday at midnight
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan dependencies
+        uses: dephealth/action@v1
+        with:
+          api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+          fail-on: HIGH
+```
+
+### Use Output in Conditional Steps
+
+```yaml
+- name: Scan dependencies
+  id: dephealth
+  uses: dephealth/action@v1
+  with:
+    api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+
+- name: Block deploy on critical issues
+  if: steps.dephealth.outputs.highest-risk == 'CRITICAL'
+  run: |
+    echo "Cannot deploy with CRITICAL risk dependencies"
+    exit 1
+
+- name: Warn on high issues
+  if: steps.dephealth.outputs.highest-risk == 'HIGH'
+  run: echo "::warning::HIGH risk dependencies detected"
+```
+
+## Job Summary
+
+The action automatically generates a job summary with:
+- Pass/fail status banner
+- Summary counts by risk level
+- Table of packages requiring attention
+- Collapsible list of all packages
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success (or no fail-on threshold set) |
+| 1 | Threshold exceeded (via fail-on) |
+
+## Error Messages
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Authentication failed (401)` | Invalid or expired API key | Verify key at [dashboard](https://dephealth.laranjo.dev/dashboard) |
+| `Rate limit exceeded (429)` | API quota exhausted | Upgrade plan or reduce scan frequency |
+| `Request timed out` | API unresponsive | Check [status page](https://status.dephealth.laranjo.dev) |
+| `Cannot find package.json` | Wrong path | Check `working-directory` input |
+
+## Security
+
+- API keys are automatically masked in logs
+- Path traversal outside repository is blocked
+- All output is sanitized to prevent markdown injection
+
+## License
+
+MIT
