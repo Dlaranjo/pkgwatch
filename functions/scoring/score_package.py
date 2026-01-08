@@ -33,6 +33,17 @@ def to_decimal(obj):
         return [to_decimal(v) for v in obj]
     return obj
 
+
+def from_decimal(obj):
+    """Convert Decimals to floats for math operations."""
+    if isinstance(obj, Decimal):
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {k: from_decimal(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [from_decimal(v) for v in obj]
+    return obj
+
 dynamodb = boto3.resource("dynamodb")
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")
 
@@ -86,6 +97,9 @@ def _score_single_package(event: dict) -> dict:
             "statusCode": 500,
             "body": json.dumps({"error": str(e)}),
         }
+
+    # Convert Decimals to floats for math operations
+    item = from_decimal(item)
 
     # Calculate scores
     health_result = calculate_health_score(item)
