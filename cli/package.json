@@ -1,0 +1,47 @@
+{
+  "name": "@dephealth/cli",
+  "version": "1.1.0",
+  "description": "Check npm package health scores from the command line",
+  "author": "DepHealth",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "dephealth": "./dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "ora": "^8.2.0",
+    "picocolors": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.27",
+    "typescript": "^5.0.0",
+    "vitest": "^4.0.16"
+  },
+  "keywords": [
+    "dependency",
+    "health",
+    "npm",
+    "security",
+    "cli",
+    "devtools"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dephealth/cli"
+  },
+  "homepage": "https://dephealth.laranjo.dev"
+}
