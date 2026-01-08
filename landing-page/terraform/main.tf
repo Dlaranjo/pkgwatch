@@ -104,6 +104,30 @@ resource "aws_cloudfront_origin_access_control" "landing_page" {
   signing_protocol                  = "sigv4"
 }
 
+# CloudFront Function for URL rewrites (handles /docs -> /docs/index.html)
+resource "aws_cloudfront_function" "url_rewrite" {
+  name    = "dephealth-url-rewrite"
+  runtime = "cloudfront-js-2.0"
+  publish = true
+  code    = <<-EOF
+    function handler(event) {
+      var request = event.request;
+      var uri = request.uri;
+
+      // If URI ends with / add index.html
+      if (uri.endsWith('/')) {
+        request.uri += 'index.html';
+      }
+      // If URI doesn't have an extension and doesn't end with /, try adding /index.html
+      else if (!uri.includes('.')) {
+        request.uri += '/index.html';
+      }
+
+      return request;
+    }
+  EOF
+}
+
 # CloudFront Distribution
 resource "aws_cloudfront_distribution" "landing_page" {
   enabled             = true
@@ -137,6 +161,11 @@ resource "aws_cloudfront_distribution" "landing_page" {
     min_ttl     = 0
     default_ttl = 86400    # 1 day
     max_ttl     = 31536000 # 1 year
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.url_rewrite.arn
+    }
   }
 
   # Custom error response for SPA (if needed later)

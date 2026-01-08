@@ -63,6 +63,38 @@ export class PipelineStack extends cdk.Stack {
     // ===========================================
     const functionsDir = path.join(__dirname, "../../functions");
 
+    // Bundle collectors with dependencies
+    const collectorsCode = lambda.Code.fromAsset(functionsDir, {
+      bundling: {
+        image: lambda.Runtime.PYTHON_3_12.bundlingImage,
+        command: [
+          "bash",
+          "-c",
+          [
+            "cp -r /asset-input/collectors/* /asset-output/",
+            "cp -r /asset-input/shared /asset-output/",
+            "pip install -r /asset-input/collectors/requirements.txt -t /asset-output/ --quiet",
+          ].join(" && "),
+        ],
+      },
+    });
+
+    // Bundle scoring with dependencies
+    const scoringCode = lambda.Code.fromAsset(functionsDir, {
+      bundling: {
+        image: lambda.Runtime.PYTHON_3_12.bundlingImage,
+        command: [
+          "bash",
+          "-c",
+          [
+            "cp -r /asset-input/scoring/* /asset-output/",
+            "cp -r /asset-input/shared /asset-output/",
+            "pip install -r /asset-input/scoring/requirements.txt -t /asset-output/ --quiet",
+          ].join(" && "),
+        ],
+      },
+    });
+
     const commonLambdaProps = {
       runtime: lambda.Runtime.PYTHON_3_12,
       memorySize: 256,
@@ -83,7 +115,7 @@ export class PipelineStack extends cdk.Stack {
       ...commonLambdaProps,
       functionName: "dephealth-refresh-dispatcher",
       handler: "refresh_dispatcher.handler",
-      code: lambda.Code.fromAsset(path.join(functionsDir, "collectors")),
+      code: collectorsCode,
       description: "Dispatches package refresh jobs to SQS based on tier",
     });
 
@@ -98,7 +130,7 @@ export class PipelineStack extends cdk.Stack {
       ...commonLambdaProps,
       functionName: "dephealth-package-collector",
       handler: "package_collector.handler",
-      code: lambda.Code.fromAsset(path.join(functionsDir, "collectors")),
+      code: collectorsCode,
       timeout: cdk.Duration.minutes(5),
       description: "Collects data from deps.dev, npm, and GitHub",
     });
@@ -124,7 +156,7 @@ export class PipelineStack extends cdk.Stack {
       ...commonLambdaProps,
       functionName: "dephealth-score-calculator",
       handler: "score_package.handler",
-      code: lambda.Code.fromAsset(path.join(functionsDir, "scoring")),
+      code: scoringCode,
       description: "Calculates health scores for packages",
     });
 

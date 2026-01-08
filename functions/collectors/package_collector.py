@@ -44,8 +44,16 @@ def get_github_token() -> Optional[str]:
 
     try:
         response = secretsmanager.get_secret_value(SecretId=GITHUB_TOKEN_SECRET_ARN)
-        secret = json.loads(response["SecretString"])
-        return secret.get("token") or response["SecretString"]
+        secret_string = response["SecretString"]
+
+        # Try to parse as JSON (e.g., {"token": "ghp_..."})
+        try:
+            secret = json.loads(secret_string)
+            return secret.get("token") or secret_string
+        except json.JSONDecodeError:
+            # Plain string token (e.g., "ghp_...")
+            return secret_string
+
     except ClientError as e:
         logger.error(f"Failed to retrieve GitHub token: {e}")
         return None
