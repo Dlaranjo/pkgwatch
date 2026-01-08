@@ -11,6 +11,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -20,6 +21,17 @@ from abandonment_risk import calculate_abandonment_risk
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+
+def to_decimal(obj):
+    """Convert floats to Decimal for DynamoDB compatibility."""
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    elif isinstance(obj, dict):
+        return {k: to_decimal(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [to_decimal(v) for v in obj]
+    return obj
 
 dynamodb = boto3.resource("dynamodb")
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")
@@ -93,11 +105,11 @@ def _score_single_package(event: dict) -> dict:
                     scored_at = :now
             """,
             ExpressionAttributeValues={
-                ":hs": health_result["health_score"],
+                ":hs": to_decimal(health_result["health_score"]),
                 ":rl": health_result["risk_level"],
-                ":sc": health_result["components"],
-                ":conf": health_result["confidence"],
-                ":ar": abandonment_result,
+                ":sc": to_decimal(health_result["components"]),
+                ":conf": to_decimal(health_result["confidence"]),
+                ":ar": to_decimal(abandonment_result),
                 ":now": now,
             },
         )
