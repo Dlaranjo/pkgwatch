@@ -195,14 +195,19 @@ def _extract_dependencies(body: dict) -> list[str]:
 
     # Option 1: Parse package.json content string
     if "content" in body:
-        try:
-            package_json = json.loads(body["content"])
-            deps = package_json.get("dependencies", {})
-            dev_deps = package_json.get("devDependencies", {})
-            dependencies.update(deps.keys())
-            dependencies.update(dev_deps.keys())
-        except json.JSONDecodeError:
-            pass
+        content = body["content"]
+        # Security: Ensure content is a string before parsing
+        if isinstance(content, str):
+            try:
+                package_json = json.loads(content)
+                deps = package_json.get("dependencies", {})
+                dev_deps = package_json.get("devDependencies", {})
+                if isinstance(deps, dict):
+                    dependencies.update(deps.keys())
+                if isinstance(dev_deps, dict):
+                    dependencies.update(dev_deps.keys())
+            except (json.JSONDecodeError, AttributeError):
+                pass
 
     # Option 2: Direct dependencies object
     if "dependencies" in body:

@@ -1,0 +1,1423 @@
+"""
+Integration tests for DepHealth end-to-end user flows.
+
+These tests verify complete user journeys through the system,
+using moto for full AWS mocking.
+
+Run with: PYTHONPATH=functions python3 -m pytest tests/integration/
+"""
+
+import base64
+import hashlib
+import hmac
+import json
+import os
+import secrets
+import sys
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from unittest.mock import MagicMock, patch
+
+import boto3
+import pytest
+from moto import mock_aws
+
+# Add functions directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "functions"))
+
+
+# =============================================================================
+# Fixtures for Integration Tests
+# =============================================================================
+
+
+@pytest.fixture(autouse=True)
+def aws_credentials():
+    """Set fake AWS credentials for all tests."""
+    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+    os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
+    os.environ["AWS_REGION"] = "us-east-1"
+
+
+@pytest.fixture
+def mock_aws_services():
+    """Provide all mocked AWS services needed for integration tests."""
+    with mock_aws():
+        # Create DynamoDB tables
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+
+        # API keys table with all GSIs
+        dynamodb.create_table(
+            TableName="dephealth-api-keys",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+                {"AttributeName": "key_hash", "AttributeType": "S"},
+                {"AttributeName": "email", "AttributeType": "S"},
+                {"AttributeName": "stripe_customer_id", "AttributeType": "S"},
+            ],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": "key-hash-index",
+                    "KeySchema": [{"AttributeName": "key_hash", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
+                {
+                    "IndexName": "email-index",
+                    "KeySchema": [{"AttributeName": "email", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
+                {
+                    "IndexName": "stripe-customer-index",
+                    "KeySchema": [{"AttributeName": "stripe_customer_id", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        # Packages table
+        dynamodb.create_table(
+            TableName="dephealth-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        # Set up SES for email sending
+        ses = boto3.client("ses", region_name="us-east-1")
+        ses.verify_email_identity(EmailAddress="noreply@dephealth.laranjo.dev")
+
+        # Set up Secrets Manager for session secret
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-session-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions-1234567890"}'
+        )
+
+        # Set environment variables
+        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
+        os.environ["BASE_URL"] = "https://test.dephealth.example.com"
+        os.environ["SESSION_SECRET_ARN"] = "test-session-secret"
+
+        yield {
+            "dynamodb": dynamodb,
+            "ses": ses,
+            "secretsmanager": secretsmanager,
+        }
+
+
+@pytest.fixture
+def api_gateway_event():
+    """Base API Gateway event for Lambda handler tests."""
+    return {
+        "httpMethod": "GET",
+        "headers": {},
+        "pathParameters": {},
+        "queryStringParameters": {},
+        "body": None,
+        "requestContext": {
+            "identity": {"sourceIp": "127.0.0.1"},
+        },
+    }
+
+
+@pytest.fixture
+def packages_table_with_data(mock_aws_services):
+    """Seed packages table with test data."""
+    table = mock_aws_services["dynamodb"].Table("dephealth-packages")
+
+    # Add multiple packages with varying health scores
+    packages = [
+        {
+            "pk": "npm#lodash",
+            "sk": "LATEST",
+            "ecosystem": "npm",
+            "name": "lodash",
+            "health_score": 85,
+            "risk_level": "LOW",
+            "abandonment_risk": {"probability": 15, "risk_level": "LOW"},
+            "weekly_downloads": 50000000,
+            "dependents_count": 100000,
+            "stars": 55000,
+            "days_since_last_commit": 7,
+            "commits_90d": 25,
+            "active_contributors_90d": 5,
+            "maintainer_count": 3,
+            "is_deprecated": False,
+            "archived": False,
+            "openssf_score": Decimal("8.5"),
+            "latest_version": "4.17.21",
+            "last_published": "2024-01-15T00:00:00Z",
+            "last_updated": "2024-01-15T00:00:00Z",
+        },
+        {
+            "pk": "npm#express",
+            "sk": "LATEST",
+            "ecosystem": "npm",
+            "name": "express",
+            "health_score": 90,
+            "risk_level": "LOW",
+            "abandonment_risk": {"probability": 10, "risk_level": "LOW"},
+            "weekly_downloads": 30000000,
+            "dependents_count": 80000,
+            "stars": 60000,
+            "days_since_last_commit": 3,
+            "commits_90d": 50,
+            "active_contributors_90d": 10,
+            "maintainer_count": 5,
+            "is_deprecated": False,
+            "archived": False,
+            "openssf_score": Decimal("9.0"),
+            "latest_version": "4.18.2",
+            "last_published": "2024-01-20T00:00:00Z",
+            "last_updated": "2024-01-20T00:00:00Z",
+        },
+        {
+            "pk": "npm#abandoned-pkg",
+            "sk": "LATEST",
+            "ecosystem": "npm",
+            "name": "abandoned-pkg",
+            "health_score": 25,
+            "risk_level": "HIGH",
+            "abandonment_risk": {"probability": 85, "risk_level": "HIGH"},
+            "weekly_downloads": 100,
+            "dependents_count": 5,
+            "stars": 50,
+            "days_since_last_commit": 400,
+            "commits_90d": 0,
+            "active_contributors_90d": 0,
+            "maintainer_count": 1,
+            "is_deprecated": False,
+            "archived": True,
+            "openssf_score": Decimal("2.0"),
+            "latest_version": "1.0.0",
+            "last_published": "2022-01-01T00:00:00Z",
+            "last_updated": "2024-01-01T00:00:00Z",
+        },
+        {
+            "pk": "npm#react",
+            "sk": "LATEST",
+            "ecosystem": "npm",
+            "name": "react",
+            "health_score": 95,
+            "risk_level": "LOW",
+            "abandonment_risk": {"probability": 5, "risk_level": "LOW"},
+            "weekly_downloads": 20000000,
+            "dependents_count": 150000,
+            "stars": 200000,
+            "days_since_last_commit": 1,
+            "commits_90d": 100,
+            "active_contributors_90d": 20,
+            "maintainer_count": 10,
+            "is_deprecated": False,
+            "archived": False,
+            "openssf_score": Decimal("9.5"),
+            "latest_version": "18.2.0",
+            "last_published": "2024-01-25T00:00:00Z",
+            "last_updated": "2024-01-25T00:00:00Z",
+        },
+    ]
+
+    for pkg in packages:
+        table.put_item(Item=pkg)
+
+    return table
+
+
+def create_session_token(user_id: str, email: str, tier: str = "free") -> str:
+    """Create a valid session token for testing."""
+    session_secret = "test-secret-key-for-signing-sessions-1234567890"
+    session_expires = datetime.now(timezone.utc) + timedelta(days=7)
+    session_data = {
+        "user_id": user_id,
+        "email": email,
+        "tier": tier,
+        "exp": int(session_expires.timestamp()),
+    }
+    payload = base64.urlsafe_b64encode(json.dumps(session_data).encode()).decode()
+    signature = hmac.new(
+        session_secret.encode(),
+        payload.encode(),
+        hashlib.sha256
+    ).hexdigest()
+    return f"{payload}.{signature}"
+
+
+# =============================================================================
+# Test 1: New User Signup Flow
+# =============================================================================
+
+
+class TestNewUserSignupFlow:
+    """
+    End-to-end test for new user signup:
+    1. POST /signup with email
+    2. Receive magic link (verification token created)
+    3. GET /verify with token
+    4. API key is created
+    5. GET /api-keys returns the key
+    6. POST /api-keys creates additional key
+    """
+
+    def test_complete_signup_flow(self, mock_aws_services, api_gateway_event):
+        """Test the complete signup flow from email to API key."""
+        # Clear the session secret cache to ensure fresh state
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        # Step 1: POST /signup with email
+        from api.signup import handler as signup_handler
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = json.dumps({"email": "newuser@example.com"})
+
+        result = signup_handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["email"] == "newuser@example.com"
+        assert "email" in body["message"].lower()
+
+        # Verify pending user was created
+        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        from boto3.dynamodb.conditions import Key
+        response = table.query(
+            IndexName="email-index",
+            KeyConditionExpression=Key("email").eq("newuser@example.com"),
+        )
+        assert len(response["Items"]) == 1
+        pending_user = response["Items"][0]
+        assert pending_user["sk"] == "PENDING"
+        verification_token = pending_user["verification_token"]
+
+        # Step 2: GET /verify with token (simulates clicking email link)
+        from api.verify_email import handler as verify_handler
+
+        verify_event = {
+            "httpMethod": "GET",
+            "headers": {},
+            "pathParameters": {},
+            "queryStringParameters": {"token": verification_token},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = verify_handler(verify_event, {})
+
+        assert result["statusCode"] == 302
+        location = result["headers"]["Location"]
+        assert "dashboard" in location
+        assert "verified=true" in location
+        assert "key=dh_" in location  # API key is passed in redirect
+
+        # Extract the API key from the redirect URL
+        from urllib.parse import parse_qs, urlparse
+        parsed = urlparse(location)
+        params = parse_qs(parsed.query)
+        api_key = params["key"][0]
+        assert api_key.startswith("dh_")
+
+        # Verify PENDING record was deleted
+        response = table.query(
+            IndexName="email-index",
+            KeyConditionExpression=Key("email").eq("newuser@example.com"),
+        )
+        # Now we should have an API key record (not PENDING)
+        assert len(response["Items"]) == 1
+        user_record = response["Items"][0]
+        assert user_record["sk"] != "PENDING"
+        user_id = user_record["pk"]
+
+        # Step 3: Validate the generated API key works
+        from shared.auth import validate_api_key
+
+        user = validate_api_key(api_key)
+        assert user is not None
+        assert user["email"] == "newuser@example.com"
+        assert user["tier"] == "free"
+
+        # Step 4: GET /api-keys with session returns the key
+        # First, create a session token (normally set by auth callback)
+        session_token = create_session_token(user_id, "newuser@example.com", "free")
+
+        from api.get_api_keys import handler as get_keys_handler
+
+        get_keys_event = {
+            "httpMethod": "GET",
+            "headers": {"cookie": f"session={session_token}"},
+            "pathParameters": {},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = get_keys_handler(get_keys_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert len(body["api_keys"]) == 1
+        assert body["api_keys"][0]["tier"] == "free"
+
+        # Step 5: POST /api-keys creates a second key
+        from api.create_api_key import handler as create_key_handler
+
+        create_key_event = {
+            "httpMethod": "POST",
+            "headers": {"cookie": f"session={session_token}"},
+            "pathParameters": {},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = create_key_handler(create_key_event, {})
+
+        assert result["statusCode"] == 201
+        body = json.loads(result["body"])
+        second_key = body["api_key"]
+        assert second_key.startswith("dh_")
+        assert second_key != api_key  # Different key
+
+        # Verify both keys work
+        user1 = validate_api_key(api_key)
+        user2 = validate_api_key(second_key)
+        assert user1 is not None
+        assert user2 is not None
+
+    def test_signup_rejects_duplicate_verified_email(self, mock_aws_services, api_gateway_event):
+        """Test that signup rejects already verified emails."""
+        # First, create a verified user
+        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        key_hash = hashlib.sha256(b"dh_existing_key").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_existing123",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "existing@example.com",
+                "tier": "free",
+                "email_verified": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+        from api.signup import handler as signup_handler
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = json.dumps({"email": "existing@example.com"})
+
+        result = signup_handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 409
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "email_exists"
+
+
+# =============================================================================
+# Test 2: Package Lookup Flow
+# =============================================================================
+
+
+class TestPackageLookupFlow:
+    """
+    End-to-end test for package lookup:
+    1. GET /v1/packages/npm/{name} with API key
+    2. Usage counter increments
+    3. Response includes health score
+    4. Second request works (within limit)
+    """
+
+    def test_complete_package_lookup_flow(
+        self, mock_aws_services, packages_table_with_data, api_gateway_event
+    ):
+        """Test the complete package lookup flow with API key."""
+        # Create a user with API key
+        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+
+        from shared.auth import generate_api_key
+
+        api_key = generate_api_key(
+            user_id="user_lookup_test",
+            tier="free",
+            email="lookup@example.com"
+        )
+
+        # Reload the auth module to pick up new key
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+
+        # Step 1: GET /v1/packages/npm/lodash with API key
+        from api.get_package import handler as get_package_handler
+
+        api_gateway_event["httpMethod"] = "GET"
+        api_gateway_event["headers"] = {"x-api-key": api_key}
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+
+        result = get_package_handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+
+        # Verify response contains health data
+        assert body["package"] == "lodash"
+        assert body["ecosystem"] == "npm"
+        assert body["health_score"] == 85
+        assert body["risk_level"] == "LOW"
+        assert "signals" in body
+        assert body["signals"]["weekly_downloads"] == 50000000
+
+        # Verify rate limit headers
+        assert "X-RateLimit-Limit" in result["headers"]
+        assert result["headers"]["X-RateLimit-Limit"] == "5000"  # Free tier limit
+
+        # Step 2: Verify usage counter incremented
+        response = table.get_item(
+            Key={"pk": "user_lookup_test", "sk": key_hash}
+        )
+        assert response["Item"]["requests_this_month"] == 1
+
+        # Step 3: Make a second request
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "express"}
+
+        result = get_package_handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["package"] == "express"
+        assert body["health_score"] == 90
+
+        # Verify usage counter is now 2
+        response = table.get_item(
+            Key={"pk": "user_lookup_test", "sk": key_hash}
+        )
+        assert response["Item"]["requests_this_month"] == 2
+
+        # Verify remaining count in headers
+        assert result["headers"]["X-RateLimit-Remaining"] == "4998"
+
+    def test_rate_limit_exceeded(
+        self, mock_aws_services, packages_table_with_data, api_gateway_event
+    ):
+        """Test that requests are blocked when rate limit is exceeded."""
+        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+
+        from shared.auth import generate_api_key
+
+        api_key = generate_api_key(
+            user_id="user_rate_limited",
+            tier="free",
+            email="ratelimited@example.com"
+        )
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+
+        # Set user to be at limit
+        table.update_item(
+            Key={"pk": "user_rate_limited", "sk": key_hash},
+            UpdateExpression="SET requests_this_month = :val",
+            ExpressionAttributeValues={":val": 5000},
+        )
+
+        from api.get_package import handler as get_package_handler
+
+        api_gateway_event["httpMethod"] = "GET"
+        api_gateway_event["headers"] = {"x-api-key": api_key}
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+
+        result = get_package_handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 429
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "rate_limit_exceeded"
+        assert "Retry-After" in result["headers"]
+
+    def test_package_not_found(
+        self, mock_aws_services, packages_table_with_data, api_gateway_event
+    ):
+        """Test response for non-existent package."""
+        from shared.auth import generate_api_key
+
+        api_key = generate_api_key(
+            user_id="user_notfound_test",
+            tier="free",
+            email="notfound@example.com"
+        )
+
+        from api.get_package import handler as get_package_handler
+
+        api_gateway_event["httpMethod"] = "GET"
+        api_gateway_event["headers"] = {"x-api-key": api_key}
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "nonexistent-pkg-xyz"}
+
+        result = get_package_handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 404
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "package_not_found"
+
+
+# =============================================================================
+# Test 3: Bulk Scan Flow
+# =============================================================================
+
+
+class TestBulkScanFlow:
+    """
+    End-to-end test for bulk scan:
+    1. POST /v1/scan with package list
+    2. All packages are scored
+    3. Usage is tracked correctly
+    """
+
+    def test_complete_bulk_scan_flow(
+        self, mock_aws_services, packages_table_with_data, api_gateway_event
+    ):
+        """Test the complete bulk scan flow."""
+        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+
+        from shared.auth import generate_api_key
+
+        api_key = generate_api_key(
+            user_id="user_scan_test",
+            tier="pro",  # Pro tier for higher limit
+            email="scan@example.com"
+        )
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+
+        from api.post_scan import handler as scan_handler
+
+        # Scan multiple packages
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"] = {"x-api-key": api_key}
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": {
+                "lodash": "^4.17.21",
+                "express": "^4.18.0",
+                "react": "^18.2.0",
+            }
+        })
+
+        result = scan_handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+
+        # Verify all packages are scored
+        assert body["total"] == 3
+        assert len(body["packages"]) == 3
+        assert len(body["not_found"]) == 0
+
+        # Verify package data is correct
+        packages_by_name = {p["package"]: p for p in body["packages"]}
+        assert "lodash" in packages_by_name
+        assert "express" in packages_by_name
+        assert "react" in packages_by_name
+
+        assert packages_by_name["lodash"]["health_score"] == 85
+        assert packages_by_name["react"]["health_score"] == 95
+
+        # Verify risk level counts
+        assert body["low"] == 3  # All three are LOW risk
+
+        # Verify usage tracked correctly (3 packages = 3 requests)
+        response = table.get_item(
+            Key={"pk": "user_scan_test", "sk": key_hash}
+        )
+        assert response["Item"]["requests_this_month"] == 3
+
+    def test_bulk_scan_with_package_json_content(
+        self, mock_aws_services, packages_table_with_data, api_gateway_event
+    ):
+        """Test bulk scan with package.json content string."""
+        from shared.auth import generate_api_key
+
+        api_key = generate_api_key(
+            user_id="user_scan_json_test",
+            tier="free",
+            email="scanjson@example.com"
+        )
+
+        from api.post_scan import handler as scan_handler
+
+        package_json = json.dumps({
+            "name": "test-app",
+            "dependencies": {
+                "lodash": "^4.17.21",
+                "express": "^4.18.0",
+            },
+            "devDependencies": {
+                "react": "^18.2.0",
+            }
+        })
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"] = {"x-api-key": api_key}
+        api_gateway_event["body"] = json.dumps({"content": package_json})
+
+        result = scan_handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["total"] == 3
+
+    def test_bulk_scan_handles_not_found_packages(
+        self, mock_aws_services, packages_table_with_data, api_gateway_event
+    ):
+        """Test that bulk scan handles packages not in database."""
+        from shared.auth import generate_api_key
+
+        api_key = generate_api_key(
+            user_id="user_scan_notfound_test",
+            tier="free",
+            email="scannotfound@example.com"
+        )
+
+        from api.post_scan import handler as scan_handler
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"] = {"x-api-key": api_key}
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": {
+                "lodash": "^4.17.21",
+                "unknown-package-xyz": "^1.0.0",
+            }
+        })
+
+        result = scan_handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["total"] == 2
+        assert len(body["packages"]) == 1  # Only lodash found
+        assert "unknown-package-xyz" in body["not_found"]
+
+
+# =============================================================================
+# Test 4: Billing Upgrade Flow
+# =============================================================================
+
+
+class TestBillingUpgradeFlow:
+    """
+    End-to-end test for billing upgrade:
+    1. User on free tier
+    2. Stripe checkout webhook
+    3. User tier updated to pro
+    4. Rate limits increased
+    """
+
+    def test_complete_billing_upgrade_flow(
+        self, mock_aws_services, packages_table_with_data, api_gateway_event
+    ):
+        """Test the complete billing upgrade flow via Stripe webhook."""
+        # Skip if stripe module is not installed
+        pytest.importorskip("stripe")
+
+        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+
+        # Step 1: Create a free tier user
+        from shared.auth import generate_api_key
+
+        api_key = generate_api_key(
+            user_id="user_upgrade_test",
+            tier="free",
+            email="upgrade@example.com"
+        )
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+
+        # Verify user is on free tier
+        from shared.auth import validate_api_key
+        user = validate_api_key(api_key)
+        assert user["tier"] == "free"
+        assert user["monthly_limit"] == 5000
+
+        # Step 2: Simulate Stripe checkout.session.completed webhook
+        # We need to mock the Stripe library for signature verification
+
+        # Set up Stripe webhook secret
+        webhook_secret = "whsec_test_secret_key_12345"
+        secretsmanager = mock_aws_services["secretsmanager"]
+        secretsmanager.create_secret(
+            Name="test-stripe-webhook-secret",
+            SecretString=json.dumps({"secret": webhook_secret})
+        )
+        secretsmanager.create_secret(
+            Name="test-stripe-api-key",
+            SecretString=json.dumps({"key": "sk_test_12345"})
+        )
+
+        os.environ["STRIPE_WEBHOOK_SECRET_ARN"] = "test-stripe-webhook-secret"
+        os.environ["STRIPE_SECRET_ARN"] = "test-stripe-api-key"
+        os.environ["STRIPE_PRICE_PRO"] = "price_pro_test"
+
+        # Create the webhook payload
+        checkout_session = {
+            "id": "cs_test_123",
+            "object": "checkout.session",
+            "customer_email": "upgrade@example.com",
+            "customer": "cus_test_123",
+            "subscription": "sub_test_123",
+        }
+
+        stripe_event = {
+            "id": "evt_test_123",
+            "type": "checkout.session.completed",
+            "data": {"object": checkout_session},
+        }
+
+        # Mock Stripe's Webhook.construct_event and Subscription.retrieve
+        with patch("stripe.Webhook.construct_event") as mock_construct, \
+             patch("stripe.Subscription.retrieve") as mock_sub_retrieve:
+
+            mock_construct.return_value = stripe_event
+            mock_sub_retrieve.return_value = {
+                "id": "sub_test_123",
+                "items": {
+                    "data": [{"price": {"id": "price_pro_test"}}]
+                }
+            }
+
+            from api.stripe_webhook import handler as webhook_handler
+
+            # Create webhook event
+            webhook_event = {
+                "httpMethod": "POST",
+                "headers": {"stripe-signature": "valid_signature"},
+                "body": json.dumps(stripe_event),
+                "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+            }
+
+            result = webhook_handler(webhook_event, {})
+
+            assert result["statusCode"] == 200
+
+        # Step 3: Verify user tier was updated to pro
+        response = table.get_item(
+            Key={"pk": "user_upgrade_test", "sk": key_hash}
+        )
+        item = response["Item"]
+        assert item["tier"] == "pro"
+        assert item["stripe_customer_id"] == "cus_test_123"
+        assert item["stripe_subscription_id"] == "sub_test_123"
+
+        # Step 4: Verify rate limits increased
+        user = validate_api_key(api_key)
+        assert user["tier"] == "pro"
+        assert user["monthly_limit"] == 100000
+
+    def test_subscription_deletion_downgrades_to_free(self, mock_aws_services, api_gateway_event):
+        """Test that canceling subscription downgrades user to free tier."""
+        # Skip if stripe module is not installed
+        pytest.importorskip("stripe")
+
+        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+
+        # Create a pro tier user with Stripe customer ID
+        from shared.auth import generate_api_key
+
+        api_key = generate_api_key(
+            user_id="user_downgrade_test",
+            tier="pro",
+            email="downgrade@example.com"
+        )
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+
+        # Set the Stripe customer ID
+        table.update_item(
+            Key={"pk": "user_downgrade_test", "sk": key_hash},
+            UpdateExpression="SET stripe_customer_id = :cust, tier = :tier",
+            ExpressionAttributeValues={
+                ":cust": "cus_downgrade_123",
+                ":tier": "pro",
+            },
+        )
+
+        # Set up Stripe secrets
+        webhook_secret = "whsec_test_secret_key_12345"
+        secretsmanager = mock_aws_services["secretsmanager"]
+
+        # Check if secrets already exist, if not create them
+        try:
+            secretsmanager.create_secret(
+                Name="test-stripe-webhook-secret-2",
+                SecretString=json.dumps({"secret": webhook_secret})
+            )
+        except secretsmanager.exceptions.ResourceExistsException:
+            pass
+
+        try:
+            secretsmanager.create_secret(
+                Name="test-stripe-api-key-2",
+                SecretString=json.dumps({"key": "sk_test_12345"})
+            )
+        except secretsmanager.exceptions.ResourceExistsException:
+            pass
+
+        os.environ["STRIPE_WEBHOOK_SECRET_ARN"] = "test-stripe-webhook-secret-2"
+        os.environ["STRIPE_SECRET_ARN"] = "test-stripe-api-key-2"
+
+        # Create subscription deleted event
+        subscription_deleted = {
+            "id": "sub_downgrade_123",
+            "object": "subscription",
+            "customer": "cus_downgrade_123",
+            "status": "canceled",
+        }
+
+        stripe_event = {
+            "id": "evt_downgrade_123",
+            "type": "customer.subscription.deleted",
+            "data": {"object": subscription_deleted},
+        }
+
+        with patch("stripe.Webhook.construct_event") as mock_construct:
+            mock_construct.return_value = stripe_event
+
+            from api.stripe_webhook import handler as webhook_handler
+
+            webhook_event = {
+                "httpMethod": "POST",
+                "headers": {"stripe-signature": "valid_signature"},
+                "body": json.dumps(stripe_event),
+                "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+            }
+
+            result = webhook_handler(webhook_event, {})
+            assert result["statusCode"] == 200
+
+        # Verify user was downgraded to free
+        response = table.get_item(
+            Key={"pk": "user_downgrade_test", "sk": key_hash}
+        )
+        assert response["Item"]["tier"] == "free"
+
+
+# =============================================================================
+# Test 5: API Key Lifecycle
+# =============================================================================
+
+
+class TestApiKeyLifecycle:
+    """
+    End-to-end test for API key lifecycle:
+    1. Create multiple keys
+    2. Use each key
+    3. Revoke a key
+    4. Verify revoked key no longer works
+    """
+
+    def test_complete_api_key_lifecycle(
+        self, mock_aws_services, packages_table_with_data, api_gateway_event
+    ):
+        """Test the complete API key lifecycle."""
+        # Clear session cache
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        user_id = "user_lifecycle_test"
+        email = "lifecycle@example.com"
+
+        # Step 1: Create the first key manually (simulating verified signup)
+        from shared.auth import generate_api_key, validate_api_key
+
+        first_key = generate_api_key(user_id=user_id, tier="free", email=email)
+        first_key_hash = hashlib.sha256(first_key.encode()).hexdigest()
+
+        # Mark as verified
+        table.update_item(
+            Key={"pk": user_id, "sk": first_key_hash},
+            UpdateExpression="SET email_verified = :v",
+            ExpressionAttributeValues={":v": True},
+        )
+
+        # Step 2: Create additional keys via API
+        session_token = create_session_token(user_id, email, "free")
+
+        from api.create_api_key import handler as create_key_handler
+
+        create_event = {
+            "httpMethod": "POST",
+            "headers": {"cookie": f"session={session_token}"},
+            "pathParameters": {},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        # Create second key
+        result = create_key_handler(create_event, {})
+        assert result["statusCode"] == 201
+        second_key = json.loads(result["body"])["api_key"]
+
+        # Create third key
+        result = create_key_handler(create_event, {})
+        assert result["statusCode"] == 201
+        third_key = json.loads(result["body"])["api_key"]
+
+        # All keys should be valid
+        assert validate_api_key(first_key) is not None
+        assert validate_api_key(second_key) is not None
+        assert validate_api_key(third_key) is not None
+
+        # Step 3: Use each key to make requests
+        from api.get_package import handler as get_package_handler
+
+        for key in [first_key, second_key, third_key]:
+            request_event = {
+                "httpMethod": "GET",
+                "headers": {"x-api-key": key},
+                "pathParameters": {"ecosystem": "npm", "name": "lodash"},
+                "queryStringParameters": {},
+                "body": None,
+                "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+            }
+            result = get_package_handler(request_event, {})
+            assert result["statusCode"] == 200
+
+        # Step 4: List all keys
+        from api.get_api_keys import handler as get_keys_handler
+
+        list_event = {
+            "httpMethod": "GET",
+            "headers": {"cookie": f"session={session_token}"},
+            "pathParameters": {},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = get_keys_handler(list_event, {})
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert len(body["api_keys"]) == 3
+
+        # Get the key_id of the second key (for revocation)
+        second_key_hash = hashlib.sha256(second_key.encode()).hexdigest()
+        second_key_id = second_key_hash[:16]
+
+        # Step 5: Revoke the second key
+        from api.revoke_api_key import handler as revoke_handler
+
+        revoke_event = {
+            "httpMethod": "DELETE",
+            "headers": {"cookie": f"session={session_token}"},
+            "pathParameters": {"key_id": second_key_id},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = revoke_handler(revoke_event, {})
+        assert result["statusCode"] == 200
+
+        # Step 6: Verify revoked key no longer works
+        assert validate_api_key(second_key) is None
+
+        # Other keys still work
+        assert validate_api_key(first_key) is not None
+        assert validate_api_key(third_key) is not None
+
+        # Step 7: Verify only 2 keys remain
+        result = get_keys_handler(list_event, {})
+        body = json.loads(result["body"])
+        assert len(body["api_keys"]) == 2
+
+    def test_cannot_revoke_last_key(self, mock_aws_services, api_gateway_event):
+        """Test that the last API key cannot be revoked."""
+        # Clear session cache
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        user_id = "user_last_key_test"
+        email = "lastkey@example.com"
+
+        # Create single key
+        from shared.auth import generate_api_key
+
+        only_key = generate_api_key(user_id=user_id, tier="free", email=email)
+        only_key_hash = hashlib.sha256(only_key.encode()).hexdigest()
+        only_key_id = only_key_hash[:16]
+
+        # Mark as verified
+        table.update_item(
+            Key={"pk": user_id, "sk": only_key_hash},
+            UpdateExpression="SET email_verified = :v",
+            ExpressionAttributeValues={":v": True},
+        )
+
+        session_token = create_session_token(user_id, email, "free")
+
+        from api.revoke_api_key import handler as revoke_handler
+
+        revoke_event = {
+            "httpMethod": "DELETE",
+            "headers": {"cookie": f"session={session_token}"},
+            "pathParameters": {"key_id": only_key_id},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = revoke_handler(revoke_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "cannot_revoke_last_key"
+
+    def test_max_keys_limit(self, mock_aws_services, api_gateway_event):
+        """Test that users cannot exceed max key limit."""
+        # Clear session cache
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        user_id = "user_max_keys_test"
+        email = "maxkeys@example.com"
+
+        # Create 5 keys (the maximum)
+        from shared.auth import generate_api_key
+
+        for i in range(5):
+            key = generate_api_key(user_id=user_id, tier="free", email=email if i == 0 else None)
+            key_hash = hashlib.sha256(key.encode()).hexdigest()
+            table.update_item(
+                Key={"pk": user_id, "sk": key_hash},
+                UpdateExpression="SET email_verified = :v",
+                ExpressionAttributeValues={":v": True},
+            )
+
+        session_token = create_session_token(user_id, email, "free")
+
+        from api.create_api_key import handler as create_key_handler
+
+        create_event = {
+            "httpMethod": "POST",
+            "headers": {"cookie": f"session={session_token}"},
+            "pathParameters": {},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = create_key_handler(create_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "max_keys_reached"
+
+
+# =============================================================================
+# Test 6: Monthly Reset Flow
+# =============================================================================
+
+
+class TestMonthlyResetFlow:
+    """
+    End-to-end test for monthly reset:
+    1. User has usage > 0
+    2. Reset handler runs
+    3. Usage is 0
+    4. User can make new requests
+    """
+
+    def test_complete_monthly_reset_flow(
+        self, mock_aws_services, packages_table_with_data, api_gateway_event
+    ):
+        """Test the complete monthly reset flow."""
+        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+
+        # Create multiple users with usage
+        from shared.auth import generate_api_key
+
+        users = []
+        for i in range(3):
+            api_key = generate_api_key(
+                user_id=f"user_reset_test_{i}",
+                tier="free",
+                email=f"reset{i}@example.com"
+            )
+            key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+            users.append({"api_key": api_key, "key_hash": key_hash, "user_id": f"user_reset_test_{i}"})
+
+            # Set usage > 0
+            table.update_item(
+                Key={"pk": f"user_reset_test_{i}", "sk": key_hash},
+                UpdateExpression="SET requests_this_month = :usage, email_verified = :v",
+                ExpressionAttributeValues={":usage": 1000 + i * 500, ":v": True},
+            )
+
+        # Verify usage is set
+        for user in users:
+            response = table.get_item(
+                Key={"pk": user["user_id"], "sk": user["key_hash"]}
+            )
+            assert response["Item"]["requests_this_month"] > 0
+
+        # Step 2: Run reset handler
+        from api.reset_usage import handler as reset_handler
+
+        # Create a mock Lambda context
+        mock_context = MagicMock()
+        mock_context.get_remaining_time_in_millis.return_value = 300000  # 5 minutes
+        mock_context.function_name = "test-reset-function"
+
+        result = reset_handler({}, mock_context)
+
+        assert result["statusCode"] == 200
+        assert result["completed"] is True
+        assert result["items_processed"] >= 3
+
+        # Step 3: Verify usage is 0 for all users
+        for user in users:
+            response = table.get_item(
+                Key={"pk": user["user_id"], "sk": user["key_hash"]}
+            )
+            assert response["Item"]["requests_this_month"] == 0
+            assert "last_reset" in response["Item"]
+
+        # Step 4: Verify users can make new requests
+        from api.get_package import handler as get_package_handler
+
+        for user in users:
+            request_event = {
+                "httpMethod": "GET",
+                "headers": {"x-api-key": user["api_key"]},
+                "pathParameters": {"ecosystem": "npm", "name": "lodash"},
+                "queryStringParameters": {},
+                "body": None,
+                "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+            }
+            result = get_package_handler(request_event, {})
+            assert result["statusCode"] == 200
+
+        # Verify usage is now 1 for each user
+        for user in users:
+            response = table.get_item(
+                Key={"pk": user["user_id"], "sk": user["key_hash"]}
+            )
+            assert response["Item"]["requests_this_month"] == 1
+
+    def test_reset_skips_system_and_pending_records(self, mock_aws_services):
+        """Test that reset skips SYSTEM# records and PENDING signups."""
+        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+
+        # Create a PENDING signup
+        table.put_item(
+            Item={
+                "pk": "user_pending_123",
+                "sk": "PENDING",
+                "email": "pending@example.com",
+                "verification_token": "abc123",
+            }
+        )
+
+        # Create a demo rate limit record
+        table.put_item(
+            Item={
+                "pk": "demo#192.168.1.1",
+                "sk": "hour#2024-01-15-10",
+                "requests": 5,
+            }
+        )
+
+        # Create a regular user
+        from shared.auth import generate_api_key
+
+        api_key = generate_api_key(
+            user_id="user_skip_test",
+            tier="free",
+            email="skiptest@example.com"
+        )
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        table.update_item(
+            Key={"pk": "user_skip_test", "sk": key_hash},
+            UpdateExpression="SET requests_this_month = :usage",
+            ExpressionAttributeValues={":usage": 500},
+        )
+
+        from api.reset_usage import handler as reset_handler
+
+        mock_context = MagicMock()
+        mock_context.get_remaining_time_in_millis.return_value = 300000
+        mock_context.function_name = "test-reset-function"
+
+        result = reset_handler({}, mock_context)
+
+        assert result["statusCode"] == 200
+
+        # Regular user was reset
+        response = table.get_item(
+            Key={"pk": "user_skip_test", "sk": key_hash}
+        )
+        assert response["Item"]["requests_this_month"] == 0
+
+        # PENDING record still exists unchanged
+        response = table.get_item(
+            Key={"pk": "user_pending_123", "sk": "PENDING"}
+        )
+        assert "Item" in response
+        assert response["Item"]["verification_token"] == "abc123"
+
+        # Demo record still exists unchanged
+        response = table.get_item(
+            Key={"pk": "demo#192.168.1.1", "sk": "hour#2024-01-15-10"}
+        )
+        assert "Item" in response
+        assert response["Item"]["requests"] == 5
+
+    def test_reset_resumes_from_stored_state(self, mock_aws_services):
+        """Test that reset can resume from stored state."""
+        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+
+        # Create a stored reset state from a previous partial run
+        current_month = datetime.now(timezone.utc).strftime("%Y-%m")
+        table.put_item(
+            Item={
+                "pk": "SYSTEM#RESET_STATE",
+                "sk": "monthly_reset",
+                "reset_month": current_month,
+                "last_key": {"pk": "user_abc", "sk": "hash123"},
+                "items_processed": 50,
+                "stored_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+        from api.reset_usage import handler as reset_handler
+
+        mock_context = MagicMock()
+        mock_context.get_remaining_time_in_millis.return_value = 300000
+        mock_context.function_name = "test-reset-function"
+
+        # The handler should resume from the stored state
+        result = reset_handler({}, mock_context)
+
+        assert result["statusCode"] == 200
+
+        # State should be cleared after completion
+        response = table.get_item(
+            Key={"pk": "SYSTEM#RESET_STATE", "sk": "monthly_reset"}
+        )
+        assert "Item" not in response
+
+
+# =============================================================================
+# Additional Edge Case Tests
+# =============================================================================
+
+
+class TestEdgeCases:
+    """Additional edge case tests for comprehensive coverage."""
+
+    def test_invalid_api_key_format_rejected(
+        self, mock_aws_services, packages_table_with_data, api_gateway_event
+    ):
+        """Test that invalid API key formats are rejected."""
+        from api.get_package import handler as get_package_handler
+
+        # Test various invalid formats
+        invalid_keys = [
+            "",
+            "invalid_key",
+            "wrong_prefix_abc123",
+            "dh_",  # Too short
+            None,
+        ]
+
+        for invalid_key in invalid_keys:
+            api_gateway_event["headers"] = {"x-api-key": invalid_key}
+            api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+
+            # Without a valid key, should fall back to demo mode (or fail)
+            # Demo mode is IP-limited
+            result = get_package_handler(api_gateway_event, {})
+            # Will get 200 in demo mode or 429 if demo limit exceeded
+            assert result["statusCode"] in [200, 429]
+
+    def test_session_expiry(self, mock_aws_services, api_gateway_event):
+        """Test that expired sessions are rejected."""
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        # Create an expired session token
+        session_secret = "test-secret-key-for-signing-sessions-1234567890"
+        expired_time = datetime.now(timezone.utc) - timedelta(days=10)
+        session_data = {
+            "user_id": "user_expired",
+            "email": "expired@example.com",
+            "tier": "free",
+            "exp": int(expired_time.timestamp()),  # Expired
+        }
+        payload = base64.urlsafe_b64encode(json.dumps(session_data).encode()).decode()
+        signature = hmac.new(
+            session_secret.encode(),
+            payload.encode(),
+            hashlib.sha256
+        ).hexdigest()
+        expired_token = f"{payload}.{signature}"
+
+        from api.get_api_keys import handler as get_keys_handler
+
+        api_gateway_event["headers"] = {"cookie": f"session={expired_token}"}
+
+        result = get_keys_handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 401
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "session_expired"
+
+    def test_concurrent_usage_tracking(self, mock_aws_services, packages_table_with_data):
+        """Test that concurrent requests are tracked atomically."""
+        from shared.auth import generate_api_key, check_and_increment_usage
+
+        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+
+        api_key = generate_api_key(
+            user_id="user_concurrent_test",
+            tier="free",
+            email="concurrent@example.com"
+        )
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+
+        # Simulate 100 concurrent increments
+        for _ in range(100):
+            allowed, count = check_and_increment_usage(
+                "user_concurrent_test", key_hash, 5000
+            )
+            assert allowed is True
+
+        # Verify final count is exactly 100
+        response = table.get_item(
+            Key={"pk": "user_concurrent_test", "sk": key_hash}
+        )
+        assert response["Item"]["requests_this_month"] == 100
+
+    def test_demo_mode_rate_limiting(self, mock_aws_services, packages_table_with_data, api_gateway_event):
+        """Test demo mode IP-based rate limiting."""
+        from api.get_package import handler as get_package_handler
+
+        # Request without API key (demo mode)
+        api_gateway_event["headers"] = {}
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["requestContext"]["identity"]["sourceIp"] = "192.168.1.100"
+
+        # First few requests should succeed
+        for i in range(5):
+            result = get_package_handler(api_gateway_event, {})
+            assert result["statusCode"] == 200
+            assert result["headers"].get("X-Demo-Mode") == "true"
+
+        # Verify rate limit headers are present
+        assert "X-RateLimit-Remaining" in result["headers"]
