@@ -4,6 +4,8 @@ omit =
     # Lambda handlers with complex dependencies that require integration testing
     functions/scoring/score_package.py
     functions/collectors/refresh_dispatcher.py
+    # Stripe webhook requires complex Stripe API mocking
+    functions/api/stripe_webhook.py
 
 [report]
 exclude_lines =
