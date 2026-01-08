@@ -1,15 +1,18 @@
 import * as cdk from "aws-cdk-lib";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
-import * as logs from "aws-cdk-lib/aws-logs";
+import * as sns from "aws-cdk-lib/aws-sns";
+import * as cw_actions from "aws-cdk-lib/aws-cloudwatch-actions";
 import { Construct } from "constructs";
 import * as path from "path";
 
 interface ApiStackProps extends cdk.StackProps {
   packagesTable: dynamodb.Table;
   apiKeysTable: dynamodb.Table;
+  alertTopic?: sns.Topic;
 }
 
 export class ApiStack extends cdk.Stack {
@@ -18,7 +21,7 @@ export class ApiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
-    const { packagesTable, apiKeysTable } = props;
+    const { packagesTable, apiKeysTable, alertTopic } = props;
 
     // ===========================================
     // Secrets Manager: Stripe Secrets
@@ -63,6 +66,7 @@ export class ApiStack extends cdk.Stack {
       runtime: lambda.Runtime.PYTHON_3_12,
       memorySize: 256,
       timeout: cdk.Duration.seconds(30),
+      tracing: lambda.Tracing.ACTIVE, // Enable X-Ray tracing
       environment: {
         PACKAGES_TABLE: packagesTable.tableName,
         API_KEYS_TABLE: apiKeysTable.tableName,
@@ -151,6 +155,7 @@ export class ApiStack extends cdk.Stack {
         loggingLevel: apigateway.MethodLoggingLevel.INFO,
         dataTraceEnabled: false,
         metricsEnabled: true,
+        tracingEnabled: true, // Enable X-Ray tracing for end-to-end traces
       },
       defaultCorsPreflightOptions: {
         // Restrict CORS to specific origins in production
@@ -212,6 +217,119 @@ export class ApiStack extends cdk.Stack {
       "POST",
       new apigateway.LambdaIntegration(stripeWebhookHandler)
     );
+
+    // ===========================================
+    // CloudWatch Alarms for API Lambdas
+    // ===========================================
+
+    // Helper to create standard Lambda alarms
+    const createLambdaAlarms = (
+      fn: lambda.Function,
+      name: string
+    ): cloudwatch.Alarm[] => {
+      const alarms: cloudwatch.Alarm[] = [];
+
+      // Error rate alarm (> 5% errors over 5 minutes)
+      const errorAlarm = new cloudwatch.Alarm(this, `${name}ErrorAlarm`, {
+        alarmName: `dephealth-api-${name.toLowerCase()}-errors`,
+        alarmDescription: `High error rate on ${name} Lambda`,
+        metric: fn.metricErrors({
+          period: cdk.Duration.minutes(5),
+          statistic: "Sum",
+        }),
+        threshold: 5,
+        evaluationPeriods: 1,
+        comparisonOperator:
+          cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      });
+      alarms.push(errorAlarm);
+
+      // Duration alarm (P99 > 80% of timeout)
+      const timeoutMs = fn.timeout?.toMilliseconds() ?? 30000;
+      const durationAlarm = new cloudwatch.Alarm(this, `${name}DurationAlarm`, {
+        alarmName: `dephealth-api-${name.toLowerCase()}-duration`,
+        alarmDescription: `High latency on ${name} Lambda (approaching timeout)`,
+        metric: fn.metricDuration({
+          period: cdk.Duration.minutes(5),
+          statistic: "p99",
+        }),
+        threshold: timeoutMs * 0.8,
+        evaluationPeriods: 2,
+        comparisonOperator:
+          cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      });
+      alarms.push(durationAlarm);
+
+      // Throttle alarm (any throttles)
+      const throttleAlarm = new cloudwatch.Alarm(this, `${name}ThrottleAlarm`, {
+        alarmName: `dephealth-api-${name.toLowerCase()}-throttles`,
+        alarmDescription: `Throttling detected on ${name} Lambda`,
+        metric: fn.metricThrottles({
+          period: cdk.Duration.minutes(5),
+          statistic: "Sum",
+        }),
+        threshold: 1,
+        evaluationPeriods: 1,
+        comparisonOperator:
+          cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      });
+      alarms.push(throttleAlarm);
+
+      // Wire up to SNS if provided (both alarm and recovery notifications)
+      if (alertTopic) {
+        alarms.forEach((alarm) => {
+          alarm.addAlarmAction(new cw_actions.SnsAction(alertTopic));
+          alarm.addOkAction(new cw_actions.SnsAction(alertTopic));
+        });
+      }
+
+      return alarms;
+    };
+
+    // Create alarms for all API endpoints
+    createLambdaAlarms(healthHandler, "Health");
+    createLambdaAlarms(getPackageHandler, "GetPackage");
+    createLambdaAlarms(scanHandler, "Scan");
+    createLambdaAlarms(getUsageHandler, "GetUsage");
+    createLambdaAlarms(stripeWebhookHandler, "StripeWebhook");
+
+    // API Gateway 5XX alarm
+    const api5xxAlarm = new cloudwatch.Alarm(this, "Api5xxAlarm", {
+      alarmName: "dephealth-api-5xx-errors",
+      alarmDescription: "High 5XX error rate on API Gateway",
+      metric: this.api.metricServerError({
+        period: cdk.Duration.minutes(5),
+        statistic: "Sum",
+      }),
+      threshold: 10,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    // API Gateway 4XX alarm (high client errors might indicate issues)
+    const api4xxAlarm = new cloudwatch.Alarm(this, "Api4xxAlarm", {
+      alarmName: "dephealth-api-4xx-errors",
+      alarmDescription: "High 4XX error rate on API Gateway",
+      metric: this.api.metricClientError({
+        period: cdk.Duration.minutes(5),
+        statistic: "Sum",
+      }),
+      threshold: 100, // Higher threshold - some 4xx is expected
+      evaluationPeriods: 2,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    if (alertTopic) {
+      api5xxAlarm.addAlarmAction(new cw_actions.SnsAction(alertTopic));
+      api5xxAlarm.addOkAction(new cw_actions.SnsAction(alertTopic));
+      api4xxAlarm.addAlarmAction(new cw_actions.SnsAction(alertTopic));
+      api4xxAlarm.addOkAction(new cw_actions.SnsAction(alertTopic));
+    }
 
     // ===========================================
     // Outputs

@@ -26,6 +26,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@dephealth/api-client": "*",
     "commander": "^12.0.0",
     "ora": "^8.2.0",
     "picocolors": "^1.0.0"

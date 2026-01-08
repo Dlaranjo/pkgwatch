@@ -9,7 +9,8 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@actions/core": "1.10.1"
+    "@actions/core": "1.10.1",
+    "@dephealth/api-client": "*"
   },
   "devDependencies": {
     "@types/node": "20.17.12",

@@ -51,7 +51,7 @@ import {
   DepHealthClient,
   ApiClientError,
   getRiskColor,
-  formatBytes,
+  type PackageHealthFull,
   type PackageHealth,
 } from "./api.js";
 import {
@@ -124,12 +124,14 @@ function formatNumber(n: number): string {
 /**
  * Print package health details.
  */
-function printPackageDetails(pkg: PackageHealth): void {
+function printPackageDetails(pkg: PackageHealthFull): void {
   console.log("");
   console.log(pc.bold(`${pkg.package}@${pkg.latest_version}`));
   console.log("");
   console.log(`  Health Score    ${formatScore(pkg.health_score)}  ${formatRisk(pkg.risk_level)}`);
-  console.log(`  Abandon Risk    ${pkg.abandonment_risk.probability.toFixed(1)}% (${pkg.abandonment_risk.time_horizon_months} months)`);
+  const abandonProb = pkg.abandonment_risk?.probability ?? 0;
+  const abandonMonths = pkg.abandonment_risk?.time_horizon_months ?? 12;
+  console.log(`  Abandon Risk    ${abandonProb.toFixed(1)}% (${abandonMonths} months)`);
   console.log("");
 
   // Positive signals
@@ -148,8 +150,9 @@ function printPackageDetails(pkg: PackageHealth): void {
   }
 
   // Negative signals / risk factors
-  if (pkg.abandonment_risk.risk_factors.length > 0) {
-    for (const factor of pkg.abandonment_risk.risk_factors) {
+  const riskFactors = pkg.abandonment_risk?.risk_factors ?? [];
+  if (riskFactors.length > 0) {
+    for (const factor of riskFactors) {
       console.log(`  ${pc.yellow("!")} ${factor}`);
     }
   }

@@ -113,7 +113,7 @@ def handler(event, context):
         logger.error(f"Webhook error: {e}")
         return {
             "statusCode": 400,
-            "body": json.dumps({"error": str(e)}),
+            "body": json.dumps({"error": "Invalid webhook payload"}),
         }
 
     # Handle event types
@@ -141,9 +141,10 @@ def handler(event, context):
     except Exception as e:
         logger.error(f"Error handling {event_type}: {e}")
         # Return 200 anyway to prevent Stripe retries for handled errors
+        # Don't expose internal error details in response
         return {
             "statusCode": 200,
-            "body": json.dumps({"received": True, "error": str(e)}),
+            "body": json.dumps({"received": True, "processed": False}),
         }
 
     return {

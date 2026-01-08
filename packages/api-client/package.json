@@ -1,0 +1,38 @@
+{
+  "name": "@dephealth/api-client",
+  "version": "1.0.0",
+  "description": "Shared API client for DepHealth services",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.12",
+    "typescript": "5.7.3"
+  },
+  "keywords": [
+    "dephealth",
+    "api",
+    "client",
+    "dependency",
+    "health"
+  ],
+  "license": "MIT"
+}

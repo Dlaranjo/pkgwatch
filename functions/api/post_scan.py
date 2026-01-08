@@ -8,11 +8,10 @@ Requires API key authentication.
 import json
 import logging
 import os
+import random
+import time
 from decimal import Decimal
-from typing import Optional
-
 import boto3
-from boto3.dynamodb.conditions import Key
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -81,36 +80,68 @@ def handler(event, context):
             f"Scanning {len(dependencies)} packages would exceed your remaining {remaining} requests.",
         )
 
-    # Fetch scores for all dependencies
-    table = dynamodb.Table(PACKAGES_TABLE)
+    # Fetch scores for all dependencies using BatchGetItem for efficiency
     results = []
     not_found = []
 
-    for package_name in dependencies:
-        try:
-            response = table.get_item(
-                Key={"pk": f"npm#{package_name}", "sk": "LATEST"}
-            )
-            item = response.get("Item")
+    # Process in batches of 25 (DynamoDB BatchGetItem limit)
+    dep_list = list(dependencies)
+    for i in range(0, len(dep_list), 25):
+        batch = dep_list[i:i + 25]
+        batch_set = set(batch)  # Track which packages we've processed
 
-            if item:
-                results.append({
-                    "package": package_name,
-                    "health_score": item.get("health_score"),
-                    "risk_level": item.get("risk_level"),
-                    "abandonment_risk": item.get("abandonment_risk", {}).get(
-                        "probability"
-                    ),
-                    "is_deprecated": item.get("is_deprecated", False),
-                    "archived": item.get("archived", False),
-                    "last_updated": item.get("last_updated"),
-                })
-            else:
-                not_found.append(package_name)
+        try:
+            request_items = {
+                PACKAGES_TABLE: {
+                    "Keys": [{"pk": f"npm#{name}", "sk": "LATEST"} for name in batch]
+                }
+            }
+
+            # Retry loop for UnprocessedKeys (with exponential backoff)
+            max_retries = 3
+            retry_delay = 0.1  # 100ms initial delay
+
+            for attempt in range(max_retries + 1):
+                response = dynamodb.batch_get_item(RequestItems=request_items)
+
+                # Process found items
+                for item in response.get("Responses", {}).get(PACKAGES_TABLE, []):
+                    package_name = item["pk"].split("#", 1)[1]
+                    if package_name in batch_set:
+                        batch_set.discard(package_name)
+                        results.append({
+                            "package": package_name,
+                            "health_score": item.get("health_score"),
+                            "risk_level": item.get("risk_level"),
+                            "abandonment_risk": item.get("abandonment_risk", {}),
+                            "is_deprecated": item.get("is_deprecated", False),
+                            "archived": item.get("archived", False),
+                            "last_updated": item.get("last_updated"),
+                        })
+
+                # Check for unprocessed keys
+                unprocessed = response.get("UnprocessedKeys", {})
+                if not unprocessed:
+                    break  # All items processed
+
+                if attempt < max_retries:
+                    # Exponential backoff with jitter to prevent thundering herd
+                    jitter = random.uniform(0, retry_delay * 0.1)
+                    time.sleep(retry_delay + jitter)
+                    retry_delay *= 2
+                    request_items = unprocessed
+                    logger.warning(f"Retrying {len(unprocessed.get(PACKAGES_TABLE, {}).get('Keys', []))} unprocessed keys (attempt {attempt + 2})")
+                else:
+                    # Max retries exceeded, log warning
+                    logger.error(f"Max retries exceeded for batch_get_item, {len(unprocessed.get(PACKAGES_TABLE, {}).get('Keys', []))} keys unprocessed")
+
+            # Any remaining items in batch_set were not found
+            not_found.extend(batch_set)
 
         except Exception as e:
-            logger.error(f"Error fetching {package_name}: {e}")
-            not_found.append(package_name)
+            logger.error(f"Error in batch fetch: {e}")
+            # Fall back to marking remaining items as not found on batch error
+            not_found.extend(batch_set)
 
     # Increment usage by the number of packages we looked up (not found + found)
     # This prevents rate limit bypass by scanning many packages for 1 request
@@ -120,36 +151,31 @@ def handler(event, context):
     except Exception as e:
         logger.warning(f"Failed to increment usage: {e}")
 
-    # Calculate summary statistics
-    scores = [r["health_score"] for r in results if r["health_score"] is not None]
-    summary = {
-        "total_dependencies": len(dependencies),
-        "scored": len(results),
-        "not_found": len(not_found),
-        "risk_breakdown": {
-            "critical": sum(1 for r in results if r["risk_level"] == "CRITICAL"),
-            "high": sum(1 for r in results if r["risk_level"] == "HIGH"),
-            "medium": sum(1 for r in results if r["risk_level"] == "MEDIUM"),
-            "low": sum(1 for r in results if r["risk_level"] == "LOW"),
-        },
-        "average_health_score": round(sum(scores) / len(scores), 1) if scores else None,
-        "deprecated_count": sum(1 for r in results if r.get("is_deprecated")),
-        "archived_count": sum(1 for r in results if r.get("archived")),
-    }
+    # Calculate counts by risk level
+    critical_count = sum(1 for r in results if r["risk_level"] == "CRITICAL")
+    high_count = sum(1 for r in results if r["risk_level"] == "HIGH")
+    medium_count = sum(1 for r in results if r["risk_level"] == "MEDIUM")
+    low_count = sum(1 for r in results if r["risk_level"] == "LOW")
 
     # Sort results by risk (CRITICAL first, LOW last)
     risk_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, None: 4}
     results.sort(key=lambda x: (risk_order.get(x["risk_level"], 4), x["package"]))
 
+    # Response format matches CLI/Action ScanResult interface:
+    # { total, critical, high, medium, low, packages }
     return {
         "statusCode": 200,
         "headers": {
             "Content-Type": "application/json",
             "X-RateLimit-Limit": str(user["monthly_limit"]),
-            "X-RateLimit-Remaining": str(remaining - 1),
+            "X-RateLimit-Remaining": str(remaining - packages_looked_up),
         },
         "body": json.dumps({
-            "summary": summary,
+            "total": len(dependencies),
+            "critical": critical_count,
+            "high": high_count,
+            "medium": medium_count,
+            "low": low_count,
             "packages": results,
             "not_found": not_found,
         }, default=decimal_default),

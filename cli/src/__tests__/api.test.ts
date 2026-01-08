@@ -55,7 +55,7 @@ describe("api utilities", () => {
     });
 
     it("is instanceof Error", () => {
-      const error = new ApiClientError("Test", 500, "error");
+      const error = new ApiClientError("Test", 500, "server_error");
       expect(error instanceof Error).toBe(true);
       expect(error instanceof ApiClientError).toBe(true);
     });
