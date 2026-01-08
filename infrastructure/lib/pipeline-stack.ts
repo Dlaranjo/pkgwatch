@@ -140,10 +140,14 @@ export class PipelineStack extends cdk.Stack {
     githubTokenSecret.grantRead(packageCollector);
 
     // Connect collector to SQS queue
+    // Increased from maxConcurrency=2 to improve throughput
+    // With semaphore of 5 per Lambda: 10 * 5 = max 50 concurrent GitHub calls
+    // GitHub allows 5000/hour = ~83/minute, so 50 concurrent is safe
     packageCollector.addEventSource(
       new lambdaEventSources.SqsEventSource(packageQueue, {
-        batchSize: 5,
-        maxConcurrency: 2, // Limit concurrent executions to respect rate limits
+        batchSize: 10, // Increased from 5
+        maxConcurrency: 10, // Increased from 2 (conservative to avoid GitHub rate limits)
+        maxBatchingWindow: cdk.Duration.seconds(30), // Allow batching for efficiency
       })
     );
 

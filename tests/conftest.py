@@ -4,6 +4,7 @@ Shared pytest fixtures for DepHealth tests.
 
 import os
 import sys
+from decimal import Decimal
 
 import boto3
 import pytest
@@ -174,7 +175,7 @@ def sample_healthy_package():
         "last_published": "2026-01-01T00:00:00Z",
         "created_at": "2020-01-01T00:00:00Z",
         "total_contributors": 50,
-        "openssf_score": 7.5,
+        "openssf_score": Decimal("7.5"),  # DynamoDB requires Decimal
         "advisories": [],
     }
 

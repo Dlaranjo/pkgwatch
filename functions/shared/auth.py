@@ -16,6 +16,7 @@ from typing import Optional
 
 import boto3
 from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 
 dynamodb = boto3.resource("dynamodb")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
@@ -47,17 +48,24 @@ def generate_api_key(user_id: str, tier: str = "free", email: str = None) -> str
 
     table = dynamodb.Table(API_KEYS_TABLE)
 
-    table.put_item(
-        Item={
-            "pk": user_id,
-            "sk": key_hash,
-            "key_hash": key_hash,  # Duplicated for GSI
-            "tier": tier,
-            "requests_this_month": 0,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "email": email,
-        }
-    )
+    # Build item - only include GSI key attributes if they have values
+    # DynamoDB GSIs require non-null values for key attributes
+    item = {
+        "pk": user_id,
+        "sk": key_hash,
+        "key_hash": key_hash,  # Duplicated for GSI
+        "tier": tier,
+        "payment_failures": 0,  # Track failed payment attempts
+        "requests_this_month": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "email_verified": False,  # For signup email verification
+    }
+
+    # Only include GSI key attributes if they have values
+    if email:
+        item["email"] = email
+
+    table.put_item(Item=item)
 
     return api_key
 
@@ -140,6 +148,55 @@ def increment_usage(user_id: str, key_hash: str, count: int = 1) -> int:
     )
 
     return response.get("Attributes", {}).get("requests_this_month", 0)
+
+
+def check_and_increment_usage(user_id: str, key_hash: str, limit: int) -> tuple[bool, int]:
+    """
+    Atomically check limit and increment usage counter.
+
+    This prevents race conditions where concurrent requests can exceed the limit.
+    Uses DynamoDB conditional expression to ensure the increment only happens
+    if the current count is below the limit.
+
+    Args:
+        user_id: User's partition key (pk)
+        key_hash: Key hash (sort key / sk)
+        limit: Maximum allowed requests
+
+    Returns:
+        Tuple of (allowed: bool, new_count: int)
+        - allowed: True if request was within limit and counter was incremented
+        - new_count: The new usage count after increment (or current if denied)
+    """
+    table = dynamodb.Table(API_KEYS_TABLE)
+
+    try:
+        response = table.update_item(
+            Key={"pk": user_id, "sk": key_hash},
+            UpdateExpression="SET requests_this_month = if_not_exists(requests_this_month, :zero) + :inc",
+            ConditionExpression="attribute_not_exists(requests_this_month) OR requests_this_month < :limit",
+            ExpressionAttributeValues={
+                ":inc": 1,
+                ":limit": limit,
+                ":zero": 0,
+            },
+            ReturnValues="UPDATED_NEW",
+        )
+        new_count = response.get("Attributes", {}).get("requests_this_month", 1)
+        return True, new_count
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            # Rate limit exceeded - get current count for accurate remaining calculation
+            try:
+                get_response = table.get_item(
+                    Key={"pk": user_id, "sk": key_hash},
+                    ProjectionExpression="requests_this_month",
+                )
+                current_count = get_response.get("Item", {}).get("requests_this_month", limit)
+                return False, current_count
+            except Exception:
+                return False, limit
+        raise
 
 
 def reset_monthly_usage(user_id: str, key_hash: str) -> None:

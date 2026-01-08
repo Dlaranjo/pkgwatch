@@ -2,9 +2,12 @@ import * as cdk from "aws-cdk-lib";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as sns from "aws-cdk-lib/aws-sns";
+import * as wafv2 from "aws-cdk-lib/aws-wafv2";
 import * as cw_actions from "aws-cdk-lib/aws-cloudwatch-actions";
 import { Construct } from "constructs";
 import * as path from "path";
@@ -62,6 +65,9 @@ export class ApiStack extends cdk.Stack {
       },
     });
 
+    // Dev mode check for localhost CORS
+    const isDevMode = process.env.CDK_ENV === "dev";
+
     const commonLambdaProps = {
       runtime: lambda.Runtime.PYTHON_3_12,
       memorySize: 256,
@@ -72,6 +78,7 @@ export class ApiStack extends cdk.Stack {
         API_KEYS_TABLE: apiKeysTable.tableName,
         STRIPE_SECRET_ARN: stripeSecret.secretArn,
         STRIPE_WEBHOOK_SECRET_ARN: stripeWebhookSecret.secretArn,
+        ...(isDevMode && { ALLOW_DEV_CORS: "true" }), // Allow localhost CORS in dev
       },
     };
 
@@ -95,6 +102,7 @@ export class ApiStack extends cdk.Stack {
       handler: "get_package.handler",
       code: apiCodeWithShared,
       description: "Get package health score",
+      reservedConcurrentExecutions: 100, // Guaranteed capacity for critical path
     });
 
     packagesTable.grantReadData(getPackageHandler);
@@ -109,6 +117,7 @@ export class ApiStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(60),
       memorySize: 512,
       description: "Scan package.json for health scores",
+      reservedConcurrentExecutions: 50, // Guaranteed capacity for critical path
     });
 
     packagesTable.grantReadData(scanHandler);
@@ -135,12 +144,168 @@ export class ApiStack extends cdk.Stack {
         handler: "stripe_webhook.handler",
         code: apiCodeWithShared,
         description: "Handle Stripe webhook events",
+        environment: {
+          ...commonLambdaProps.environment,
+          // Stripe Price IDs for tier mapping - MUST be set to real Stripe price IDs
+          STRIPE_PRICE_STARTER: process.env.STRIPE_PRICE_STARTER || "",
+          STRIPE_PRICE_PRO: process.env.STRIPE_PRICE_PRO || "",
+          STRIPE_PRICE_BUSINESS: process.env.STRIPE_PRICE_BUSINESS || "",
+        },
       }
     );
 
     apiKeysTable.grantReadWriteData(stripeWebhookHandler);
     stripeSecret.grantRead(stripeWebhookHandler);
     stripeWebhookSecret.grantRead(stripeWebhookHandler);
+
+    // Monthly usage reset handler (scheduled)
+    const resetUsageHandler = new lambda.Function(this, "ResetUsageHandler", {
+      ...commonLambdaProps,
+      functionName: "dephealth-api-reset-usage",
+      handler: "reset_usage.handler",
+      code: apiCodeWithShared,
+      timeout: cdk.Duration.minutes(5), // Table scan may take time
+      description: "Reset monthly usage counters on 1st of each month",
+    });
+
+    apiKeysTable.grantReadWriteData(resetUsageHandler);
+
+    // EventBridge rule for monthly reset at midnight UTC on 1st
+    const resetRule = new events.Rule(this, "MonthlyUsageReset", {
+      ruleName: "dephealth-monthly-usage-reset",
+      schedule: events.Schedule.cron({
+        minute: "0",
+        hour: "0",
+        day: "1",
+        month: "*",
+        year: "*",
+      }),
+      description: "Trigger monthly usage counter reset",
+    });
+
+    resetRule.addTarget(new targets.LambdaFunction(resetUsageHandler));
+
+    // ===========================================
+    // Auth/Signup Handlers
+    // ===========================================
+
+    // Session secret for JWT tokens
+    const sessionSecret = new secretsmanager.Secret(this, "SessionSecret", {
+      secretName: "dephealth/session-secret",
+      description: "Secret key for signing session tokens",
+      generateSecretString: {
+        secretStringTemplate: "{}",
+        generateStringKey: "secret",
+        excludePunctuation: true,
+        passwordLength: 64,
+      },
+    });
+
+    // Common props for auth handlers
+    const authLambdaProps = {
+      ...commonLambdaProps,
+      environment: {
+        ...commonLambdaProps.environment,
+        BASE_URL: "https://dephealth.laranjo.dev",
+        SESSION_SECRET_ARN: sessionSecret.secretArn,
+        VERIFICATION_EMAIL_SENDER: "noreply@dephealth.laranjo.dev",
+        LOGIN_EMAIL_SENDER: "noreply@dephealth.laranjo.dev",
+      },
+    };
+
+    // POST /signup - Create pending account
+    const signupHandler = new lambda.Function(this, "SignupHandler", {
+      ...authLambdaProps,
+      functionName: "dephealth-api-signup",
+      handler: "signup.handler",
+      code: apiCodeWithShared,
+      description: "User signup - creates pending account and sends verification email",
+    });
+
+    apiKeysTable.grantReadWriteData(signupHandler);
+    // Note: SES permissions need to be granted via IAM policy or identity verification
+
+    // GET /verify - Verify email and create API key
+    const verifyHandler = new lambda.Function(this, "VerifyEmailHandler", {
+      ...authLambdaProps,
+      functionName: "dephealth-api-verify-email",
+      handler: "verify_email.handler",
+      code: apiCodeWithShared,
+      description: "Verify email and activate user account",
+    });
+
+    apiKeysTable.grantReadWriteData(verifyHandler);
+
+    // POST /auth/magic-link - Send login link
+    const magicLinkHandler = new lambda.Function(this, "MagicLinkHandler", {
+      ...authLambdaProps,
+      functionName: "dephealth-api-magic-link",
+      handler: "magic_link.handler",
+      code: apiCodeWithShared,
+      description: "Send magic link for passwordless authentication",
+    });
+
+    apiKeysTable.grantReadWriteData(magicLinkHandler);
+
+    // GET /auth/callback - Create session from magic link
+    const authCallbackHandler = new lambda.Function(this, "AuthCallbackHandler", {
+      ...authLambdaProps,
+      functionName: "dephealth-api-auth-callback",
+      handler: "auth_callback.handler",
+      code: apiCodeWithShared,
+      description: "Handle magic link callback and create session",
+    });
+
+    apiKeysTable.grantReadWriteData(authCallbackHandler);
+    sessionSecret.grantRead(authCallbackHandler);
+
+    // GET /auth/me - Get current user info
+    const authMeHandler = new lambda.Function(this, "AuthMeHandler", {
+      ...authLambdaProps,
+      functionName: "dephealth-api-auth-me",
+      handler: "auth_me.handler",
+      code: apiCodeWithShared,
+      description: "Get current authenticated user info",
+    });
+
+    apiKeysTable.grantReadData(authMeHandler);
+    sessionSecret.grantRead(authMeHandler);
+
+    // GET /api-keys - List user's API keys
+    const getApiKeysHandler = new lambda.Function(this, "GetApiKeysHandler", {
+      ...authLambdaProps,
+      functionName: "dephealth-api-get-api-keys",
+      handler: "get_api_keys.handler",
+      code: apiCodeWithShared,
+      description: "List all API keys for authenticated user",
+    });
+
+    apiKeysTable.grantReadData(getApiKeysHandler);
+    sessionSecret.grantRead(getApiKeysHandler);
+
+    // POST /api-keys - Create new API key
+    const createApiKeyHandler = new lambda.Function(this, "CreateApiKeyHandler", {
+      ...authLambdaProps,
+      functionName: "dephealth-api-create-api-key",
+      handler: "create_api_key.handler",
+      code: apiCodeWithShared,
+      description: "Create new API key for authenticated user",
+    });
+
+    apiKeysTable.grantReadWriteData(createApiKeyHandler);
+    sessionSecret.grantRead(createApiKeyHandler);
+
+    // DELETE /api-keys/{key_id} - Revoke API key
+    const revokeApiKeyHandler = new lambda.Function(this, "RevokeApiKeyHandler", {
+      ...authLambdaProps,
+      functionName: "dephealth-api-revoke-api-key",
+      handler: "revoke_api_key.handler",
+      code: apiCodeWithShared,
+      description: "Revoke API key for authenticated user",
+    });
+
+    apiKeysTable.grantReadWriteData(revokeApiKeyHandler);
+    sessionSecret.grantRead(revokeApiKeyHandler);
 
     // ===========================================
     // API Gateway
@@ -158,21 +323,27 @@ export class ApiStack extends cdk.Stack {
         tracingEnabled: true, // Enable X-Ray tracing for end-to-end traces
       },
       defaultCorsPreflightOptions: {
-        // Restrict CORS to specific origins in production
-        // Update these URLs after deployment
-        allowOrigins: [
-          "https://dephealth.laranjo.dev",
-          "https://app.dephealth.laranjo.dev",
-          "http://localhost:3000", // For local development
-          "http://localhost:4321", // Astro dev server
-        ],
-        allowMethods: ["GET", "POST", "OPTIONS"],
+        // CORS origins - localhost only allowed in dev mode
+        allowOrigins: isDevMode
+          ? [
+              "https://dephealth.laranjo.dev",
+              "https://app.dephealth.laranjo.dev",
+              "http://localhost:3000", // For local development
+              "http://localhost:4321", // Astro dev server
+            ]
+          : [
+              "https://dephealth.laranjo.dev",
+              "https://app.dephealth.laranjo.dev",
+            ],
+        allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
         allowHeaders: [
           "Content-Type",
           "X-API-Key",
           "X-Amz-Date",
           "Authorization",
+          "Cookie",
         ],
+        allowCredentials: true, // Required for cookies to be sent
       },
     });
 
@@ -217,6 +388,160 @@ export class ApiStack extends cdk.Stack {
       "POST",
       new apigateway.LambdaIntegration(stripeWebhookHandler)
     );
+
+    // ===========================================
+    // Auth/Signup Routes
+    // ===========================================
+
+    // POST /signup
+    const signupResource = this.api.root.addResource("signup");
+    signupResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(signupHandler)
+    );
+
+    // GET /verify?token=xxx
+    const verifyResource = this.api.root.addResource("verify");
+    verifyResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(verifyHandler)
+    );
+
+    // /auth routes
+    const authResource = this.api.root.addResource("auth");
+
+    // POST /auth/magic-link
+    const magicLinkResource = authResource.addResource("magic-link");
+    magicLinkResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(magicLinkHandler)
+    );
+
+    // GET /auth/callback?token=xxx
+    const callbackResource = authResource.addResource("callback");
+    callbackResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(authCallbackHandler)
+    );
+
+    // GET /auth/me
+    const meResource = authResource.addResource("me");
+    meResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(authMeHandler)
+    );
+
+    // /api-keys routes
+    const apiKeysResource = this.api.root.addResource("api-keys");
+
+    // GET /api-keys
+    apiKeysResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(getApiKeysHandler)
+    );
+
+    // POST /api-keys
+    apiKeysResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(createApiKeyHandler)
+    );
+
+    // DELETE /api-keys/{key_id}
+    const apiKeyIdResource = apiKeysResource.addResource("{key_id}");
+    apiKeyIdResource.addMethod(
+      "DELETE",
+      new apigateway.LambdaIntegration(revokeApiKeyHandler)
+    );
+
+    // ===========================================
+    // WAF: Web Application Firewall
+    // ===========================================
+    const webAcl = new wafv2.CfnWebACL(this, "ApiWaf", {
+      name: "dephealth-api-waf",
+      defaultAction: { allow: {} },
+      scope: "REGIONAL",
+      visibilityConfig: {
+        cloudWatchMetricsEnabled: true,
+        metricName: "DepHealthApiWaf",
+        sampledRequestsEnabled: true,
+      },
+      rules: [
+        // AWS Managed Rules - Common Rule Set
+        {
+          name: "AWSManagedRulesCommonRuleSet",
+          priority: 10,
+          overrideAction: { none: {} },
+          statement: {
+            managedRuleGroupStatement: {
+              vendorName: "AWS",
+              name: "AWSManagedRulesCommonRuleSet",
+            },
+          },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: "CommonRuleSet",
+            sampledRequestsEnabled: true,
+          },
+        },
+        // AWS Managed Rules - Known Bad Inputs
+        {
+          name: "AWSManagedRulesKnownBadInputsRuleSet",
+          priority: 20,
+          overrideAction: { none: {} },
+          statement: {
+            managedRuleGroupStatement: {
+              vendorName: "AWS",
+              name: "AWSManagedRulesKnownBadInputsRuleSet",
+            },
+          },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: "KnownBadInputsRuleSet",
+            sampledRequestsEnabled: true,
+          },
+        },
+        // AWS Managed Rules - IP Reputation
+        {
+          name: "AWSManagedRulesAmazonIpReputationList",
+          priority: 25,
+          overrideAction: { none: {} },
+          statement: {
+            managedRuleGroupStatement: {
+              vendorName: "AWS",
+              name: "AWSManagedRulesAmazonIpReputationList",
+            },
+          },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: "IpReputationList",
+            sampledRequestsEnabled: true,
+          },
+        },
+        // Rate Limiting - 500 requests per 5 minutes per IP
+        {
+          name: "RateLimitRule",
+          priority: 30,
+          action: { block: {} },
+          statement: {
+            rateBasedStatement: {
+              limit: 500,
+              aggregateKeyType: "IP",
+            },
+          },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: "RateLimitRule",
+            sampledRequestsEnabled: true,
+          },
+        },
+      ],
+    });
+
+    // Associate WAF with API Gateway stage
+    new wafv2.CfnWebACLAssociation(this, "WafAssociation", {
+      resourceArn: this.api.deploymentStage.stageArn,
+      webAclArn: webAcl.attrArn,
+    });
 
     // ===========================================
     // CloudWatch Alarms for API Lambdas

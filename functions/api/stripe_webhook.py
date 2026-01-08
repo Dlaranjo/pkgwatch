@@ -10,7 +10,9 @@ import logging
 import os
 
 import boto3
+from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -22,12 +24,20 @@ API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
 STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
 STRIPE_WEBHOOK_SECRET_ARN = os.environ.get("STRIPE_WEBHOOK_SECRET_ARN")
 
-# Tier mapping from Stripe price IDs
-# These should match your Stripe product configuration
+# Tier mapping from Stripe price IDs (configured via environment)
+# Use `or` to handle empty string env vars (CDK fallback sets "" when not configured)
 PRICE_TO_TIER = {
-    "price_starter": "starter",
-    "price_pro": "pro",
-    "price_business": "business",
+    (os.environ.get("STRIPE_PRICE_STARTER") or "price_starter"): "starter",
+    (os.environ.get("STRIPE_PRICE_PRO") or "price_pro"): "pro",
+    (os.environ.get("STRIPE_PRICE_BUSINESS") or "price_business"): "business",
+}
+
+# Monthly request limits by tier
+TIER_LIMITS = {
+    "free": 5000,
+    "starter": 25000,
+    "pro": 100000,
+    "business": 500000,
 }
 
 
@@ -165,6 +175,13 @@ def _handle_checkout_completed(session: dict):
         logger.warning("No customer email in checkout session")
         return
 
+    # Handle one-time payments (no subscription)
+    if not subscription_id:
+        logger.info(f"One-time payment for {customer_email} (no subscription)")
+        # For one-time payments, just update customer ID without tier change
+        _update_user_tier(customer_email, "starter", customer_id, None)
+        return
+
     # Get subscription details to determine tier
     import stripe
     subscription = stripe.Subscription.retrieve(subscription_id)
@@ -206,16 +223,51 @@ def _handle_subscription_deleted(subscription: dict):
 
 
 def _handle_payment_failed(invoice: dict):
-    """Handle failed payment - could downgrade or notify."""
+    """Handle failed payment - downgrade after 3 failures."""
     customer_id = invoice.get("customer")
     customer_email = invoice.get("customer_email")
+    attempt_count = invoice.get("attempt_count", 1)
 
-    logger.warning(f"Payment failed for {customer_email or customer_id}")
+    logger.warning(f"Payment failed for {customer_email or customer_id} (attempt {attempt_count})")
 
-    # For MVP, just log it. In production, could:
-    # - Send notification email
-    # - Downgrade after X failed attempts
-    # - Add grace period
+    if not customer_id:
+        logger.warning("No customer ID in failed payment invoice")
+        return
+
+    table = dynamodb.Table(API_KEYS_TABLE)
+
+    # Query by stripe_customer_id using GSI
+    response = table.query(
+        IndexName="stripe-customer-index",
+        KeyConditionExpression=Key("stripe_customer_id").eq(customer_id),
+    )
+
+    items = response.get("Items", [])
+    if not items:
+        logger.warning(f"No user found for Stripe customer {customer_id}")
+        return
+
+    for item in items:
+        if attempt_count >= 3:
+            # Downgrade to free after 3 failed attempts
+            table.update_item(
+                Key={"pk": item["pk"], "sk": item["sk"]},
+                UpdateExpression="SET tier = :tier, payment_failures = :fails, tier_updated_at = :now",
+                ExpressionAttributeValues={
+                    ":tier": "free",
+                    ":fails": attempt_count,
+                    ":now": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            logger.warning(f"Downgraded {item['pk']} to free after {attempt_count} failed payments")
+        else:
+            # Just track the failure count
+            table.update_item(
+                Key={"pk": item["pk"], "sk": item["sk"]},
+                UpdateExpression="SET payment_failures = :fails",
+                ExpressionAttributeValues={":fails": attempt_count},
+            )
+            logger.info(f"Recorded payment failure {attempt_count} for {item['pk']}")
 
 
 def _update_user_tier(
@@ -224,25 +276,109 @@ def _update_user_tier(
     customer_id: str = None,
     subscription_id: str = None,
 ):
-    """Update user tier by email."""
+    """Update user tier in DynamoDB after successful payment.
+
+    Uses email-index GSI to find user by email address.
+    """
+    if not email:
+        logger.error("Cannot update tier: no email provided")
+        return
+
     table = dynamodb.Table(API_KEYS_TABLE)
 
-    # Query by email (would need a GSI for this in production)
-    # For MVP, we'll store email as part of user_id
-    # Format: pk = user_<email_hash>
+    # Query by email using GSI
+    response = table.query(
+        IndexName="email-index",
+        KeyConditionExpression=Key("email").eq(email),
+    )
 
-    # This is a simplified implementation
-    # In production, you'd have a users table with email->user_id mapping
-    logger.info(f"Upgrading {email} to {tier}")
+    items = response.get("Items", [])
+    if not items:
+        logger.error(f"No user found for email {email} during tier update")
+        return
 
-    # For now, log the upgrade - would need users table for proper implementation
+    # Update all API keys for this user (skip PENDING signups)
+    updated_count = 0
+    for item in items:
+        # Skip PENDING records - they will be deleted upon email verification
+        # and a new API key record will be created
+        if item.get("sk") == "PENDING":
+            logger.debug(f"Skipping PENDING record for {email}")
+            continue
+
+        update_expr = "SET tier = :tier, tier_updated_at = :now"
+        expr_values = {
+            ":tier": tier,
+            ":now": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # Also set Stripe IDs if provided
+        if customer_id:
+            update_expr += ", stripe_customer_id = :cust"
+            expr_values[":cust"] = customer_id
+        if subscription_id:
+            update_expr += ", stripe_subscription_id = :sub"
+            expr_values[":sub"] = subscription_id
+
+        # Reset payment failures on successful tier update
+        update_expr += ", payment_failures = :zero"
+        expr_values[":zero"] = 0
+
+        table.update_item(
+            Key={"pk": item["pk"], "sk": item["sk"]},
+            UpdateExpression=update_expr,
+            ExpressionAttributeValues=expr_values,
+        )
+        updated_count += 1
+
+    if updated_count == 0:
+        logger.warning(f"No verified API keys found for {email} - user may not have completed signup")
+    else:
+        logger.info(f"Updated {updated_count} API keys for {email} to tier {tier}")
 
 
 def _update_user_tier_by_customer_id(customer_id: str, tier: str):
-    """Update user tier by Stripe customer ID."""
+    """Update tier by Stripe customer ID (for upgrades/downgrades).
+
+    Uses stripe-customer-index GSI to find user by Stripe customer ID.
+    """
+    if not customer_id:
+        logger.error("Cannot update tier: no customer_id provided")
+        return
+
     table = dynamodb.Table(API_KEYS_TABLE)
 
-    # Query by stripe_customer_id (would need GSI)
-    # For MVP, this is a placeholder
+    # Query GSI by stripe_customer_id
+    response = table.query(
+        IndexName="stripe-customer-index",
+        KeyConditionExpression=Key("stripe_customer_id").eq(customer_id),
+    )
 
-    logger.info(f"Updating customer {customer_id} to {tier}")
+    items = response.get("Items", [])
+    if not items:
+        logger.warning(f"No user found for Stripe customer {customer_id}")
+        return
+
+    new_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+
+    for item in items:
+        current_usage = item.get("requests_this_month", 0)
+
+        # Warn if downgrading and user is over new limit
+        if current_usage > new_limit:
+            logger.warning(
+                f"User {item['pk']} downgraded to {tier} but has {current_usage} "
+                f"requests (limit: {new_limit}). User is over limit until reset."
+            )
+
+        table.update_item(
+            Key={"pk": item["pk"], "sk": item["sk"]},
+            UpdateExpression="SET tier = :tier, tier_updated_at = :now, payment_failures = :zero",
+            ExpressionAttributeValues={
+                ":tier": tier,
+                ":now": datetime.now(timezone.utc).isoformat(),
+                ":zero": 0,
+            },
+        )
+
+    logger.info(f"Updated {len(items)} API keys for customer {customer_id} to tier {tier}")

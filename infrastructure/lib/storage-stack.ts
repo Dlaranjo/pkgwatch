@@ -70,6 +70,25 @@ export class StorageStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // GSI for looking up user by email
+    // Required for signup duplicate check and Stripe webhook tier updates
+    this.apiKeysTable.addGlobalSecondaryIndex({
+      indexName: "email-index",
+      partitionKey: { name: "email", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI for looking up user by Stripe customer ID
+    // Required for subscription webhooks (upgrades/downgrades/cancellations)
+    this.apiKeysTable.addGlobalSecondaryIndex({
+      indexName: "stripe-customer-index",
+      partitionKey: {
+        name: "stripe_customer_id",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // ===========================================
     // S3: Raw Data Bucket
     // ===========================================
