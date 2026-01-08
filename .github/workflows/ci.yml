@@ -99,5 +99,5 @@ jobs:
             --cache-control "max-age=86400" \
             --exclude ".DS_Store"
           aws cloudfront create-invalidation \
-            --distribution-id ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --distribution-id E3A2X106W5KELX \
             --paths "/*"
