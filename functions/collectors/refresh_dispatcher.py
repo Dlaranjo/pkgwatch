@@ -10,6 +10,7 @@ Dispatches package refresh jobs to SQS based on tier:
 import json
 import logging
 import os
+import random
 from datetime import datetime, timezone
 
 import boto3
@@ -23,6 +24,13 @@ sqs = boto3.client("sqs")
 
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")
 PACKAGE_QUEUE_URL = os.environ.get("PACKAGE_QUEUE_URL")
+
+# Configurable jitter by tier (in seconds)
+JITTER_MAX_SECONDS = {
+    1: int(os.environ.get("TIER1_JITTER_MAX", "300")),   # 5 minutes default
+    2: int(os.environ.get("TIER2_JITTER_MAX", "600")),   # 10 minutes default
+    3: int(os.environ.get("TIER3_JITTER_MAX", "1800")),  # 30 minutes default
+}
 
 
 def handler(event, context):
@@ -104,6 +112,11 @@ def handler(event, context):
         for j, pk in enumerate(batch):
             # pk format is "ecosystem#name", e.g., "npm#lodash"
             ecosystem, name = pk.split("#", 1)
+
+            # Add random jitter to spread load (tier-based)
+            jitter_max = JITTER_MAX_SECONDS.get(tier, 60)
+            jitter = random.randint(0, jitter_max)
+
             entries.append({
                 "Id": str(i + j),
                 "MessageBody": json.dumps({
@@ -113,6 +126,7 @@ def handler(event, context):
                     "reason": reason,
                     "dispatched_at": datetime.now(timezone.utc).isoformat(),
                 }),
+                "DelaySeconds": jitter,
             })
 
         try:

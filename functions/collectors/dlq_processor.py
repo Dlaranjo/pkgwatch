@@ -10,6 +10,7 @@ Processes messages from the dead-letter queue, implementing:
 import json
 import logging
 import os
+import sys
 from datetime import datetime, timezone
 
 import boto3
@@ -20,10 +21,46 @@ logger.setLevel(logging.INFO)
 sqs = boto3.client("sqs")
 dynamodb = boto3.resource("dynamodb")
 
+# Import shared utilities
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
+from metrics import emit_metric, emit_batch_metrics
+
 DLQ_URL = os.environ.get("DLQ_URL")
 MAIN_QUEUE_URL = os.environ.get("MAIN_QUEUE_URL")
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")
 MAX_DLQ_RETRIES = int(os.environ.get("MAX_DLQ_RETRIES", "5"))
+
+# Error classification patterns
+TRANSIENT_ERRORS = ["timeout", "503", "502", "504", "rate limit", "connection", "unavailable", "temporarily"]
+PERMANENT_ERRORS = ["404", "not found", "invalid package", "forbidden", "validation_error", "Invalid package name"]
+
+
+def classify_error(error_message: str) -> str:
+    """
+    Classify error as transient or permanent.
+
+    Args:
+        error_message: The error message to classify
+
+    Returns:
+        "permanent", "transient", or "unknown"
+    """
+    if not error_message:
+        return "unknown"
+
+    error_lower = error_message.lower()
+
+    # Check for permanent errors first (don't retry these)
+    for pattern in PERMANENT_ERRORS:
+        if pattern in error_lower:
+            return "permanent"
+
+    # Check for transient errors (worth retrying)
+    for pattern in TRANSIENT_ERRORS:
+        if pattern in error_lower:
+            return "transient"
+
+    return "unknown"
 
 
 def handler(event, context):
@@ -43,6 +80,7 @@ def handler(event, context):
     processed = 0
     requeued = 0
     permanently_failed = 0
+    skipped = 0
 
     # Process messages in batches until queue is empty or we hit a limit
     max_iterations = 10  # Process up to 100 messages per invocation
@@ -68,29 +106,43 @@ def handler(event, context):
                     requeued += 1
                 elif result == "permanently_failed":
                     permanently_failed += 1
+                elif result == "skipped":
+                    skipped += 1
 
             except Exception as e:
                 logger.error(f"Error processing DLQ message {message.get('MessageId')}: {e}")
 
     logger.info(
         f"DLQ processed: {processed}, requeued: {requeued}, "
-        f"permanently_failed: {permanently_failed}"
+        f"permanently_failed: {permanently_failed}, skipped: {skipped}"
     )
+
+    # Emit metrics
+    try:
+        emit_batch_metrics([
+            {"metric_name": "DLQMessagesProcessed", "value": processed},
+            {"metric_name": "DLQMessagesRequeued", "value": requeued},
+            {"metric_name": "DLQPermanentFailures", "value": permanently_failed},
+            {"metric_name": "DLQMessagesSkipped", "value": skipped},
+        ])
+    except Exception as e:
+        logger.warning(f"Failed to emit DLQ metrics: {e}")
 
     return {
         "processed": processed,
         "requeued": requeued,
         "permanently_failed": permanently_failed,
+        "skipped": skipped,
     }
 
 
 def _process_dlq_message(message: dict) -> str:
     """
-    Process a single DLQ message.
+    Process a single DLQ message with error classification.
 
     Returns:
         "requeued" if message was requeued for retry
-        "permanently_failed" if message exceeded max retries
+        "permanently_failed" if message exceeded max retries or has permanent error
         "skipped" if message was invalid
     """
     message_id = message.get("MessageId", "unknown")
@@ -106,13 +158,26 @@ def _process_dlq_message(message: dict) -> str:
     retry_count = int(body.get("_retry_count", 0))
     last_error = body.get("_last_error", "unknown")
 
+    # Classify the error to determine if we should retry
+    error_type = classify_error(last_error)
+
+    # Don't retry permanent errors (e.g., validation errors, 404s)
+    if error_type == "permanent":
+        logger.warning(
+            f"Message {message_id} has permanent error, not retrying: {last_error}"
+        )
+        _store_permanent_failure(body, message_id, last_error, error_type)
+        _delete_dlq_message(message)
+        return "permanently_failed"
+
+    # Check if exceeded max retries
     if retry_count >= MAX_DLQ_RETRIES:
         # Move to permanent failure storage
         logger.warning(
             f"Message {message_id} exceeded max retries ({retry_count}), "
             f"last error: {last_error}"
         )
-        _store_permanent_failure(body, message_id, last_error)
+        _store_permanent_failure(body, message_id, last_error, error_type)
         _delete_dlq_message(message)
         return "permanently_failed"
 
@@ -130,7 +195,7 @@ def _process_dlq_message(message: dict) -> str:
         )
         logger.info(
             f"Requeued message {message_id} with delay {delay_seconds}s "
-            f"(retry {retry_count + 1}/{MAX_DLQ_RETRIES})"
+            f"(retry {retry_count + 1}/{MAX_DLQ_RETRIES}, error_type: {error_type})"
         )
     except Exception as e:
         logger.error(f"Failed to requeue message {message_id}: {e}")
@@ -153,7 +218,7 @@ def _delete_dlq_message(message: dict) -> None:
         logger.error(f"Failed to delete DLQ message: {e}")
 
 
-def _store_permanent_failure(body: dict, message_id: str, last_error: str) -> None:
+def _store_permanent_failure(body: dict, message_id: str, last_error: str, error_type: str = "unknown") -> None:
     """Store permanently failed message for manual review."""
     table = dynamodb.Table(PACKAGES_TABLE)
 
@@ -170,10 +235,11 @@ def _store_permanent_failure(body: dict, message_id: str, last_error: str) -> No
                 "name": name,
                 "body": body,
                 "failure_reason": last_error,
+                "error_type": error_type,
                 "retry_count": body.get("_retry_count", 0),
                 "failed_at": datetime.now(timezone.utc).isoformat(),
             }
         )
-        logger.info(f"Stored permanent failure for {ecosystem}/{name}")
+        logger.info(f"Stored permanent failure for {ecosystem}/{name} (error_type: {error_type})")
     except Exception as e:
         logger.error(f"Failed to store permanent failure: {e}")

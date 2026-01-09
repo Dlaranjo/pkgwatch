@@ -2023,3 +2023,588 @@ class TestDLQProcessor:
             assert result["processed"] == 2
             assert result["requeued"] == 2
             assert mock_process.call_count == 2
+
+
+# =============================================================================
+# NEW FUNCTIONALITY TESTS - Data Pipeline Reliability
+# =============================================================================
+
+
+class TestMessageValidation:
+    """Tests for message validation in package_collector."""
+
+    def test_validate_valid_npm_package(self):
+        """Valid npm package should pass validation."""
+        from package_collector import validate_message
+
+        message = {"ecosystem": "npm", "name": "lodash"}
+        is_valid, error = validate_message(message)
+
+        assert is_valid is True
+        assert error is None
+
+    def test_validate_scoped_package(self):
+        """Valid scoped package should pass validation."""
+        from package_collector import validate_message
+
+        message = {"ecosystem": "npm", "name": "@babel/core"}
+        is_valid, error = validate_message(message)
+
+        assert is_valid is True
+        assert error is None
+
+    def test_validate_missing_ecosystem(self):
+        """Missing ecosystem should fail validation."""
+        from package_collector import validate_message
+
+        message = {"name": "lodash"}
+        is_valid, error = validate_message(message)
+
+        assert is_valid is False
+        assert "ecosystem" in error
+
+    def test_validate_missing_name(self):
+        """Missing name should fail validation."""
+        from package_collector import validate_message
+
+        message = {"ecosystem": "npm"}
+        is_valid, error = validate_message(message)
+
+        assert is_valid is False
+        assert "name" in error
+
+    def test_validate_unsupported_ecosystem(self):
+        """Unsupported ecosystem should fail validation."""
+        from package_collector import validate_message
+
+        message = {"ecosystem": "pypi", "name": "requests"}
+        is_valid, error = validate_message(message)
+
+        assert is_valid is False
+        assert "Unsupported ecosystem" in error
+
+    def test_validate_package_name_too_long(self):
+        """Package name exceeding 214 chars should fail."""
+        from package_collector import validate_message
+
+        long_name = "a" * 215
+        message = {"ecosystem": "npm", "name": long_name}
+        is_valid, error = validate_message(message)
+
+        assert is_valid is False
+        assert "too long" in error
+
+    def test_validate_invalid_package_name_format(self):
+        """Invalid package name format should fail."""
+        from package_collector import validate_message
+
+        message = {"ecosystem": "npm", "name": "INVALID-NAME"}  # No uppercase allowed
+        is_valid, error = validate_message(message)
+
+        assert is_valid is False
+        assert "Invalid package name format" in error
+
+    def test_validate_path_traversal_attempt(self):
+        """Path traversal attempts should fail validation."""
+        from package_collector import validate_message
+
+        message = {"ecosystem": "npm", "name": "../../../etc/passwd"}
+        is_valid, error = validate_message(message)
+
+        assert is_valid is False
+        assert "path traversal detected" in error
+
+
+class TestRateLimitAtomicOperation:
+    """Tests for the fixed GitHub rate limit race condition."""
+
+    @mock_aws
+    def test_rate_limit_atomic_increment_success(self):
+        """Test successful atomic rate limit increment."""
+        # Set up mock DynamoDB
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        dynamodb.create_table(
+            TableName="dephealth-api-keys",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "API_KEYS_TABLE": "dephealth-api-keys",
+            },
+        ):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            # First call should succeed
+            result = package_collector._check_and_increment_github_rate_limit()
+            assert result is True
+
+    @mock_aws
+    def test_rate_limit_atomic_increment_limit_exceeded(self):
+        """Test rate limit enforcement with atomic operation."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        table = dynamodb.create_table(
+            TableName="dephealth-api-keys",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "API_KEYS_TABLE": "dephealth-api-keys",
+            },
+        ):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            # Pre-populate rate limit counter at the limit
+            window_key = package_collector._get_rate_limit_window_key()
+            per_shard_limit = (package_collector.GITHUB_HOURLY_LIMIT // package_collector.RATE_LIMIT_SHARDS) + 50
+
+            # Fill up all shards to the limit
+            for shard_id in range(package_collector.RATE_LIMIT_SHARDS):
+                table.put_item(
+                    Item={
+                        "pk": f"github_rate_limit#{shard_id}",
+                        "sk": window_key,
+                        "calls": per_shard_limit,
+                        "ttl": int(datetime.now(timezone.utc).timestamp()) + 7200,
+                    }
+                )
+
+            # Next call should be rejected
+            result = package_collector._check_and_increment_github_rate_limit()
+            assert result is False
+
+
+class TestErrorClassification:
+    """Tests for error classification in DLQ processor."""
+
+    def test_classify_permanent_error_404(self):
+        """404 errors should be classified as permanent."""
+        from dlq_processor import classify_error
+
+        error_msg = "404 package not found"
+        result = classify_error(error_msg)
+
+        assert result == "permanent"
+
+    def test_classify_permanent_error_not_found(self):
+        """'not found' errors should be classified as permanent."""
+        from dlq_processor import classify_error
+
+        error_msg = "Package not found in registry"
+        result = classify_error(error_msg)
+
+        assert result == "permanent"
+
+    def test_classify_permanent_error_invalid_package(self):
+        """'invalid package' errors should be classified as permanent."""
+        from dlq_processor import classify_error
+
+        error_msg = "Invalid package name specified"
+        result = classify_error(error_msg)
+
+        assert result == "permanent"
+
+    def test_classify_permanent_error_forbidden(self):
+        """'forbidden' errors should be classified as permanent."""
+        from dlq_processor import classify_error
+
+        error_msg = "403 Forbidden: Access denied"
+        result = classify_error(error_msg)
+
+        assert result == "permanent"
+
+    def test_classify_permanent_error_validation(self):
+        """Validation errors should be classified as permanent."""
+        from dlq_processor import classify_error
+
+        error_msg = "validation_error: Invalid package name format"
+        result = classify_error(error_msg)
+
+        assert result == "permanent"
+
+    def test_classify_transient_error_timeout(self):
+        """Timeout errors should be classified as transient."""
+        from dlq_processor import classify_error
+
+        error_msg = "Request timeout after 30 seconds"
+        result = classify_error(error_msg)
+
+        assert result == "transient"
+
+    def test_classify_transient_error_502(self):
+        """502 errors should be classified as transient."""
+        from dlq_processor import classify_error
+
+        error_msg = "502 Bad Gateway"
+        result = classify_error(error_msg)
+
+        assert result == "transient"
+
+    def test_classify_transient_error_503(self):
+        """503 Service Unavailable should be classified as transient."""
+        from dlq_processor import classify_error
+
+        error_msg = "503 Service Unavailable"
+        result = classify_error(error_msg)
+
+        assert result == "transient"
+
+    def test_classify_transient_error_504(self):
+        """504 Gateway Timeout should be classified as transient."""
+        from dlq_processor import classify_error
+
+        error_msg = "504 Gateway Timeout"
+        result = classify_error(error_msg)
+
+        assert result == "transient"
+
+    def test_classify_transient_error_rate_limit(self):
+        """'rate limit' errors should be classified as transient."""
+        from dlq_processor import classify_error
+
+        error_msg = "Rate limit exceeded, try again later"
+        result = classify_error(error_msg)
+
+        assert result == "transient"
+
+    def test_classify_transient_error_connection(self):
+        """'connection' errors should be classified as transient."""
+        from dlq_processor import classify_error
+
+        error_msg = "Connection refused by server"
+        result = classify_error(error_msg)
+
+        assert result == "transient"
+
+    def test_classify_transient_error_unavailable(self):
+        """'unavailable' errors should be classified as transient."""
+        from dlq_processor import classify_error
+
+        error_msg = "Service temporarily unavailable"
+        result = classify_error(error_msg)
+
+        assert result == "transient"
+
+    def test_classify_error_case_insensitive(self):
+        """Error classification should be case insensitive."""
+        from dlq_processor import classify_error
+
+        assert classify_error("TIMEOUT ERROR") == "transient"
+        assert classify_error("Not Found") == "permanent"
+        assert classify_error("Rate Limit Exceeded") == "transient"
+
+    def test_classify_unknown_error(self):
+        """Unknown errors should be classified as unknown."""
+        from dlq_processor import classify_error
+
+        error_msg = "Something unexpected happened"
+        result = classify_error(error_msg)
+
+        assert result == "unknown"
+
+    def test_classify_error_empty_message(self):
+        """Empty error message should return unknown."""
+        from dlq_processor import classify_error
+
+        result = classify_error("")
+        assert result == "unknown"
+
+        result = classify_error(None)
+        assert result == "unknown"
+
+
+class TestStaleDataFallback:
+    """Tests for stale data fallback in package_collector."""
+
+    def test_is_data_acceptable_fresh_data(self):
+        """Fresh data within max age should be acceptable."""
+        from package_collector import _is_data_acceptable
+
+        recent_time = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+        data = {"last_updated": recent_time}
+
+        result = _is_data_acceptable(data, max_age_days=7)
+        assert result is True
+
+    def test_is_data_acceptable_stale_data(self):
+        """Data older than max age should not be acceptable."""
+        from package_collector import _is_data_acceptable
+
+        old_time = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+        data = {"last_updated": old_time}
+
+        result = _is_data_acceptable(data, max_age_days=7)
+        assert result is False
+
+    def test_is_data_acceptable_missing_last_updated(self):
+        """Data without last_updated should not be acceptable."""
+        from package_collector import _is_data_acceptable
+
+        data = {"name": "test-pkg"}
+        result = _is_data_acceptable(data, max_age_days=7)
+        assert result is False
+
+    def test_is_data_acceptable_invalid_date_format(self):
+        """Data with invalid date format should not be acceptable."""
+        from package_collector import _is_data_acceptable
+
+        data = {"last_updated": "not-a-date"}
+        result = _is_data_acceptable(data, max_age_days=7)
+        assert result is False
+
+    def test_extract_cached_fields(self):
+        """Extract cached fields should return correct subset of data."""
+        from package_collector import _extract_cached_fields
+
+        existing = {
+            "latest_version": "1.0.0",
+            "published_at": "2023-01-01T00:00:00Z",
+            "licenses": ["MIT"],
+            "dependents_count": 100,
+            "repository_url": "https://github.com/user/repo",
+            "extra_field": "should not be included",
+        }
+
+        result = _extract_cached_fields(existing)
+
+        assert result["latest_version"] == "1.0.0"
+        assert result["licenses"] == ["MIT"]
+        assert result["dependents_count"] == 100
+        assert "extra_field" not in result
+
+
+class TestPipelineMetrics:
+    """Tests for pipeline metrics emission."""
+
+    def test_emit_metric_success(self):
+        """Test successful metric emission."""
+        from shared.metrics import emit_metric
+
+        with patch("shared.metrics.cloudwatch") as mock_cw:
+            emit_metric("TestMetric", value=5.0, dimensions={"Test": "Value"})
+
+            mock_cw.put_metric_data.assert_called_once()
+            call_args = mock_cw.put_metric_data.call_args
+
+            assert call_args.kwargs["Namespace"] == "DepHealth"
+            assert call_args.kwargs["MetricData"][0]["MetricName"] == "TestMetric"
+            assert call_args.kwargs["MetricData"][0]["Value"] == 5.0
+
+    def test_emit_metric_failure_doesnt_crash(self):
+        """Test that metric emission failures don't crash Lambda."""
+        from shared.metrics import emit_metric
+
+        with patch("shared.metrics.cloudwatch") as mock_cw:
+            mock_cw.put_metric_data.side_effect = Exception("CloudWatch error")
+
+            # Should not raise exception
+            emit_metric("TestMetric", value=1.0)
+
+    def test_emit_batch_metrics_success(self):
+        """Test successful batch metrics emission."""
+        from shared.metrics import emit_batch_metrics
+
+        with patch("shared.metrics.cloudwatch") as mock_cw:
+            metrics = [
+                {"metric_name": "Metric1", "value": 10},
+                {"metric_name": "Metric2", "value": 20, "unit": "Seconds"},
+                {"metric_name": "Metric3", "value": 30, "dimensions": {"Env": "Test"}},
+            ]
+            emit_batch_metrics(metrics)
+
+            mock_cw.put_metric_data.assert_called_once()
+            call_args = mock_cw.put_metric_data.call_args
+            metric_data = call_args.kwargs["MetricData"]
+
+            assert len(metric_data) == 3
+            assert metric_data[0]["MetricName"] == "Metric1"
+            assert metric_data[1]["Unit"] == "Seconds"
+            assert metric_data[2]["Dimensions"][0]["Name"] == "Env"
+
+    def test_emit_batch_metrics_pagination(self):
+        """Test batch metrics are paginated at 20 per request."""
+        from shared.metrics import emit_batch_metrics
+
+        with patch("shared.metrics.cloudwatch") as mock_cw:
+            # Create 25 metrics (should be 2 API calls)
+            metrics = [{"metric_name": f"Metric{i}", "value": i} for i in range(25)]
+            emit_batch_metrics(metrics)
+
+            assert mock_cw.put_metric_data.call_count == 2
+            # First call should have 20 metrics
+            first_call = mock_cw.put_metric_data.call_args_list[0]
+            assert len(first_call.kwargs["MetricData"]) == 20
+            # Second call should have 5 metrics
+            second_call = mock_cw.put_metric_data.call_args_list[1]
+            assert len(second_call.kwargs["MetricData"]) == 5
+
+    def test_emit_batch_metrics_failure_doesnt_crash(self):
+        """Test that batch metric emission failures don't crash."""
+        from shared.metrics import emit_batch_metrics
+
+        with patch("shared.metrics.cloudwatch") as mock_cw:
+            mock_cw.put_metric_data.side_effect = Exception("CloudWatch error")
+
+            # Should not raise exception
+            metrics = [{"metric_name": "Test", "value": 1.0}]
+            emit_batch_metrics(metrics)
+
+
+class TestHelperFunctions:
+    """Tests for helper functions in package_collector."""
+
+    def test_get_rate_limit_window_key(self):
+        """Test rate limit window key generation."""
+        from package_collector import _get_rate_limit_window_key
+
+        # Mock datetime to get consistent result
+        mock_time = datetime(2024, 3, 15, 14, 30, 0, tzinfo=timezone.utc)
+        with patch("package_collector.datetime") as mock_dt:
+            mock_dt.now.return_value = mock_time
+            mock_dt.timezone = timezone
+
+            result = _get_rate_limit_window_key()
+
+            # Should be YYYY-MM-DD-HH format
+            assert result == "2024-03-15-14"
+
+    @mock_aws
+    def test_get_total_github_calls_empty(self):
+        """Test getting total GitHub calls when no shards exist."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        dynamodb.create_table(
+            TableName="dephealth-api-keys",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        with patch.dict(os.environ, {"API_KEYS_TABLE": "dephealth-api-keys"}):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            total = package_collector._get_total_github_calls("2024-03-15-14")
+            assert total == 0
+
+    @mock_aws
+    def test_get_total_github_calls_with_data(self):
+        """Test getting total GitHub calls across shards."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        table = dynamodb.create_table(
+            TableName="dephealth-api-keys",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        # Add data to multiple shards
+        window_key = "2024-03-15-14"
+        table.put_item(Item={"pk": "github_rate_limit#0", "sk": window_key, "calls": 100})
+        table.put_item(Item={"pk": "github_rate_limit#1", "sk": window_key, "calls": 150})
+        table.put_item(Item={"pk": "github_rate_limit#2", "sk": window_key, "calls": 200})
+
+        with patch.dict(os.environ, {"API_KEYS_TABLE": "dephealth-api-keys"}):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            total = package_collector._get_total_github_calls(window_key)
+            assert total == 450  # 100 + 150 + 200
+
+    @mock_aws
+    def test_rate_limit_fails_closed_on_dynamodb_error(self):
+        """Test that rate limit check fails closed on DynamoDB errors."""
+        # Create table but don't configure it properly to trigger errors
+        with patch.dict(os.environ, {"API_KEYS_TABLE": "nonexistent-table"}):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            # Should return False (fail closed) on error
+            result = package_collector._check_and_increment_github_rate_limit()
+            assert result is False
+
+
+class TestConfigurableValues:
+    """Tests for configurable threshold values."""
+
+    def test_stale_data_age_configurable(self):
+        """Test that stale data max age is configurable."""
+        with patch.dict(os.environ, {"STALE_DATA_MAX_AGE_DAYS": "14"}):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            assert package_collector.STALE_DATA_MAX_AGE_DAYS == 14
+
+    def test_dedup_window_configurable(self):
+        """Test that deduplication window is configurable."""
+        with patch.dict(os.environ, {"DEDUP_WINDOW_MINUTES": "60"}):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            assert package_collector.DEDUP_WINDOW_MINUTES == 60
+
+    def test_tier_jitter_configurable(self):
+        """Test that tier jitter values are configurable."""
+        with patch.dict(os.environ, {
+            "TIER1_JITTER_MAX": "600",
+            "TIER2_JITTER_MAX": "1200",
+            "TIER3_JITTER_MAX": "3600",
+        }):
+            from importlib import reload
+            import refresh_dispatcher
+            reload(refresh_dispatcher)
+
+            assert refresh_dispatcher.JITTER_MAX_SECONDS[1] == 600
+            assert refresh_dispatcher.JITTER_MAX_SECONDS[2] == 1200
+            assert refresh_dispatcher.JITTER_MAX_SECONDS[3] == 3600
+
+
+# =============================================================================
+# Pytest Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def mock_dynamodb():
+    """Provide a mock DynamoDB resource."""
+    with mock_aws():
+        yield boto3.resource("dynamodb", region_name="us-east-1")
