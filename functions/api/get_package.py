@@ -296,15 +296,29 @@ def handler(event, context):
     }
 
     if is_demo_mode:
+        # Demo mode: hourly reset
+        now = datetime.now(timezone.utc)
+        next_hour = now.replace(minute=0, second=0, microsecond=0)
+        # Add 1 hour to get to the next hour boundary
+        reset_timestamp = int((next_hour.timestamp() + 3600))
+
         response_headers["X-Demo-Mode"] = "true"
         response_headers["X-RateLimit-Limit"] = str(DEMO_REQUESTS_PER_HOUR)
         response_headers["X-RateLimit-Remaining"] = str(demo_remaining)
+        response_headers["X-RateLimit-Reset"] = str(reset_timestamp)
     else:
+        # Authenticated mode: monthly reset (end of month)
+        now = datetime.now(timezone.utc)
+        days_in_month = calendar.monthrange(now.year, now.month)[1]
+        # Calculate seconds until end of month (midnight on the first of next month)
+        reset_timestamp = int(now.replace(day=days_in_month, hour=23, minute=59, second=59).timestamp() + 1)
+
         # authenticated_usage_count reflects the count AFTER this request was counted
         response_headers["X-RateLimit-Limit"] = str(user["monthly_limit"])
         response_headers["X-RateLimit-Remaining"] = str(
             max(0, user["monthly_limit"] - authenticated_usage_count)
         )
+        response_headers["X-RateLimit-Reset"] = str(reset_timestamp)
 
     return {
         "statusCode": 200,
@@ -317,7 +331,9 @@ def _rate_limit_response(user: dict, cors_headers: dict = None) -> dict:
     """Generate rate limit exceeded response with Retry-After header."""
     now = datetime.now(timezone.utc)
     days_in_month = calendar.monthrange(now.year, now.month)[1]
-    seconds_until_reset = (days_in_month - now.day) * 86400 + (24 - now.hour) * 3600
+    # Calculate exact reset timestamp (midnight on first of next month)
+    reset_timestamp = int(now.replace(day=days_in_month, hour=23, minute=59, second=59).timestamp() + 1)
+    seconds_until_reset = reset_timestamp - int(now.timestamp())
 
     headers = {
         "Content-Type": "application/json",

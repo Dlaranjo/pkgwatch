@@ -13,12 +13,7 @@ from http.cookies import SimpleCookie
 import boto3
 from boto3.dynamodb.conditions import Key
 
-
-def _decimal_default(obj):
-    """JSON encoder for Decimal types from DynamoDB."""
-    if isinstance(obj, Decimal):
-        return int(obj) if obj % 1 == 0 else float(obj)
-    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+from shared.response_utils import decimal_default, error_response
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -48,12 +43,12 @@ def handler(event, context):
             session_token = cookies["session"].value
 
     if not session_token:
-        return _error_response(401, "unauthorized", "Not authenticated")
+        return error_response(401, "unauthorized", "Not authenticated")
 
     # Verify session token
     session_data = verify_session_token(session_token)
     if not session_data:
-        return _error_response(401, "session_expired", "Session expired. Please log in again.")
+        return error_response(401, "session_expired", "Session expired. Please log in again.")
 
     user_id = session_data.get("user_id")
     email = session_data.get("email")
@@ -74,11 +69,11 @@ def handler(event, context):
                 break
 
         if not user_record:
-            return _error_response(404, "user_not_found", "User account not found")
+            return error_response(404, "user_not_found", "User account not found")
 
     except Exception as e:
         logger.error(f"Error fetching user data: {e}")
-        return _error_response(500, "internal_error", "Failed to fetch user data")
+        return error_response(500, "internal_error", "Failed to fetch user data")
 
     # Return user info
     return {
@@ -92,7 +87,7 @@ def handler(event, context):
             "monthly_limit": _get_tier_limit(user_record.get("tier", "free")),
             "created_at": user_record.get("created_at"),
             "last_login": user_record.get("last_login"),
-        }, default=_decimal_default),
+        }, default=decimal_default),
     }
 
 
@@ -107,10 +102,3 @@ def _get_tier_limit(tier: str) -> int:
     return limits.get(tier, 5000)
 
 
-def _error_response(status_code: int, code: str, message: str) -> dict:
-    """Generate error response."""
-    return {
-        "statusCode": status_code,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({"error": {"code": code, "message": message}}),
-    }

@@ -1,0 +1,906 @@
+openapi: 3.0.3
+info:
+  title: DepHealth API
+  version: 1.0.0
+  description: |
+    Dependency Health Intelligence API for predicting npm package abandonment risk.
+
+    ## Authentication
+    Most endpoints require an API key passed via the `X-API-Key` header.
+    Some endpoints use session-based authentication with cookies.
+
+    ## Rate Limiting
+    Rate limits are enforced per API key based on your subscription tier.
+    Response headers include current usage and reset time:
+    - `X-RateLimit-Limit`: Total requests allowed in the period
+    - `X-RateLimit-Remaining`: Requests remaining in the current period
+    - `X-RateLimit-Reset`: Unix timestamp when the limit resets
+
+    Demo mode (without API key) has hourly limits.
+  contact:
+    email: hello@laranjo.dev
+  license:
+    name: MIT
+
+servers:
+  - url: https://api.dephealth.laranjo.dev/v1
+    description: Production
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Check if the API is operational
+      security: []  # No auth required
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: healthy
+                version: 1.0.0
+                timestamp: "2026-01-09T10:00:00Z"
+
+  /packages/{ecosystem}/{name}:
+    get:
+      summary: Get package health score
+      description: |
+        Returns comprehensive health score and risk analysis for a package.
+        Supports both authenticated (API key) and demo mode (IP rate-limited).
+      parameters:
+        - name: ecosystem
+          in: path
+          required: true
+          description: Package ecosystem
+          schema:
+            type: string
+            enum: [npm]
+          example: npm
+        - name: name
+          in: path
+          required: true
+          description: Package name (URL-encoded for scoped packages)
+          schema:
+            type: string
+          examples:
+            simple:
+              value: lodash
+              summary: Simple package name
+            scoped:
+              value: "%40babel%2Fcore"
+              summary: Scoped package (@babel/core)
+      responses:
+        '200':
+          description: Package health data
+          headers:
+            X-RateLimit-Limit:
+              description: Total requests allowed in the current period
+              schema:
+                type: string
+              example: "5000"
+            X-RateLimit-Remaining:
+              description: Requests remaining in the current period
+              schema:
+                type: string
+              example: "4950"
+            X-RateLimit-Reset:
+              description: Unix timestamp when the rate limit resets
+              schema:
+                type: string
+              example: "1704672000"
+            X-Demo-Mode:
+              description: Present if request is in demo mode
+              schema:
+                type: string
+              example: "true"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageHealth'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /scan:
+    post:
+      summary: Scan multiple packages
+      description: |
+        Scans a package.json file or list of dependencies and returns health scores.
+        Requires API key authentication.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/ScanRequestContent'
+                - $ref: '#/components/schemas/ScanRequestDependencies'
+            examples:
+              packageJsonString:
+                summary: Package.json content as string
+                value:
+                  content: '{"dependencies":{"lodash":"^4.17.21","express":"^4.18.0"}}'
+              dependenciesObject:
+                summary: Dependencies object
+                value:
+                  dependencies:
+                    lodash: "^4.17.21"
+                    express: "^4.18.0"
+      responses:
+        '200':
+          description: Scan results with health scores for all dependencies
+          headers:
+            X-RateLimit-Limit:
+              description: Total requests allowed per month
+              schema:
+                type: string
+            X-RateLimit-Remaining:
+              description: Requests remaining this month
+              schema:
+                type: string
+            X-RateLimit-Reset:
+              description: Unix timestamp when monthly limit resets
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /usage:
+    get:
+      summary: Get usage statistics
+      description: Returns current usage statistics for the authenticated API key
+      responses:
+        '200':
+          description: Usage statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /signup:
+    post:
+      summary: Create account
+      description: |
+        Creates a pending user account and sends verification email.
+        Uses timing normalization to prevent email enumeration attacks.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+      responses:
+        '200':
+          description: Verification email sent (same response for existing users)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Check your email for a verification link. If you already have an account, try logging in instead.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /verify:
+    get:
+      summary: Verify email
+      description: Verifies email address using token from verification email
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: Verification token from email
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to application with success/error parameters
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /auth/magic-link:
+    post:
+      summary: Request magic link
+      description: |
+        Sends a passwordless login link to the user's email.
+        Uses timing normalization to prevent email enumeration.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+      responses:
+        '200':
+          description: Login link sent (same response if user doesn't exist)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Login link sent
+
+  /auth/callback:
+    get:
+      summary: Magic link callback
+      description: Handles magic link authentication and creates session
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: Magic link token
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to application with session cookie
+          headers:
+            Set-Cookie:
+              description: Session cookie
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /auth/me:
+    get:
+      summary: Get current user
+      description: Returns information about the currently authenticated user
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: User information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api-keys:
+    get:
+      summary: List API keys
+      description: Returns all API keys for the authenticated user
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  api_keys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiKeyInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      summary: Create API key
+      description: Creates a new API key for the authenticated user
+      security:
+        - SessionAuth: []
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  api_key:
+                    type: string
+                    description: The API key (only shown once)
+                    example: dh_abc123def456
+                  message:
+                    type: string
+                    example: API key created. This key will only be shown once - save it securely!
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api-keys/{key_id}:
+    delete:
+      summary: Revoke API key
+      description: Deletes/revokes an API key
+      security:
+        - SessionAuth: []
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          description: API key ID to revoke
+          schema:
+            type: string
+          example: key_abc123
+      responses:
+        '200':
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: API key revoked successfully
+        '400':
+          description: Bad request (e.g., cannot revoke last key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                cannotRevokeLastKey:
+                  value:
+                    error:
+                      code: cannot_revoke_last_key
+                      message: Cannot revoke your only API key. Create a new one first.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /webhooks/stripe:
+    post:
+      summary: Stripe webhook
+      description: Handles Stripe webhook events for billing
+      security:
+        - StripeSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Stripe event payload
+      responses:
+        '200':
+          description: Webhook processed successfully
+        '400':
+          description: Invalid webhook signature or payload
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for programmatic access
+
+    SessionAuth:
+      type: apiKey
+      in: cookie
+      name: session
+      description: Session cookie for web application access
+
+    StripeSignature:
+      type: apiKey
+      in: header
+      name: Stripe-Signature
+      description: Stripe webhook signature
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: healthy
+        version:
+          type: string
+          example: "1.0.0"
+        timestamp:
+          type: string
+          format: date-time
+
+    PackageHealth:
+      type: object
+      required:
+        - package
+        - ecosystem
+        - health_score
+        - risk_level
+      properties:
+        package:
+          type: string
+          example: lodash
+        ecosystem:
+          type: string
+          example: npm
+        health_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Overall health score (0-100, higher is better)
+          example: 85.5
+        risk_level:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW]
+          description: Risk classification based on health score
+          example: LOW
+        abandonment_risk:
+          $ref: '#/components/schemas/AbandonmentRisk'
+        components:
+          type: object
+          description: Breakdown of score components
+          properties:
+            maintenance:
+              type: number
+              example: 90
+            popularity:
+              type: number
+              example: 95
+            security:
+              type: number
+              example: 80
+        confidence:
+          type: string
+          enum: [HIGH, MEDIUM, LOW]
+          description: Confidence in the health score calculation
+          example: HIGH
+        signals:
+          $ref: '#/components/schemas/PackageSignals'
+        openssf_checks:
+          $ref: '#/components/schemas/OpenSSFChecks'
+        advisories:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecurityAdvisory'
+        latest_version:
+          type: string
+          example: "4.17.21"
+        last_published:
+          type: string
+          format: date-time
+        repository_url:
+          type: string
+          format: uri
+          example: https://github.com/lodash/lodash
+        last_updated:
+          type: string
+          format: date-time
+          description: When the health data was last calculated
+
+    AbandonmentRisk:
+      type: object
+      properties:
+        score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Abandonment risk score (0-100, higher is worse)
+          example: 15.2
+        factors:
+          type: object
+          description: Contributing risk factors
+          properties:
+            commit_activity:
+              type: string
+              example: healthy
+            maintainer_activity:
+              type: string
+              example: active
+            issue_response:
+              type: string
+              example: responsive
+
+    PackageSignals:
+      type: object
+      description: Raw metrics used for health calculation
+      properties:
+        weekly_downloads:
+          type: integer
+          example: 50000000
+        dependents_count:
+          type: integer
+          example: 150000
+        stars:
+          type: integer
+          example: 55000
+        days_since_last_commit:
+          type: integer
+          example: 30
+        commits_90d:
+          type: integer
+          example: 25
+        active_contributors_90d:
+          type: integer
+          example: 10
+        maintainer_count:
+          type: integer
+          example: 5
+        is_deprecated:
+          type: boolean
+          example: false
+        archived:
+          type: boolean
+          example: false
+        openssf_score:
+          type: number
+          minimum: 0
+          maximum: 10
+          example: 7.5
+        true_bus_factor:
+          type: integer
+          minimum: 1
+          description: Number of contributors needed for team failure
+          example: 3
+        bus_factor_confidence:
+          type: string
+          enum: [HIGH, MEDIUM, LOW]
+          example: HIGH
+
+    OpenSSFChecks:
+      type: object
+      properties:
+        summary:
+          type: object
+          description: Key security checks with pass/partial/fail status
+          additionalProperties:
+            type: object
+            properties:
+              score:
+                type: integer
+                minimum: 0
+                maximum: 10
+              status:
+                type: string
+                enum: [pass, partial, fail]
+        all_checks:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              score:
+                type: integer
+              reason:
+                type: string
+
+    SecurityAdvisory:
+      type: object
+      properties:
+        id:
+          type: string
+          example: GHSA-xxxx-yyyy-zzzz
+        title:
+          type: string
+        severity:
+          type: string
+          enum: [CRITICAL, HIGH, MODERATE, LOW]
+        vulnerable_versions:
+          type: string
+        patched_versions:
+          type: string
+
+    ScanRequestContent:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          description: package.json content as string
+          example: '{"dependencies":{"lodash":"^4.17.21"}}'
+
+    ScanRequestDependencies:
+      type: object
+      properties:
+        dependencies:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            lodash: "^4.17.21"
+            express: "^4.18.0"
+        devDependencies:
+          type: object
+          additionalProperties:
+            type: string
+
+    ScanResult:
+      type: object
+      required:
+        - total
+        - critical
+        - high
+        - medium
+        - low
+        - packages
+      properties:
+        total:
+          type: integer
+          description: Total number of packages scanned
+          example: 10
+        critical:
+          type: integer
+          description: Number of packages with CRITICAL risk
+          example: 0
+        high:
+          type: integer
+          description: Number of packages with HIGH risk
+          example: 1
+        medium:
+          type: integer
+          description: Number of packages with MEDIUM risk
+          example: 3
+        low:
+          type: integer
+          description: Number of packages with LOW risk
+          example: 6
+        packages:
+          type: array
+          items:
+            type: object
+            properties:
+              package:
+                type: string
+              health_score:
+                type: number
+              risk_level:
+                type: string
+                enum: [CRITICAL, HIGH, MEDIUM, LOW]
+              abandonment_risk:
+                type: object
+              is_deprecated:
+                type: boolean
+              archived:
+                type: boolean
+              last_updated:
+                type: string
+        not_found:
+          type: array
+          items:
+            type: string
+          description: Packages not found in database
+
+    UsageResponse:
+      type: object
+      properties:
+        tier:
+          type: string
+          enum: [free, starter, pro, business]
+          example: free
+        usage:
+          type: object
+          properties:
+            requests_this_month:
+              type: integer
+              example: 150
+            monthly_limit:
+              type: integer
+              example: 5000
+            remaining:
+              type: integer
+              example: 4850
+            usage_percentage:
+              type: number
+              example: 3.0
+        reset:
+          type: object
+          properties:
+            date:
+              type: string
+              format: date-time
+              example: "2026-02-01T00:00:00Z"
+            seconds_until_reset:
+              type: integer
+              example: 2592000
+        limits_by_tier:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            free: 5000
+            starter: 25000
+            pro: 100000
+            business: 500000
+
+    UserInfo:
+      type: object
+      properties:
+        user_id:
+          type: string
+        email:
+          type: string
+          format: email
+        tier:
+          type: string
+          enum: [free, starter, pro, business]
+          example: free
+        monthly_limit:
+          type: integer
+          example: 5000
+        requests_this_month:
+          type: integer
+          example: 150
+        created_at:
+          type: string
+          format: date-time
+        last_login:
+          type: string
+          format: date-time
+
+    ApiKeyInfo:
+      type: object
+      properties:
+        key_id:
+          type: string
+          example: key_abc123
+        key_prefix:
+          type: string
+          description: Masked key showing prefix and suffix for identification
+          example: dh_...abc12345
+        tier:
+          type: string
+          enum: [free, starter, pro, business]
+          example: free
+        requests_this_month:
+          type: integer
+          example: 150
+        created_at:
+          type: string
+          format: date-time
+        last_used:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code
+              example: invalid_api_key
+            message:
+              type: string
+              description: Human-readable error message
+              example: Invalid or missing API key
+            details:
+              type: object
+              description: Additional error details (optional)
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalidJson:
+              value:
+                error:
+                  code: invalid_json
+                  message: Request body must be valid JSON
+            missingParameter:
+              value:
+                error:
+                  code: missing_parameter
+                  message: Required parameter is missing
+
+    Unauthorized:
+      description: Invalid or missing authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalidApiKey:
+              value:
+                error:
+                  code: invalid_api_key
+                  message: Invalid or missing API key
+            sessionExpired:
+              value:
+                error:
+                  code: session_expired
+                  message: Session expired. Please log in again.
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            packageNotFound:
+              value:
+                error:
+                  code: package_not_found
+                  message: "Package 'unknown-pkg' not found in npm"
+
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          description: Seconds until rate limit resets
+          schema:
+            type: integer
+          example: 3600
+        X-RateLimit-Limit:
+          schema:
+            type: string
+        X-RateLimit-Remaining:
+          schema:
+            type: string
+        X-RateLimit-Reset:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            monthlyLimit:
+              value:
+                error:
+                  code: rate_limit_exceeded
+                  message: Monthly limit of 5000 requests exceeded
+                  retry_after_seconds: 86400
+                  upgrade_url: https://dephealth.laranjo.dev/pricing
+            demoLimit:
+              value:
+                error:
+                  code: demo_rate_limit_exceeded
+                  message: Demo limit of 20 requests per hour exceeded
+                  retry_after_seconds: 3600
+                  signup_url: https://dephealth.laranjo.dev/signup

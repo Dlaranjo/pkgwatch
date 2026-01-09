@@ -17,13 +17,7 @@ logger.setLevel(logging.INFO)
 
 # Import from shared module (bundled with Lambda)
 from shared.auth import validate_api_key, TIER_LIMITS
-
-
-def decimal_default(obj):
-    """JSON encoder for Decimal types from DynamoDB."""
-    if isinstance(obj, Decimal):
-        return int(obj) if obj % 1 == 0 else float(obj)
-    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+from shared.response_utils import decimal_default, error_response
 
 
 def handler(event, context):
@@ -40,16 +34,7 @@ def handler(event, context):
     user = validate_api_key(api_key)
 
     if not user:
-        return {
-            "statusCode": 401,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({
-                "error": {
-                    "code": "invalid_api_key",
-                    "message": "Invalid or missing API key",
-                }
-            }),
-        }
+        return error_response(401, "invalid_api_key", "Invalid or missing API key")
 
     # Calculate reset date (first of next month)
     now = datetime.now(timezone.utc)
