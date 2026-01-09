@@ -1,5 +1,5 @@
 import * as core from "@actions/core";
-import { ScanResult, PackageHealth } from "./api.js";
+import { ScanResult, PackageHealth } from "./api";
 
 // Version is injected at build time via esbuild --define
 declare const __VERSION__: string;

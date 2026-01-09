@@ -1,8 +1,8 @@
 import * as core from "@actions/core";
 import * as path from "node:path";
-import { scanDependencies } from "./scanner.js";
-import { generateSummary } from "./summary.js";
-import { ApiClientError } from "./api.js";
+import { scanDependencies } from "./scanner";
+import { generateSummary } from "./summary";
+import { ApiClientError } from "./api";
 
 async function run(): Promise<void> {
   try {

@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { DepHealthClient, ScanResult } from "./api.js";
+import { DepHealthClient, ScanResult } from "./api";
 
 export async function scanDependencies(
   apiKey: string,
