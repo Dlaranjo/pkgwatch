@@ -7,6 +7,7 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as ses from "aws-cdk-lib/aws-ses";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as wafv2 from "aws-cdk-lib/aws-wafv2";
@@ -234,13 +235,26 @@ export class ApiStack extends cdk.Stack {
 
     apiKeysTable.grantReadWriteData(signupHandler);
 
-    // Grant SES permissions for email sending - SCOPED to specific identity
+    // ===========================================
+    // SES: Email Identity for domain verification
+    // ===========================================
+    const emailIdentity = new ses.EmailIdentity(this, "DepHealthEmailIdentity", {
+      identity: ses.Identity.domain("dephealth.laranjo.dev"),
+    });
+
+    // Output DKIM tokens for DNS configuration
+    new cdk.CfnOutput(this, "SesDkimTokens", {
+      value: cdk.Fn.join(",", emailIdentity.dkimRecords.map(r => r.name)),
+      description: "DKIM CNAME record names for DNS configuration",
+    });
+
+    // Grant SES permissions for email sending - SCOPED to domain identity
     const sesPolicy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ["ses:SendEmail", "ses:SendRawEmail"],
       resources: [
-        // Restrict to specific verified identity only
-        `arn:aws:ses:${this.region}:${this.account}:identity/noreply@dephealth.laranjo.dev`,
+        // Domain-level identity allows sending from any address @dephealth.laranjo.dev
+        `arn:aws:ses:${this.region}:${this.account}:identity/dephealth.laranjo.dev`,
       ],
     });
 
