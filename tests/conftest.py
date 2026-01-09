@@ -43,6 +43,7 @@ def mock_dynamodb():
                 {"AttributeName": "email", "AttributeType": "S"},
                 {"AttributeName": "stripe_customer_id", "AttributeType": "S"},
                 {"AttributeName": "verification_token", "AttributeType": "S"},
+                {"AttributeName": "magic_token", "AttributeType": "S"},
             ],
             GlobalSecondaryIndexes=[
                 {
@@ -65,11 +66,16 @@ def mock_dynamodb():
                     "KeySchema": [{"AttributeName": "verification_token", "KeyType": "HASH"}],
                     "Projection": {"ProjectionType": "KEYS_ONLY"},
                 },
+                {
+                    "IndexName": "magic-token-index",
+                    "KeySchema": [{"AttributeName": "magic_token", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "KEYS_ONLY"},
+                },
             ],
             BillingMode="PAY_PER_REQUEST",
         )
 
-        # Packages table
+        # Packages table with GSIs
         dynamodb.create_table(
             TableName="dephealth-packages",
             KeySchema=[
@@ -79,6 +85,27 @@ def mock_dynamodb():
             AttributeDefinitions=[
                 {"AttributeName": "pk", "AttributeType": "S"},
                 {"AttributeName": "sk", "AttributeType": "S"},
+                {"AttributeName": "tier", "AttributeType": "N"},
+                {"AttributeName": "risk_level", "AttributeType": "S"},
+                {"AttributeName": "last_updated", "AttributeType": "S"},
+            ],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": "tier-index",
+                    "KeySchema": [
+                        {"AttributeName": "tier", "KeyType": "HASH"},
+                        {"AttributeName": "last_updated", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "KEYS_ONLY"},
+                },
+                {
+                    "IndexName": "risk-level-index",
+                    "KeySchema": [
+                        {"AttributeName": "risk_level", "KeyType": "HASH"},
+                        {"AttributeName": "last_updated", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
             ],
             BillingMode="PAY_PER_REQUEST",
         )

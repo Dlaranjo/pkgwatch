@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import boto3
-from boto3.dynamodb.conditions import Attr
+from boto3.dynamodb.conditions import Attr, Key
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
@@ -83,22 +83,32 @@ def handler(event, context):
     table = dynamodb.Table(API_KEYS_TABLE)
     now = datetime.now(timezone.utc)
 
-    # Scan for user with this magic token
-    # Note: In production with many users, consider a GSI on magic_token
+    # Query for user with this magic token using GSI
     try:
-        response = table.scan(
-            FilterExpression=Attr("magic_token").eq(token),
-            ProjectionExpression="pk, sk, email, magic_expires, tier",
+        response = table.query(
+            IndexName="magic-token-index",
+            KeyConditionExpression=Key("magic_token").eq(token),
         )
     except Exception as e:
-        logger.error(f"Error scanning for token: {e}")
+        logger.error(f"Error querying for token: {e}")
         return _redirect_with_error("internal_error", "Failed to verify token")
 
     items = response.get("Items", [])
     if not items:
         return _redirect_with_error("invalid_token", "Invalid or expired login link")
 
-    user = items[0]
+    # GSI returns only keys, fetch full item
+    pk = items[0]["pk"]
+    sk = items[0]["sk"]
+
+    try:
+        full_item_response = table.get_item(Key={"pk": pk, "sk": sk})
+        user = full_item_response.get("Item")
+        if not user:
+            return _redirect_with_error("invalid_token", "Invalid or expired login link")
+    except Exception as e:
+        logger.error(f"Error fetching user item: {e}")
+        return _redirect_with_error("internal_error", "Failed to verify token")
     user_id = user["pk"]
     email = user["email"]
 
@@ -120,14 +130,22 @@ def handler(event, context):
         except (ValueError, TypeError):
             pass
 
-    # Clear the magic token (single use)
+    # Clear the magic token (single use) with conditional expression to prevent replay attacks
     try:
         table.update_item(
             Key={"pk": user_id, "sk": user["sk"]},
             UpdateExpression="REMOVE magic_token, magic_expires SET last_login = :now",
-            ExpressionAttributeValues={":now": now.isoformat()},
+            ConditionExpression="attribute_exists(magic_token) AND magic_token = :expected",
+            ExpressionAttributeValues={
+                ":now": now.isoformat(),
+                ":expected": token,  # The token we just validated
+            },
         )
-    except Exception as e:
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            # Token was already consumed (replay attack or race condition)
+            logger.warning(f"Magic token already consumed for {user_id}")
+            return _redirect_with_error("token_already_used", "This login link has already been used")
         logger.warning(f"Failed to clear magic token: {e}")
 
     # Create session token
