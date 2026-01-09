@@ -33,16 +33,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "functions", "c
 
 
 @pytest.fixture
-def dlq_environment():
+def dlq_environment(monkeypatch):
     """Set up environment variables for DLQ processor."""
-    os.environ["DLQ_URL"] = "https://sqs.us-east-1.amazonaws.com/123456789012/test-dlq"
-    os.environ["MAIN_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123456789012/test-main"
-    os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-    os.environ["MAX_DLQ_RETRIES"] = "5"
-    yield
-    # Cleanup
-    for key in ["DLQ_URL", "MAIN_QUEUE_URL", "PACKAGES_TABLE", "MAX_DLQ_RETRIES"]:
-        os.environ.pop(key, None)
+    monkeypatch.setenv("DLQ_URL", "https://sqs.us-east-1.amazonaws.com/123456789012/test-dlq")
+    monkeypatch.setenv("MAIN_QUEUE_URL", "https://sqs.us-east-1.amazonaws.com/123456789012/test-main")
+    monkeypatch.setenv("PACKAGES_TABLE", "dephealth-packages")
+    monkeypatch.setenv("MAX_DLQ_RETRIES", "5")
+
+    # Reload module to pick up new env vars
+    import importlib
+    import collectors.dlq_processor as dlq_module
+    importlib.reload(dlq_module)
+
+    yield dlq_module
+    # monkeypatch automatically cleans up
 
 
 @pytest.fixture
@@ -98,13 +102,13 @@ class TestDLQHandler:
         assert "DLQ_URL not configured" in result["error"]
 
     @mock_aws
-    def test_handler_returns_error_without_main_queue_url(self, mock_dynamodb):
+    def test_handler_returns_error_without_main_queue_url(self, mock_dynamodb, monkeypatch):
         """Should return error when MAIN_QUEUE_URL is not configured."""
-        os.environ["DLQ_URL"] = "https://sqs.example.com/dlq"
-        os.environ["MAIN_QUEUE_URL"] = ""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
+        monkeypatch.setenv("DLQ_URL", "https://sqs.example.com/dlq")
+        monkeypatch.setenv("MAIN_QUEUE_URL", "")
+        monkeypatch.setenv("PACKAGES_TABLE", "dephealth-packages")
 
-        # Need to reload module to pick up new env vars
+        # Reload module to pick up new env vars
         import importlib
         import collectors.dlq_processor as dlq_module
         importlib.reload(dlq_module)
@@ -116,19 +120,9 @@ class TestDLQHandler:
 
     @mock_aws
     def test_handler_processes_messages(
-        self, mock_dynamodb, sample_sqs_message
+        self, mock_dynamodb, dlq_environment, sample_sqs_message
     ):
         """Should process messages from DLQ and requeue them."""
-        os.environ["DLQ_URL"] = "https://sqs.us-east-1.amazonaws.com/123456789012/test-dlq"
-        os.environ["MAIN_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123456789012/test-main"
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["MAX_DLQ_RETRIES"] = "5"
-
-        # Reload module to pick up new env vars
-        import importlib
-        import collectors.dlq_processor as dlq_module
-        importlib.reload(dlq_module)
-
         # Mock SQS calls
         with patch("collectors.dlq_processor.sqs") as mock_sqs:
             # First call returns messages, second returns empty
@@ -137,7 +131,7 @@ class TestDLQHandler:
                 {"Messages": []},  # Empty queue
             ]
 
-            result = dlq_module.handler({}, None)
+            result = dlq_environment.handler({}, None)
 
             assert result["processed"] == 1
             assert result["requeued"] == 1
@@ -151,18 +145,8 @@ class TestDLQHandler:
             assert body["_retry_count"] == 1
 
     @mock_aws
-    def test_handler_processes_multiple_batches(self, mock_dynamodb):
+    def test_handler_processes_multiple_batches(self, mock_dynamodb, dlq_environment):
         """Should process multiple batches until queue is empty."""
-        os.environ["DLQ_URL"] = "https://sqs.us-east-1.amazonaws.com/123456789012/test-dlq"
-        os.environ["MAIN_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123456789012/test-main"
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["MAX_DLQ_RETRIES"] = "5"
-
-        # Reload module to pick up new env vars
-        import importlib
-        import collectors.dlq_processor as dlq_module
-        importlib.reload(dlq_module)
-
         messages_batch_1 = [
             {
                 "MessageId": f"msg-{i}",
@@ -187,10 +171,117 @@ class TestDLQHandler:
                 {"Messages": []},  # Empty
             ]
 
-            result = dlq_module.handler({}, None)
+            result = dlq_environment.handler({}, None)
 
             assert result["processed"] == 15
             assert result["requeued"] == 15
+
+    @mock_aws
+    def test_handler_respects_max_iterations_limit(self, mock_dynamodb, dlq_environment):
+        """Should stop after 10 batches even if messages remain."""
+        # Create 12 batches worth of messages (handler has max_iterations=10)
+        single_message = {
+            "MessageId": "msg-123",
+            "ReceiptHandle": "receipt-123",
+            "Body": json.dumps({"ecosystem": "npm", "name": "test"}),
+        }
+
+        # Return 12 batches with messages
+        batches = [{"Messages": [single_message]} for _ in range(12)]
+
+        with patch("collectors.dlq_processor.sqs") as mock_sqs:
+            mock_sqs.receive_message.side_effect = batches
+
+            result = dlq_environment.handler({}, None)
+
+            # Should only process 10 batches (max_iterations limit)
+            assert result["processed"] == 10
+            assert result["requeued"] == 10
+            # Verify receive_message was called exactly 10 times
+            assert mock_sqs.receive_message.call_count == 10
+
+    @mock_aws
+    def test_handler_tracks_mixed_results(self, mock_dynamodb, dlq_environment):
+        """Should correctly track requeued, failed, and skipped messages."""
+        messages = [
+            # Message 1: Will be requeued (retry count < max)
+            {
+                "MessageId": "msg-requeue",
+                "ReceiptHandle": "receipt-1",
+                "Body": json.dumps({
+                    "ecosystem": "npm",
+                    "name": "test-requeue",
+                    "_retry_count": 1,
+                }),
+            },
+            # Message 2: Will be permanently failed (retry count >= max)
+            {
+                "MessageId": "msg-failed",
+                "ReceiptHandle": "receipt-2",
+                "Body": json.dumps({
+                    "ecosystem": "npm",
+                    "name": "test-failed",
+                    "_retry_count": 5,  # At max
+                    "_last_error": "Persistent error",
+                }),
+            },
+            # Message 3: Invalid JSON, will be skipped
+            {
+                "MessageId": "msg-invalid",
+                "ReceiptHandle": "receipt-3",
+                "Body": "not valid json {{{",
+            },
+        ]
+
+        with patch("collectors.dlq_processor.sqs") as mock_sqs:
+            mock_sqs.receive_message.side_effect = [
+                {"Messages": messages},
+                {"Messages": []},
+            ]
+
+            result = dlq_environment.handler({}, None)
+
+            assert result["processed"] == 3
+            assert result["requeued"] == 1
+            assert result["permanently_failed"] == 1
+            # Skipped messages don't increment either counter
+
+    @mock_aws
+    def test_handler_continues_after_message_processing_error(
+        self, mock_dynamodb, dlq_environment
+    ):
+        """Should continue processing remaining messages after one fails."""
+        messages = [
+            {
+                "MessageId": f"msg-{i}",
+                "ReceiptHandle": f"receipt-{i}",
+                "Body": json.dumps({"ecosystem": "npm", "name": f"package-{i}"}),
+            }
+            for i in range(3)
+        ]
+
+        with patch("collectors.dlq_processor.sqs") as mock_sqs, \
+             patch("collectors.dlq_processor._process_dlq_message") as mock_process:
+
+            mock_sqs.receive_message.side_effect = [
+                {"Messages": messages},
+                {"Messages": []},
+            ]
+
+            # First message raises exception, others succeed
+            mock_process.side_effect = [
+                Exception("Processing error"),
+                "requeued",
+                "requeued",
+            ]
+
+            result = dlq_environment.handler({}, None)
+
+            # First message failed (exception), only last 2 counted as processed
+            assert result["processed"] == 2
+            assert result["requeued"] == 2
+            # Verify all 3 were attempted
+            assert mock_process.call_count == 3
 
 
 # =============================================================================
@@ -301,21 +392,11 @@ class TestProcessDLQMessage:
 
     @mock_aws
     def test_deletes_message_after_successful_requeue(
-        self, mock_dynamodb, sample_sqs_message
+        self, mock_dynamodb, dlq_environment, sample_sqs_message
     ):
         """Should delete message from DLQ after successful requeue."""
-        os.environ["DLQ_URL"] = "https://sqs.us-east-1.amazonaws.com/123456789012/test-dlq"
-        os.environ["MAIN_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123456789012/test-main"
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["MAX_DLQ_RETRIES"] = "5"
-
-        # Reload module to pick up new env vars
-        import importlib
-        import collectors.dlq_processor as dlq_module
-        importlib.reload(dlq_module)
-
         with patch("collectors.dlq_processor.sqs") as mock_sqs:
-            _process_dlq_message = dlq_module._process_dlq_message
+            _process_dlq_message = dlq_environment._process_dlq_message
 
             _process_dlq_message(sample_sqs_message)
 
