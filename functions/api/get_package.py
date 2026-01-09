@@ -331,7 +331,9 @@ def _rate_limit_response(user: dict, cors_headers: dict = None) -> dict:
     """Generate rate limit exceeded response with Retry-After header."""
     now = datetime.now(timezone.utc)
     days_in_month = calendar.monthrange(now.year, now.month)[1]
-    seconds_until_reset = (days_in_month - now.day) * 86400 + (24 - now.hour) * 3600
+    # Calculate exact reset timestamp (midnight on first of next month)
+    reset_timestamp = int(now.replace(day=days_in_month, hour=23, minute=59, second=59).timestamp() + 1)
+    seconds_until_reset = reset_timestamp - int(now.timestamp())
 
     headers = {
         "Content-Type": "application/json",

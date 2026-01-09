@@ -208,7 +208,7 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: Verification email sent
+                    example: Check your email for a verification link. If you already have an account, try logging in instead.
         '400':
           $ref: '#/components/responses/BadRequest'
 
@@ -335,16 +335,13 @@ paths:
               schema:
                 type: object
                 properties:
-                  key:
+                  api_key:
                     type: string
                     description: The API key (only shown once)
-                    example: dk_live_abc123def456
-                  key_id:
+                    example: dh_abc123def456
+                  message:
                     type: string
-                    example: key_abc123
-                  created_at:
-                    type: string
-                    format: date-time
+                    example: API key created. This key will only be shown once - save it securely!
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -376,7 +373,17 @@ paths:
                     type: string
                     example: API key revoked successfully
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: Bad request (e.g., cannot revoke last key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                cannotRevokeLastKey:
+                  value:
+                    error:
+                      code: cannot_revoke_last_key
+                      message: Cannot revoke your only API key. Create a new one first.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -700,23 +707,44 @@ components:
     UsageResponse:
       type: object
       properties:
-        user_id:
+        tier:
           type: string
-        monthly_limit:
-          type: integer
-          example: 5000
-        current_usage:
-          type: integer
-          example: 150
-        remaining:
-          type: integer
-          example: 4850
-        period_start:
-          type: string
-          format: date-time
-        period_end:
-          type: string
-          format: date-time
+          enum: [free, starter, pro, business]
+          example: free
+        usage:
+          type: object
+          properties:
+            requests_this_month:
+              type: integer
+              example: 150
+            monthly_limit:
+              type: integer
+              example: 5000
+            remaining:
+              type: integer
+              example: 4850
+            usage_percentage:
+              type: number
+              example: 3.0
+        reset:
+          type: object
+          properties:
+            date:
+              type: string
+              format: date-time
+              example: "2026-02-01T00:00:00Z"
+            seconds_until_reset:
+              type: integer
+              example: 2592000
+        limits_by_tier:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            free: 5000
+            starter: 25000
+            pro: 100000
+            business: 500000
 
     UserInfo:
       type: object
@@ -728,14 +756,20 @@ components:
           format: email
         tier:
           type: string
-          enum: [free, starter, pro, enterprise]
+          enum: [free, starter, pro, business]
           example: free
         monthly_limit:
           type: integer
           example: 5000
-        current_usage:
+        requests_this_month:
           type: integer
           example: 150
+        created_at:
+          type: string
+          format: date-time
+        last_login:
+          type: string
+          format: date-time
 
     ApiKeyInfo:
       type: object
@@ -745,8 +779,15 @@ components:
           example: key_abc123
         key_prefix:
           type: string
-          description: First few characters of the key for identification
-          example: dk_live_abc...
+          description: Masked key showing prefix and suffix for identification
+          example: dh_...abc12345
+        tier:
+          type: string
+          enum: [free, starter, pro, business]
+          example: free
+        requests_this_month:
+          type: integer
+          example: 150
         created_at:
           type: string
           format: date-time

@@ -15,13 +15,6 @@ from boto3.dynamodb.conditions import Key
 
 from shared.response_utils import decimal_default, error_response
 
-
-def _decimal_default(obj):
-    """JSON encoder for Decimal types from DynamoDB."""
-    if isinstance(obj, Decimal):
-        return int(obj) if obj % 1 == 0 else float(obj)
-    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -94,7 +87,7 @@ def handler(event, context):
             "monthly_limit": _get_tier_limit(user_record.get("tier", "free")),
             "created_at": user_record.get("created_at"),
             "last_login": user_record.get("last_login"),
-        }, default=_decimal_default),
+        }, default=decimal_default),
     }
 
 
