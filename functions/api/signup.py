@@ -38,6 +38,13 @@ BASE_URL = os.environ.get("BASE_URL", "https://dephealth.laranjo.dev")
 EMAIL_REGEX = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
 
 
+def _get_origin(event: dict) -> str | None:
+    """Extract Origin header from request (case-insensitive)."""
+    headers = event.get("headers", {}) or {}
+    # API Gateway may lowercase headers
+    return headers.get("origin") or headers.get("Origin")
+
+
 def handler(event, context):
     """
     Lambda handler for POST /signup.
@@ -54,6 +61,7 @@ def handler(event, context):
     to prevent timing-based enumeration.
     """
     start_time = time.time()
+    origin = _get_origin(event)
 
     # Generic success message - same whether email exists or not
     success_message = (
@@ -66,14 +74,14 @@ def handler(event, context):
         body = json.loads(event.get("body", "{}"))
     except json.JSONDecodeError:
         # Validation errors can return early - they don't reveal email existence
-        return error_response(400, "invalid_json", "Request body must be valid JSON")
+        return error_response(400, "invalid_json", "Request body must be valid JSON", origin=origin)
 
     email = body.get("email", "").strip().lower()
 
     # Validate email format
     if not email or not EMAIL_REGEX.match(email):
         # Validation errors can return early - they don't reveal email existence
-        return error_response(400, "invalid_email", "Please provide a valid email address")
+        return error_response(400, "invalid_email", "Please provide a valid email address", origin=origin)
 
     # Check if email already exists using email-index GSI
     table = dynamodb.Table(API_KEYS_TABLE)
@@ -89,7 +97,7 @@ def handler(event, context):
             if item.get("email_verified", False):
                 logger.info(f"Signup attempted for existing verified email (not revealing)")
                 # Same response as new signup - no enumeration possible
-                return _timed_response(start_time, success_response({"message": success_message}))
+                return _timed_response(start_time, success_response({"message": success_message}, origin=origin))
 
         # Clean up any stale pending signups (expired verification tokens)
         now = datetime.now(timezone.utc)
@@ -112,7 +120,7 @@ def handler(event, context):
         logger.error(f"Error checking existing email: {e}")
         return _timed_response(
             start_time,
-            error_response(500, "internal_error", "An error occurred. Please try again."),
+            error_response(500, "internal_error", "An error occurred. Please try again.", origin=origin),
         )
 
     # Generate user ID and verification token
@@ -142,12 +150,12 @@ def handler(event, context):
     except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
         # Race condition - same response to prevent enumeration
         logger.info(f"Signup race condition for email (not revealing)")
-        return _timed_response(start_time, success_response({"message": success_message}))
+        return _timed_response(start_time, success_response({"message": success_message}, origin=origin))
     except Exception as e:
         logger.error(f"Error creating pending user: {e}")
         return _timed_response(
             start_time,
-            error_response(500, "internal_error", "An error occurred. Please try again."),
+            error_response(500, "internal_error", "An error occurred. Please try again.", origin=origin),
         )
 
     # Send verification email
@@ -161,7 +169,7 @@ def handler(event, context):
 
     logger.info(f"Signup initiated for {email}")
 
-    return _timed_response(start_time, success_response({"message": success_message}))
+    return _timed_response(start_time, success_response({"message": success_message}, origin=origin))
 
 
 def _send_verification_email(email: str, verification_url: str):

@@ -5,8 +5,44 @@ Provides consistent response formatting for success and error responses.
 """
 
 import json
+import os
 from decimal import Decimal
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
+
+# CORS configuration
+_PROD_ORIGINS = [
+    "https://dephealth.laranjo.dev",
+    "https://app.dephealth.laranjo.dev",
+]
+_DEV_ORIGINS = [
+    "http://localhost:4321",  # Astro dev server
+    "http://localhost:3000",
+]
+ALLOWED_ORIGINS: List[str] = (
+    _PROD_ORIGINS + _DEV_ORIGINS
+    if os.environ.get("ALLOW_DEV_CORS") == "true"
+    else _PROD_ORIGINS
+)
+
+
+def get_cors_headers(origin: Optional[str]) -> Dict[str, str]:
+    """
+    Get CORS headers if origin is allowed.
+
+    Args:
+        origin: The Origin header from the request
+
+    Returns:
+        Dict with CORS headers if origin is allowed, empty dict otherwise
+    """
+    if origin and origin in ALLOWED_ORIGINS:
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, X-API-Key, Authorization",
+            "Access-Control-Allow-Credentials": "true",
+        }
+    return {}
 
 
 def decimal_default(obj: Any) -> Any:
@@ -50,6 +86,7 @@ def error_response(
     headers: Optional[Dict[str, str]] = None,
     details: Optional[Dict[str, Any]] = None,
     retry_after: Optional[int] = None,
+    origin: Optional[str] = None,
 ) -> dict:
     """
     Create an error response.
@@ -61,11 +98,13 @@ def error_response(
         headers: Additional response headers
         details: Optional additional error details
         retry_after: Optional Retry-After header value in seconds
+        origin: Request Origin header for CORS
 
     Returns:
         Lambda response dict
     """
     response_headers = {"Content-Type": "application/json"}
+    response_headers.update(get_cors_headers(origin))
     if headers:
         response_headers.update(headers)
     if retry_after is not None:
@@ -91,6 +130,7 @@ def success_response(
     data: Any,
     status_code: int = 200,
     headers: Optional[Dict[str, str]] = None,
+    origin: Optional[str] = None,
 ) -> dict:
     """
     Create a success response.
@@ -99,11 +139,13 @@ def success_response(
         data: Response body data
         status_code: HTTP status code (default 200)
         headers: Additional response headers
+        origin: Request Origin header for CORS
 
     Returns:
         Lambda response dict
     """
     response_headers = {"Content-Type": "application/json"}
+    response_headers.update(get_cors_headers(origin))
     if headers:
         response_headers.update(headers)
 
