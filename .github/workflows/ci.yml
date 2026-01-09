@@ -16,6 +16,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # DepHealth dogfooding - scan our own dependencies
+      - name: Scan monorepo dependencies
+        uses: ./action
+        with:
+          api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+          working-directory: '.'
+          include-dev: 'true'
+          soft-fail: 'true'
+        continue-on-error: true
+
+      - name: Scan infrastructure dependencies
+        uses: ./action
+        with:
+          api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+          working-directory: 'infrastructure'
+          include-dev: 'true'
+          soft-fail: 'true'
+        continue-on-error: true
+
+      - name: Scan landing page dependencies
+        uses: ./action
+        with:
+          api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+          working-directory: 'landing-page'
+          include-dev: 'true'
+          soft-fail: 'true'
+        continue-on-error: true
+
       # Python tests
       - name: Set up Python
         uses: actions/setup-python@v5
