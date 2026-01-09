@@ -10,6 +10,7 @@ Dispatches package refresh jobs to SQS based on tier:
 import json
 import logging
 import os
+import random
 from datetime import datetime, timezone
 
 import boto3
@@ -104,6 +105,10 @@ def handler(event, context):
         for j, pk in enumerate(batch):
             # pk format is "ecosystem#name", e.g., "npm#lodash"
             ecosystem, name = pk.split("#", 1)
+
+            # Add random jitter (0-60 seconds) to spread load
+            jitter = random.randint(0, 60)
+
             entries.append({
                 "Id": str(i + j),
                 "MessageBody": json.dumps({
@@ -113,6 +118,7 @@ def handler(event, context):
                     "reason": reason,
                     "dispatched_at": datetime.now(timezone.utc).isoformat(),
                 }),
+                "DelaySeconds": jitter,
             })
 
         try:
