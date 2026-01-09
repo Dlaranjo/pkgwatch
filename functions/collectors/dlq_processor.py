@@ -23,16 +23,41 @@ dynamodb = boto3.resource("dynamodb")
 
 # Import shared utilities
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
-from metrics import emit_metric, emit_batch_metrics
+from metrics import emit_metric, emit_batch_metrics, emit_dlq_metric
 
 DLQ_URL = os.environ.get("DLQ_URL")
 MAIN_QUEUE_URL = os.environ.get("MAIN_QUEUE_URL")
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")
 MAX_DLQ_RETRIES = int(os.environ.get("MAX_DLQ_RETRIES", "5"))
 
-# Error classification patterns
-TRANSIENT_ERRORS = ["timeout", "503", "502", "504", "rate limit", "connection", "unavailable", "temporarily"]
-PERMANENT_ERRORS = ["404", "not found", "invalid package", "forbidden", "validation_error", "Invalid package name"]
+# Error classification patterns (merged from multiple sources)
+TRANSIENT_ERRORS = [
+    "timeout",
+    "timed out",
+    "503",
+    "502",
+    "504",
+    "rate limit",
+    "too many requests",
+    "connection",
+    "connection reset",
+    "connection refused",
+    "unavailable",
+    "temporarily",
+    "temporarily unavailable",
+    "service unavailable",
+]
+PERMANENT_ERRORS = [
+    "404",
+    "not found",
+    "does not exist",
+    "invalid package",
+    "malformed",
+    "forbidden",
+    "unauthorized",
+    "validation_error",
+    "Invalid package name",
+]
 
 
 def classify_error(error_message: str) -> str:
@@ -52,15 +77,41 @@ def classify_error(error_message: str) -> str:
 
     # Check for permanent errors first (don't retry these)
     for pattern in PERMANENT_ERRORS:
-        if pattern in error_lower:
+        if pattern.lower() in error_lower:
             return "permanent"
 
     # Check for transient errors (worth retrying)
     for pattern in TRANSIENT_ERRORS:
-        if pattern in error_lower:
+        if pattern.lower() in error_lower:
             return "transient"
 
     return "unknown"
+
+
+def should_retry(body: dict) -> bool:
+    """
+    Determine if message should be retried based on error and retry count.
+
+    Args:
+        body: Message body with _retry_count, _last_error, _error_class
+
+    Returns:
+        True if message should be retried, False otherwise
+    """
+    retry_count = body.get("_retry_count", 0)
+    last_error = body.get("_last_error", "")
+    error_class = body.get("_error_class", "unknown")
+
+    # Don't retry permanent errors
+    if error_class == "permanent":
+        logger.info(f"Skipping retry for permanent error: {last_error}")
+        return False
+
+    # Don't retry if max retries exceeded
+    if retry_count >= MAX_DLQ_RETRIES:
+        return False
+
+    return True
 
 
 def handler(event, context):
@@ -161,24 +212,24 @@ def _process_dlq_message(message: dict) -> str:
     # Classify the error to determine if we should retry
     error_type = classify_error(last_error)
 
-    # Don't retry permanent errors (e.g., validation errors, 404s)
-    if error_type == "permanent":
-        logger.warning(
-            f"Message {message_id} has permanent error, not retrying: {last_error}"
-        )
-        _store_permanent_failure(body, message_id, last_error, error_type)
-        _delete_dlq_message(message)
-        return "permanently_failed"
+    # Store error classification for should_retry helper
+    body["_error_class"] = error_type
 
-    # Check if exceeded max retries
-    if retry_count >= MAX_DLQ_RETRIES:
+    # Use should_retry helper for consistent retry logic
+    if not should_retry(body):
         # Move to permanent failure storage
-        logger.warning(
-            f"Message {message_id} exceeded max retries ({retry_count}), "
-            f"last error: {last_error}"
-        )
+        if error_type == "permanent":
+            logger.warning(
+                f"Message {message_id} has permanent error, not retrying: {last_error}"
+            )
+        else:
+            logger.warning(
+                f"Message {message_id} exceeded max retries ({retry_count}), "
+                f"last error: {last_error}"
+            )
         _store_permanent_failure(body, message_id, last_error, error_type)
         _delete_dlq_message(message)
+        emit_dlq_metric("permanent_failure", body.get("name"))
         return "permanently_failed"
 
     # Requeue with incremented retry count and delay
@@ -197,6 +248,7 @@ def _process_dlq_message(message: dict) -> str:
             f"Requeued message {message_id} with delay {delay_seconds}s "
             f"(retry {retry_count + 1}/{MAX_DLQ_RETRIES}, error_type: {error_type})"
         )
+        emit_dlq_metric("requeued", body.get("name"))
     except Exception as e:
         logger.error(f"Failed to requeue message {message_id}: {e}")
         # Don't delete from DLQ if requeue failed - will be retried

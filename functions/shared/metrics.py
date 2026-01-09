@@ -6,6 +6,7 @@ Provides utilities for emitting custom metrics to CloudWatch.
 
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import boto3
@@ -41,6 +42,7 @@ def emit_metric(
             "MetricName": metric_name,
             "Value": value,
             "Unit": unit,
+            "Timestamp": datetime.now(timezone.utc),
         }
 
         if dimensions:
@@ -88,6 +90,7 @@ def emit_batch_metrics(metrics: list[Dict[str, Any]]) -> None:
                 "MetricName": metric["metric_name"],
                 "Value": metric.get("value", 1.0),
                 "Unit": metric.get("unit", "Count"),
+                "Timestamp": datetime.now(timezone.utc),
             }
 
             dimensions = metric.get("dimensions")
@@ -111,3 +114,58 @@ def emit_batch_metrics(metrics: list[Dict[str, Any]]) -> None:
     except Exception as e:
         # Don't fail the Lambda if metrics fail
         logger.warning(f"Failed to emit batch metrics: {e}")
+
+
+def emit_error_metric(
+    error_type: str,
+    service: Optional[str] = None,
+    handler: Optional[str] = None,
+) -> None:
+    """
+    Emit an error metric with standard dimensions.
+
+    Args:
+        error_type: Type of error (e.g., 'rate_limit', 'timeout', 'internal')
+        service: External service name (e.g., 'github', 'npm')
+        handler: Lambda handler name
+    """
+    dimensions = {"ErrorType": error_type}
+
+    if service:
+        dimensions["Service"] = service
+    if handler:
+        dimensions["Handler"] = handler
+
+    emit_metric("Errors", dimensions=dimensions)
+
+
+def emit_circuit_breaker_metric(
+    circuit_name: str,
+    state: str,
+) -> None:
+    """Emit circuit breaker state change metric."""
+    emit_metric(
+        "CircuitBreakerStateChange",
+        dimensions={
+            "CircuitName": circuit_name,
+            "State": state,
+        }
+    )
+
+
+def emit_dlq_metric(
+    action: str,
+    package_name: Optional[str] = None,
+) -> None:
+    """
+    Emit DLQ processing metric.
+
+    Args:
+        action: 'requeued', 'permanent_failure', 'processed'
+        package_name: Name of package (optional)
+    """
+    dimensions = {"Action": action}
+    if package_name:
+        dimensions["Package"] = package_name[:50]  # Truncate for dimension limit
+
+    emit_metric("DLQProcessing", dimensions=dimensions)
