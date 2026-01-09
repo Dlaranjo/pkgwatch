@@ -6,6 +6,9 @@ omit =
     functions/collectors/refresh_dispatcher.py
     # Stripe webhook requires complex Stripe API mocking
     functions/api/stripe_webhook.py
+    # Pure data definitions with no logic
+    functions/shared/constants.py
+    functions/shared/types.py
 
 [report]
 exclude_lines =
