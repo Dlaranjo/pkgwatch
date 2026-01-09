@@ -23,19 +23,64 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # Import collectors (these will be bundled with the Lambda)
-from depsdev_collector import get_package_info as get_depsdev_info
-from npm_collector import get_npm_metadata
-from github_collector import GitHubCollector, parse_github_url
-from bundlephobia_collector import get_bundle_size
+from .depsdev_collector import get_package_info as get_depsdev_info
+from .npm_collector import get_npm_metadata
+from .github_collector import GitHubCollector, parse_github_url
+from .bundlephobia_collector import get_bundle_size
 
-dynamodb = boto3.resource("dynamodb")
-s3 = boto3.client("s3")
-secretsmanager = boto3.client("secretsmanager")
+# Lazy initialization of boto3 clients to reduce cold start time
+_dynamodb = None
+_s3 = None
+_secretsmanager = None
+_packages_table = None
+_api_keys_table = None
 
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")
 RAW_DATA_BUCKET = os.environ.get("RAW_DATA_BUCKET", "dephealth-raw-data")
 GITHUB_TOKEN_SECRET_ARN = os.environ.get("GITHUB_TOKEN_SECRET_ARN")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
+
+
+def get_dynamodb():
+    """Lazy initialize DynamoDB resource."""
+    global _dynamodb
+    if _dynamodb is None:
+        _dynamodb = boto3.resource("dynamodb")
+    return _dynamodb
+
+
+def get_packages_table():
+    """Lazy initialize DynamoDB packages table."""
+    global _packages_table
+    if _packages_table is None:
+        dynamodb = get_dynamodb()
+        _packages_table = dynamodb.Table(PACKAGES_TABLE)
+    return _packages_table
+
+
+def get_api_keys_table():
+    """Lazy initialize DynamoDB API keys table."""
+    global _api_keys_table
+    if _api_keys_table is None:
+        dynamodb = get_dynamodb()
+        _api_keys_table = dynamodb.Table(API_KEYS_TABLE)
+    return _api_keys_table
+
+
+def get_s3():
+    """Lazy initialize S3 client."""
+    global _s3
+    if _s3 is None:
+        _s3 = boto3.client("s3")
+    return _s3
+
+
+def get_secretsmanager():
+    """Lazy initialize Secrets Manager client."""
+    global _secretsmanager
+    if _secretsmanager is None:
+        _secretsmanager = boto3.client("secretsmanager")
+    return _secretsmanager
 
 # Semaphore to limit concurrent GitHub API calls per Lambda instance
 # With maxConcurrency=10 Lambdas * 5 = max 50 concurrent GitHub calls
@@ -55,6 +100,7 @@ def get_github_token() -> Optional[str]:
         return None
 
     try:
+        secretsmanager = get_secretsmanager()
         response = secretsmanager.get_secret_value(SecretId=GITHUB_TOKEN_SECRET_ARN)
         secret_string = response["SecretString"]
 
@@ -78,7 +124,7 @@ def _get_rate_limit_window_key() -> str:
 
 def _get_total_github_calls(window_key: str) -> int:
     """Sum calls across all shards for the window."""
-    table = dynamodb.Table(API_KEYS_TABLE)
+    table = get_api_keys_table()
     total = 0
 
     for shard_id in range(RATE_LIMIT_SHARDS):
@@ -102,7 +148,7 @@ def _check_and_increment_github_rate_limit() -> bool:
     Returns:
         True if request is allowed, False if rate limit exceeded.
     """
-    table = dynamodb.Table(API_KEYS_TABLE)
+    table = get_api_keys_table()
     now = datetime.now(timezone.utc)
     window_key = _get_rate_limit_window_key()
     shard_id = random.randint(0, RATE_LIMIT_SHARDS - 1)
@@ -303,6 +349,7 @@ def store_raw_data(ecosystem: str, name: str, data: dict):
     """Store raw collected data in S3 for debugging."""
     try:
         key = f"{ecosystem}/{name}/{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.json"
+        s3 = get_s3()
         s3.put_object(
             Bucket=RAW_DATA_BUCKET,
             Key=key,
@@ -316,7 +363,7 @@ def store_raw_data(ecosystem: str, name: str, data: dict):
 
 def store_package_data(ecosystem: str, name: str, data: dict, tier: int):
     """Store processed package data in DynamoDB."""
-    table = dynamodb.Table(PACKAGES_TABLE)
+    table = get_packages_table()
 
     now = datetime.now(timezone.utc).isoformat()
 

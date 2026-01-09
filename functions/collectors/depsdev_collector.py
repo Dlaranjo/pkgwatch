@@ -142,7 +142,7 @@ async def get_package_info(name: str, ecosystem: str = "npm") -> Optional[dict]:
         if versions:
             latest_version = versions[-1].get("versionKey", {}).get("version", "")
 
-    # 3. Parallel calls for version, project (if we know repo URL), and dependents
+    # 3. Parallel calls for version, project, and dependents (all 3 in parallel!)
     # This reduces collection time by ~60% compared to sequential calls
     version_data = {}
     project_data = {}
@@ -159,12 +159,20 @@ async def get_package_info(name: str, ecosystem: str = "npm") -> Optional[dict]:
         tasks.append(retry_with_backoff(client.get, version_url))
         task_names.append("version")
 
+    # Project URL (parallel if projectKey available)
+    project_key = pkg_data.get("projectKey", "")
+    if project_key:
+        encoded_project = encode_repo_url(project_key)
+        project_url = f"{DEPSDEV_API}/projects/{encoded_project}"
+        tasks.append(retry_with_backoff(client.get, project_url))
+        task_names.append("project")
+
     # Dependents URL (always fetch)
     dependents_url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}:dependents"
     tasks.append(retry_with_backoff(client.get, dependents_url))
     task_names.append("dependents")
 
-    # Execute parallel requests
+    # Execute all parallel requests
     if tasks:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -181,6 +189,13 @@ async def get_package_info(name: str, ecosystem: str = "npm") -> Optional[dict]:
                 except httpx.HTTPStatusError as e:
                     logger.warning(f"Could not fetch version data for {name}@{latest_version}: {e}")
 
+            elif task_name == "project":
+                try:
+                    result.raise_for_status()
+                    project_data = result.json()
+                except httpx.HTTPStatusError as e:
+                    logger.debug(f"Project not found for {name}: {e}")
+
             elif task_name == "dependents":
                 try:
                     result.raise_for_status()
@@ -193,32 +208,38 @@ async def get_package_info(name: str, ecosystem: str = "npm") -> Optional[dict]:
                 except httpx.HTTPStatusError:
                     logger.debug(f"Could not fetch dependents for {name}")
 
-    # 4. Get project info (requires version_data for repo URL)
-    # This must be sequential as it depends on version_data
-    links = version_data.get("links", [])
-    repo_url = None
+    # Fallback: If projectKey was not available, try to fetch project from version_data repo URL
+    if not project_data and version_data:
+        links = version_data.get("links", [])
+        repo_url_from_version = None
+        for link in links:
+            if link.get("label") == "SOURCE_REPO":
+                repo_url_from_version = link.get("url", "")
+                break
 
-    # Find repository link
+        if repo_url_from_version:
+            # Clean up URL for deps.dev project endpoint
+            clean_url = repo_url_from_version.replace("https://", "").replace("http://", "")
+            if clean_url.endswith(".git"):
+                clean_url = clean_url[:-4]
+
+            encoded_project = encode_repo_url(clean_url)
+            project_url = f"{DEPSDEV_API}/projects/{encoded_project}"
+
+            try:
+                project_resp = await retry_with_backoff(client.get, project_url)
+                project_resp.raise_for_status()
+                project_data = project_resp.json()
+            except httpx.HTTPStatusError:
+                logger.debug(f"Project not found for {name}: {clean_url}")
+
+    # Extract repository URL from version_data
+    repo_url = None
+    links = version_data.get("links", [])
     for link in links:
         if link.get("label") == "SOURCE_REPO":
             repo_url = link.get("url", "")
             break
-
-    if repo_url:
-        # Clean up URL for deps.dev project endpoint
-        clean_url = repo_url.replace("https://", "").replace("http://", "")
-        if clean_url.endswith(".git"):
-            clean_url = clean_url[:-4]
-
-        encoded_project = encode_repo_url(clean_url)
-        project_url = f"{DEPSDEV_API}/projects/{encoded_project}"
-
-        try:
-            project_resp = await retry_with_backoff(client.get, project_url)
-            project_resp.raise_for_status()
-            project_data = project_resp.json()
-        except httpx.HTTPStatusError:
-            logger.debug(f"Project not found for {name}: {clean_url}")
 
     # Extract OpenSSF scorecard
     scorecard = project_data.get("scorecardV2", {})
