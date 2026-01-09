@@ -13,7 +13,16 @@ import boto3
 
 logger = logging.getLogger(__name__)
 
-cloudwatch = boto3.client("cloudwatch")
+# Lazy initialization to avoid boto3 client creation at import time
+_cloudwatch = None
+
+
+def _get_cloudwatch():
+    """Get CloudWatch client, creating it lazily on first use."""
+    global _cloudwatch
+    if _cloudwatch is None:
+        _cloudwatch = boto3.client("cloudwatch")
+    return _cloudwatch
 
 NAMESPACE = os.environ.get("CLOUDWATCH_NAMESPACE", "DepHealth")
 
@@ -50,7 +59,7 @@ def emit_metric(
                 {"Name": k, "Value": v} for k, v in dimensions.items()
             ]
 
-        cloudwatch.put_metric_data(
+        _get_cloudwatch().put_metric_data(
             Namespace=NAMESPACE,
             MetricData=[metric_data],
         )
@@ -104,7 +113,7 @@ def emit_batch_metrics(metrics: list[Dict[str, Any]]) -> None:
         # CloudWatch allows up to 20 metrics per request
         for i in range(0, len(metric_data), 20):
             batch = metric_data[i : i + 20]
-            cloudwatch.put_metric_data(
+            _get_cloudwatch().put_metric_data(
                 Namespace=NAMESPACE,
                 MetricData=batch,
             )

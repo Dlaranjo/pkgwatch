@@ -2403,7 +2403,9 @@ class TestPipelineMetrics:
         """Test successful metric emission."""
         from shared.metrics import emit_metric
 
-        with patch("shared.metrics.cloudwatch") as mock_cw:
+        with patch("shared.metrics._get_cloudwatch") as mock_get_cw:
+            mock_cw = MagicMock()
+            mock_get_cw.return_value = mock_cw
             emit_metric("TestMetric", value=5.0, dimensions={"Test": "Value"})
 
             mock_cw.put_metric_data.assert_called_once()
@@ -2417,7 +2419,9 @@ class TestPipelineMetrics:
         """Test that metric emission failures don't crash Lambda."""
         from shared.metrics import emit_metric
 
-        with patch("shared.metrics.cloudwatch") as mock_cw:
+        with patch("shared.metrics._get_cloudwatch") as mock_get_cw:
+            mock_cw = MagicMock()
+            mock_get_cw.return_value = mock_cw
             mock_cw.put_metric_data.side_effect = Exception("CloudWatch error")
 
             # Should not raise exception
@@ -2427,7 +2431,9 @@ class TestPipelineMetrics:
         """Test successful batch metrics emission."""
         from shared.metrics import emit_batch_metrics
 
-        with patch("shared.metrics.cloudwatch") as mock_cw:
+        with patch("shared.metrics._get_cloudwatch") as mock_get_cw:
+            mock_cw = MagicMock()
+            mock_get_cw.return_value = mock_cw
             metrics = [
                 {"metric_name": "Metric1", "value": 10},
                 {"metric_name": "Metric2", "value": 20, "unit": "Seconds"},
@@ -2448,7 +2454,9 @@ class TestPipelineMetrics:
         """Test batch metrics are paginated at 20 per request."""
         from shared.metrics import emit_batch_metrics
 
-        with patch("shared.metrics.cloudwatch") as mock_cw:
+        with patch("shared.metrics._get_cloudwatch") as mock_get_cw:
+            mock_cw = MagicMock()
+            mock_get_cw.return_value = mock_cw
             # Create 25 metrics (should be 2 API calls)
             metrics = [{"metric_name": f"Metric{i}", "value": i} for i in range(25)]
             emit_batch_metrics(metrics)
@@ -2465,7 +2473,9 @@ class TestPipelineMetrics:
         """Test that batch metric emission failures don't crash."""
         from shared.metrics import emit_batch_metrics
 
-        with patch("shared.metrics.cloudwatch") as mock_cw:
+        with patch("shared.metrics._get_cloudwatch") as mock_get_cw:
+            mock_cw = MagicMock()
+            mock_get_cw.return_value = mock_cw
             mock_cw.put_metric_data.side_effect = Exception("CloudWatch error")
 
             # Should not raise exception
