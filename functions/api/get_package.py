@@ -220,7 +220,7 @@ def handler(event, context):
     name = path_params.get("name")
 
     if not name:
-        return _error_response(400, "missing_parameter", "Package name is required", cors_headers)
+        return error_response(400, "missing_parameter", "Package name is required", headers=cors_headers)
 
     # Handle URL-encoded package names (e.g., %40babel%2Fcore -> @babel/core)
     from urllib.parse import unquote
@@ -228,11 +228,11 @@ def handler(event, context):
 
     # Validate ecosystem
     if ecosystem not in ["npm"]:  # Can expand later: "pypi", "maven", etc.
-        return _error_response(
+        return error_response(
             400,
             "invalid_ecosystem",
             f"Unsupported ecosystem: {ecosystem}. Supported: npm",
-            cors_headers,
+            headers=cors_headers,
         )
 
     # Fetch package from DynamoDB
@@ -243,14 +243,14 @@ def handler(event, context):
         item = response.get("Item")
     except Exception as e:
         logger.error(f"DynamoDB error: {e}")
-        return _error_response(500, "internal_error", "Failed to fetch package data", cors_headers)
+        return error_response(500, "internal_error", "Failed to fetch package data", headers=cors_headers)
 
     if not item:
-        return _error_response(
+        return error_response(
             404,
             "package_not_found",
             f"Package '{name}' not found in {ecosystem}",
-            cors_headers,
+            headers=cors_headers,
         )
 
     # Note: Usage counter already incremented atomically in check_and_increment_usage
@@ -310,19 +310,6 @@ def handler(event, context):
         "statusCode": 200,
         "headers": response_headers,
         "body": json.dumps(response_data, default=decimal_default),
-    }
-
-
-def _error_response(status_code: int, code: str, message: str, cors_headers: dict = None) -> dict:
-    """Generate error response with optional CORS headers."""
-    headers = {"Content-Type": "application/json"}
-    if cors_headers:
-        headers.update(cors_headers)
-
-    return {
-        "statusCode": status_code,
-        "headers": headers,
-        "body": json.dumps({"error": {"code": code, "message": message}}),
     }
 
 

@@ -20,6 +20,8 @@ from boto3.dynamodb.conditions import Key
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+from shared.response_utils import error_response, success_response
+
 # Minimum response time to normalize timing and prevent enumeration
 # Set to 1.5s to fully absorb worst-case SES latency variance (~200-500ms)
 MIN_RESPONSE_TIME_SECONDS = 1.5
@@ -64,14 +66,14 @@ def handler(event, context):
         body = json.loads(event.get("body", "{}"))
     except json.JSONDecodeError:
         # Validation errors can return early - they don't reveal email existence
-        return _error_response(400, "invalid_json", "Request body must be valid JSON")
+        return error_response(400, "invalid_json", "Request body must be valid JSON")
 
     email = body.get("email", "").strip().lower()
 
     # Validate email format
     if not email or not EMAIL_REGEX.match(email):
         # Validation errors can return early - they don't reveal email existence
-        return _error_response(400, "invalid_email", "Please provide a valid email address")
+        return error_response(400, "invalid_email", "Please provide a valid email address")
 
     # Check if email already exists using email-index GSI
     table = dynamodb.Table(API_KEYS_TABLE)
@@ -87,7 +89,7 @@ def handler(event, context):
             if item.get("email_verified", False):
                 logger.info(f"Signup attempted for existing verified email (not revealing)")
                 # Same response as new signup - no enumeration possible
-                return _timed_response(start_time, _success_response(success_message))
+                return _timed_response(start_time, success_response({"message": success_message}))
 
         # Clean up any stale pending signups (expired verification tokens)
         now = datetime.now(timezone.utc)
@@ -110,7 +112,7 @@ def handler(event, context):
         logger.error(f"Error checking existing email: {e}")
         return _timed_response(
             start_time,
-            _error_response(500, "internal_error", "An error occurred. Please try again."),
+            error_response(500, "internal_error", "An error occurred. Please try again."),
         )
 
     # Generate user ID and verification token
@@ -140,12 +142,12 @@ def handler(event, context):
     except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
         # Race condition - same response to prevent enumeration
         logger.info(f"Signup race condition for email (not revealing)")
-        return _timed_response(start_time, _success_response(success_message))
+        return _timed_response(start_time, success_response({"message": success_message}))
     except Exception as e:
         logger.error(f"Error creating pending user: {e}")
         return _timed_response(
             start_time,
-            _error_response(500, "internal_error", "An error occurred. Please try again."),
+            error_response(500, "internal_error", "An error occurred. Please try again."),
         )
 
     # Send verification email
@@ -159,7 +161,7 @@ def handler(event, context):
 
     logger.info(f"Signup initiated for {email}")
 
-    return _timed_response(start_time, _success_response(success_message))
+    return _timed_response(start_time, success_response({"message": success_message}))
 
 
 def _send_verification_email(email: str, verification_url: str):
@@ -208,26 +210,6 @@ This link expires in 24 hours. If you didn't sign up for DepHealth, you can igno
             },
         },
     )
-
-
-def _error_response(status_code: int, code: str, message: str) -> dict:
-    """Generate error response."""
-    return {
-        "statusCode": status_code,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({"error": {"code": code, "message": message}}),
-    }
-
-
-def _success_response(message: str) -> dict:
-    """Generate generic success response that doesn't reveal email existence."""
-    return {
-        "statusCode": 200,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({
-            "message": message,
-        }),
-    }
 
 
 def _timed_response(start_time: float, response: dict) -> dict:

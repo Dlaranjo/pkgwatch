@@ -9,10 +9,13 @@ Handles:
 """
 
 import hashlib
+import logging
 import os
 import secrets
 from datetime import datetime, timezone
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -120,7 +123,7 @@ def validate_api_key(api_key: str) -> Optional[dict]:
 
     except Exception as e:
         # Log error but don't expose details
-        print(f"Error validating API key: {e}")
+        logger.error(f"Error validating API key: {e}")
         return None
 
 

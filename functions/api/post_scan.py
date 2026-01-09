@@ -18,13 +18,7 @@ logger.setLevel(logging.INFO)
 
 # Import from shared module (bundled with Lambda)
 from shared.auth import validate_api_key, check_and_increment_usage_batch
-
-
-def decimal_default(obj):
-    """JSON encoder for Decimal types from DynamoDB."""
-    if isinstance(obj, Decimal):
-        return int(obj) if obj % 1 == 0 else float(obj)
-    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+from shared.response_utils import error_response, decimal_default
 
 dynamodb = boto3.resource("dynamodb")
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")
@@ -53,19 +47,19 @@ def handler(event, context):
     user = validate_api_key(api_key)
 
     if not user:
-        return _error_response(401, "invalid_api_key", "Invalid or missing API key")
+        return error_response(401, "invalid_api_key", "Invalid or missing API key")
 
     # Parse request body
     try:
         body = json.loads(event.get("body", "{}"))
     except json.JSONDecodeError:
-        return _error_response(400, "invalid_json", "Request body must be valid JSON")
+        return error_response(400, "invalid_json", "Request body must be valid JSON")
 
     # Extract dependencies
     dependencies = _extract_dependencies(body)
 
     if not dependencies:
-        return _error_response(
+        return error_response(
             400,
             "no_dependencies",
             "No dependencies found. Provide 'content' (package.json string) or 'dependencies' object.",
@@ -81,7 +75,7 @@ def handler(event, context):
     )
     if not allowed:
         remaining = user["monthly_limit"] - new_count
-        return _error_response(
+        return error_response(
             429,
             "rate_limit_exceeded",
             f"Scanning {len(dependencies)} packages would exceed your remaining {remaining} requests.",
@@ -229,12 +223,3 @@ def _extract_dependencies(body: dict) -> list[str]:
 
     # Filter out invalid entries
     return [d for d in dependencies if d and isinstance(d, str)]
-
-
-def _error_response(status_code: int, code: str, message: str) -> dict:
-    """Generate error response."""
-    return {
-        "statusCode": status_code,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({"error": {"code": code, "message": message}}),
-    }
