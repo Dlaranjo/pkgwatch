@@ -21,8 +21,18 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
-dynamodb = boto3.resource("dynamodb")
+# Lazy initialization to avoid boto3 resource creation at import time
+# This prevents "NoRegionError" during test collection when AWS isn't configured
+_dynamodb = None
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
+
+
+def _get_dynamodb():
+    """Get DynamoDB resource, creating it lazily on first use."""
+    global _dynamodb
+    if _dynamodb is None:
+        _dynamodb = boto3.resource("dynamodb")
+    return _dynamodb
 
 # Monthly request limits by tier
 TIER_LIMITS = {
@@ -49,7 +59,7 @@ def generate_api_key(user_id: str, tier: str = "free", email: str = None) -> str
     api_key = f"dh_{secrets.token_urlsafe(32)}"
     key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
-    table = dynamodb.Table(API_KEYS_TABLE)
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
 
     # Build item - only include GSI key attributes if they have values
     # DynamoDB GSIs require non-null values for key attributes
@@ -95,7 +105,7 @@ def validate_api_key(api_key: str) -> Optional[dict]:
     # Hash the key for lookup
     key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
-    table = dynamodb.Table(API_KEYS_TABLE)
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
 
     try:
         # Query using GSI for O(1) lookup by key hash
@@ -141,7 +151,7 @@ def increment_usage(user_id: str, key_hash: str, count: int = 1) -> int:
     Returns:
         New usage count
     """
-    table = dynamodb.Table(API_KEYS_TABLE)
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
 
     response = table.update_item(
         Key={"pk": user_id, "sk": key_hash},
@@ -171,7 +181,7 @@ def check_and_increment_usage(user_id: str, key_hash: str, limit: int) -> tuple[
         - allowed: True if request was within limit and counter was incremented
         - new_count: The new usage count after increment (or current if denied)
     """
-    table = dynamodb.Table(API_KEYS_TABLE)
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
 
     try:
         response = table.update_item(
@@ -223,7 +233,7 @@ def check_and_increment_usage_batch(
         - allowed: True if request was within limit and counter was incremented
         - new_count: The new usage count after increment (or current if denied)
     """
-    table = dynamodb.Table(API_KEYS_TABLE)
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
 
     # Calculate threshold: if current count is at or above this, we'd exceed limit
     # This avoids arithmetic in condition expression (Moto compatibility)
@@ -268,7 +278,7 @@ def reset_monthly_usage(user_id: str, key_hash: str) -> None:
         user_id: User's partition key
         key_hash: Key hash (sort key)
     """
-    table = dynamodb.Table(API_KEYS_TABLE)
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
 
     table.update_item(
         Key={"pk": user_id, "sk": key_hash},
@@ -292,7 +302,7 @@ def update_tier(user_id: str, key_hash: str, new_tier: str) -> None:
     if new_tier not in TIER_LIMITS:
         raise ValueError(f"Invalid tier: {new_tier}")
 
-    table = dynamodb.Table(API_KEYS_TABLE)
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
 
     table.update_item(
         Key={"pk": user_id, "sk": key_hash},
@@ -312,7 +322,7 @@ def revoke_api_key(user_id: str, key_hash: str) -> None:
         user_id: User's partition key
         key_hash: Key hash (sort key)
     """
-    table = dynamodb.Table(API_KEYS_TABLE)
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
     table.delete_item(Key={"pk": user_id, "sk": key_hash})
 
 
@@ -326,7 +336,7 @@ def get_user_keys(user_id: str) -> list[dict]:
     Returns:
         List of key metadata (not the actual keys!)
     """
-    table = dynamodb.Table(API_KEYS_TABLE)
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
 
     response = table.query(
         KeyConditionExpression=Key("pk").eq(user_id),

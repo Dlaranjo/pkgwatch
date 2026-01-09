@@ -65,7 +65,9 @@ class TestDynamoDBFailures:
         """Should return None when DynamoDB query fails during API key validation."""
         os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
 
-        with patch("shared.auth.dynamodb") as mock_dynamo:
+        with patch("shared.auth._get_dynamodb") as mock_get_dynamo:
+            mock_dynamo = MagicMock()
+            mock_get_dynamo.return_value = mock_dynamo
             mock_table = MagicMock()
             mock_dynamo.Table.return_value = mock_table
             mock_table.query.side_effect = ClientError(
@@ -88,7 +90,9 @@ class TestDynamoDBFailures:
         table, test_key = seeded_api_keys_table
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
-        with patch("shared.auth.dynamodb") as mock_dynamo:
+        with patch("shared.auth._get_dynamodb") as mock_get_dynamo:
+            mock_dynamo = MagicMock()
+            mock_get_dynamo.return_value = mock_dynamo
             mock_table = MagicMock()
             mock_dynamo.Table.return_value = mock_table
             mock_table.update_item.side_effect = ClientError(

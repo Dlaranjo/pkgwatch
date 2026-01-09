@@ -14,6 +14,18 @@ from moto import mock_aws
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "functions"))
 
 
+def pytest_configure(config):
+    """Set AWS credentials before test collection.
+
+    This runs before test collection starts, ensuring boto3 resource
+    creation during imports doesn't fail with NoRegionError.
+    """
+    os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
+    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
+    os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+    os.environ.setdefault("AWS_REGION", "us-east-1")
+
+
 @pytest.fixture(autouse=True)
 def aws_credentials():
     """Set fake AWS credentials for all tests."""
