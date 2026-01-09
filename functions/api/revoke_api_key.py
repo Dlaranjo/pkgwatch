@@ -112,7 +112,7 @@ def handler(event, context):
                         raise
         except Exception as e:
             logger.error(f"Error initializing USER_META: {e}")
-            return _error_response(500, "internal_error", "Failed to revoke API key")
+            return error_response(500, "internal_error", "Failed to revoke API key")
 
         # Use transaction to atomically:
         # 1. Decrement key count in USER_META with condition > 1
@@ -157,15 +157,15 @@ def handler(event, context):
                 for reason in reasons:
                     if reason.get("Code") == "ConditionalCheckFailed":
                         logger.info(f"Key revocation failed for {user_id}: cannot revoke last key")
-                        return _error_response(
+                        return error_response(
                             400,
                             "cannot_revoke_last_key",
                             "Cannot revoke your only API key. Create a new one first."
                         )
                 logger.error(f"Transaction failed: {e}")
-                return _error_response(500, "internal_error", "Failed to revoke API key")
+                return error_response(500, "internal_error", "Failed to revoke API key")
             logger.error(f"Error revoking API key: {e}")
-            return _error_response(500, "internal_error", "Failed to revoke API key")
+            return error_response(500, "internal_error", "Failed to revoke API key")
 
     except Exception as e:
         logger.error(f"Error revoking API key: {e}")
