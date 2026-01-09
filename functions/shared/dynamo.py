@@ -34,7 +34,7 @@ def get_package(ecosystem: str, name: str) -> Optional[dict]:
         response = table.get_item(Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"})
         return response.get("Item")
     except Exception as e:
-        print(f"Error fetching package {ecosystem}/{name}: {e}")
+        logger.error(f"Error fetching package {ecosystem}/{name}: {e}")
         return None
 
 

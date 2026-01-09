@@ -18,6 +18,8 @@ from boto3.dynamodb.conditions import Key
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+from shared.response_utils import error_response, success_response
+
 dynamodb = boto3.resource("dynamodb")
 ses = boto3.client("ses")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
@@ -62,13 +64,13 @@ def handler(event, context):
         body = json.loads(event.get("body", "{}"))
     except json.JSONDecodeError:
         # Validation errors can return early - they don't reveal email existence
-        return _error_response(400, "invalid_json", "Request body must be valid JSON")
+        return error_response(400, "invalid_json", "Request body must be valid JSON")
 
     email = body.get("email", "").strip().lower()
 
     # Validate email format
     if not email or not EMAIL_REGEX.match(email):
-        return _error_response(400, "invalid_email", "Please provide a valid email address")
+        return error_response(400, "invalid_email", "Please provide a valid email address")
 
     # Check if user exists and is verified
     table = dynamodb.Table(API_KEYS_TABLE)
@@ -89,13 +91,13 @@ def handler(event, context):
         if not verified_user:
             # Don't reveal whether email exists - same response as success
             logger.info(f"Magic link requested for non-existent email: {email}")
-            return _timed_response(start_time, _success_response(success_message))
+            return _timed_response(start_time, success_response({"message": success_message}))
 
     except Exception as e:
         logger.error(f"Error checking user: {e}")
         return _timed_response(
             start_time,
-            _error_response(500, "internal_error", "Failed to process request"),
+            error_response(500, "internal_error", "Failed to process request"),
         )
 
     user_id = verified_user["pk"]
@@ -119,7 +121,7 @@ def handler(event, context):
         logger.error(f"Error storing magic token: {e}")
         return _timed_response(
             start_time,
-            _error_response(500, "internal_error", "Failed to generate login link"),
+            error_response(500, "internal_error", "Failed to generate login link"),
         )
 
     # Send magic link email
@@ -130,12 +132,12 @@ def handler(event, context):
         logger.error(f"Failed to send magic link email: {e}")
         return _timed_response(
             start_time,
-            _error_response(500, "internal_error", "Failed to send login email"),
+            error_response(500, "internal_error", "Failed to send login email"),
         )
 
     logger.info(f"Magic link sent to {email}")
 
-    return _timed_response(start_time, _success_response(success_message))
+    return _timed_response(start_time, success_response({"message": success_message}))
 
 
 def _send_magic_link_email(email: str, magic_url: str):
@@ -185,24 +187,6 @@ This link expires in {MAGIC_LINK_TTL_MINUTES} minutes. If you didn't request thi
             },
         },
     )
-
-
-def _error_response(status_code: int, code: str, message: str) -> dict:
-    """Generate error response."""
-    return {
-        "statusCode": status_code,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({"error": {"code": code, "message": message}}),
-    }
-
-
-def _success_response(message: str) -> dict:
-    """Generate generic success response that doesn't reveal email existence."""
-    return {
-        "statusCode": 200,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({"message": message}),
-    }
 
 
 def _timed_response(start_time: float, response: dict) -> dict:

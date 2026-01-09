@@ -1,23 +1,20 @@
 """
-Shared Response Utilities.
+Response utilities for Lambda handlers.
 
-Provides common response helpers used across API handlers.
-
-NOTE: This module consolidates response utilities. The `errors.py` module
-contains error classes and also has error_response/success_response functions.
-For consistency, prefer using this module's functions for simple responses,
-and errors.py's classes for typed error handling.
+Provides consistent response formatting for success and error responses.
 """
 
 import json
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Any, Dict
 
 
-def decimal_default(obj):
-    """JSON encoder for Decimal types from DynamoDB."""
+def decimal_default(obj: Any) -> Any:
+    """JSON serializer for Decimal types from DynamoDB."""
     if isinstance(obj, Decimal):
-        return int(obj) if obj % 1 == 0 else float(obj)
+        if obj % 1 == 0:
+            return int(obj)
+        return float(obj)
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
@@ -50,49 +47,95 @@ def error_response(
     status_code: int,
     code: str,
     message: str,
-    headers: Optional[dict] = None,
-    details: Optional[dict] = None,
+    headers: Optional[Dict[str, str]] = None,
+    details: Optional[Dict[str, Any]] = None,
+    retry_after: Optional[int] = None,
 ) -> dict:
     """
-    Generate standardized error response.
+    Create an error response.
 
     Args:
         status_code: HTTP status code
-        code: Error code (e.g., "invalid_request", "not_found")
+        code: Machine-readable error code (snake_case)
         message: Human-readable error message
-        headers: Optional additional headers (e.g., CORS)
+        headers: Additional response headers
         details: Optional additional error details
+        retry_after: Optional Retry-After header value in seconds
 
     Returns:
-        Lambda response dictionary
+        Lambda response dict
     """
     response_headers = {"Content-Type": "application/json"}
     if headers:
         response_headers.update(headers)
+    if retry_after is not None:
+        response_headers["Retry-After"] = str(retry_after)
 
-    body = {"error": {"code": code, "message": message}}
+    body = {
+        "error": {
+            "code": code,
+            "message": message,
+        }
+    }
     if details:
         body["error"]["details"] = details
 
     return {
         "statusCode": status_code,
         "headers": response_headers,
-        "body": json.dumps(body),
+        "body": json.dumps(body, default=decimal_default),
     }
 
 
 def success_response(
-    body: dict,
-    headers: Optional[dict] = None,
+    data: Any,
+    status_code: int = 200,
+    headers: Optional[Dict[str, str]] = None,
 ) -> dict:
     """
-    Generate standardized success response (200 OK).
+    Create a success response.
 
     Args:
-        body: Response body dictionary
-        headers: Optional additional headers
+        data: Response body data
+        status_code: HTTP status code (default 200)
+        headers: Additional response headers
 
     Returns:
-        Lambda response dictionary
+        Lambda response dict
     """
-    return json_response(200, body, headers)
+    response_headers = {"Content-Type": "application/json"}
+    if headers:
+        response_headers.update(headers)
+
+    return {
+        "statusCode": status_code,
+        "headers": response_headers,
+        "body": json.dumps(data, default=decimal_default),
+    }
+
+
+def redirect_response(
+    location: str,
+    status_code: int = 302,
+    headers: Optional[Dict[str, str]] = None,
+) -> dict:
+    """
+    Create a redirect response.
+
+    Args:
+        location: Redirect URL
+        status_code: HTTP status code (302 or 301)
+        headers: Additional headers (e.g., Set-Cookie)
+
+    Returns:
+        Lambda response dict
+    """
+    response_headers = {"Location": location}
+    if headers:
+        response_headers.update(headers)
+
+    return {
+        "statusCode": status_code,
+        "headers": response_headers,
+        "body": "",
+    }
