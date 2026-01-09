@@ -19,6 +19,7 @@ functions/
 │   ├── revoke_api_key.py   # DELETE /api-keys/{id}
 │   ├── get_usage.py        # GET /usage
 │   ├── stripe_webhook.py   # POST /webhooks/stripe
+│   ├── reset_usage.py      # Monthly usage reset (EventBridge)
 │   └── health.py           # GET /health
 │
 ├── collectors/             # Data collection pipeline

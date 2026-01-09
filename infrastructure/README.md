@@ -116,6 +116,7 @@ npx cdk deploy DepHealthApiStack
 | VerifyEmailHandler | API Gateway | GET /verify |
 | MagicLinkHandler | API Gateway | POST /auth/magic-link |
 | AuthCallbackHandler | API Gateway | GET /auth/callback |
+| ResetUsageHandler | EventBridge | Monthly usage counter reset |
 | RefreshDispatcher | EventBridge | Triggers package refresh |
 | PackageCollector | SQS | Collects package data |
 | ScoreCalculator | DynamoDB Streams | Calculates health scores |
@@ -128,8 +129,8 @@ Stored in AWS Secrets Manager:
 | Secret | Purpose |
 |--------|---------|
 | `dephealth/session-secret` | Session token signing |
-| `dephealth/stripe-api-key` | Stripe API access |
-| `dephealth/stripe-webhook-secret` | Stripe webhook verification |
+| `dephealth/stripe-secret` | Stripe API access |
+| `dephealth/stripe-webhook` | Stripe webhook verification |
 
 ## Useful Commands
 
