@@ -110,10 +110,10 @@ export class ApiStack extends cdk.Stack {
 
     // Provisioned concurrency for GetPackageHandler (most called endpoint)
     // Eliminates cold starts for 95%+ of requests (~$35/month for 5 instances)
-    // Using latestVersion ensures alias always points to current deployed version
+    // Using currentVersion publishes a new version on each deploy (required for provisioned concurrency)
     const getPackageAlias = new lambda.Alias(this, "GetPackageAlias", {
       aliasName: "live",
-      version: getPackageHandler.latestVersion,
+      version: getPackageHandler.currentVersion,
       provisionedConcurrentExecutions: 5,
     });
 
