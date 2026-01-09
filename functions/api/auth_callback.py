@@ -97,18 +97,20 @@ def handler(event, context):
     if not items:
         return _redirect_with_error("invalid_token", "Invalid or expired login link")
 
-    # GSI returns only keys, fetch full item
+    # GSI returns only pk/sk, so fetch full item
     pk = items[0]["pk"]
     sk = items[0]["sk"]
 
     try:
-        full_item_response = table.get_item(Key={"pk": pk, "sk": sk})
-        user = full_item_response.get("Item")
-        if not user:
-            return _redirect_with_error("invalid_token", "Invalid or expired login link")
+        full_response = table.get_item(Key={"pk": pk, "sk": sk})
+        user = full_response.get("Item")
     except Exception as e:
-        logger.error(f"Error fetching user item: {e}")
+        logger.error(f"Error fetching user data: {e}")
         return _redirect_with_error("internal_error", "Failed to verify token")
+
+    if not user:
+        return _redirect_with_error("invalid_token", "Invalid or expired login link")
+
     user_id = user["pk"]
     email = user["email"]
 
@@ -130,22 +132,26 @@ def handler(event, context):
         except (ValueError, TypeError):
             pass
 
-    # Clear the magic token (single use) with conditional expression to prevent replay attacks
+    # Clear the magic token (single use) with conditional check to prevent replay attacks
     try:
         table.update_item(
             Key={"pk": user_id, "sk": user["sk"]},
             UpdateExpression="REMOVE magic_token, magic_expires SET last_login = :now",
-            ConditionExpression="attribute_exists(magic_token) AND magic_token = :expected",
+            ConditionExpression="attribute_exists(magic_token) AND magic_token = :expected_token",
             ExpressionAttributeValues={
                 ":now": now.isoformat(),
-                ":expected": token,  # The token we just validated
+                ":expected_token": token,
             },
         )
     except ClientError as e:
         if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-            # Token was already consumed (replay attack or race condition)
-            logger.warning(f"Magic token already consumed for {user_id}")
-            return _redirect_with_error("token_already_used", "This login link has already been used")
+            logger.warning(f"Magic token replay attempt for {user_id}")
+            return _redirect_with_error(
+                "token_already_used",
+                "This login link has already been used. Please request a new one."
+            )
+        logger.warning(f"Failed to clear magic token: {e}")
+    except Exception as e:
         logger.warning(f"Failed to clear magic token: {e}")
 
     # Create session token

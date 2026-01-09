@@ -4,26 +4,38 @@ Create API Key Endpoint - POST /api-keys
 Creates a new API key for the authenticated user.
 """
 
+import hashlib
 import json
 import logging
 import os
+import secrets
+from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 
 import boto3
 from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# Import session verification and key generation
+# Import session verification
 from api.auth_callback import verify_session_token
-from shared.auth import generate_api_key
 
 dynamodb = boto3.resource("dynamodb")
+dynamodb_client = boto3.client("dynamodb")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
 
 # Max keys per user
 MAX_KEYS_PER_USER = 5
+
+# Monthly request limits by tier
+TIER_LIMITS = {
+    "free": 5000,
+    "starter": 25000,
+    "pro": 100000,
+    "business": 500000,
+}
 
 
 def handler(event, context):
@@ -56,6 +68,16 @@ def handler(event, context):
     email = session_data.get("email")
     tier = session_data.get("tier", "free")
 
+    # Parse optional key name from request body
+    key_name = None
+    body = event.get("body")
+    if body:
+        try:
+            body_data = json.loads(body) if isinstance(body, str) else body
+            key_name = body_data.get("name")
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
     # Check existing key count
     table = dynamodb.Table(API_KEYS_TABLE)
     try:
@@ -66,7 +88,9 @@ def handler(event, context):
 
         # Count active keys (excluding PENDING)
         active_keys = [i for i in items if i.get("sk") != "PENDING"]
-        if len(active_keys) >= MAX_KEYS_PER_USER:
+        current_count = len(active_keys)
+
+        if current_count >= MAX_KEYS_PER_USER:
             return _error_response(
                 400,
                 "max_keys_reached",
@@ -78,10 +102,55 @@ def handler(event, context):
         return _error_response(500, "internal_error", "Failed to create API key")
 
     # Generate new API key
+    api_key = f"dh_{secrets.token_urlsafe(32)}"
+    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Build DynamoDB item in low-level format for TransactWriteItems
+    new_key_item = {
+        "pk": {"S": user_id},
+        "sk": {"S": key_hash},
+        "key_hash": {"S": key_hash},
+        "tier": {"S": tier},
+        "created_at": {"S": now},
+        "requests_this_month": {"N": "0"},
+        "payment_failures": {"N": "0"},
+        "email_verified": {"BOOL": True},
+    }
+
+    # Add optional attributes
+    if email:
+        new_key_item["email"] = {"S": email}
+    if key_name:
+        new_key_item["key_name"] = {"S": key_name}
+    else:
+        new_key_item["key_name"] = {"S": f"Key {current_count + 1}"}
+
+    # Atomically create key only if it doesn't already exist
+    # This prevents race conditions where the same key hash could be created twice
     try:
-        api_key = generate_api_key(user_id=user_id, tier=tier, email=email)
-    except Exception as e:
-        logger.error(f"Error generating API key: {e}")
+        dynamodb_client.transact_write_items(
+            TransactItems=[
+                {
+                    "Put": {
+                        "TableName": API_KEYS_TABLE,
+                        "Item": new_key_item,
+                        "ConditionExpression": "attribute_not_exists(pk) OR attribute_not_exists(sk)",
+                    }
+                }
+            ]
+        )
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "")
+        if error_code == "TransactionCanceledException":
+            # Key already exists (hash collision - extremely rare) or race condition
+            logger.warning(f"Key creation transaction failed for {user_id}: {e}")
+            return _error_response(
+                409,
+                "key_creation_failed",
+                "Failed to create key. Please try again."
+            )
+        logger.error(f"Error creating API key: {e}")
         return _error_response(500, "internal_error", "Failed to create API key")
 
     logger.info(f"New API key created for user {user_id}")
@@ -91,7 +160,8 @@ def handler(event, context):
         "headers": {"Content-Type": "application/json"},
         "body": json.dumps({
             "api_key": api_key,
-            "message": "API key created. This key will only be shown once - save it securely!",
+            "key_id": key_hash[:16],
+            "message": "API key created. Save this key - it won't be shown again.",
         }),
     }
 
