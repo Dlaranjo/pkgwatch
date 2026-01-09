@@ -279,19 +279,22 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
     # 1. deps.dev data (primary source)
     try:
         depsdev_data = await get_depsdev_info(name, ecosystem)
-        combined_data["depsdev"] = depsdev_data
-        combined_data["sources"].append("deps.dev")
+        if depsdev_data:
+            combined_data["depsdev"] = depsdev_data
+            combined_data["sources"].append("deps.dev")
 
-        # Copy primary fields
-        combined_data["latest_version"] = depsdev_data.get("latest_version")
-        combined_data["published_at"] = depsdev_data.get("published_at")
-        combined_data["licenses"] = depsdev_data.get("licenses")
-        combined_data["dependencies_direct"] = depsdev_data.get("dependencies_direct")
-        combined_data["advisories"] = depsdev_data.get("advisories", [])
-        combined_data["openssf_score"] = depsdev_data.get("openssf_score")
-        combined_data["openssf_checks"] = depsdev_data.get("openssf_checks", [])
-        combined_data["dependents_count"] = depsdev_data.get("dependents_count", 0)
-        combined_data["repository_url"] = depsdev_data.get("repository_url")
+            # Copy primary fields
+            combined_data["latest_version"] = depsdev_data.get("latest_version")
+            combined_data["published_at"] = depsdev_data.get("published_at")
+            combined_data["licenses"] = depsdev_data.get("licenses")
+            combined_data["dependencies_direct"] = depsdev_data.get("dependencies_direct")
+            combined_data["advisories"] = depsdev_data.get("advisories", [])
+            combined_data["openssf_score"] = depsdev_data.get("openssf_score")
+            combined_data["openssf_checks"] = depsdev_data.get("openssf_checks", [])
+            combined_data["dependents_count"] = depsdev_data.get("dependents_count", 0)
+            combined_data["repository_url"] = depsdev_data.get("repository_url")
+        else:
+            logger.warning(f"Package {ecosystem}/{name} not found in deps.dev")
 
     except CircuitOpenError as e:
         logger.warning(f"deps.dev circuit open for {ecosystem}/{name}: {e}")

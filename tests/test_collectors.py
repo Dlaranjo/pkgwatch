@@ -1184,9 +1184,9 @@ class TestCollectPackageData:
             url = str(request.url)
 
             # deps.dev
-            if "api.deps.dev/v3/systems/npm/packages/lodash:dependents" in url:
+            if "api.deps.dev/v3alpha/systems/npm/packages/lodash:dependents" in url:
                 return httpx.Response(200, json={"dependentCount": 150000})
-            elif "api.deps.dev/v3/systems/npm/packages/lodash/versions" in url:
+            elif "api.deps.dev/v3alpha/systems/npm/packages/lodash/versions" in url:
                 return httpx.Response(
                     200,
                     json={
@@ -1199,9 +1199,9 @@ class TestCollectPackageData:
                         ],
                     },
                 )
-            elif "api.deps.dev/v3/systems/npm/packages/lodash" in url:
+            elif "api.deps.dev/v3alpha/systems/npm/packages/lodash" in url:
                 return httpx.Response(200, json={"defaultVersion": "4.17.21"})
-            elif "api.deps.dev/v3/projects" in url:
+            elif "api.deps.dev/v3alpha/projects" in url:
                 return httpx.Response(
                     200,
                     json={"scorecardV2": {"score": 7.5, "check": []}},
@@ -1312,9 +1312,9 @@ class TestCollectPackageData:
             url = str(request.url)
 
             # deps.dev succeeds
-            if "api.deps.dev/v3/systems/npm/packages/test-pkg:dependents" in url:
+            if "api.deps.dev/v3alpha/systems/npm/packages/test-pkg:dependents" in url:
                 return httpx.Response(200, json={"dependentCount": 100})
-            elif "api.deps.dev/v3/systems/npm/packages/test-pkg/versions" in url:
+            elif "api.deps.dev/v3alpha/systems/npm/packages/test-pkg/versions" in url:
                 return httpx.Response(
                     200,
                     json={
@@ -1325,7 +1325,7 @@ class TestCollectPackageData:
                         "links": [],
                     },
                 )
-            elif "api.deps.dev/v3/systems/npm/packages/test-pkg" in url:
+            elif "api.deps.dev/v3alpha/systems/npm/packages/test-pkg" in url:
                 return httpx.Response(200, json={"defaultVersion": "1.0.0"})
 
             # npm fails
