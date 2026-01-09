@@ -26,18 +26,22 @@ def packages_table():
                 {"AttributeName": "sk", "AttributeType": "S"},
                 {"AttributeName": "tier", "AttributeType": "N"},
                 {"AttributeName": "risk_level", "AttributeType": "S"},
+                {"AttributeName": "last_updated", "AttributeType": "S"},
             ],
             GlobalSecondaryIndexes=[
                 {
                     "IndexName": "tier-index",
-                    "KeySchema": [{"AttributeName": "tier", "KeyType": "HASH"}],
-                    "Projection": {"ProjectionType": "ALL"},
+                    "KeySchema": [
+                        {"AttributeName": "tier", "KeyType": "HASH"},
+                        {"AttributeName": "last_updated", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "KEYS_ONLY"},
                 },
                 {
                     "IndexName": "risk-level-index",
                     "KeySchema": [
                         {"AttributeName": "risk_level", "KeyType": "HASH"},
-                        {"AttributeName": "sk", "KeyType": "RANGE"},
+                        {"AttributeName": "last_updated", "KeyType": "RANGE"},
                     ],
                     "Projection": {"ProjectionType": "ALL"},
                 },
@@ -165,13 +169,31 @@ class TestQueryPackagesByRisk:
 
         # Create packages with different risk levels
         packages_table.put_item(
-            Item={"pk": "npm#critical1", "sk": "LATEST", "name": "critical1", "risk_level": "CRITICAL"}
+            Item={
+                "pk": "npm#critical1",
+                "sk": "LATEST",
+                "name": "critical1",
+                "risk_level": "CRITICAL",
+                "last_updated": "2026-01-09T10:00:00Z",
+            }
         )
         packages_table.put_item(
-            Item={"pk": "npm#critical2", "sk": "LATEST", "name": "critical2", "risk_level": "CRITICAL"}
+            Item={
+                "pk": "npm#critical2",
+                "sk": "LATEST",
+                "name": "critical2",
+                "risk_level": "CRITICAL",
+                "last_updated": "2026-01-09T11:00:00Z",
+            }
         )
         packages_table.put_item(
-            Item={"pk": "npm#low1", "sk": "LATEST", "name": "low1", "risk_level": "LOW"}
+            Item={
+                "pk": "npm#low1",
+                "sk": "LATEST",
+                "name": "low1",
+                "risk_level": "LOW",
+                "last_updated": "2026-01-09T12:00:00Z",
+            }
         )
 
         result = query_packages_by_risk("CRITICAL")
@@ -187,7 +209,13 @@ class TestQueryPackagesByRisk:
         # Create multiple packages
         for i in range(10):
             packages_table.put_item(
-                Item={"pk": f"npm#high{i}", "sk": "LATEST", "name": f"high{i}", "risk_level": "HIGH"}
+                Item={
+                    "pk": f"npm#high{i}",
+                    "sk": "LATEST",
+                    "name": f"high{i}",
+                    "risk_level": "HIGH",
+                    "last_updated": f"2026-01-09T{i:02d}:00:00Z",
+                }
             )
 
         result = query_packages_by_risk("HIGH", limit=5)
@@ -205,13 +233,31 @@ class TestQueryPackagesByTier:
 
         # Create packages with different tiers
         packages_table.put_item(
-            Item={"pk": "npm#tier1-pkg", "sk": "LATEST", "name": "tier1-pkg", "tier": 1}
+            Item={
+                "pk": "npm#tier1-pkg",
+                "sk": "LATEST",
+                "name": "tier1-pkg",
+                "tier": 1,
+                "last_updated": "2026-01-09T10:00:00Z",
+            }
         )
         packages_table.put_item(
-            Item={"pk": "npm#tier2-pkg", "sk": "LATEST", "name": "tier2-pkg", "tier": 2}
+            Item={
+                "pk": "npm#tier2-pkg",
+                "sk": "LATEST",
+                "name": "tier2-pkg",
+                "tier": 2,
+                "last_updated": "2026-01-09T11:00:00Z",
+            }
         )
         packages_table.put_item(
-            Item={"pk": "npm#tier3-pkg", "sk": "LATEST", "name": "tier3-pkg", "tier": 3}
+            Item={
+                "pk": "npm#tier3-pkg",
+                "sk": "LATEST",
+                "name": "tier3-pkg",
+                "tier": 3,
+                "last_updated": "2026-01-09T12:00:00Z",
+            }
         )
 
         result = query_packages_by_tier(1)

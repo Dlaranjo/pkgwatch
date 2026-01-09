@@ -200,14 +200,16 @@ def batch_get_packages(ecosystem: str, names: list[str]) -> dict[str, dict]:
 
     results = {}
     batch_size = 100  # DynamoDB limit
+    max_retries = 5
 
     for i in range(0, len(names), batch_size):
         batch_names = names[i : i + batch_size]
         keys = [{"pk": f"{ecosystem}#{name}", "sk": "LATEST"} for name in batch_names]
 
         request_items = {PACKAGES_TABLE: {"Keys": keys}}
+        retry_count = 0
 
-        while request_items:
+        while request_items and retry_count < max_retries:
             response = dynamodb.batch_get_item(RequestItems=request_items)
 
             # Process returned items
@@ -218,9 +220,17 @@ def batch_get_packages(ecosystem: str, names: list[str]) -> dict[str, dict]:
             # Handle UnprocessedKeys with exponential backoff
             unprocessed = response.get("UnprocessedKeys", {})
             if unprocessed:
+                retry_count += 1
                 unprocessed_count = len(unprocessed.get(PACKAGES_TABLE, {}).get("Keys", []))
-                logger.warning(f"Retrying {unprocessed_count} unprocessed keys")
-                time.sleep(0.1)  # Brief backoff
+
+                if retry_count >= max_retries:
+                    logger.error(f"Max retries ({max_retries}) exceeded for {unprocessed_count} unprocessed keys")
+                    break
+
+                # Exponential backoff: 0.1s, 0.2s, 0.4s, 0.8s, 1.6s
+                delay = min(0.1 * (2 ** retry_count), 2.0)
+                logger.warning(f"Retry {retry_count}/{max_retries}: {unprocessed_count} unprocessed keys (delay: {delay}s)")
+                time.sleep(delay)
                 request_items = unprocessed
             else:
                 request_items = None

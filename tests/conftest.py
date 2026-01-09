@@ -75,7 +75,7 @@ def mock_dynamodb():
             BillingMode="PAY_PER_REQUEST",
         )
 
-        # Packages table
+        # Packages table with GSIs
         dynamodb.create_table(
             TableName="dephealth-packages",
             KeySchema=[
@@ -85,6 +85,27 @@ def mock_dynamodb():
             AttributeDefinitions=[
                 {"AttributeName": "pk", "AttributeType": "S"},
                 {"AttributeName": "sk", "AttributeType": "S"},
+                {"AttributeName": "tier", "AttributeType": "N"},
+                {"AttributeName": "risk_level", "AttributeType": "S"},
+                {"AttributeName": "last_updated", "AttributeType": "S"},
+            ],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": "tier-index",
+                    "KeySchema": [
+                        {"AttributeName": "tier", "KeyType": "HASH"},
+                        {"AttributeName": "last_updated", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "KEYS_ONLY"},
+                },
+                {
+                    "IndexName": "risk-level-index",
+                    "KeySchema": [
+                        {"AttributeName": "risk_level", "KeyType": "HASH"},
+                        {"AttributeName": "last_updated", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
             ],
             BillingMode="PAY_PER_REQUEST",
         )
