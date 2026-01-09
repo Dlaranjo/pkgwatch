@@ -44,6 +44,10 @@ RAW_DATA_BUCKET = os.environ.get("RAW_DATA_BUCKET", "dephealth-raw-data")
 GITHUB_TOKEN_SECRET_ARN = os.environ.get("GITHUB_TOKEN_SECRET_ARN")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
 
+# Configurable thresholds
+STALE_DATA_MAX_AGE_DAYS = int(os.environ.get("STALE_DATA_MAX_AGE_DAYS", "7"))
+DEDUP_WINDOW_MINUTES = int(os.environ.get("DEDUP_WINDOW_MINUTES", "30"))
+
 # Semaphore to limit concurrent GitHub API calls per Lambda instance
 # With maxConcurrency=10 Lambdas * 5 = max 50 concurrent GitHub calls
 # GitHub allows 5000/hour = ~83/minute, so this keeps us well under the limit
@@ -94,11 +98,11 @@ def validate_message(body: dict) -> Tuple[bool, Optional[str]]:
         return False, f"Package name too long: {len(name)} > {MAX_PACKAGE_NAME_LENGTH}"
 
     if not NPM_PACKAGE_PATTERN.match(name):
-        return False, f"Invalid package name format: {name}"
+        return False, "Invalid package name format"
 
     # Check for path traversal attempts
     if ".." in name or name.startswith("/"):
-        return False, f"Invalid package name (path traversal): {name}"
+        return False, "Invalid package name (path traversal detected)"
 
     return True, None
 
@@ -293,7 +297,7 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
 
         # Try to use stale data as fallback
         existing = await _get_existing_package_data(ecosystem, name)
-        if existing and _is_data_acceptable(existing, max_age_days=7):
+        if existing and _is_data_acceptable(existing, max_age_days=STALE_DATA_MAX_AGE_DAYS):
             logger.info(f"Using stale data for {ecosystem}/{name}")
             combined_data.update(_extract_cached_fields(existing))
             combined_data["data_freshness"] = "stale"
@@ -531,7 +535,7 @@ async def process_single_package(message: dict) -> tuple[bool, str, Optional[str
                 updated_dt = datetime.fromisoformat(last_updated.replace("Z", "+00:00"))
                 age_minutes = (datetime.now(timezone.utc) - updated_dt).total_seconds() / 60
 
-                if age_minutes < 30:  # Skip if updated in last 30 minutes
+                if age_minutes < DEDUP_WINDOW_MINUTES:
                     logger.info(f"Skipping {ecosystem}/{name} - recently updated ({age_minutes:.0f}m ago)")
                     return (True, f"{ecosystem}/{name}", None)  # Success - no action needed
             except Exception as e:

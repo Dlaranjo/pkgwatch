@@ -10,6 +10,7 @@ Processes messages from the dead-letter queue, implementing:
 import json
 import logging
 import os
+import sys
 from datetime import datetime, timezone
 
 import boto3
@@ -19,6 +20,10 @@ logger.setLevel(logging.INFO)
 
 sqs = boto3.client("sqs")
 dynamodb = boto3.resource("dynamodb")
+
+# Import shared utilities
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
+from metrics import emit_metric, emit_batch_metrics
 
 DLQ_URL = os.environ.get("DLQ_URL")
 MAIN_QUEUE_URL = os.environ.get("MAIN_QUEUE_URL")
@@ -111,6 +116,17 @@ def handler(event, context):
         f"DLQ processed: {processed}, requeued: {requeued}, "
         f"permanently_failed: {permanently_failed}, skipped: {skipped}"
     )
+
+    # Emit metrics
+    try:
+        emit_batch_metrics([
+            {"metric_name": "DLQMessagesProcessed", "value": processed},
+            {"metric_name": "DLQMessagesRequeued", "value": requeued},
+            {"metric_name": "DLQPermanentFailures", "value": permanently_failed},
+            {"metric_name": "DLQMessagesSkipped", "value": skipped},
+        ])
+    except Exception as e:
+        logger.warning(f"Failed to emit DLQ metrics: {e}")
 
     return {
         "processed": processed,

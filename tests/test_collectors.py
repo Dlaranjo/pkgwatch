@@ -2209,6 +2209,33 @@ class TestErrorClassification:
 
         assert result == "permanent"
 
+    def test_classify_permanent_error_not_found(self):
+        """'not found' errors should be classified as permanent."""
+        from dlq_processor import classify_error
+
+        error_msg = "Package not found in registry"
+        result = classify_error(error_msg)
+
+        assert result == "permanent"
+
+    def test_classify_permanent_error_invalid_package(self):
+        """'invalid package' errors should be classified as permanent."""
+        from dlq_processor import classify_error
+
+        error_msg = "Invalid package name specified"
+        result = classify_error(error_msg)
+
+        assert result == "permanent"
+
+    def test_classify_permanent_error_forbidden(self):
+        """'forbidden' errors should be classified as permanent."""
+        from dlq_processor import classify_error
+
+        error_msg = "403 Forbidden: Access denied"
+        result = classify_error(error_msg)
+
+        assert result == "permanent"
+
     def test_classify_permanent_error_validation(self):
         """Validation errors should be classified as permanent."""
         from dlq_processor import classify_error
@@ -2227,6 +2254,15 @@ class TestErrorClassification:
 
         assert result == "transient"
 
+    def test_classify_transient_error_502(self):
+        """502 errors should be classified as transient."""
+        from dlq_processor import classify_error
+
+        error_msg = "502 Bad Gateway"
+        result = classify_error(error_msg)
+
+        assert result == "transient"
+
     def test_classify_transient_error_503(self):
         """503 Service Unavailable should be classified as transient."""
         from dlq_processor import classify_error
@@ -2235,6 +2271,50 @@ class TestErrorClassification:
         result = classify_error(error_msg)
 
         assert result == "transient"
+
+    def test_classify_transient_error_504(self):
+        """504 Gateway Timeout should be classified as transient."""
+        from dlq_processor import classify_error
+
+        error_msg = "504 Gateway Timeout"
+        result = classify_error(error_msg)
+
+        assert result == "transient"
+
+    def test_classify_transient_error_rate_limit(self):
+        """'rate limit' errors should be classified as transient."""
+        from dlq_processor import classify_error
+
+        error_msg = "Rate limit exceeded, try again later"
+        result = classify_error(error_msg)
+
+        assert result == "transient"
+
+    def test_classify_transient_error_connection(self):
+        """'connection' errors should be classified as transient."""
+        from dlq_processor import classify_error
+
+        error_msg = "Connection refused by server"
+        result = classify_error(error_msg)
+
+        assert result == "transient"
+
+    def test_classify_transient_error_unavailable(self):
+        """'unavailable' errors should be classified as transient."""
+        from dlq_processor import classify_error
+
+        error_msg = "Service temporarily unavailable"
+        result = classify_error(error_msg)
+
+        assert result == "transient"
+
+    def test_classify_error_case_insensitive(self):
+        """Error classification should be case insensitive."""
+        from dlq_processor import classify_error
+
+        assert classify_error("TIMEOUT ERROR") == "transient"
+        assert classify_error("Not Found") == "permanent"
+        assert classify_error("Rate Limit Exceeded") == "transient"
 
     def test_classify_unknown_error(self):
         """Unknown errors should be classified as unknown."""
@@ -2342,6 +2422,180 @@ class TestPipelineMetrics:
 
             # Should not raise exception
             emit_metric("TestMetric", value=1.0)
+
+    def test_emit_batch_metrics_success(self):
+        """Test successful batch metrics emission."""
+        from shared.metrics import emit_batch_metrics
+
+        with patch("shared.metrics.cloudwatch") as mock_cw:
+            metrics = [
+                {"metric_name": "Metric1", "value": 10},
+                {"metric_name": "Metric2", "value": 20, "unit": "Seconds"},
+                {"metric_name": "Metric3", "value": 30, "dimensions": {"Env": "Test"}},
+            ]
+            emit_batch_metrics(metrics)
+
+            mock_cw.put_metric_data.assert_called_once()
+            call_args = mock_cw.put_metric_data.call_args
+            metric_data = call_args.kwargs["MetricData"]
+
+            assert len(metric_data) == 3
+            assert metric_data[0]["MetricName"] == "Metric1"
+            assert metric_data[1]["Unit"] == "Seconds"
+            assert metric_data[2]["Dimensions"][0]["Name"] == "Env"
+
+    def test_emit_batch_metrics_pagination(self):
+        """Test batch metrics are paginated at 20 per request."""
+        from shared.metrics import emit_batch_metrics
+
+        with patch("shared.metrics.cloudwatch") as mock_cw:
+            # Create 25 metrics (should be 2 API calls)
+            metrics = [{"metric_name": f"Metric{i}", "value": i} for i in range(25)]
+            emit_batch_metrics(metrics)
+
+            assert mock_cw.put_metric_data.call_count == 2
+            # First call should have 20 metrics
+            first_call = mock_cw.put_metric_data.call_args_list[0]
+            assert len(first_call.kwargs["MetricData"]) == 20
+            # Second call should have 5 metrics
+            second_call = mock_cw.put_metric_data.call_args_list[1]
+            assert len(second_call.kwargs["MetricData"]) == 5
+
+    def test_emit_batch_metrics_failure_doesnt_crash(self):
+        """Test that batch metric emission failures don't crash."""
+        from shared.metrics import emit_batch_metrics
+
+        with patch("shared.metrics.cloudwatch") as mock_cw:
+            mock_cw.put_metric_data.side_effect = Exception("CloudWatch error")
+
+            # Should not raise exception
+            metrics = [{"metric_name": "Test", "value": 1.0}]
+            emit_batch_metrics(metrics)
+
+
+class TestHelperFunctions:
+    """Tests for helper functions in package_collector."""
+
+    def test_get_rate_limit_window_key(self):
+        """Test rate limit window key generation."""
+        from package_collector import _get_rate_limit_window_key
+
+        # Mock datetime to get consistent result
+        mock_time = datetime(2024, 3, 15, 14, 30, 0, tzinfo=timezone.utc)
+        with patch("package_collector.datetime") as mock_dt:
+            mock_dt.now.return_value = mock_time
+            mock_dt.timezone = timezone
+
+            result = _get_rate_limit_window_key()
+
+            # Should be YYYY-MM-DD-HH format
+            assert result == "2024-03-15-14"
+
+    @mock_aws
+    def test_get_total_github_calls_empty(self):
+        """Test getting total GitHub calls when no shards exist."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        dynamodb.create_table(
+            TableName="dephealth-api-keys",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        with patch.dict(os.environ, {"API_KEYS_TABLE": "dephealth-api-keys"}):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            total = package_collector._get_total_github_calls("2024-03-15-14")
+            assert total == 0
+
+    @mock_aws
+    def test_get_total_github_calls_with_data(self):
+        """Test getting total GitHub calls across shards."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        table = dynamodb.create_table(
+            TableName="dephealth-api-keys",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        # Add data to multiple shards
+        window_key = "2024-03-15-14"
+        table.put_item(Item={"pk": "github_rate_limit#0", "sk": window_key, "calls": 100})
+        table.put_item(Item={"pk": "github_rate_limit#1", "sk": window_key, "calls": 150})
+        table.put_item(Item={"pk": "github_rate_limit#2", "sk": window_key, "calls": 200})
+
+        with patch.dict(os.environ, {"API_KEYS_TABLE": "dephealth-api-keys"}):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            total = package_collector._get_total_github_calls(window_key)
+            assert total == 450  # 100 + 150 + 200
+
+    @mock_aws
+    def test_rate_limit_fails_closed_on_dynamodb_error(self):
+        """Test that rate limit check fails closed on DynamoDB errors."""
+        # Create table but don't configure it properly to trigger errors
+        with patch.dict(os.environ, {"API_KEYS_TABLE": "nonexistent-table"}):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            # Should return False (fail closed) on error
+            result = package_collector._check_and_increment_github_rate_limit()
+            assert result is False
+
+
+class TestConfigurableValues:
+    """Tests for configurable threshold values."""
+
+    def test_stale_data_age_configurable(self):
+        """Test that stale data max age is configurable."""
+        with patch.dict(os.environ, {"STALE_DATA_MAX_AGE_DAYS": "14"}):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            assert package_collector.STALE_DATA_MAX_AGE_DAYS == 14
+
+    def test_dedup_window_configurable(self):
+        """Test that deduplication window is configurable."""
+        with patch.dict(os.environ, {"DEDUP_WINDOW_MINUTES": "60"}):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            assert package_collector.DEDUP_WINDOW_MINUTES == 60
+
+    def test_tier_jitter_configurable(self):
+        """Test that tier jitter values are configurable."""
+        with patch.dict(os.environ, {
+            "TIER1_JITTER_MAX": "600",
+            "TIER2_JITTER_MAX": "1200",
+            "TIER3_JITTER_MAX": "3600",
+        }):
+            from importlib import reload
+            import refresh_dispatcher
+            reload(refresh_dispatcher)
+
+            assert refresh_dispatcher.JITTER_MAX_SECONDS[1] == 600
+            assert refresh_dispatcher.JITTER_MAX_SECONDS[2] == 1200
+            assert refresh_dispatcher.JITTER_MAX_SECONDS[3] == 3600
 
 
 # =============================================================================
