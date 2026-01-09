@@ -11,6 +11,7 @@ from http.cookies import SimpleCookie
 
 import boto3
 from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -19,6 +20,7 @@ logger.setLevel(logging.INFO)
 from api.auth_callback import verify_session_token
 
 dynamodb = boto3.resource("dynamodb")
+dynamodb_client = boto3.client("dynamodb")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
 
 
@@ -67,7 +69,7 @@ def handler(event, context):
         # Find the key with matching key_id (first 16 chars of hash)
         target_key = None
         for item in items:
-            if item.get("sk") == "PENDING":
+            if item.get("sk") == "PENDING" or item.get("sk") == "USER_META":
                 continue
             key_hash = item.get("sk", "")
             if key_hash.startswith(key_id):
@@ -77,21 +79,92 @@ def handler(event, context):
         if not target_key:
             return _error_response(404, "key_not_found", "API key not found")
 
-        # Count remaining keys (excluding PENDING)
-        active_keys = [i for i in items if i.get("sk") != "PENDING"]
-        if len(active_keys) <= 1:
-            return _error_response(
-                400,
-                "cannot_revoke_last_key",
-                "Cannot revoke your only API key. Create a new one first."
+        # Initialize USER_META if it doesn't exist (for users created before this feature)
+        try:
+            # Try to get USER_META
+            meta_response = table.get_item(
+                Key={"pk": user_id, "sk": "USER_META"},
+                ProjectionExpression="key_count",
             )
 
-        # Delete the key
-        table.delete_item(
-            Key={"pk": user_id, "sk": target_key["sk"]},
-        )
+            if "Item" not in meta_response:
+                # USER_META doesn't exist - count existing keys and initialize
+                active_keys = [
+                    i for i in items
+                    if i.get("sk") not in ("PENDING", "USER_META")
+                ]
+                current_count = len(active_keys)
 
-        logger.info(f"API key revoked for user {user_id}")
+                # Initialize USER_META with current count
+                try:
+                    table.put_item(
+                        Item={
+                            "pk": user_id,
+                            "sk": "USER_META",
+                            "key_count": current_count,
+                        },
+                        ConditionExpression="attribute_not_exists(pk)",
+                    )
+                except ClientError as e:
+                    # Another request might have created it - that's ok, continue
+                    if e.response["Error"]["Code"] != "ConditionalCheckFailedException":
+                        raise
+        except Exception as e:
+            logger.error(f"Error initializing USER_META: {e}")
+            return _error_response(500, "internal_error", "Failed to revoke API key")
+
+        # Use transaction to atomically:
+        # 1. Decrement key count in USER_META with condition > 1
+        # 2. Delete the API key
+        try:
+            dynamodb_client.transact_write_items(
+                TransactItems=[
+                    {
+                        # Update USER_META record with atomic counter decrement
+                        "Update": {
+                            "TableName": API_KEYS_TABLE,
+                            "Key": {
+                                "pk": {"S": user_id},
+                                "sk": {"S": "USER_META"},
+                            },
+                            "UpdateExpression": "SET key_count = key_count - :dec",
+                            "ConditionExpression": "key_count > :min",
+                            "ExpressionAttributeValues": {
+                                ":dec": {"N": "1"},
+                                ":min": {"N": "1"},
+                            },
+                        }
+                    },
+                    {
+                        # Delete the API key
+                        "Delete": {
+                            "TableName": API_KEYS_TABLE,
+                            "Key": {
+                                "pk": {"S": user_id},
+                                "sk": {"S": target_key["sk"]},
+                            },
+                            "ConditionExpression": "attribute_exists(pk)",
+                        }
+                    },
+                ]
+            )
+            logger.info(f"API key revoked for user {user_id}")
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "TransactionCanceledException":
+                # Check which condition failed
+                reasons = e.response.get("CancellationReasons", [])
+                for reason in reasons:
+                    if reason.get("Code") == "ConditionalCheckFailed":
+                        logger.info(f"Key revocation failed for {user_id}: cannot revoke last key")
+                        return _error_response(
+                            400,
+                            "cannot_revoke_last_key",
+                            "Cannot revoke your only API key. Create a new one first."
+                        )
+                logger.error(f"Transaction failed: {e}")
+                return _error_response(500, "internal_error", "Failed to revoke API key")
+            logger.error(f"Error revoking API key: {e}")
+            return _error_response(500, "internal_error", "Failed to revoke API key")
 
     except Exception as e:
         logger.error(f"Error revoking API key: {e}")

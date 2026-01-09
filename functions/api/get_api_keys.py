@@ -68,13 +68,14 @@ def handler(event, context):
         )
         items = response.get("Items", [])
 
-        # Filter out pending signups and format response
+        # Filter out pending signups, user metadata, and format response
         api_keys = []
         for item in items:
-            if item.get("sk") == "PENDING":
+            sk = item.get("sk")
+            if sk == "PENDING" or sk == "USER_META":
                 continue
 
-            key_hash = item.get("sk", "")
+            key_hash = sk or ""
             api_keys.append({
                 "key_id": key_hash[:16],  # First 16 chars of hash as identifier
                 "key_prefix": f"dh_...{key_hash[-8:]}",  # Show suffix only
