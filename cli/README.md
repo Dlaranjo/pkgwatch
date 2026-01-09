@@ -57,12 +57,28 @@ dephealth scan --json               # JSON output (deprecated)
 - `json`: JSON format for programmatic use
 - `sarif`: SARIF 2.1.0 format for security tooling integration
 
+**Features:**
+- Progress bar displayed for scans with 20+ dependencies
+- Rate limit warnings shown at 80% and 95% usage
+- Batch processing for large dependency sets
+
 ### Check API usage
 
 ```bash
 dephealth usage
 dephealth u              # Using alias
 ```
+
+Shows your current API usage with:
+- Account tier
+- Requests used this month
+- Monthly limit and remaining requests
+- Reset date
+- Visual progress bar
+
+**Rate limit warnings:**
+- Yellow warning at 80% usage
+- Red critical warning at 95% usage
 
 ### Doctor (diagnostics)
 

@@ -76,6 +76,7 @@ import {
   getRiskColor,
   type PackageHealthFull,
   type PackageHealth,
+  type ScanResult,
 } from "./api.js";
 import {
   getApiKey,
@@ -147,7 +148,7 @@ function formatNumber(n: number): string {
 /**
  * Convert scan results to SARIF format for security tooling integration.
  */
-function toSarif(result: any): object {
+function toSarif(result: ScanResult): object {
   return {
     $schema: "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
     version: "2.1.0",
@@ -160,8 +161,8 @@ function toSarif(result: any): object {
         }
       },
       results: result.packages
-        .filter((p: any) => p.risk_level === "CRITICAL" || p.risk_level === "HIGH")
-        .map((p: any) => ({
+        .filter((p: PackageHealth) => p.risk_level === "CRITICAL" || p.risk_level === "HIGH")
+        .map((p: PackageHealth) => ({
           ruleId: `dephealth/${p.risk_level.toLowerCase()}`,
           level: p.risk_level === "CRITICAL" ? "error" : "warning",
           message: {
@@ -358,6 +359,7 @@ program
     // Handle backward compatibility: --json flag
     let outputFormat = options.output || "table";
     if (options.json) {
+      console.warn(pc.yellow("Warning: --json flag is deprecated. Use --output json instead."));
       outputFormat = "json";
     }
 
@@ -390,11 +392,15 @@ program
 
     logVerbose(`Reading ${filePath}`);
 
-    let result: any;
+    // Constants for progress bar and batching
+    const PROGRESS_BAR_THRESHOLD = 20;
+    const BATCH_SIZE = 25;
+
+    let result: ScanResult;
 
     try {
       // Use progress bar for large scans (20+ dependencies)
-      if (depCount >= 20 && outputFormat === "table" && !quietMode) {
+      if (depCount >= PROGRESS_BAR_THRESHOLD && outputFormat === "table" && !quietMode) {
         const progressBar = new cliProgress.SingleBar({
           format: 'Scanning |{bar}| {percentage}% | {value}/{total} packages',
           barCompleteChar: '█',
@@ -404,13 +410,12 @@ program
         progressBar.start(depCount, 0);
 
         // Batch processing with progress updates
-        const batchSize = 25;
         const depEntries = Object.entries(dependencies);
-        const allPackages: any[] = [];
+        const allPackages: PackageHealth[] = [];
         let notFound: string[] = [];
 
-        for (let i = 0; i < depEntries.length; i += batchSize) {
-          const batchEntries = depEntries.slice(i, Math.min(i + batchSize, depEntries.length));
+        for (let i = 0; i < depEntries.length; i += BATCH_SIZE) {
+          const batchEntries = depEntries.slice(i, Math.min(i + BATCH_SIZE, depEntries.length));
           const batchDeps = Object.fromEntries(batchEntries);
 
           const batchResult = await client.scan(batchDeps);
@@ -419,7 +424,7 @@ program
             notFound.push(...batchResult.not_found);
           }
 
-          progressBar.update(Math.min(i + batchSize, depEntries.length));
+          progressBar.update(Math.min(i + BATCH_SIZE, depEntries.length));
         }
 
         progressBar.stop();
@@ -611,10 +616,10 @@ program
     // Check 3: Node.js version
     const nodeVersion = process.version;
     const majorVersion = parseInt(nodeVersion.slice(1).split(".")[0]);
-    if (majorVersion >= 18) {
+    if (majorVersion >= 20) {
       console.log(pc.green("✓") + ` Node.js ${nodeVersion}`);
     } else {
-      console.log(pc.yellow("!") + ` Node.js ${nodeVersion} (18+ recommended)`);
+      console.log(pc.yellow("!") + ` Node.js ${nodeVersion} (20+ recommended)`);
     }
 
     console.log(pc.green("\n✓ All checks passed"));
