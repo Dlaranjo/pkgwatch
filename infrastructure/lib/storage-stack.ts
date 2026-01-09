@@ -63,6 +63,7 @@ export class StorageStack extends cdk.Stack {
         pointInTimeRecoveryEnabled: true,
       },
       removalPolicy: cdk.RemovalPolicy.RETAIN,
+      timeToLiveAttribute: "ttl", // Enable TTL for auto-expiring PENDING records
     });
 
     // GSI for looking up API key by hash
@@ -102,6 +103,17 @@ export class StorageStack extends cdk.Stack {
         type: dynamodb.AttributeType.STRING,
       },
       projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI for looking up user by magic token
+    // Replaces O(n) table scan with O(1) query for passwordless login
+    this.apiKeysTable.addGlobalSecondaryIndex({
+      indexName: "magic-token-index",
+      partitionKey: {
+        name: "magic_token",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.KEYS_ONLY,
     });
 
     // ===========================================

@@ -43,6 +43,7 @@ def mock_dynamodb():
                 {"AttributeName": "email", "AttributeType": "S"},
                 {"AttributeName": "stripe_customer_id", "AttributeType": "S"},
                 {"AttributeName": "verification_token", "AttributeType": "S"},
+                {"AttributeName": "magic_token", "AttributeType": "S"},
             ],
             GlobalSecondaryIndexes=[
                 {
@@ -63,6 +64,11 @@ def mock_dynamodb():
                 {
                     "IndexName": "verification-token-index",
                     "KeySchema": [{"AttributeName": "verification_token", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "KEYS_ONLY"},
+                },
+                {
+                    "IndexName": "magic-token-index",
+                    "KeySchema": [{"AttributeName": "magic_token", "KeyType": "HASH"}],
                     "Projection": {"ProjectionType": "KEYS_ONLY"},
                 },
             ],

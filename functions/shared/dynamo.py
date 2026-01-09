@@ -2,12 +2,16 @@
 DynamoDB helpers for package operations.
 """
 
+import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
 import boto3
 from boto3.dynamodb.conditions import Key
+
+logger = logging.getLogger(__name__)
 
 dynamodb = boto3.resource("dynamodb")
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")
@@ -182,7 +186,7 @@ def update_package_scores(
 
 def batch_get_packages(ecosystem: str, names: list[str]) -> dict[str, dict]:
     """
-    Get multiple packages in a batch operation.
+    Get multiple packages in a batch operation with proper UnprocessedKeys handling.
 
     Args:
         ecosystem: Package ecosystem
@@ -194,23 +198,31 @@ def batch_get_packages(ecosystem: str, names: list[str]) -> dict[str, dict]:
     if not names:
         return {}
 
-    table = dynamodb.Table(PACKAGES_TABLE)
     results = {}
-
-    # DynamoDB batch_get_item supports up to 100 items
-    batch_size = 100
+    batch_size = 100  # DynamoDB limit
 
     for i in range(0, len(names), batch_size):
         batch_names = names[i : i + batch_size]
         keys = [{"pk": f"{ecosystem}#{name}", "sk": "LATEST"} for name in batch_names]
 
-        response = dynamodb.batch_get_item(
-            RequestItems={PACKAGES_TABLE: {"Keys": keys}}
-        )
+        request_items = {PACKAGES_TABLE: {"Keys": keys}}
 
-        for item in response.get("Responses", {}).get(PACKAGES_TABLE, []):
-            name = item.get("name")
-            if name:
+        while request_items:
+            response = dynamodb.batch_get_item(RequestItems=request_items)
+
+            # Process returned items
+            for item in response.get("Responses", {}).get(PACKAGES_TABLE, []):
+                name = item["pk"].split("#", 1)[1]
                 results[name] = item
+
+            # Handle UnprocessedKeys with exponential backoff
+            unprocessed = response.get("UnprocessedKeys", {})
+            if unprocessed:
+                unprocessed_count = len(unprocessed.get(PACKAGES_TABLE, {}).get("Keys", []))
+                logger.warning(f"Retrying {unprocessed_count} unprocessed keys")
+                time.sleep(0.1)  # Brief backoff
+                request_items = unprocessed
+            else:
+                request_items = None
 
     return results
