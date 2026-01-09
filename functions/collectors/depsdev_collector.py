@@ -25,7 +25,7 @@ from shared.circuit_breaker import circuit_breaker, DEPSDEV_CIRCUIT
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-DEPSDEV_API = "https://api.deps.dev/v3"
+DEPSDEV_API = "https://api.deps.dev/v3alpha"
 DEFAULT_TIMEOUT = 30.0
 
 
@@ -173,25 +173,21 @@ async def get_package_info(name: str, ecosystem: str = "npm") -> Optional[dict]:
 
         # 4. Get dependents count (requires version in the endpoint)
         dependents_count = 0
-        logger.info(f"Fetching dependents for {name}, version={latest_version}")
         if latest_version:
             try:
                 encoded_version = quote(latest_version, safe="")
                 dependents_url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}/versions/{encoded_version}:dependents"
-                logger.info(f"Dependents URL: {dependents_url}")
                 dependents_resp = await retry_with_backoff(client.get, dependents_url)
                 dependents_resp.raise_for_status()
                 dependents_data = dependents_resp.json()
-                logger.info(f"Dependents response: {dependents_data}")
                 # deps.dev returns dependentCount as an integer
                 dependent_count_value = dependents_data.get("dependentCount")
                 if isinstance(dependent_count_value, int):
                     dependents_count = dependent_count_value
                 elif isinstance(dependent_count_value, list):
                     dependents_count = len(dependent_count_value)
-                logger.info(f"Final dependents_count for {name}: {dependents_count}")
-            except httpx.HTTPStatusError as e:
-                logger.warning(f"Could not fetch dependents for {name}: {e}")
+            except httpx.HTTPStatusError:
+                logger.debug(f"Could not fetch dependents for {name}")
 
         # Extract OpenSSF scorecard
         scorecard = project_data.get("scorecardV2", {})
