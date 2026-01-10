@@ -584,6 +584,21 @@ describe("DepHealthClient retry behavior", () => {
     });
   });
 
+  it("throws server_error when response body is undefined", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(undefined),
+    });
+
+    const client = createClient();
+    await expect(client.getPackage("lodash")).rejects.toMatchObject({
+      code: "server_error",
+      message: "Empty response from API",
+      status: 200,
+    });
+  });
+
   // ===========================================
   // scan() Error Handling Tests
   // ===========================================
@@ -738,6 +753,21 @@ describe("DepHealthClient retry behavior", () => {
     // Should encode the slashes and dots
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining("npm%2F..%2Fadmin"),
+      expect.any(Object)
+    );
+  });
+
+  it("uses npm as default ecosystem when not specified", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ package: "lodash" }),
+    });
+
+    const client = createClient();
+    await client.getPackage("lodash");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/packages/npm/lodash"),
       expect.any(Object)
     );
   });

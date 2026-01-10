@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import * as core from "@actions/core";
-import { DepHealthClient, ScanResult, PackageHealth } from "./api";
+import { DepHealthClient, ScanResult, PackageHealth, ApiClientError } from "./api";
 
 const BATCH_SIZE = 25;
 
@@ -50,7 +50,15 @@ export async function scanDependencies(
   // Batch processing for large dependency lists to avoid timeouts
   if (depCount <= BATCH_SIZE) {
     // Small enough to process in one request
-    return client.scan(dependencies);
+    try {
+      return await client.scan(dependencies);
+    } catch (error) {
+      // For single batch, we can't recover - rethrow with context
+      if (error instanceof ApiClientError) {
+        throw error;
+      }
+      throw new Error(`Failed to scan dependencies: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   // Process in batches
@@ -75,10 +83,17 @@ export async function scanDependencies(
         notFound.push(...batchResult.not_found);
       }
     } catch (error) {
+      // Fail immediately on rate limit or auth errors - no point retrying more batches
+      if (error instanceof ApiClientError) {
+        if (error.code === "rate_limited" || error.code === "unauthorized" || error.code === "forbidden") {
+          throw error;
+        }
+      }
+
       failedBatches++;
       const packageNames = batchEntries.map(([name]) => name);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      core.warning(`Batch ${batchNum} failed: ${errorMessage}. Packages: ${packageNames.join(", ")}`);
+      core.warning(`Batch ${batchNum} failed: ${errorMessage}. Packages: ${packageNames.slice(0, 5).join(", ")}${packageNames.length > 5 ? ` and ${packageNames.length - 5} more` : ""}`);
       // Continue with remaining batches instead of failing entirely
     }
   }
