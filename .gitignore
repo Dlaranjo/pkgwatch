@@ -50,3 +50,4 @@ landing-page/.astro/
 landing-page/terraform/.terraform/
 landing-page/terraform/*.tfstate*
 landing-page/terraform/.terraform.lock.hcl
+.npmrc

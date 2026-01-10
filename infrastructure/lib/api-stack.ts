@@ -12,6 +12,7 @@ import * as sns from "aws-cdk-lib/aws-sns";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as wafv2 from "aws-cdk-lib/aws-wafv2";
 import * as cw_actions from "aws-cdk-lib/aws-cloudwatch-actions";
+import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import { Construct } from "constructs";
 import * as path from "path";
 
@@ -918,6 +919,46 @@ export class ApiStack extends cdk.Stack {
           }),
         ],
       ],
+    });
+
+    // ===========================================
+    // Custom Domain: api.pkgwatch.laranjo.dev
+    // ===========================================
+    const apiDomainName = "api.pkgwatch.laranjo.dev";
+
+    // Create ACM certificate for API domain
+    const apiCertificate = new acm.Certificate(this, "ApiCertificate", {
+      domainName: apiDomainName,
+      validation: acm.CertificateValidation.fromDns(),
+      certificateName: "PkgWatch API Certificate",
+    });
+
+    // Create custom domain for API Gateway
+    const customDomain = new apigateway.DomainName(this, "ApiCustomDomain", {
+      domainName: apiDomainName,
+      certificate: apiCertificate,
+      endpointType: apigateway.EndpointType.REGIONAL,
+      securityPolicy: apigateway.SecurityPolicy.TLS_1_2,
+    });
+
+    // Map the custom domain to API Gateway stage
+    new apigateway.BasePathMapping(this, "ApiBasePathMapping", {
+      domainName: customDomain,
+      restApi: this.api,
+      stage: this.api.deploymentStage,
+    });
+
+    // Output the target domain for DNS configuration
+    new cdk.CfnOutput(this, "ApiCustomDomainTarget", {
+      value: customDomain.domainNameAliasDomainName,
+      description: "Target domain for api.pkgwatch.laranjo.dev CNAME record",
+      exportName: "PkgWatchApiCustomDomainTarget",
+    });
+
+    new cdk.CfnOutput(this, "ApiCertificateArn", {
+      value: apiCertificate.certificateArn,
+      description: "API Certificate ARN (check validation status in ACM console)",
+      exportName: "PkgWatchApiCertificateArn",
     });
 
     // ===========================================
