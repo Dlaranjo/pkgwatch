@@ -21,8 +21,8 @@ const tiers = [
   },
   {
     name: 'Starter',
-    price: '$9',
-    period: '/month',
+    price: 'TBD',
+    period: '',
     description: 'For individual developers',
     features: [
       '25,000 requests/month',
@@ -35,8 +35,8 @@ const tiers = [
   },
   {
     name: 'Pro',
-    price: '$29',
-    period: '/month',
+    price: 'TBD',
+    period: '',
     description: 'For teams with growing needs',
     features: [
       '100,000 requests/month',
@@ -50,8 +50,8 @@ const tiers = [
   },
   {
     name: 'Business',
-    price: '$99',
-    period: '/month',
+    price: 'TBD',
+    period: '',
     description: 'For organizations at scale',
     features: [
       '500,000 requests/month',
@@ -151,7 +151,7 @@ const tiers = [
             What happens if I exceed my limit?
           </h3>
           <p class="text-zinc-400">
-            Requests beyond your limit will be rejected with a 429 status code.
+            Requests beyond your limit won't be processed until the next billing cycle.
             You can upgrade anytime to increase your limit.
           </p>
         </div>
@@ -160,7 +160,7 @@ const tiers = [
             Do you offer enterprise plans?
           </h3>
           <p class="text-zinc-400">
-            Yes! Contact us at hello@laranjo.dev for custom enterprise pricing
+            Yes! Contact us at <a href="mailto:enterprise@dephealth.laranjo.dev" class="text-blue-400 hover:underline">enterprise@dephealth.laranjo.dev</a> for custom enterprise pricing
             with higher limits and dedicated support.
           </p>
         </div>

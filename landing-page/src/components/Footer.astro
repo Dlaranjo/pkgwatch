@@ -86,14 +86,14 @@ const currentYear = new Date().getFullYear();
         <h3 class="text-sm font-semibold text-white mb-4">Legal</h3>
         <ul class="space-y-2">
           <li>
-            <span class="text-sm text-zinc-500 cursor-not-allowed" aria-disabled="true">
-              Privacy Policy (Coming Soon)
-            </span>
+            <a href="/privacy" class="text-sm text-zinc-400 hover:text-white transition">
+              Privacy Policy
+            </a>
           </li>
           <li>
-            <span class="text-sm text-zinc-500 cursor-not-allowed" aria-disabled="true">
-              Terms of Service (Coming Soon)
-            </span>
+            <a href="/terms" class="text-sm text-zinc-400 hover:text-white transition">
+              Terms of Service
+            </a>
           </li>
         </ul>
       </div>
@@ -103,7 +103,7 @@ const currentYear = new Date().getFullYear();
     <div class="pt-8 border-t border-zinc-800/50 flex flex-col md:flex-row justify-between items-center gap-4">
       <p class="text-sm text-zinc-500">
         © {currentYear} DepHealth. Built by{' '}
-        <a href="https://laranjo.dev" class="hover:text-white transition">Laranjo</a>
+        <a href="https://laranjo.dev" target="_blank" rel="noopener noreferrer" class="hover:text-white transition">Laranjo</a>
       </p>
       <div class="flex items-center gap-4">
         <a
