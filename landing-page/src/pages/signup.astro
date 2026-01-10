@@ -79,7 +79,7 @@ import Footer from '../components/Footer.astro';
     successMsg?.classList.add('hidden');
 
     try {
-      const response = await fetch('https://api.pkgwatch.laranjo.dev/v1/signup', {
+      const response = await fetch('https://api.pkgwatch.laranjo.dev/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
