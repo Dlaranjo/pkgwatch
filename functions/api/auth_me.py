@@ -23,7 +23,7 @@ logger.setLevel(logging.INFO)
 from api.auth_callback import verify_session_token
 
 dynamodb = boto3.resource("dynamodb")
-API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
+API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
 
 def handler(event, context):

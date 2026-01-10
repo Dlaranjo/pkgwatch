@@ -1,6 +1,6 @@
-# DepHealth Infrastructure
+# PkgWatch Infrastructure
 
-AWS CDK infrastructure for the DepHealth platform.
+AWS CDK infrastructure for the PkgWatch platform.
 
 ## Architecture
 
@@ -71,12 +71,12 @@ npx cdk diff
 npx cdk deploy --all
 
 # Deploy specific stack
-npx cdk deploy DepHealthApiStack
+npx cdk deploy PkgWatchApiStack
 ```
 
 ## DynamoDB Tables
 
-### dephealth-packages
+### pkgwatch-packages
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
@@ -90,7 +90,7 @@ npx cdk deploy DepHealthApiStack
 - `risk-level-index` (risk_level → last_updated)
 - `tier-index` (tier → last_updated)
 
-### dephealth-api-keys
+### pkgwatch-api-keys
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
@@ -128,9 +128,9 @@ Stored in AWS Secrets Manager:
 
 | Secret | Purpose |
 |--------|---------|
-| `dephealth/session-secret` | Session token signing |
-| `dephealth/stripe-secret` | Stripe API access |
-| `dephealth/stripe-webhook` | Stripe webhook verification |
+| `pkgwatch/session-secret` | Session token signing |
+| `pkgwatch/stripe-secret` | Stripe API access |
+| `pkgwatch/stripe-webhook` | Stripe webhook verification |
 
 ## Useful Commands
 
@@ -139,13 +139,13 @@ Stored in AWS Secrets Manager:
 npx cdk synth
 
 # View stack outputs
-npx cdk outputs DepHealthApiStack
+npx cdk outputs PkgWatchApiStack
 
 # Destroy stacks (careful!)
 npx cdk destroy --all
 
 # View logs
-aws logs tail /aws/lambda/dephealth-GetPackageHandler --follow
+aws logs tail /aws/lambda/pkgwatch-GetPackageHandler --follow
 ```
 
 ## Cost Estimation

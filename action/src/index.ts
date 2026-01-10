@@ -135,27 +135,27 @@ function handleError(error: unknown): void {
     switch (error.code) {
       case "unauthorized":
         core.setFailed(
-          `Authentication failed (401)\n\nYour API key appears to be invalid or expired.\nVerify at https://dephealth.laranjo.dev/dashboard`
+          `Authentication failed (401)\n\nYour API key appears to be invalid or expired.\nVerify at https://pkgwatch.laranjo.dev/dashboard`
         );
         break;
       case "forbidden":
         core.setFailed(
-          `Access forbidden (403)\n\nYour account may have exceeded plan limits or been disabled.\nCheck https://dephealth.laranjo.dev/dashboard`
+          `Access forbidden (403)\n\nYour account may have exceeded plan limits or been disabled.\nCheck https://pkgwatch.laranjo.dev/dashboard`
         );
         break;
       case "rate_limited":
         core.setFailed(
-          `Rate limit exceeded (429)\n\nYour API quota has been exhausted.\nUpgrade at https://dephealth.laranjo.dev/pricing`
+          `Rate limit exceeded (429)\n\nYour API quota has been exhausted.\nUpgrade at https://pkgwatch.laranjo.dev/pricing`
         );
         break;
       case "timeout":
         core.setFailed(
-          `Request timed out\n\nThe DepHealth API did not respond in time.\nCheck https://status.dephealth.laranjo.dev`
+          `Request timed out\n\nThe PkgWatch API did not respond in time.\nCheck https://status.pkgwatch.laranjo.dev`
         );
         break;
       case "network_error":
         core.setFailed(
-          `Network error\n\nUnable to reach DepHealth API.\nCheck https://status.dephealth.laranjo.dev`
+          `Network error\n\nUnable to reach PkgWatch API.\nCheck https://status.pkgwatch.laranjo.dev`
         );
         break;
       default:
@@ -165,11 +165,11 @@ function handleError(error: unknown): void {
     // Handle specific error messages with better guidance
     if (error.message.includes("Invalid API key format")) {
       core.setFailed(
-        `Invalid API key format\n\nAPI keys should start with 'dh_'.\nGet your key at https://dephealth.laranjo.dev/dashboard`
+        `Invalid API key format\n\nAPI keys should start with 'pw_'.\nGet your key at https://pkgwatch.laranjo.dev/dashboard`
       );
     } else if (error.message.includes("API key is required")) {
       core.setFailed(
-        `API key is required\n\nPlease provide your API key via the 'api-key' input.\nGet your key at https://dephealth.laranjo.dev/dashboard`
+        `API key is required\n\nPlease provide your API key via the 'api-key' input.\nGet your key at https://pkgwatch.laranjo.dev/dashboard`
       );
     } else {
       core.setFailed(`Action failed: ${error.message}`);

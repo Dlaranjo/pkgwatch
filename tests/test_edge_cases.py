@@ -1,5 +1,5 @@
 """
-Edge Case Tests for DepHealth Application.
+Edge Case Tests for PkgWatch Application.
 
 These tests target boundary conditions, extreme values, and unusual inputs
 that could cause bugs or unexpected behavior.
@@ -428,7 +428,7 @@ class TestAuthEdgeCases:
         user = validate_api_key(api_key)
 
         # Manually set usage to exactly at limit
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
         table.update_item(
             Key={"pk": user["user_id"], "sk": user["key_hash"]},
             UpdateExpression="SET requests_this_month = :count",
@@ -452,7 +452,7 @@ class TestAuthEdgeCases:
         user = validate_api_key(api_key)
 
         # Set usage to one under limit
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
         table.update_item(
             Key={"pk": user["user_id"], "sk": user["key_hash"]},
             UpdateExpression="SET requests_this_month = :count",
@@ -478,10 +478,10 @@ class TestAuthEdgeCases:
 
     @mock_aws
     def test_api_key_only_prefix(self, aws_credentials, mock_dynamodb):
-        """API key with only 'dh_' prefix should return None."""
+        """API key with only 'pw_' prefix should return None."""
         from shared.auth import validate_api_key
 
-        result = validate_api_key("dh_")
+        result = validate_api_key("pw_")
 
         assert result is None
 
@@ -492,11 +492,11 @@ class TestAuthEdgeCases:
 
         # Various special character patterns
         special_keys = [
-            "dh_<script>alert('xss')</script>",
-            "dh_' OR '1'='1",
-            "dh_\x00null\x00byte",
-            "dh_\n\r\t",
-            "dh_" + "\u0000" * 100,  # Null bytes
+            "pw_<script>alert('xss')</script>",
+            "pw_' OR '1'='1",
+            "pw_\x00null\x00byte",
+            "pw_\n\r\t",
+            "pw_" + "\u0000" * 100,  # Null bytes
         ]
 
         for key in special_keys:
@@ -508,7 +508,7 @@ class TestAuthEdgeCases:
         """API key with unicode should be handled."""
         from shared.auth import validate_api_key
 
-        unicode_key = "dh_cafe_babe"
+        unicode_key = "pw_cafe_babe"
         result = validate_api_key(unicode_key)
 
         assert result is None  # Invalid key, but should not crash
@@ -519,11 +519,11 @@ class TestAuthEdgeCases:
         from shared.auth import validate_api_key
 
         whitespace_keys = [
-            " dh_test",
-            "dh_test ",
-            " dh_test ",
-            "dh_ test",
-            "\tdh_test",
+            " pw_test",
+            "pw_test ",
+            " pw_test ",
+            "pw_ test",
+            "\tpw_test",
         ]
 
         for key in whitespace_keys:
@@ -536,9 +536,9 @@ class TestAuthEdgeCases:
         from shared.auth import validate_api_key
 
         case_variants = [
-            "DH_test123",
-            "Dh_test123",
-            "dH_test123",
+            "PW_test123",
+            "Pw_test123",
+            "pH_test123",
         ]
 
         for key in case_variants:
@@ -578,13 +578,13 @@ class TestGetPackageEdgeCases:
     @mock_aws
     def test_unicode_package_name(self, mock_dynamodb, api_gateway_event):
         """Unicode in package name should be handled."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
         # Create a mock package with unicode name
-        packages_table = mock_dynamodb.Table("dephealth-packages")
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
         packages_table.put_item(
             Item={
                 "pk": "npm#cafe-pkg",
@@ -608,8 +608,8 @@ class TestGetPackageEdgeCases:
     @mock_aws
     def test_very_long_package_name(self, mock_dynamodb, api_gateway_event):
         """Very long package name should be handled."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -625,8 +625,8 @@ class TestGetPackageEdgeCases:
     @mock_aws
     def test_package_name_with_special_chars(self, mock_dynamodb, api_gateway_event):
         """Package name with special characters should be handled."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -646,8 +646,8 @@ class TestGetPackageEdgeCases:
     @mock_aws
     def test_empty_string_package_name(self, mock_dynamodb, api_gateway_event):
         """Empty string package name should return 400."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -672,8 +672,8 @@ class TestGetPackageEdgeCases:
         FIX NEEDED: Use 'or' to handle None:
             path_params = event.get("pathParameters") or {}
         """
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -686,8 +686,8 @@ class TestGetPackageEdgeCases:
     @mock_aws
     def test_empty_path_parameters(self, mock_dynamodb, api_gateway_event):
         """Empty pathParameters should be handled."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -708,12 +708,12 @@ class TestPostScanEdgeCases:
         Note: json.loads("") raises JSONDecodeError, so empty string is invalid JSON.
         This is correct behavior - the code correctly returns invalid_json error.
         """
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Create test API key
-        table = mock_dynamodb.Table("dephealth-api-keys")
-        test_key = "dh_testscan123456"
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_testscan123456"
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
         table.put_item(
             Item={
@@ -751,11 +751,11 @@ class TestPostScanEdgeCases:
         FIX NEEDED: Use 'or' to handle None:
             body = json.loads(event.get("body") or "{}")
         """
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
-        test_key = "dh_testscan123456"
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_testscan123456"
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
         table.put_item(
             Item={
@@ -780,11 +780,11 @@ class TestPostScanEdgeCases:
     @mock_aws
     def test_malformed_json_body(self, mock_dynamodb, api_gateway_event):
         """Malformed JSON should return 400."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
-        test_key = "dh_testscan123456"
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_testscan123456"
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
         table.put_item(
             Item={
@@ -811,11 +811,11 @@ class TestPostScanEdgeCases:
     @mock_aws
     def test_dependencies_as_list(self, mock_dynamodb, api_gateway_event):
         """Dependencies as list (not dict) should be handled."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
-        test_key = "dh_testscan123456"
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_testscan123456"
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
         table.put_item(
             Item={
@@ -845,11 +845,11 @@ class TestPostScanEdgeCases:
     @mock_aws
     def test_dependencies_with_none_values(self, mock_dynamodb, api_gateway_event):
         """Dependencies dict with None values should be filtered."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
-        test_key = "dh_testscan123456"
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_testscan123456"
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
         table.put_item(
             Item={
@@ -884,11 +884,11 @@ class TestPostScanEdgeCases:
     @mock_aws
     def test_nested_package_json_content(self, mock_dynamodb, api_gateway_event):
         """Nested package.json content should be parsed correctly."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
-        test_key = "dh_testscan123456"
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_testscan123456"
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
         table.put_item(
             Item={

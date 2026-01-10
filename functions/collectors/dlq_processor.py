@@ -27,7 +27,7 @@ from metrics import emit_metric, emit_batch_metrics, emit_dlq_metric
 
 DLQ_URL = os.environ.get("DLQ_URL")
 MAIN_QUEUE_URL = os.environ.get("MAIN_QUEUE_URL")
-PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")
+PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 MAX_DLQ_RETRIES = int(os.environ.get("MAX_DLQ_RETRIES", "5"))
 
 # Error classification patterns (merged from multiple sources)

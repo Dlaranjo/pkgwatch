@@ -1,16 +1,16 @@
 {
-  "name": "dephealth-monorepo",
+  "name": "pkgwatch-monorepo",
   "version": "1.0.0",
   "private": true,
-  "description": "DepHealth - Dependency Health Intelligence Platform",
+  "description": "PkgWatch - Dependency Health Intelligence Platform",
   "workspaces": [
     "packages/*",
     "cli",
     "action"
   ],
   "scripts": {
-    "build": "npm run build -w @dephealth/api-client && npm run build -w @dephealth/cli && npm run build -w @dephealth/action",
-    "build:api-client": "npm run build -w @dephealth/api-client",
+    "build": "npm run build -w @pkgwatch/api-client && npm run build -w @pkgwatch/cli && npm run build -w @pkgwatch/action",
+    "build:api-client": "npm run build -w @pkgwatch/api-client",
     "test": "npm run test --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present"
   },

@@ -54,8 +54,8 @@ Structured JSON logging for CloudWatch Logs Insights.
 ## Testing
 
 Tests are available in:
-- `/home/user/dephealth/tests/test_circuit_breaker.py` (10 tests)
-- `/home/user/dephealth/tests/test_retry.py` (12 tests)
+- `/home/user/pkgwatch/tests/test_circuit_breaker.py` (10 tests)
+- `/home/user/pkgwatch/tests/test_retry.py` (12 tests)
 
 **Note**: Tests require AWS region environment variable to be set.
 

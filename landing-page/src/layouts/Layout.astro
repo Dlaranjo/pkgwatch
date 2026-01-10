@@ -11,7 +11,7 @@ interface Props {
 const {
   title,
   description = 'Predict which npm dependencies are at risk of abandonment. Get health scores and risk assessments for your packages.',
-  image = 'https://dephealth.laranjo.dev/og-image.png',
+  image = 'https://pkgwatch.laranjo.dev/og-image.png',
   canonical = Astro.url.href,
 } = Astro.props
 ---
@@ -34,7 +34,7 @@ const {
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={image} />
-    <meta property="og:site_name" content="DepHealth" />
+    <meta property="og:site_name" content="PkgWatch" />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
@@ -52,8 +52,8 @@ const {
       script-src 'self' https://plausible.io 'unsafe-inline';
       style-src 'self' https://fonts.googleapis.com 'unsafe-inline';
       font-src 'self' https://fonts.gstatic.com;
-      img-src 'self' data: https://dephealth.laranjo.dev;
-      connect-src 'self' https://api.dephealth.laranjo.dev https://plausible.io;
+      img-src 'self' data: https://pkgwatch.laranjo.dev;
+      connect-src 'self' https://api.pkgwatch.laranjo.dev https://plausible.io;
     " />
 
     <!-- Favicon -->
@@ -67,14 +67,14 @@ const {
     <!-- Analytics -->
     <script
       defer
-      data-domain="dephealth.laranjo.dev"
+      data-domain="pkgwatch.laranjo.dev"
       src="https://plausible.io/js/script.js"
     ></script>
 
     <!-- Track outbound links -->
     <script
       defer
-      data-domain="dephealth.laranjo.dev"
+      data-domain="pkgwatch.laranjo.dev"
       src="https://plausible.io/js/script.outbound-links.js"
     ></script>
   </head>

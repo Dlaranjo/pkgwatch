@@ -1,5 +1,5 @@
 """
-Shared pytest fixtures for DepHealth tests.
+Shared pytest fixtures for PkgWatch tests.
 """
 
 import os
@@ -74,7 +74,7 @@ def mock_dynamodb():
 
         # API keys table with GSIs
         dynamodb.create_table(
-            TableName="dephealth-api-keys",
+            TableName="pkgwatch-api-keys",
             KeySchema=[
                 {"AttributeName": "pk", "KeyType": "HASH"},
                 {"AttributeName": "sk", "KeyType": "RANGE"},
@@ -120,7 +120,7 @@ def mock_dynamodb():
 
         # Packages table with GSIs
         dynamodb.create_table(
-            TableName="dephealth-packages",
+            TableName="pkgwatch-packages",
             KeySchema=[
                 {"AttributeName": "pk", "KeyType": "HASH"},
                 {"AttributeName": "sk", "KeyType": "RANGE"},
@@ -161,10 +161,10 @@ def seeded_api_keys_table(mock_dynamodb):
     """API keys table with a test user."""
     import hashlib
 
-    table = mock_dynamodb.Table("dephealth-api-keys")
+    table = mock_dynamodb.Table("pkgwatch-api-keys")
 
     # Create a test API key
-    test_key = "dh_test1234567890abcdef"
+    test_key = "pw_test1234567890abcdef"
     key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
     table.put_item(
@@ -186,7 +186,7 @@ def seeded_api_keys_table(mock_dynamodb):
 @pytest.fixture
 def seeded_packages_table(mock_dynamodb, sample_healthy_package):
     """Packages table with test data."""
-    table = mock_dynamodb.Table("dephealth-packages")
+    table = mock_dynamodb.Table("pkgwatch-packages")
 
     # Add a healthy package
     table.put_item(

@@ -1,5 +1,5 @@
 """
-Security tests for DepHealth application.
+Security tests for PkgWatch application.
 
 Tests for:
 - Authentication bypass attempts
@@ -36,7 +36,7 @@ class TestSessionTokenSecurity:
         """Should reject session with modified payload but original signature."""
         import boto3
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Set up secrets manager with test secret
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -83,7 +83,7 @@ class TestSessionTokenSecurity:
         """Should reject expired session tokens."""
         import boto3
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
@@ -115,7 +115,7 @@ class TestSessionTokenSecurity:
         """Should reject malformed session tokens gracefully."""
         import boto3
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
@@ -149,7 +149,7 @@ class TestSessionTokenSecurity:
         """Should reject tokens with forged signatures."""
         import boto3
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
@@ -210,7 +210,7 @@ class TestAuthenticationBypass:
     @mock_aws
     def test_get_api_keys_without_session(self, mock_dynamodb, api_gateway_event):
         """GET /api-keys should return 401 without session cookie."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
 
         from api.get_api_keys import handler
@@ -227,7 +227,7 @@ class TestAuthenticationBypass:
     @mock_aws
     def test_create_api_key_without_session(self, mock_dynamodb, api_gateway_event):
         """POST /api-keys should return 401 without session cookie."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
 
         from api.create_api_key import handler
@@ -242,7 +242,7 @@ class TestAuthenticationBypass:
     @mock_aws
     def test_revoke_api_key_without_session(self, mock_dynamodb, api_gateway_event):
         """DELETE /api-keys/{key_id} should return 401 without session."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
 
         from api.revoke_api_key import handler
@@ -258,7 +258,7 @@ class TestAuthenticationBypass:
     @mock_aws
     def test_auth_me_without_session(self, mock_dynamodb, api_gateway_event):
         """GET /auth/me should return 401 without session."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
 
         from api.auth_me import handler
@@ -272,7 +272,7 @@ class TestAuthenticationBypass:
     @mock_aws
     def test_post_scan_without_api_key(self, mock_dynamodb, api_gateway_event):
         """POST /scan should return 401 without API key."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -291,8 +291,8 @@ class TestAuthenticationBypass:
         self, seeded_packages_table, seeded_api_keys_table, api_gateway_event
     ):
         """GET /packages should work in demo mode but track usage."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         from api.get_package import handler
 
@@ -320,7 +320,7 @@ class TestAuthorizationIssues:
         """Should not be able to revoke another user's API key."""
         import boto3
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Set up secrets manager
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -334,10 +334,10 @@ class TestAuthorizationIssues:
         auth_callback._session_secret_cache = None
         from api.auth_callback import _create_session_token
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create victim's API key
-        victim_key_hash = hashlib.sha256(b"dh_victim_key").hexdigest()
+        victim_key_hash = hashlib.sha256(b"pw_victim_key").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_victim",
@@ -350,8 +350,8 @@ class TestAuthorizationIssues:
         )
 
         # Create attacker's API key (so they have at least 2 keys - needed for revoke)
-        attacker_key_hash1 = hashlib.sha256(b"dh_attacker_key1").hexdigest()
-        attacker_key_hash2 = hashlib.sha256(b"dh_attacker_key2").hexdigest()
+        attacker_key_hash1 = hashlib.sha256(b"pw_attacker_key1").hexdigest()
+        attacker_key_hash2 = hashlib.sha256(b"pw_attacker_key2").hexdigest()
         for kh in [attacker_key_hash1, attacker_key_hash2]:
             table.put_item(
                 Item={
@@ -395,7 +395,7 @@ class TestAuthorizationIssues:
         """Should only list own API keys, not other users'."""
         import boto3
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
@@ -408,10 +408,10 @@ class TestAuthorizationIssues:
         auth_callback._session_secret_cache = None
         from api.auth_callback import _create_session_token
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create victim's API key
-        victim_key_hash = hashlib.sha256(b"dh_victim_secret").hexdigest()
+        victim_key_hash = hashlib.sha256(b"pw_victim_secret").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_victim",
@@ -424,7 +424,7 @@ class TestAuthorizationIssues:
         )
 
         # Create attacker's API key
-        attacker_key_hash = hashlib.sha256(b"dh_attacker").hexdigest()
+        attacker_key_hash = hashlib.sha256(b"pw_attacker").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_attacker",
@@ -471,8 +471,8 @@ class TestInputInjection:
         self, seeded_packages_table, seeded_api_keys_table, api_gateway_event
     ):
         """Should safely handle malicious package names."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         from api.get_package import handler
 
@@ -513,8 +513,8 @@ class TestInputInjection:
         self, seeded_packages_table, seeded_api_keys_table, api_gateway_event
     ):
         """Should validate ecosystem parameter."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         from api.get_package import handler
 
@@ -543,8 +543,8 @@ class TestInputInjection:
     @mock_aws
     def test_json_body_injection(self, seeded_api_keys_table, api_gateway_event):
         """POST /scan should handle malicious JSON gracefully."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         from api.post_scan import handler
 
@@ -586,7 +586,7 @@ class TestSensitiveDataExposure:
         """GET /api-keys should not return actual API key values."""
         import boto3
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
@@ -599,10 +599,10 @@ class TestSensitiveDataExposure:
         auth_callback._session_secret_cache = None
         from api.auth_callback import _create_session_token
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create user with API key
-        real_api_key = "dh_supersecretkey12345"
+        real_api_key = "pw_supersecretkey12345"
         key_hash = hashlib.sha256(real_api_key.encode()).hexdigest()
         table.put_item(
             Item={
@@ -635,19 +635,19 @@ class TestSensitiveDataExposure:
 
         # Actual API key should never appear in response
         assert real_api_key not in response_str
-        assert "dh_supersecret" not in response_str
+        assert "pw_supersecret" not in response_str
 
         # Should only show key_id (hash prefix) and key_prefix (masked)
         for key_info in body["api_keys"]:
-            assert "dh_..." in key_info["key_prefix"]  # Masked format
+            assert "pw_..." in key_info["key_prefix"]  # Masked format
 
     @mock_aws
     def test_error_messages_dont_leak_internals(
         self, seeded_api_keys_table, api_gateway_event
     ):
         """Error messages should not expose internal details."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         from api.get_package import handler
 
@@ -683,7 +683,7 @@ class TestRateLimitingSecurity:
     @mock_aws
     def test_rate_limit_enforced_atomically(self, seeded_api_keys_table):
         """Rate limit check and increment should be atomic."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from shared.auth import check_and_increment_usage
 
@@ -711,8 +711,8 @@ class TestRateLimitingSecurity:
         self, seeded_packages_table, seeded_api_keys_table, api_gateway_event
     ):
         """Demo rate limit should use API Gateway's verified sourceIp, not headers."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         from api.get_package import handler, _get_client_ip
 
@@ -763,7 +763,7 @@ class TestStripeWebhookSecurity:
         import boto3
         import importlib
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Set up Stripe secrets - inside the mock_dynamodb context
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -803,7 +803,7 @@ class TestStripeWebhookSecurity:
         import boto3
         import importlib
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Create secrets within the same mock context as mock_dynamodb
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -846,7 +846,7 @@ class TestStripeWebhookSecurity:
         import boto3
         import importlib
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Create secrets within the same mock context as mock_dynamodb
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -900,7 +900,7 @@ class TestMagicLinkSecurity:
         """Magic link tokens should be single-use."""
         import boto3
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -913,12 +913,12 @@ class TestMagicLinkSecurity:
         import api.auth_callback as auth_callback
         auth_callback._session_secret_cache = None
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create user with magic token
         magic_token = secrets.token_urlsafe(32)
         expires = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()
-        key_hash = hashlib.sha256(b"dh_test").hexdigest()
+        key_hash = hashlib.sha256(b"pw_test").hexdigest()
 
         table.put_item(
             Item={
@@ -955,7 +955,7 @@ class TestMagicLinkSecurity:
         """Expired magic link tokens should be rejected."""
         import boto3
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -968,12 +968,12 @@ class TestMagicLinkSecurity:
         import api.auth_callback as auth_callback
         auth_callback._session_secret_cache = None
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create user with expired magic token
         magic_token = secrets.token_urlsafe(32)
         expires = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()  # Expired
-        key_hash = hashlib.sha256(b"dh_expired").hexdigest()
+        key_hash = hashlib.sha256(b"pw_expired").hexdigest()
 
         table.put_item(
             Item={
@@ -1000,7 +1000,7 @@ class TestMagicLinkSecurity:
     @mock_aws
     def test_email_enumeration_prevention(self, mock_dynamodb, api_gateway_event):
         """Magic link endpoint should not reveal if email exists."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
 
         from api.magic_link import handler
@@ -1040,7 +1040,7 @@ class TestCookieSecurity:
         """Session cookie should have HttpOnly, Secure, SameSite flags."""
         import boto3
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -1053,12 +1053,12 @@ class TestCookieSecurity:
         import api.auth_callback as auth_callback
         auth_callback._session_secret_cache = None
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create user with magic token
         magic_token = secrets.token_urlsafe(32)
         expires = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()
-        key_hash = hashlib.sha256(b"dh_cookie").hexdigest()
+        key_hash = hashlib.sha256(b"pw_cookie").hexdigest()
 
         table.put_item(
             Item={

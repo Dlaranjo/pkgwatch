@@ -1,12 +1,12 @@
-# DepHealth - Dependency Health Intelligence
+# PkgWatch - Dependency Health Intelligence
 
 Predict which npm packages are at risk of abandonment, maintenance decline, or security issues — BEFORE problems occur.
 
 **Live:**
-- API: https://api.dephealth.laranjo.dev/v1/
-- Website: https://dephealth.laranjo.dev
-- Docs: https://dephealth.laranjo.dev/docs
-- Methodology: https://dephealth.laranjo.dev/methodology
+- API: https://api.pkgwatch.laranjo.dev/v1/
+- Website: https://pkgwatch.laranjo.dev
+- Docs: https://pkgwatch.laranjo.dev/docs
+- Methodology: https://pkgwatch.laranjo.dev/methodology
 
 ## Features
 
@@ -22,27 +22,27 @@ Predict which npm packages are at risk of abandonment, maintenance decline, or s
 
 ```bash
 # Install globally
-npm install -g @dephealth/cli
+npm install -g @pkgwatch/cli
 
 # Set your API key
-export DEPHEALTH_API_KEY=dh_your_key_here
+export PKGWATCH_API_KEY=pw_your_key_here
 
 # Check a single package
-dephealth check lodash
+pkgwatch check lodash
 
 # Scan your project's dependencies
-dephealth scan
+pkgwatch scan
 
 # Fail CI on HIGH/CRITICAL risk packages
-dephealth scan --fail-on HIGH
+pkgwatch scan --fail-on HIGH
 ```
 
 ### GitHub Action
 
 ```yaml
-- uses: dephealth/action@v1
+- uses: pkgwatch/action@v1
   with:
-    api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+    api-key: ${{ secrets.PKGWATCH_API_KEY }}
     fail-on: HIGH
 ```
 
@@ -50,17 +50,17 @@ dephealth scan --fail-on HIGH
 
 ```bash
 # Get health score for a package
-curl -H "X-API-Key: dh_your_key" \
-  https://api.dephealth.laranjo.dev/v1/packages/npm/lodash
+curl -H "X-API-Key: pw_your_key" \
+  https://api.pkgwatch.laranjo.dev/v1/packages/npm/lodash
 
 # Scan multiple packages
-curl -X POST -H "X-API-Key: dh_your_key" \
+curl -X POST -H "X-API-Key: pw_your_key" \
   -H "Content-Type: application/json" \
   -d '{"dependencies": {"lodash": "^4.17.21", "express": "^4.18.0"}}' \
-  https://api.dephealth.laranjo.dev/v1/scan
+  https://api.pkgwatch.laranjo.dev/v1/scan
 ```
 
-Get your API key at [dephealth.laranjo.dev](https://dephealth.laranjo.dev)
+Get your API key at [pkgwatch.laranjo.dev](https://pkgwatch.laranjo.dev)
 
 ## Scoring Methodology
 
@@ -81,7 +81,7 @@ Health scores (0-100) are calculated from 5 weighted components:
 - **True bus factor** — Minimum contributors needed for 50% of commits
 - **Continuous functions** — Log-scale, exponential decay, and sigmoid functions for smooth, gaming-resistant scores
 
-See [/methodology](https://dephealth.laranjo.dev/methodology) for full details.
+See [/methodology](https://pkgwatch.laranjo.dev/methodology) for full details.
 
 ## API Endpoints
 
@@ -106,16 +106,16 @@ See [/methodology](https://dephealth.laranjo.dev/methodology) for full details.
 ## Project Structure
 
 ```
-dephealth/
+pkgwatch/
 ├── functions/               # Python Lambda functions
 │   ├── api/                 # API endpoint handlers
 │   ├── collectors/          # Data collection (deps.dev, npm, GitHub)
 │   ├── scoring/             # Health scoring algorithms
 │   └── shared/              # Auth, DynamoDB helpers
-├── cli/                     # @dephealth/cli - Command line tool
-├── action/                  # @dephealth/action - GitHub Action
+├── cli/                     # @pkgwatch/cli - Command line tool
+├── action/                  # @pkgwatch/action - GitHub Action
 ├── packages/
-│   └── api-client/          # @dephealth/api-client - Shared TypeScript client
+│   └── api-client/          # @pkgwatch/api-client - Shared TypeScript client
 ├── landing-page/            # Astro website
 │   └── terraform/           # S3 + CloudFront infrastructure
 ├── infrastructure/          # AWS CDK (API infrastructure)
@@ -171,12 +171,12 @@ cdk deploy --all
 ```bash
 # GitHub token for API access
 aws secretsmanager put-secret-value \
-  --secret-id dephealth/github-token \
+  --secret-id pkgwatch/github-token \
   --secret-string 'ghp_your_token_here'
 
 # Stripe secrets (for payments)
 aws secretsmanager put-secret-value \
-  --secret-id dephealth/stripe-secret \
+  --secret-id pkgwatch/stripe-secret \
   --secret-string '{"key":"sk_live_..."}'
 ```
 

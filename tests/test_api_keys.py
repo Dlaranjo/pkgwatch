@@ -32,7 +32,7 @@ class TestGetApiKeysHandler:
     @mock_aws
     def test_returns_401_without_session(self, mock_dynamodb, api_gateway_event):
         """Should return 401 when no session cookie."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
 
         from api.get_api_keys import handler
@@ -46,7 +46,7 @@ class TestGetApiKeysHandler:
     @mock_aws
     def test_returns_keys_for_authenticated_user(self, mock_dynamodb, api_gateway_event):
         """Should return API keys for authenticated session."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
         # Set up secrets manager mock
@@ -56,10 +56,10 @@ class TestGetApiKeysHandler:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create API key for user
-        key_hash = hashlib.sha256(b"dh_testkey123").hexdigest()
+        key_hash = hashlib.sha256(b"pw_testkey123").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_session123",
@@ -99,7 +99,7 @@ class TestCreateApiKeyHandler:
     @mock_aws
     def test_returns_401_without_session(self, mock_dynamodb, api_gateway_event):
         """Should return 401 when no session cookie."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
 
         from api.create_api_key import handler
@@ -112,7 +112,7 @@ class TestCreateApiKeyHandler:
     @mock_aws
     def test_creates_key_for_authenticated_user(self, mock_dynamodb, api_gateway_event):
         """Should create new API key for authenticated session."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -121,10 +121,10 @@ class TestCreateApiKeyHandler:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create existing API key for user
-        key_hash = hashlib.sha256(b"dh_existing").hexdigest()
+        key_hash = hashlib.sha256(b"pw_existing").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_create123",
@@ -150,12 +150,12 @@ class TestCreateApiKeyHandler:
         assert result["statusCode"] == 201
         body = json.loads(result["body"])
         assert "api_key" in body
-        assert body["api_key"].startswith("dh_")
+        assert body["api_key"].startswith("pw_")
 
     @mock_aws
     def test_enforces_max_keys_limit(self, mock_dynamodb, api_gateway_event):
         """Should return 400 when user has too many keys."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -164,11 +164,11 @@ class TestCreateApiKeyHandler:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create 5 API keys (max allowed)
         for i in range(5):
-            key_hash = hashlib.sha256(f"dh_key{i}".encode()).hexdigest()
+            key_hash = hashlib.sha256(f"pw_key{i}".encode()).hexdigest()
             table.put_item(
                 Item={
                     "pk": "user_maxkeys",
@@ -202,7 +202,7 @@ class TestRevokeApiKeyHandler:
     @mock_aws
     def test_returns_401_without_session(self, mock_dynamodb, api_gateway_event):
         """Should return 401 when no session cookie."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
 
         from api.revoke_api_key import handler
@@ -217,7 +217,7 @@ class TestRevokeApiKeyHandler:
     @mock_aws
     def test_revokes_existing_key(self, mock_dynamodb, api_gateway_event):
         """Should revoke existing API key."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -226,11 +226,11 @@ class TestRevokeApiKeyHandler:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create two API keys (need 2 so we can revoke 1)
-        key_hash1 = hashlib.sha256(b"dh_torevoke").hexdigest()
-        key_hash2 = hashlib.sha256(b"dh_tokeep").hexdigest()
+        key_hash1 = hashlib.sha256(b"pw_torevoke").hexdigest()
+        key_hash2 = hashlib.sha256(b"pw_tokeep").hexdigest()
 
         for key_hash in [key_hash1, key_hash2]:
             table.put_item(
@@ -266,7 +266,7 @@ class TestRevokeApiKeyHandler:
     @mock_aws
     def test_prevents_revoking_last_key(self, mock_dynamodb, api_gateway_event):
         """Should return 400 when trying to revoke last key."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -275,10 +275,10 @@ class TestRevokeApiKeyHandler:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create only one API key
-        key_hash = hashlib.sha256(b"dh_onlykey").hexdigest()
+        key_hash = hashlib.sha256(b"pw_onlykey").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_onlykey",
@@ -309,7 +309,7 @@ class TestRevokeApiKeyHandler:
     @mock_aws
     def test_returns_404_for_nonexistent_key(self, mock_dynamodb, api_gateway_event):
         """Should return 404 for non-existent key."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -318,10 +318,10 @@ class TestRevokeApiKeyHandler:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create one key (so user exists)
-        key_hash = hashlib.sha256(b"dh_existing").hexdigest()
+        key_hash = hashlib.sha256(b"pw_existing").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_notfound",

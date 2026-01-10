@@ -3,7 +3,7 @@
 ## Current Version
 
 **Version:** v1
-**Base URL:** `https://api.dephealth.laranjo.dev/v1`
+**Base URL:** `https://api.pkgwatch.laranjo.dev/v1`
 **Status:** Active (Current)
 
 ## Versioning Principles
@@ -82,7 +82,7 @@ When an endpoint or feature is deprecated:
 ```
 Deprecation: true
 Sunset: Sat, 1 Jun 2026 00:00:00 GMT
-Link: <https://docs.dephealth.laranjo.dev/migration/v1-to-v2>; rel="deprecation"
+Link: <https://docs.pkgwatch.laranjo.dev/migration/v1-to-v2>; rel="deprecation"
 ```
 
 ## Version Support Timeline
@@ -160,16 +160,16 @@ Future endpoints returning lists will use consistent pagination:
 ### v1 → v2 Migration (when available)
 
 Migration guides will be published at:
-- [https://docs.dephealth.laranjo.dev/migration/v1-to-v2](https://docs.dephealth.laranjo.dev/migration/v1-to-v2)
+- [https://docs.pkgwatch.laranjo.dev/migration/v1-to-v2](https://docs.pkgwatch.laranjo.dev/migration/v1-to-v2)
 
 ## Client Library Versioning
 
 Official client libraries will follow this pattern:
 
 ```
-dephealth-js@1.x.x    → supports API v1
-dephealth-js@2.x.x    → supports API v2
-dephealth-python@1.x  → supports API v1
+pkgwatch-js@1.x.x    → supports API v1
+pkgwatch-js@2.x.x    → supports API v2
+pkgwatch-python@1.x  → supports API v1
 ```
 
 ## Version Negotiation (Future)
@@ -177,7 +177,7 @@ dephealth-python@1.x  → supports API v1
 In future versions, we may support content negotiation via headers:
 
 ```http
-Accept: application/vnd.dephealth.v2+json
+Accept: application/vnd.pkgwatch.v2+json
 ```
 
 Currently, use URL versioning exclusively.
@@ -186,7 +186,7 @@ Currently, use URL versioning exclusively.
 
 For questions about API versioning or migration:
 - Email: [hello@laranjo.dev](mailto:hello@laranjo.dev)
-- Documentation: [https://docs.dephealth.laranjo.dev](https://docs.dephealth.laranjo.dev)
+- Documentation: [https://docs.pkgwatch.laranjo.dev](https://docs.pkgwatch.laranjo.dev)
 
 ---
 

@@ -1,20 +1,20 @@
-# @dephealth/api-client
+# @pkgwatch/api-client
 
-TypeScript client library for the DepHealth API.
+TypeScript client library for the PkgWatch API.
 
 ## Installation
 
 ```bash
-npm install @dephealth/api-client
+npm install @pkgwatch/api-client
 ```
 
 ## Usage
 
 ```typescript
-import { DepHealthClient, ApiClientError } from '@dephealth/api-client';
+import { PkgWatchClient, ApiClientError } from '@pkgwatch/api-client';
 
 // Initialize client
-const client = new DepHealthClient('dh_your_api_key');
+const client = new PkgWatchClient('pw_your_api_key');
 
 // Get package health (full details)
 const result = await client.getPackage('lodash');
@@ -66,8 +66,8 @@ try {
 ## Configuration
 
 ```typescript
-const client = new DepHealthClient(apiKey, {
-  baseUrl: 'https://api.dephealth.laranjo.dev/v1',  // Default
+const client = new PkgWatchClient(apiKey, {
+  baseUrl: 'https://api.pkgwatch.laranjo.dev/v1',  // Default
   timeout: 30000,  // 30 seconds default
   maxRetries: 3,   // Automatic retry with exponential backoff
 });
@@ -156,7 +156,7 @@ interface UsageStats {
 ## Utility Functions
 
 ```typescript
-import { getRiskColor, formatBytes } from '@dephealth/api-client';
+import { getRiskColor, formatBytes } from '@pkgwatch/api-client';
 
 // Get color hint for terminal output
 getRiskColor('CRITICAL');  // 'red'
@@ -171,7 +171,7 @@ formatBytes(1048576);      // '1 MB'
 
 ## Security
 
-- API keys must start with `dh_` prefix
+- API keys must start with `pw_` prefix
 - HTTPS is enforced (HTTP only allowed for localhost development)
 - API keys are never logged
 

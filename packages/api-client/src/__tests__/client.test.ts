@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
-  DepHealthClient,
+  PkgWatchClient,
   ApiClientError,
   getRiskColor,
   formatBytes,
@@ -10,34 +10,34 @@ import {
 // Constructor Validation Tests
 // ===========================================
 
-describe("DepHealthClient", () => {
+describe("PkgWatchClient", () => {
   describe("constructor", () => {
     it("throws error for empty API key", () => {
-      expect(() => new DepHealthClient("")).toThrow(
+      expect(() => new PkgWatchClient("")).toThrow(
         "API key is required and cannot be empty"
       );
     });
 
     it("throws error for whitespace-only API key", () => {
-      expect(() => new DepHealthClient("   ")).toThrow(
+      expect(() => new PkgWatchClient("   ")).toThrow(
         "API key is required and cannot be empty"
       );
     });
 
-    it("throws error for API key without dh_ prefix", () => {
-      expect(() => new DepHealthClient("invalid_key")).toThrow(
-        "Invalid API key format. Keys should start with 'dh_'"
+    it("throws error for API key without pw_ prefix", () => {
+      expect(() => new PkgWatchClient("invalid_key")).toThrow(
+        "Invalid API key format. Keys should start with 'pw_'"
       );
     });
 
-    it("accepts valid API key with dh_ prefix", () => {
-      expect(() => new DepHealthClient("dh_test123")).not.toThrow();
+    it("accepts valid API key with pw_ prefix", () => {
+      expect(() => new PkgWatchClient("pw_test123")).not.toThrow();
     });
 
     it("throws error for HTTP baseUrl (non-localhost)", () => {
       expect(
         () =>
-          new DepHealthClient("dh_test123", {
+          new PkgWatchClient("pw_test123", {
             baseUrl: "http://api.example.com",
           })
       ).toThrow("baseUrl must use HTTPS for security");
@@ -46,7 +46,7 @@ describe("DepHealthClient", () => {
     it("allows HTTP localhost for development", () => {
       expect(
         () =>
-          new DepHealthClient("dh_test123", {
+          new PkgWatchClient("pw_test123", {
             baseUrl: "http://localhost:3000",
           })
       ).not.toThrow();
@@ -55,7 +55,7 @@ describe("DepHealthClient", () => {
     it("allows HTTP 127.0.0.1 for development", () => {
       expect(
         () =>
-          new DepHealthClient("dh_test123", {
+          new PkgWatchClient("pw_test123", {
             baseUrl: "http://127.0.0.1:3000",
           })
       ).not.toThrow();
@@ -64,7 +64,7 @@ describe("DepHealthClient", () => {
     it("rejects SSRF attempt via localhost.attacker.com", () => {
       expect(
         () =>
-          new DepHealthClient("dh_test123", {
+          new PkgWatchClient("pw_test123", {
             baseUrl: "http://localhost.attacker.com",
           })
       ).toThrow("baseUrl must use HTTPS for security");
@@ -73,7 +73,7 @@ describe("DepHealthClient", () => {
     it("rejects SSRF attempt via localhost@attacker.com", () => {
       expect(
         () =>
-          new DepHealthClient("dh_test123", {
+          new PkgWatchClient("pw_test123", {
             baseUrl: "http://localhost@attacker.com",
           })
       ).toThrow("baseUrl must use HTTPS for security");
@@ -82,16 +82,16 @@ describe("DepHealthClient", () => {
     it("allows HTTPS baseUrl", () => {
       expect(
         () =>
-          new DepHealthClient("dh_test123", {
+          new PkgWatchClient("pw_test123", {
             baseUrl: "https://api.example.com",
           })
       ).not.toThrow();
     });
 
     it("uses default baseUrl when not specified", () => {
-      const client = new DepHealthClient("dh_test123");
+      const client = new PkgWatchClient("pw_test123");
       // We can't directly access private fields, but we can verify no error
-      expect(client).toBeInstanceOf(DepHealthClient);
+      expect(client).toBeInstanceOf(PkgWatchClient);
     });
   });
 });

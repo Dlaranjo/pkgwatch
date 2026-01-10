@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * DepHealth CLI - Check npm package health scores from the command line.
+ * PkgWatch CLI - Check npm package health scores from the command line.
  *
  * Usage:
- *   dephealth check <package>      Check a single package
- *   dephealth scan [path]          Scan package.json dependencies
- *   dephealth usage                Show API usage statistics
- *   dephealth config <action>      Manage configuration
+ *   pkgwatch check <package>      Check a single package
+ *   pkgwatch scan [path]          Scan package.json dependencies
+ *   pkgwatch usage                Show API usage statistics
+ *   pkgwatch config <action>      Manage configuration
  */
 
 import { program } from "commander";
@@ -62,7 +62,7 @@ function logVerbose(message: string): void {
 /**
  * Check and display rate limit warning based on usage percentage.
  */
-async function checkRateLimitWarning(client: DepHealthClient): Promise<void> {
+async function checkRateLimitWarning(client: PkgWatchClient): Promise<void> {
   if (quietMode) return;
 
   try {
@@ -72,7 +72,7 @@ async function checkRateLimitWarning(client: DepHealthClient): Promise<void> {
 
     if (usedPercent >= 95) {
       console.log(pc.red(`\n⚠ Warning: ${remaining.toLocaleString()} requests remaining this month (${usedPercent.toFixed(0)}% used)`));
-      console.log(pc.dim("  Upgrade at https://dephealth.laranjo.dev/pricing"));
+      console.log(pc.dim("  Upgrade at https://pkgwatch.laranjo.dev/pricing"));
     } else if (usedPercent >= 80) {
       console.log(pc.yellow(`\n⚠ ${remaining.toLocaleString()} requests remaining this month (${usedPercent.toFixed(0)}% used)`));
     }
@@ -82,7 +82,7 @@ async function checkRateLimitWarning(client: DepHealthClient): Promise<void> {
 }
 
 import {
-  DepHealthClient,
+  PkgWatchClient,
   ApiClientError,
   getRiskColor,
   type PackageHealthFull,
@@ -101,19 +101,19 @@ import {
 /**
  * Get API client, exiting if no API key is configured.
  */
-function getClient(): DepHealthClient {
+function getClient(): PkgWatchClient {
   const apiKey = getApiKey();
   if (!apiKey) {
     console.error(pc.red("Error: No API key configured."));
     console.error("");
     console.error("Set your API key using one of:");
-    console.error(`  ${pc.cyan("dephealth config set")}           # Interactive setup`);
-    console.error(`  ${pc.cyan("export DEPHEALTH_API_KEY=dh_...")}  # Environment variable`);
+    console.error(`  ${pc.cyan("pkgwatch config set")}           # Interactive setup`);
+    console.error(`  ${pc.cyan("export PKGWATCH_API_KEY=pw_...")}  # Environment variable`);
     console.error("");
-    console.error(`Get your API key at ${pc.underline("https://dephealth.laranjo.dev")}`);
+    console.error(`Get your API key at ${pc.underline("https://pkgwatch.laranjo.dev")}`);
     process.exit(EXIT_CLI_ERROR);
   }
-  return new DepHealthClient(apiKey);
+  return new PkgWatchClient(apiKey);
 }
 
 /**
@@ -161,15 +161,15 @@ function toSarif(result: ScanResult): object {
     runs: [{
       tool: {
         driver: {
-          name: "dephealth",
+          name: "pkgwatch",
           version: VERSION,
-          informationUri: "https://dephealth.laranjo.dev",
+          informationUri: "https://pkgwatch.laranjo.dev",
         }
       },
       results: result.packages
         .filter((p: PackageHealth) => p.risk_level === "CRITICAL" || p.risk_level === "HIGH")
         .map((p: PackageHealth) => ({
-          ruleId: `dephealth/${p.risk_level.toLowerCase()}`,
+          ruleId: `pkgwatch/${p.risk_level.toLowerCase()}`,
           level: p.risk_level === "CRITICAL" ? "error" : "warning",
           message: {
             text: `${p.package}: ${p.risk_level} risk (health score: ${p.health_score})`,
@@ -292,7 +292,7 @@ async function prompt(question: string): Promise<string> {
 // ============================================================
 
 program
-  .name("dephealth")
+  .name("pkgwatch")
   .description("Check npm package health scores from the command line")
   .version(VERSION)
   .option("-q, --quiet", "Suppress non-essential output")
@@ -338,18 +338,18 @@ program
         } else if (error.code === "rate_limited") {
           console.error(pc.red("Rate limit exceeded."));
           console.error(pc.dim("Your API quota has been exhausted. Try again later or upgrade your plan."));
-          console.error(pc.dim("  https://dephealth.laranjo.dev/pricing"));
+          console.error(pc.dim("  https://pkgwatch.laranjo.dev/pricing"));
         } else {
           console.error(pc.red(`API Error: ${error.message}`));
         }
       } else if (error instanceof Error) {
         console.error(pc.red(`Unexpected error: ${error.message}`));
         console.error(pc.dim("\nIf this persists, please report at:"));
-        console.error(pc.dim("  https://github.com/Dlaranjo/dephealth/issues"));
+        console.error(pc.dim("  https://github.com/Dlaranjo/pkgwatch/issues"));
       } else {
         console.error(pc.red(`Unexpected error: ${String(error)}`));
         console.error(pc.dim("\nIf this persists, please report at:"));
-        console.error(pc.dim("  https://github.com/Dlaranjo/dephealth/issues"));
+        console.error(pc.dim("  https://github.com/Dlaranjo/pkgwatch/issues"));
       }
       process.exit(EXIT_CLI_ERROR);
     }
@@ -578,18 +578,18 @@ program
         if (error.code === "rate_limited") {
           console.error(pc.red("Rate limit exceeded."));
           console.error(pc.dim("Your API quota has been exhausted. Try again later or upgrade your plan."));
-          console.error(pc.dim("  https://dephealth.laranjo.dev/pricing"));
+          console.error(pc.dim("  https://pkgwatch.laranjo.dev/pricing"));
         } else {
           console.error(pc.red(`API Error: ${error.message}`));
         }
       } else if (error instanceof Error) {
         console.error(pc.red(`Unexpected error: ${error.message}`));
         console.error(pc.dim("\nIf this persists, please report at:"));
-        console.error(pc.dim("  https://github.com/Dlaranjo/dephealth/issues"));
+        console.error(pc.dim("  https://github.com/Dlaranjo/pkgwatch/issues"));
       } else {
         console.error(pc.red(`Unexpected error: ${String(error)}`));
         console.error(pc.dim("\nIf this persists, please report at:"));
-        console.error(pc.dim("  https://github.com/Dlaranjo/dephealth/issues"));
+        console.error(pc.dim("  https://github.com/Dlaranjo/pkgwatch/issues"));
       }
       process.exit(EXIT_CLI_ERROR);
     }
@@ -634,18 +634,18 @@ program
         if (error.code === "rate_limited") {
           console.error(pc.red("Rate limit exceeded."));
           console.error(pc.dim("Your API quota has been exhausted. Try again later or upgrade your plan."));
-          console.error(pc.dim("  https://dephealth.laranjo.dev/pricing"));
+          console.error(pc.dim("  https://pkgwatch.laranjo.dev/pricing"));
         } else {
           console.error(pc.red(`API Error: ${error.message}`));
         }
       } else if (error instanceof Error) {
         console.error(pc.red(`Unexpected error: ${error.message}`));
         console.error(pc.dim("\nIf this persists, please report at:"));
-        console.error(pc.dim("  https://github.com/Dlaranjo/dephealth/issues"));
+        console.error(pc.dim("  https://github.com/Dlaranjo/pkgwatch/issues"));
       } else {
         console.error(pc.red(`Unexpected error: ${String(error)}`));
         console.error(pc.dim("\nIf this persists, please report at:"));
-        console.error(pc.dim("  https://github.com/Dlaranjo/dephealth/issues"));
+        console.error(pc.dim("  https://github.com/Dlaranjo/pkgwatch/issues"));
       }
       process.exit(EXIT_CLI_ERROR);
     }
@@ -658,7 +658,7 @@ program
   .command("doctor")
   .description("Diagnose configuration and test API connectivity")
   .action(async () => {
-    console.log(pc.bold("DepHealth Doctor\n"));
+    console.log(pc.bold("PkgWatch Doctor\n"));
 
     // Check 1: API key configured
     const apiKey = getApiKey();
@@ -667,14 +667,14 @@ program
       console.log(pc.dim(`  Key: ${maskApiKey(apiKey)}`));
     } else {
       console.log(pc.red("✗") + " No API key configured");
-      console.log(pc.dim("  Run: dephealth config set"));
+      console.log(pc.dim("  Run: pkgwatch config set"));
       process.exit(EXIT_CLI_ERROR);
     }
 
     // Check 2: API connectivity
     const spinner = createSpinner("Testing API connectivity...");
     try {
-      const client = new DepHealthClient(apiKey);
+      const client = new PkgWatchClient(apiKey);
       const data = await client.getUsage();
       spinner?.succeed("API connection successful");
       console.log(pc.dim(`  Tier: ${data.tier}`));
@@ -715,8 +715,8 @@ configCmd
   .description("Set API key")
   .action(async () => {
     console.log("");
-    console.log("Enter your DepHealth API key.");
-    console.log(pc.dim(`Get one at ${pc.underline("https://dephealth.laranjo.dev")}`));
+    console.log("Enter your PkgWatch API key.");
+    console.log(pc.dim(`Get one at ${pc.underline("https://pkgwatch.laranjo.dev")}`));
     console.log("");
 
     const key = await prompt("API Key: ");
@@ -727,15 +727,15 @@ configCmd
     }
 
     // Validate key format
-    if (!key.startsWith("dh_")) {
-      console.error(pc.red("Invalid API key format. Keys should start with 'dh_'"));
+    if (!key.startsWith("pw_")) {
+      console.error(pc.red("Invalid API key format. Keys should start with 'pw_'"));
       process.exit(EXIT_CLI_ERROR);
     }
 
     // Test the key
     const spinner = createSpinner("Validating API key...");
     try {
-      const client = new DepHealthClient(key);
+      const client = new PkgWatchClient(key);
       const data = await client.getUsage();
       spinner?.succeed("API key validated");
 
@@ -748,7 +748,7 @@ configCmd
       spinner?.fail("API key validation failed");
       if (error instanceof ApiClientError && error.code === "unauthorized") {
         console.error(pc.red("\nInvalid API key. Please check your key and try again."));
-        console.error(pc.dim("Get your API key at https://dephealth.laranjo.dev"));
+        console.error(pc.dim("Get your API key at https://pkgwatch.laranjo.dev"));
       } else if (error instanceof Error) {
         console.error(pc.red(`\nError: ${error.message}`));
       } else {
@@ -764,7 +764,7 @@ configCmd
   .description("Show current configuration")
   .action(() => {
     const config = readConfig();
-    const envKey = process.env.DEPHEALTH_API_KEY;
+    const envKey = process.env.PKGWATCH_API_KEY;
 
     console.log("");
     console.log(pc.bold("Configuration"));
@@ -803,13 +803,13 @@ Exit Codes:
   2   CLI error (invalid arguments, missing config)
 
 Examples:
-  dephealth check lodash              Check single package
-  dephealth c lodash                  Check with alias
-  dephealth scan --fail-on HIGH       Scan and fail on HIGH+ risk
-  dephealth scan ./packages/frontend  Scan specific directory
-  dephealth scan -o json              Output as JSON
-  dephealth scan -o sarif             Output as SARIF
-  dephealth doctor                    Diagnose configuration issues
+  pkgwatch check lodash              Check single package
+  pkgwatch c lodash                  Check with alias
+  pkgwatch scan --fail-on HIGH       Scan and fail on HIGH+ risk
+  pkgwatch scan ./packages/frontend  Scan specific directory
+  pkgwatch scan -o json              Output as JSON
+  pkgwatch scan -o sarif             Output as SARIF
+  pkgwatch doctor                    Diagnose configuration issues
 `);
 
 // Parse and run

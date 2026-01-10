@@ -15,13 +15,13 @@ class TestSignupHandler:
     @mock_aws
     def test_creates_pending_user(self, mock_dynamodb, api_gateway_event):
         """Should create a pending user record."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
 
         # Mock SES to avoid actual email sending
         import boto3
         ses = boto3.client("ses", region_name="us-east-1")
-        ses.verify_email_identity(EmailAddress="noreply@dephealth.laranjo.dev")
+        ses.verify_email_identity(EmailAddress="noreply@pkgwatch.laranjo.dev")
 
         from api.signup import handler
 
@@ -35,7 +35,7 @@ class TestSignupHandler:
         assert "email" in body["message"].lower()
 
         # Verify user was created
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
         from boto3.dynamodb.conditions import Key
         response = table.query(
             IndexName="email-index",
@@ -47,7 +47,7 @@ class TestSignupHandler:
     @mock_aws
     def test_returns_400_for_invalid_email(self, mock_dynamodb, api_gateway_event):
         """Should return 400 for invalid email format."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.signup import handler
 
@@ -70,7 +70,7 @@ class TestSignupHandler:
         would allow attackers to enumerate valid email addresses. The signup endpoint
         now returns the same 200 response regardless of email existence.
         """
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.signup import handler
 
@@ -92,7 +92,7 @@ class TestAuthMeHandler:
     @mock_aws
     def test_returns_401_without_session(self, mock_dynamodb, api_gateway_event):
         """Should return 401 when no session cookie."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
 
         from api.auth_me import handler
@@ -110,7 +110,7 @@ class TestCheckAndIncrementUsage:
     @mock_aws
     def test_allows_request_under_limit(self, seeded_api_keys_table):
         """Should allow request when under limit."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from shared.auth import check_and_increment_usage
 
@@ -124,7 +124,7 @@ class TestCheckAndIncrementUsage:
     @mock_aws
     def test_denies_request_at_limit(self, seeded_api_keys_table):
         """Should deny request when at limit."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Update user to be at limit
         table, test_key = seeded_api_keys_table
@@ -147,7 +147,7 @@ class TestCheckAndIncrementUsage:
     @mock_aws
     def test_increments_count_atomically(self, seeded_api_keys_table):
         """Should atomically increment usage count."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from shared.auth import check_and_increment_usage
 
@@ -169,27 +169,27 @@ class TestGenerateApiKey:
 
     @mock_aws
     def test_generates_valid_key(self, mock_dynamodb):
-        """Should generate a key with dh_ prefix."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        """Should generate a key with pw_ prefix."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from shared.auth import generate_api_key
 
         key = generate_api_key("user_new", tier="free", email="new@example.com")
 
-        assert key.startswith("dh_")
+        assert key.startswith("pw_")
         assert len(key) > 20
 
     @mock_aws
     def test_stores_key_in_dynamodb(self, mock_dynamodb):
         """Should store hashed key in DynamoDB."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from shared.auth import generate_api_key
 
         key = generate_api_key("user_new", tier="free", email="new@example.com")
 
         # Verify it was stored
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
         from boto3.dynamodb.conditions import Key
         response = table.query(
             KeyConditionExpression=Key("pk").eq("user_new"),
@@ -206,7 +206,7 @@ class TestValidateApiKey:
     @mock_aws
     def test_validates_correct_key(self, seeded_api_keys_table):
         """Should validate a correct API key."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from shared.auth import validate_api_key
 
@@ -222,18 +222,18 @@ class TestValidateApiKey:
     @mock_aws
     def test_returns_none_for_invalid_key(self, seeded_api_keys_table):
         """Should return None for invalid key."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from shared.auth import validate_api_key
 
-        result = validate_api_key("dh_invalid_key_12345")
+        result = validate_api_key("pw_invalid_key_12345")
 
         assert result is None
 
     @mock_aws
     def test_returns_none_for_wrong_prefix(self, seeded_api_keys_table):
-        """Should return None for keys without dh_ prefix."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        """Should return None for keys without pw_ prefix."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from shared.auth import validate_api_key
 
@@ -244,7 +244,7 @@ class TestValidateApiKey:
     @mock_aws
     def test_returns_none_for_empty_key(self, mock_dynamodb):
         """Should return None for empty key."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from shared.auth import validate_api_key
 
@@ -261,10 +261,10 @@ class TestVerifyEmailHandler:
         import secrets
         from datetime import datetime, timedelta, timezone
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
         token = secrets.token_urlsafe(32)
         expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
 
@@ -292,7 +292,7 @@ class TestVerifyEmailHandler:
     @mock_aws
     def test_rejects_invalid_token(self, mock_dynamodb, api_gateway_event):
         """Should redirect with error for invalid token."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
 
         from api.verify_email import handler
@@ -311,10 +311,10 @@ class TestVerifyEmailHandler:
         import secrets
         from datetime import datetime, timedelta, timezone
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
         token = secrets.token_urlsafe(32)
         # Expired 1 hour ago
         expires = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
@@ -342,7 +342,7 @@ class TestVerifyEmailHandler:
     @mock_aws
     def test_rejects_missing_token(self, mock_dynamodb, api_gateway_event):
         """Should redirect with error when token is missing."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
 
         from api.verify_email import handler
@@ -361,13 +361,13 @@ class TestMagicLinkHandler:
     @mock_aws
     def test_sends_magic_link_for_verified_user(self, seeded_api_keys_table, api_gateway_event):
         """Should send magic link for verified user."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
 
         # Mock SES
         import boto3
         ses = boto3.client("ses", region_name="us-east-1")
-        ses.verify_email_identity(EmailAddress="noreply@dephealth.laranjo.dev")
+        ses.verify_email_identity(EmailAddress="noreply@pkgwatch.laranjo.dev")
 
         from api.magic_link import handler
 
@@ -383,7 +383,7 @@ class TestMagicLinkHandler:
     @mock_aws
     def test_returns_same_response_for_unknown_email(self, mock_dynamodb, api_gateway_event):
         """Should return same response for unknown email (security)."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
 
         from api.magic_link import handler
@@ -401,7 +401,7 @@ class TestMagicLinkHandler:
     @mock_aws
     def test_rejects_invalid_email_format(self, mock_dynamodb, api_gateway_event):
         """Should return 400 for invalid email format."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.magic_link import handler
 
@@ -421,7 +421,7 @@ class TestAuthCallbackHandler:
     @mock_aws
     def test_rejects_missing_token(self, mock_dynamodb, api_gateway_event):
         """Should redirect with error when token is missing."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
         os.environ["SESSION_SECRET_ARN"] = ""
 
@@ -437,7 +437,7 @@ class TestAuthCallbackHandler:
     @mock_aws
     def test_rejects_invalid_token(self, mock_dynamodb, api_gateway_event):
         """Should redirect with error for invalid token."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
 
         # Need to mock secrets manager for this test

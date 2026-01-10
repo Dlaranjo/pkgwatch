@@ -37,7 +37,7 @@ def dlq_environment(monkeypatch):
     """Set up environment variables for DLQ processor."""
     monkeypatch.setenv("DLQ_URL", "https://sqs.us-east-1.amazonaws.com/123456789012/test-dlq")
     monkeypatch.setenv("MAIN_QUEUE_URL", "https://sqs.us-east-1.amazonaws.com/123456789012/test-main")
-    monkeypatch.setenv("PACKAGES_TABLE", "dephealth-packages")
+    monkeypatch.setenv("PACKAGES_TABLE", "pkgwatch-packages")
     monkeypatch.setenv("MAX_DLQ_RETRIES", "5")
 
     # Reload module to pick up new env vars
@@ -92,7 +92,7 @@ class TestDLQHandler:
         """Should return error when DLQ_URL is not configured."""
         os.environ["DLQ_URL"] = ""
         os.environ["MAIN_QUEUE_URL"] = "https://sqs.example.com/main"
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         from collectors.dlq_processor import handler
 
@@ -106,7 +106,7 @@ class TestDLQHandler:
         """Should return error when MAIN_QUEUE_URL is not configured."""
         monkeypatch.setenv("DLQ_URL", "https://sqs.example.com/dlq")
         monkeypatch.setenv("MAIN_QUEUE_URL", "")
-        monkeypatch.setenv("PACKAGES_TABLE", "dephealth-packages")
+        monkeypatch.setenv("PACKAGES_TABLE", "pkgwatch-packages")
 
         # Reload module to pick up new env vars
         import importlib
@@ -378,7 +378,7 @@ class TestProcessDLQMessage:
             mock_sqs.delete_message.assert_called_once()
 
             # Verify permanent failure was stored in DynamoDB
-            table = mock_dynamodb.Table("dephealth-packages")
+            table = mock_dynamodb.Table("pkgwatch-packages")
             response = table.scan()
             items = response["Items"]
 
@@ -582,7 +582,7 @@ class TestPermanentFailureStorage:
 
         _store_permanent_failure(body, "msg-123", "Persistent connection error")
 
-        table = mock_dynamodb.Table("dephealth-packages")
+        table = mock_dynamodb.Table("pkgwatch-packages")
         response = table.scan()
         items = response["Items"]
 
@@ -611,7 +611,7 @@ class TestPermanentFailureStorage:
 
         _store_permanent_failure(body, "msg-456", "Unknown error")
 
-        table = mock_dynamodb.Table("dephealth-packages")
+        table = mock_dynamodb.Table("pkgwatch-packages")
         response = table.scan()
         items = response["Items"]
 
@@ -630,7 +630,7 @@ class TestPermanentFailureStorage:
 
         _store_permanent_failure(body, "msg-789", "Unknown error")
 
-        table = mock_dynamodb.Table("dephealth-packages")
+        table = mock_dynamodb.Table("pkgwatch-packages")
         response = table.scan()
         items = response["Items"]
 

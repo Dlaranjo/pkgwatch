@@ -11,8 +11,8 @@ from typing import Optional, Any, Dict, List
 
 # CORS configuration
 _PROD_ORIGINS = [
-    "https://dephealth.laranjo.dev",
-    "https://app.dephealth.laranjo.dev",
+    "https://pkgwatch.laranjo.dev",
+    "https://app.pkgwatch.laranjo.dev",
 ]
 _DEV_ORIGINS = [
     "http://localhost:4321",  # Astro dev server

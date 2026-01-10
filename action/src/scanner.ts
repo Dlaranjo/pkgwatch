@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import * as core from "@actions/core";
-import { DepHealthClient, ScanResult, PackageHealth, ApiClientError } from "./api";
+import { PkgWatchClient, ScanResult, PackageHealth, ApiClientError } from "./api";
 
 const BATCH_SIZE = 25;
 
@@ -45,7 +45,7 @@ export async function scanDependencies(
 
   core.info(`Found ${depCount} dependencies, analyzing health scores...`);
 
-  const client = new DepHealthClient(apiKey);
+  const client = new PkgWatchClient(apiKey);
 
   // Batch processing for large dependency lists to avoid timeouts
   if (depCount <= BATCH_SIZE) {

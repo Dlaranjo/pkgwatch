@@ -53,7 +53,7 @@ export class ApiStack extends cdk.Stack {
     // Secrets Manager: Stripe Secrets
     // ===========================================
     const stripeSecret = new secretsmanager.Secret(this, "StripeSecret", {
-      secretName: "dephealth/stripe-secret",
+      secretName: "pkgwatch/stripe-secret",
       description: "Stripe API secret key",
       removalPolicy: cdk.RemovalPolicy.RETAIN, // Protect secrets from accidental deletion
     });
@@ -62,7 +62,7 @@ export class ApiStack extends cdk.Stack {
       this,
       "StripeWebhookSecret",
       {
-        secretName: "dephealth/stripe-webhook",
+        secretName: "pkgwatch/stripe-webhook",
         description: "Stripe webhook signing secret",
         removalPolicy: cdk.RemovalPolicy.RETAIN, // Protect secrets from accidental deletion
       }
@@ -116,7 +116,7 @@ export class ApiStack extends cdk.Stack {
     // Health check handler (no auth required)
     const healthHandler = new lambda.Function(this, "HealthHandler", {
       ...commonLambdaProps,
-      functionName: "dephealth-api-health",
+      functionName: "pkgwatch-api-health",
       handler: "health.handler",
       code: apiCodeWithShared,
       description: "API health check endpoint",
@@ -125,7 +125,7 @@ export class ApiStack extends cdk.Stack {
     // Get package handler
     const getPackageHandler = new lambda.Function(this, "GetPackageHandler", {
       ...commonLambdaProps,
-      functionName: "dephealth-api-get-package",
+      functionName: "pkgwatch-api-get-package",
       handler: "get_package.handler",
       code: apiCodeWithShared,
       description: "Get package health score",
@@ -144,7 +144,7 @@ export class ApiStack extends cdk.Stack {
     // Scan packages handler
     const scanHandler = new lambda.Function(this, "ScanHandler", {
       ...commonLambdaProps,
-      functionName: "dephealth-api-scan",
+      functionName: "pkgwatch-api-scan",
       handler: "post_scan.handler",
       code: apiCodeWithShared,
       timeout: cdk.Duration.seconds(90), // Increased from 60s for batch operations
@@ -159,7 +159,7 @@ export class ApiStack extends cdk.Stack {
     // Get usage handler
     const getUsageHandler = new lambda.Function(this, "GetUsageHandler", {
       ...commonLambdaProps,
-      functionName: "dephealth-api-get-usage",
+      functionName: "pkgwatch-api-get-usage",
       handler: "get_usage.handler",
       code: apiCodeWithShared,
       description: "Get API usage statistics",
@@ -173,7 +173,7 @@ export class ApiStack extends cdk.Stack {
       "StripeWebhookHandler",
       {
         ...commonLambdaProps,
-        functionName: "dephealth-api-stripe-webhook",
+        functionName: "pkgwatch-api-stripe-webhook",
         handler: "stripe_webhook.handler",
         code: apiCodeWithShared,
         description: "Handle Stripe webhook events",
@@ -194,7 +194,7 @@ export class ApiStack extends cdk.Stack {
     // Monthly usage reset handler (scheduled)
     const resetUsageHandler = new lambda.Function(this, "ResetUsageHandler", {
       ...commonLambdaProps,
-      functionName: "dephealth-api-reset-usage",
+      functionName: "pkgwatch-api-reset-usage",
       handler: "reset_usage.handler",
       code: apiCodeWithShared,
       timeout: cdk.Duration.minutes(5), // Table scan may take time
@@ -205,7 +205,7 @@ export class ApiStack extends cdk.Stack {
 
     // EventBridge rule for monthly reset at midnight UTC on 1st
     const resetRule = new events.Rule(this, "MonthlyUsageReset", {
-      ruleName: "dephealth-monthly-usage-reset",
+      ruleName: "pkgwatch-monthly-usage-reset",
       schedule: events.Schedule.cron({
         minute: "0",
         hour: "0",
@@ -224,7 +224,7 @@ export class ApiStack extends cdk.Stack {
 
     // Session secret for JWT tokens
     const sessionSecret = new secretsmanager.Secret(this, "SessionSecret", {
-      secretName: "dephealth/session-secret",
+      secretName: "pkgwatch/session-secret",
       description: "Secret key for signing session tokens",
       generateSecretString: {
         secretStringTemplate: "{}",
@@ -240,17 +240,17 @@ export class ApiStack extends cdk.Stack {
       ...commonLambdaProps,
       environment: {
         ...commonLambdaProps.environment,
-        BASE_URL: "https://dephealth.laranjo.dev",
+        BASE_URL: "https://pkgwatch.laranjo.dev",
         SESSION_SECRET_ARN: sessionSecret.secretArn,
-        VERIFICATION_EMAIL_SENDER: "noreply@dephealth.laranjo.dev",
-        LOGIN_EMAIL_SENDER: "noreply@dephealth.laranjo.dev",
+        VERIFICATION_EMAIL_SENDER: "noreply@pkgwatch.laranjo.dev",
+        LOGIN_EMAIL_SENDER: "noreply@pkgwatch.laranjo.dev",
       },
     };
 
     // POST /signup - Create pending account
     const signupHandler = new lambda.Function(this, "SignupHandler", {
       ...authLambdaProps,
-      functionName: "dephealth-api-signup",
+      functionName: "pkgwatch-api-signup",
       handler: "signup.handler",
       code: apiCodeWithShared,
       description: "User signup - creates pending account and sends verification email",
@@ -261,8 +261,8 @@ export class ApiStack extends cdk.Stack {
     // ===========================================
     // SES: Email Identity for domain verification
     // ===========================================
-    const emailIdentity = new ses.EmailIdentity(this, "DepHealthEmailIdentity", {
-      identity: ses.Identity.domain("dephealth.laranjo.dev"),
+    const emailIdentity = new ses.EmailIdentity(this, "PkgWatchEmailIdentity", {
+      identity: ses.Identity.domain("pkgwatch.laranjo.dev"),
     });
 
     // Output DKIM tokens for DNS configuration
@@ -276,8 +276,8 @@ export class ApiStack extends cdk.Stack {
       effect: iam.Effect.ALLOW,
       actions: ["ses:SendEmail", "ses:SendRawEmail"],
       resources: [
-        // Domain-level identity allows sending from any address @dephealth.laranjo.dev
-        `arn:aws:ses:${this.region}:${this.account}:identity/dephealth.laranjo.dev`,
+        // Domain-level identity allows sending from any address @pkgwatch.laranjo.dev
+        `arn:aws:ses:${this.region}:${this.account}:identity/pkgwatch.laranjo.dev`,
       ],
     });
 
@@ -286,7 +286,7 @@ export class ApiStack extends cdk.Stack {
     // GET /verify - Verify email and create API key
     const verifyHandler = new lambda.Function(this, "VerifyEmailHandler", {
       ...authLambdaProps,
-      functionName: "dephealth-api-verify-email",
+      functionName: "pkgwatch-api-verify-email",
       handler: "verify_email.handler",
       code: apiCodeWithShared,
       description: "Verify email and activate user account",
@@ -297,7 +297,7 @@ export class ApiStack extends cdk.Stack {
     // POST /auth/magic-link - Send login link
     const magicLinkHandler = new lambda.Function(this, "MagicLinkHandler", {
       ...authLambdaProps,
-      functionName: "dephealth-api-magic-link",
+      functionName: "pkgwatch-api-magic-link",
       handler: "magic_link.handler",
       code: apiCodeWithShared,
       description: "Send magic link for passwordless authentication",
@@ -309,7 +309,7 @@ export class ApiStack extends cdk.Stack {
     // GET /auth/callback - Create session from magic link
     const authCallbackHandler = new lambda.Function(this, "AuthCallbackHandler", {
       ...authLambdaProps,
-      functionName: "dephealth-api-auth-callback",
+      functionName: "pkgwatch-api-auth-callback",
       handler: "auth_callback.handler",
       code: apiCodeWithShared,
       description: "Handle magic link callback and create session",
@@ -321,7 +321,7 @@ export class ApiStack extends cdk.Stack {
     // GET /auth/me - Get current user info
     const authMeHandler = new lambda.Function(this, "AuthMeHandler", {
       ...authLambdaProps,
-      functionName: "dephealth-api-auth-me",
+      functionName: "pkgwatch-api-auth-me",
       handler: "auth_me.handler",
       code: apiCodeWithShared,
       description: "Get current authenticated user info",
@@ -333,7 +333,7 @@ export class ApiStack extends cdk.Stack {
     // GET /api-keys - List user's API keys
     const getApiKeysHandler = new lambda.Function(this, "GetApiKeysHandler", {
       ...authLambdaProps,
-      functionName: "dephealth-api-get-api-keys",
+      functionName: "pkgwatch-api-get-api-keys",
       handler: "get_api_keys.handler",
       code: apiCodeWithShared,
       description: "List all API keys for authenticated user",
@@ -345,7 +345,7 @@ export class ApiStack extends cdk.Stack {
     // POST /api-keys - Create new API key
     const createApiKeyHandler = new lambda.Function(this, "CreateApiKeyHandler", {
       ...authLambdaProps,
-      functionName: "dephealth-api-create-api-key",
+      functionName: "pkgwatch-api-create-api-key",
       handler: "create_api_key.handler",
       code: apiCodeWithShared,
       description: "Create new API key for authenticated user",
@@ -357,7 +357,7 @@ export class ApiStack extends cdk.Stack {
     // DELETE /api-keys/{key_id} - Revoke API key
     const revokeApiKeyHandler = new lambda.Function(this, "RevokeApiKeyHandler", {
       ...authLambdaProps,
-      functionName: "dephealth-api-revoke-api-key",
+      functionName: "pkgwatch-api-revoke-api-key",
       handler: "revoke_api_key.handler",
       code: apiCodeWithShared,
       description: "Revoke API key for authenticated user",
@@ -369,9 +369,9 @@ export class ApiStack extends cdk.Stack {
     // ===========================================
     // API Gateway
     // ===========================================
-    this.api = new apigateway.RestApi(this, "DepHealthApi", {
-      restApiName: "DepHealth API",
-      description: "Dependency Health Intelligence API",
+    this.api = new apigateway.RestApi(this, "PkgWatchApi", {
+      restApiName: "PkgWatch API",
+      description: "Package Watch API",
       minimumCompressionSize: 1024, // Compress responses > 1KB (60-80% reduction)
       deployOptions: {
         stageName: "v1",
@@ -398,14 +398,14 @@ export class ApiStack extends cdk.Stack {
         // CORS origins - localhost only allowed in dev mode
         allowOrigins: isDevMode
           ? [
-              "https://dephealth.laranjo.dev",
-              "https://app.dephealth.laranjo.dev",
+              "https://pkgwatch.laranjo.dev",
+              "https://app.pkgwatch.laranjo.dev",
               "http://localhost:3000", // For local development
               "http://localhost:4321", // Astro dev server
             ]
           : [
-              "https://dephealth.laranjo.dev",
-              "https://app.dephealth.laranjo.dev",
+              "https://pkgwatch.laranjo.dev",
+              "https://app.pkgwatch.laranjo.dev",
             ],
         allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
         allowHeaders: [
@@ -664,12 +664,12 @@ export class ApiStack extends cdk.Stack {
     // WAF: Web Application Firewall
     // ===========================================
     const webAcl = new wafv2.CfnWebACL(this, "ApiWaf", {
-      name: "dephealth-api-waf",
+      name: "pkgwatch-api-waf",
       defaultAction: { allow: {} },
       scope: "REGIONAL",
       visibilityConfig: {
         cloudWatchMetricsEnabled: true,
-        metricName: "DepHealthApiWaf",
+        metricName: "PkgWatchApiWaf",
         sampledRequestsEnabled: true,
       },
       rules: [
@@ -781,7 +781,7 @@ export class ApiStack extends cdk.Stack {
 
       // Error rate alarm (> 5% errors over 5 minutes)
       const errorAlarm = new cloudwatch.Alarm(this, `${name}ErrorAlarm`, {
-        alarmName: `dephealth-api-${name.toLowerCase()}-errors`,
+        alarmName: `pkgwatch-api-${name.toLowerCase()}-errors`,
         alarmDescription: `High error rate on ${name} Lambda`,
         metric: fn.metricErrors({
           period: cdk.Duration.minutes(5),
@@ -798,7 +798,7 @@ export class ApiStack extends cdk.Stack {
       // Duration alarm (P99 > 80% of timeout)
       const timeoutMs = fn.timeout?.toMilliseconds() ?? 30000;
       const durationAlarm = new cloudwatch.Alarm(this, `${name}DurationAlarm`, {
-        alarmName: `dephealth-api-${name.toLowerCase()}-duration`,
+        alarmName: `pkgwatch-api-${name.toLowerCase()}-duration`,
         alarmDescription: `High latency on ${name} Lambda (approaching timeout)`,
         metric: fn.metricDuration({
           period: cdk.Duration.minutes(5),
@@ -814,7 +814,7 @@ export class ApiStack extends cdk.Stack {
 
       // Throttle alarm (any throttles)
       const throttleAlarm = new cloudwatch.Alarm(this, `${name}ThrottleAlarm`, {
-        alarmName: `dephealth-api-${name.toLowerCase()}-throttles`,
+        alarmName: `pkgwatch-api-${name.toLowerCase()}-throttles`,
         alarmDescription: `Throttling detected on ${name} Lambda`,
         metric: fn.metricThrottles({
           period: cdk.Duration.minutes(5),
@@ -859,7 +859,7 @@ export class ApiStack extends cdk.Stack {
 
     // API Gateway 5XX alarm
     const api5xxAlarm = new cloudwatch.Alarm(this, "Api5xxAlarm", {
-      alarmName: "dephealth-api-5xx-errors",
+      alarmName: "pkgwatch-api-5xx-errors",
       alarmDescription: "High 5XX error rate on API Gateway",
       metric: this.api.metricServerError({
         period: cdk.Duration.minutes(5),
@@ -873,7 +873,7 @@ export class ApiStack extends cdk.Stack {
 
     // API Gateway 4XX alarm (high client errors might indicate issues)
     const api4xxAlarm = new cloudwatch.Alarm(this, "Api4xxAlarm", {
-      alarmName: "dephealth-api-4xx-errors",
+      alarmName: "pkgwatch-api-4xx-errors",
       alarmDescription: "High 4XX error rate on API Gateway",
       metric: this.api.metricClientError({
         period: cdk.Duration.minutes(5),
@@ -894,7 +894,7 @@ export class ApiStack extends cdk.Stack {
 
     // API Gateway P95 latency alarm
     const apiLatencyAlarm = new cloudwatch.Alarm(this, "ApiLatencyAlarm", {
-      alarmName: "dephealth-api-latency-p95",
+      alarmName: "pkgwatch-api-latency-p95",
       alarmDescription: "API P95 latency exceeds 2 seconds",
       metric: this.api.metricLatency({
         statistic: "p95",
@@ -913,7 +913,7 @@ export class ApiStack extends cdk.Stack {
 
     // API Latency Dashboard
     new cloudwatch.Dashboard(this, "ApiLatencyDashboard", {
-      dashboardName: "DepHealth-API-Latency",
+      dashboardName: "PkgWatch-API-Latency",
       widgets: [
         [
           new cloudwatch.GraphWidget({
@@ -935,19 +935,19 @@ export class ApiStack extends cdk.Stack {
     new cdk.CfnOutput(this, "ApiUrl", {
       value: this.api.url,
       description: "API Gateway URL",
-      exportName: "DepHealthApiUrl",
+      exportName: "PkgWatchApiUrl",
     });
 
     new cdk.CfnOutput(this, "StripeSecretArn", {
       value: stripeSecret.secretArn,
       description: "Stripe secret ARN (set value manually)",
-      exportName: "DepHealthStripeSecretArn",
+      exportName: "PkgWatchStripeSecretArn",
     });
 
     new cdk.CfnOutput(this, "StripeWebhookSecretArn", {
       value: stripeWebhookSecret.secretArn,
       description: "Stripe webhook secret ARN (set value manually)",
-      exportName: "DepHealthStripeWebhookSecretArn",
+      exportName: "PkgWatchStripeWebhookSecretArn",
     });
   }
 }

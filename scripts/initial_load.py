@@ -224,7 +224,7 @@ async def main():
     parser.add_argument(
         "--table",
         type=str,
-        default="dephealth-packages",
+        default="pkgwatch-packages",
         help="DynamoDB table name",
     )
     parser.add_argument(

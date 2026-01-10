@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { DepHealthClient, ApiClientError } from "../index.js";
+import { PkgWatchClient, ApiClientError } from "../index.js";
 
 // Mock fetch globally
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-describe("DepHealthClient retry behavior", () => {
+describe("PkgWatchClient retry behavior", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mockFetch.mockReset();
@@ -16,7 +16,7 @@ describe("DepHealthClient retry behavior", () => {
   });
 
   const createClient = () =>
-    new DepHealthClient("dh_test123", {
+    new PkgWatchClient("pw_test123", {
       baseUrl: "https://api.test.com",
       timeout: 5000,
       maxRetries: 3,
@@ -475,7 +475,7 @@ describe("DepHealthClient retry behavior", () => {
       expect.any(String),
       expect.objectContaining({
         headers: expect.objectContaining({
-          "X-API-Key": "dh_test123",
+          "X-API-Key": "pw_test123",
         }),
       })
     );
@@ -705,7 +705,7 @@ describe("DepHealthClient retry behavior", () => {
         json: () => Promise.resolve({ package: "success", health_score: 85 }),
       });
 
-    const client = new DepHealthClient("dh_test123", {
+    const client = new PkgWatchClient("pw_test123", {
       baseUrl: "https://api.test.com",
       maxRetries: 0,
     });

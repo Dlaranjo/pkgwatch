@@ -18,7 +18,7 @@ class TestStripeWebhookHandler:
         """Should return 500 when Stripe secrets are not configured."""
         pytest.importorskip("stripe")  # Skip if stripe not installed
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["STRIPE_SECRET_ARN"] = ""
         os.environ["STRIPE_WEBHOOK_SECRET_ARN"] = ""
 
@@ -70,9 +70,9 @@ class TestUpdateUserTier:
     @mock_aws
     def test_skips_pending_records(self, mock_dynamodb):
         """Should skip PENDING records when updating user tier."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create PENDING record
         table.put_item(
@@ -85,7 +85,7 @@ class TestUpdateUserTier:
         )
 
         # Create verified API key record
-        key_hash = hashlib.sha256(b"dh_test123").hexdigest()
+        key_hash = hashlib.sha256(b"pw_test123").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_pending123",
@@ -116,13 +116,13 @@ class TestUpdateUserTier:
     @mock_aws
     def test_updates_all_verified_keys_for_user(self, mock_dynamodb):
         """Should update all verified API keys for the user."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create two API keys for same user
-        key_hash1 = hashlib.sha256(b"dh_key1").hexdigest()
-        key_hash2 = hashlib.sha256(b"dh_key2").hexdigest()
+        key_hash1 = hashlib.sha256(b"pw_key1").hexdigest()
+        key_hash2 = hashlib.sha256(b"pw_key2").hexdigest()
 
         for key_hash in [key_hash1, key_hash2]:
             table.put_item(
@@ -150,9 +150,9 @@ class TestUpdateUserTier:
     @mock_aws
     def test_logs_warning_when_no_verified_keys(self, mock_dynamodb):
         """Should log warning when only PENDING records exist."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create only PENDING record
         table.put_item(
@@ -176,11 +176,11 @@ class TestHandleCheckoutCompleted:
     @mock_aws
     def test_handles_one_time_payment(self, mock_dynamodb):
         """Should handle one-time payments (no subscription_id)."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
-        key_hash = hashlib.sha256(b"dh_onetime").hexdigest()
+        key_hash = hashlib.sha256(b"pw_onetime").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_onetime",
@@ -215,11 +215,11 @@ class TestHandlePaymentFailed:
     @mock_aws
     def test_downgrades_after_three_failures(self, mock_dynamodb):
         """Should downgrade to free after 3 failed payments."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
-        key_hash = hashlib.sha256(b"dh_failing").hexdigest()
+        key_hash = hashlib.sha256(b"pw_failing").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_failing",
@@ -250,11 +250,11 @@ class TestHandlePaymentFailed:
     @mock_aws
     def test_tracks_failure_count_under_three(self, mock_dynamodb):
         """Should track failure count but not downgrade under 3 attempts."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
-        key_hash = hashlib.sha256(b"dh_tracking").hexdigest()
+        key_hash = hashlib.sha256(b"pw_tracking").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_tracking",
@@ -289,11 +289,11 @@ class TestHandleSubscriptionDeleted:
     @mock_aws
     def test_downgrades_to_free(self, mock_dynamodb):
         """Should downgrade user to free tier when subscription is deleted."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
-        key_hash = hashlib.sha256(b"dh_cancelled").hexdigest()
+        key_hash = hashlib.sha256(b"pw_cancelled").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_cancelled",

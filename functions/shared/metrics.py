@@ -24,7 +24,7 @@ def _get_cloudwatch():
         _cloudwatch = boto3.client("cloudwatch")
     return _cloudwatch
 
-NAMESPACE = os.environ.get("CLOUDWATCH_NAMESPACE", "DepHealth")
+NAMESPACE = os.environ.get("CLOUDWATCH_NAMESPACE", "PkgWatch")
 
 
 def emit_metric(

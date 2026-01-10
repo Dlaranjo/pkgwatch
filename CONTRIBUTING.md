@@ -1,6 +1,6 @@
-# Contributing to DepHealth
+# Contributing to PkgWatch
 
-Thank you for your interest in contributing to DepHealth!
+Thank you for your interest in contributing to PkgWatch!
 
 ## Development Setup
 
@@ -15,8 +15,8 @@ Thank you for your interest in contributing to DepHealth!
 
 ```bash
 # Clone the repository
-git clone https://github.com/dephealth/dephealth.git
-cd dephealth
+git clone https://github.com/pkgwatch/pkgwatch.git
+cd pkgwatch
 
 # Install Node.js dependencies
 npm install

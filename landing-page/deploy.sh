@@ -6,10 +6,10 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WEBSITE_DIR="$SCRIPT_DIR/dist"
 TERRAFORM_DIR="$SCRIPT_DIR/terraform"
-BUCKET_NAME="dephealth-landing-page"
+BUCKET_NAME="pkgwatch-landing-page"
 DISTRIBUTION_ID=$(terraform -chdir="$TERRAFORM_DIR" output -raw cloudfront_distribution_id 2>/dev/null || echo "")
 
-echo "=== DepHealth Landing Page Deployment ==="
+echo "=== PkgWatch Landing Page Deployment ==="
 
 # Build the Astro site first
 echo "Building Astro site..."
@@ -36,5 +36,5 @@ aws cloudfront create-invalidation \
 
 echo ""
 echo "=== Deployment Complete ==="
-echo "Website: https://dephealth.laranjo.dev"
+echo "Website: https://pkgwatch.laranjo.dev"
 echo ""

@@ -1,11 +1,11 @@
 /**
  * Re-export API client from shared package.
  *
- * This ensures backward compatibility for consumers importing from '@dephealth/cli/api'.
+ * This ensures backward compatibility for consumers importing from '@pkgwatch/cli/api'.
  */
 export {
   // Client
-  DepHealthClient,
+  PkgWatchClient,
   ApiClientError,
   // Types
   type PackageHealth,
@@ -22,4 +22,4 @@ export {
   // Utilities
   getRiskColor,
   formatBytes,
-} from "@dephealth/api-client";
+} from "@pkgwatch/api-client";

@@ -130,7 +130,7 @@ def from_decimal(obj):
 # This prevents cold start failures if credentials are not yet available
 _dynamodb_resource = None
 _dynamodb_lock = threading.Lock()
-PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")
+PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 
 
 def _get_dynamodb():

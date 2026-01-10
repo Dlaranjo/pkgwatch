@@ -22,11 +22,11 @@ from shared.response_utils import error_response, success_response
 
 dynamodb = boto3.resource("dynamodb")
 ses = boto3.client("ses")
-API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
+API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 LOGIN_EMAIL_SENDER = os.environ.get(
-    "LOGIN_EMAIL_SENDER", "noreply@dephealth.laranjo.dev"
+    "LOGIN_EMAIL_SENDER", "noreply@pkgwatch.laranjo.dev"
 )
-BASE_URL = os.environ.get("BASE_URL", "https://dephealth.laranjo.dev")
+BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.laranjo.dev")
 
 # Email validation regex
 EMAIL_REGEX = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
@@ -158,13 +158,13 @@ def _send_magic_link_email(email: str, magic_url: str):
         Source=LOGIN_EMAIL_SENDER,
         Destination={"ToAddresses": [email]},
         Message={
-            "Subject": {"Data": "Sign in to DepHealth", "Charset": "UTF-8"},
+            "Subject": {"Data": "Sign in to PkgWatch", "Charset": "UTF-8"},
             "Body": {
                 "Html": {
                     "Data": f"""
                     <html>
                     <body style="font-family: system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                        <h1 style="color: #1e293b;">Sign in to DepHealth</h1>
+                        <h1 style="color: #1e293b;">Sign in to PkgWatch</h1>
                         <p style="color: #475569; font-size: 16px;">
                             Click the button below to sign in to your account:
                         </p>
@@ -186,7 +186,7 @@ def _send_magic_link_email(email: str, magic_url: str):
                     "Charset": "UTF-8",
                 },
                 "Text": {
-                    "Data": f"""Sign in to DepHealth
+                    "Data": f"""Sign in to PkgWatch
 
 Click the link below to sign in to your account:
 

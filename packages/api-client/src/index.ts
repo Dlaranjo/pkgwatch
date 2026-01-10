@@ -1,11 +1,11 @@
 /**
- * DepHealth API Client
+ * PkgWatch API Client
  *
  * Shared client for CLI, GitHub Action, and other integrations.
  * Uses native fetch (Node 20+).
  */
 
-const DEFAULT_API_BASE = "https://api.dephealth.laranjo.dev/v1";
+const DEFAULT_API_BASE = "https://api.pkgwatch.laranjo.dev/v1";
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MAX_RETRIES = 3;
 
@@ -137,7 +137,7 @@ export class ApiClientError extends Error {
 // Client
 // ===========================================
 
-export class DepHealthClient {
+export class PkgWatchClient {
   private apiKey: string;
   private baseUrl: string;
   private timeout: number;
@@ -148,8 +148,8 @@ export class DepHealthClient {
     if (!apiKey || apiKey.trim() === "") {
       throw new Error("API key is required and cannot be empty");
     }
-    if (!apiKey.startsWith("dh_")) {
-      throw new Error("Invalid API key format. Keys should start with 'dh_'");
+    if (!apiKey.startsWith("pw_")) {
+      throw new Error("Invalid API key format. Keys should start with 'pw_'");
     }
 
     // Validate baseUrl uses HTTPS (except localhost for development)
@@ -231,7 +231,7 @@ export class DepHealthClient {
           );
         } else {
           lastError = new ApiClientError(
-            "Network error: Unable to reach DepHealth API",
+            "Network error: Unable to reach PkgWatch API",
             0,
             "network_error"
           );

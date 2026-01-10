@@ -1,6 +1,6 @@
-name: 'DepHealth Scan'
+name: 'PkgWatch Scan'
 description: 'Scan npm dependencies for health risks and security issues'
-author: 'DepHealth'
+author: 'PkgWatch'
 
 branding:
   icon: 'shield'
@@ -8,7 +8,7 @@ branding:
 
 inputs:
   api-key:
-    description: 'DepHealth API key. Get one at https://dephealth.laranjo.dev'
+    description: 'PkgWatch API key. Get one at https://pkgwatch.laranjo.dev'
     required: true
   working-directory:
     description: 'Directory containing package.json to scan'

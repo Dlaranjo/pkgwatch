@@ -20,8 +20,8 @@ logger.setLevel(logging.INFO)
 from shared.auth import generate_api_key
 
 dynamodb = boto3.resource("dynamodb")
-API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
-BASE_URL = os.environ.get("BASE_URL", "https://dephealth.laranjo.dev")
+API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
+BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.laranjo.dev")
 
 
 def handler(event, context):

@@ -1,5 +1,5 @@
 """
-deps.dev collector - Primary data source for DepHealth.
+deps.dev collector - Primary data source for PkgWatch.
 
 deps.dev provides comprehensive package data with NO rate limits:
 - Package versions and metadata

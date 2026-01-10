@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 // Mock home directory before importing config
-const testDir = join(tmpdir(), `dephealth-test-${Date.now()}`);
+const testDir = join(tmpdir(), `pkgwatch-test-${Date.now()}`);
 vi.mock("node:os", async () => {
   const actual = await vi.importActual("node:os");
   return {
@@ -25,24 +25,24 @@ describe("config", () => {
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true });
     }
-    delete process.env.DEPHEALTH_API_KEY;
+    delete process.env.PKGWATCH_API_KEY;
   });
 
   describe("getApiKey", () => {
     it("returns environment variable when set", () => {
-      process.env.DEPHEALTH_API_KEY = "dh_env_key";
-      expect(getApiKey()).toBe("dh_env_key");
+      process.env.PKGWATCH_API_KEY = "pw_env_key";
+      expect(getApiKey()).toBe("pw_env_key");
     });
 
     it("returns config file key when env not set", () => {
-      setApiKey("dh_file_key");
-      expect(getApiKey()).toBe("dh_file_key");
+      setApiKey("pw_file_key");
+      expect(getApiKey()).toBe("pw_file_key");
     });
 
     it("prefers environment variable over config file", () => {
-      process.env.DEPHEALTH_API_KEY = "dh_env_key";
-      setApiKey("dh_file_key");
-      expect(getApiKey()).toBe("dh_env_key");
+      process.env.PKGWATCH_API_KEY = "pw_env_key";
+      setApiKey("pw_file_key");
+      expect(getApiKey()).toBe("pw_env_key");
     });
 
     it("returns undefined when no key configured", () => {
@@ -52,22 +52,22 @@ describe("config", () => {
 
   describe("setApiKey", () => {
     it("saves key to config file", () => {
-      setApiKey("dh_test_key_123");
+      setApiKey("pw_test_key_123");
       const config = readConfig();
-      expect(config.apiKey).toBe("dh_test_key_123");
+      expect(config.apiKey).toBe("pw_test_key_123");
     });
 
     it("creates config directory if needed", () => {
       const configPath = getConfigPath();
-      const configDir = join(testDir, ".dephealth");
+      const configDir = join(testDir, ".pkgwatch");
 
       expect(existsSync(configDir)).toBe(false);
-      setApiKey("dh_new_key");
+      setApiKey("pw_new_key");
       expect(existsSync(configDir)).toBe(true);
     });
 
     it("sets secure file permissions", () => {
-      setApiKey("dh_secure_key");
+      setApiKey("pw_secure_key");
       const configPath = getConfigPath();
       const stats = statSync(configPath);
       // Check that only owner has access (0600 = 384 decimal)
@@ -77,7 +77,7 @@ describe("config", () => {
 
   describe("clearConfig", () => {
     it("removes api key from config", () => {
-      setApiKey("dh_to_clear");
+      setApiKey("pw_to_clear");
       clearConfig();
       const config = readConfig();
       expect(config.apiKey).toBeUndefined();
@@ -86,19 +86,19 @@ describe("config", () => {
 
   describe("maskApiKey", () => {
     it("masks long keys showing first 6 and last 4 chars", () => {
-      expect(maskApiKey("dh_abcdefghijklmnop")).toBe("dh_abc...mnop");
+      expect(maskApiKey("pw_abcdefghijklmnop")).toBe("pw_abc...mnop");
     });
 
     it("fully masks short keys", () => {
-      expect(maskApiKey("dh_short")).toBe("***");
+      expect(maskApiKey("pw_short")).toBe("***");
     });
 
     it("handles exactly 12 char keys", () => {
-      expect(maskApiKey("dh_123456789")).toBe("***");
+      expect(maskApiKey("pw_123456789")).toBe("***");
     });
 
     it("handles 13 char keys (threshold)", () => {
-      expect(maskApiKey("dh_1234567890")).toBe("dh_123...7890");
+      expect(maskApiKey("pw_1234567890")).toBe("pw_123...7890");
     });
   });
 
@@ -108,9 +108,9 @@ describe("config", () => {
     });
 
     it("returns config when file exists", () => {
-      setApiKey("dh_read_test");
+      setApiKey("pw_read_test");
       const config = readConfig();
-      expect(config.apiKey).toBe("dh_read_test");
+      expect(config.apiKey).toBe("pw_read_test");
     });
   });
 });

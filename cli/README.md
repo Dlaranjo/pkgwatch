@@ -1,6 +1,6 @@
-# @dephealth/cli
+# @pkgwatch/cli
 
-[![npm version](https://img.shields.io/npm/v/@dephealth/cli.svg)](https://www.npmjs.com/package/@dephealth/cli)
+[![npm version](https://img.shields.io/npm/v/@pkgwatch/cli.svg)](https://www.npmjs.com/package/@pkgwatch/cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 
@@ -9,23 +9,23 @@ Check npm package health scores from the command line.
 ## Installation
 
 ```bash
-npm install -g @dephealth/cli
+npm install -g @pkgwatch/cli
 # or
-npx @dephealth/cli check lodash
+npx @pkgwatch/cli check lodash
 ```
 
 Requires Node.js 20+.
 
 ## Setup
 
-Get your API key at [dephealth.laranjo.dev](https://dephealth.laranjo.dev).
+Get your API key at [pkgwatch.laranjo.dev](https://pkgwatch.laranjo.dev).
 
 ```bash
 # Option 1: Interactive setup
-dephealth config set
+pkgwatch config set
 
 # Option 2: Environment variable (for CI)
-export DEPHEALTH_API_KEY=dh_your_key_here
+export PKGWATCH_API_KEY=pw_your_key_here
 ```
 
 ## Commands
@@ -33,23 +33,23 @@ export DEPHEALTH_API_KEY=dh_your_key_here
 ### Check a package
 
 ```bash
-dephealth check lodash
-dephealth c lodash               # Using alias
-dephealth check @babel/core
-dephealth check lodash --json    # JSON output
+pkgwatch check lodash
+pkgwatch c lodash               # Using alias
+pkgwatch check @babel/core
+pkgwatch check lodash --json    # JSON output
 ```
 
 ### Scan package.json
 
 ```bash
-dephealth scan                      # Scan ./package.json
-dephealth s                         # Using alias
-dephealth scan ./path/to/project
-dephealth scan --fail-on HIGH       # Exit 1 if HIGH or CRITICAL (CI mode)
-dephealth scan --fail-on CRITICAL   # Exit 1 only on CRITICAL
-dephealth scan -o json              # JSON output
-dephealth scan -o sarif             # SARIF format (security tooling)
-dephealth scan --json               # JSON output (deprecated)
+pkgwatch scan                      # Scan ./package.json
+pkgwatch s                         # Using alias
+pkgwatch scan ./path/to/project
+pkgwatch scan --fail-on HIGH       # Exit 1 if HIGH or CRITICAL (CI mode)
+pkgwatch scan --fail-on CRITICAL   # Exit 1 only on CRITICAL
+pkgwatch scan -o json              # JSON output
+pkgwatch scan -o sarif             # SARIF format (security tooling)
+pkgwatch scan --json               # JSON output (deprecated)
 ```
 
 **Output formats:**
@@ -65,8 +65,8 @@ dephealth scan --json               # JSON output (deprecated)
 ### Check API usage
 
 ```bash
-dephealth usage
-dephealth u              # Using alias
+pkgwatch usage
+pkgwatch u              # Using alias
 ```
 
 Shows your current API usage with:
@@ -83,7 +83,7 @@ Shows your current API usage with:
 ### Doctor (diagnostics)
 
 ```bash
-dephealth doctor         # Check configuration and API connectivity
+pkgwatch doctor         # Check configuration and API connectivity
 ```
 
 Validates:
@@ -95,9 +95,9 @@ Validates:
 ### Configuration
 
 ```bash
-dephealth config set    # Set API key (validates key)
-dephealth config show   # Show configuration
-dephealth config clear  # Clear configuration
+pkgwatch config set    # Set API key (validates key)
+pkgwatch config show   # Show configuration
+pkgwatch config clear  # Clear configuration
 ```
 
 ## Global Flags
@@ -112,9 +112,9 @@ These flags work with any command:
 | `-h, --help` | Show help |
 
 ```bash
-dephealth -q check lodash      # No spinner, just results
-dephealth -v check lodash      # Show API call details
-dephealth --version            # Show version
+pkgwatch -q check lodash      # No spinner, just results
+pkgwatch -v check lodash      # Show API call details
+pkgwatch --version            # Show version
 ```
 
 ## Command Aliases
@@ -133,8 +133,8 @@ All main commands have short aliases for faster typing:
 # GitHub Actions example
 - name: Check dependencies
   env:
-    DEPHEALTH_API_KEY: ${{ secrets.DEPHEALTH_API_KEY }}
-  run: npx @dephealth/cli scan --fail-on HIGH
+    PKGWATCH_API_KEY: ${{ secrets.PKGWATCH_API_KEY }}
+  run: npx @pkgwatch/cli scan --fail-on HIGH
 ```
 
 For quieter CI output:
@@ -142,8 +142,8 @@ For quieter CI output:
 ```yaml
 - name: Check dependencies
   env:
-    DEPHEALTH_API_KEY: ${{ secrets.DEPHEALTH_API_KEY }}
-  run: npx @dephealth/cli -q scan --fail-on HIGH
+    PKGWATCH_API_KEY: ${{ secrets.PKGWATCH_API_KEY }}
+  run: npx @pkgwatch/cli -q scan --fail-on HIGH
 ```
 
 SARIF output for security tooling:
@@ -151,8 +151,8 @@ SARIF output for security tooling:
 ```yaml
 - name: Check dependencies
   env:
-    DEPHEALTH_API_KEY: ${{ secrets.DEPHEALTH_API_KEY }}
-  run: npx @dephealth/cli scan -o sarif > dephealth.sarif
+    PKGWATCH_API_KEY: ${{ secrets.PKGWATCH_API_KEY }}
+  run: npx @pkgwatch/cli scan -o sarif > pkgwatch.sarif
 ```
 
 ## Exit Codes
@@ -166,7 +166,7 @@ SARIF output for security tooling:
 ## Example Output
 
 ```
-$ dephealth check express
+$ pkgwatch check express
 
 express@5.2.1
 

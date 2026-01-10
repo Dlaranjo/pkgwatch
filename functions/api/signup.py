@@ -28,11 +28,11 @@ MIN_RESPONSE_TIME_SECONDS = 1.5
 
 dynamodb = boto3.resource("dynamodb")
 ses = boto3.client("ses")
-API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
+API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 VERIFICATION_EMAIL_SENDER = os.environ.get(
-    "VERIFICATION_EMAIL_SENDER", "noreply@dephealth.laranjo.dev"
+    "VERIFICATION_EMAIL_SENDER", "noreply@pkgwatch.laranjo.dev"
 )
-BASE_URL = os.environ.get("BASE_URL", "https://dephealth.laranjo.dev")
+BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.laranjo.dev")
 
 # Email validation regex
 EMAIL_REGEX = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
@@ -181,13 +181,13 @@ def _send_verification_email(email: str, verification_url: str):
         Source=VERIFICATION_EMAIL_SENDER,
         Destination={"ToAddresses": [email]},
         Message={
-            "Subject": {"Data": "Verify your DepHealth account", "Charset": "UTF-8"},
+            "Subject": {"Data": "Verify your PkgWatch account", "Charset": "UTF-8"},
             "Body": {
                 "Html": {
                     "Data": f"""
                     <html>
                     <body style="font-family: system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                        <h1 style="color: #1e293b;">Welcome to DepHealth</h1>
+                        <h1 style="color: #1e293b;">Welcome to PkgWatch</h1>
                         <p style="color: #475569; font-size: 16px;">
                             Click the button below to verify your email and get your API key:
                         </p>
@@ -200,7 +200,7 @@ def _send_verification_email(email: str, verification_url: str):
                             Or copy this link: <a href="{verification_url}">{verification_url}</a>
                         </p>
                         <p style="color: #94a3b8; font-size: 12px;">
-                            This link expires in 24 hours. If you didn't sign up for DepHealth, you can ignore this email.
+                            This link expires in 24 hours. If you didn't sign up for PkgWatch, you can ignore this email.
                         </p>
                     </body>
                     </html>
@@ -208,13 +208,13 @@ def _send_verification_email(email: str, verification_url: str):
                     "Charset": "UTF-8",
                 },
                 "Text": {
-                    "Data": f"""Welcome to DepHealth
+                    "Data": f"""Welcome to PkgWatch
 
 Click the link below to verify your email and get your API key:
 
 {verification_url}
 
-This link expires in 24 hours. If you didn't sign up for DepHealth, you can ignore this email.
+This link expires in 24 hours. If you didn't sign up for PkgWatch, you can ignore this email.
 """,
                     "Charset": "UTF-8",
                 },

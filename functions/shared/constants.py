@@ -1,5 +1,5 @@
 """
-Shared constants for DepHealth.
+Shared constants for PkgWatch.
 """
 
 # Tier configuration

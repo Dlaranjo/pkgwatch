@@ -1,4 +1,4 @@
-# DepHealth Landing Page Infrastructure
+# PkgWatch Landing Page Infrastructure
 # S3 + CloudFront for static hosting
 
 terraform {
@@ -22,8 +22,8 @@ resource "aws_acm_certificate" "landing_page" {
   validation_method = "DNS"
 
   tags = {
-    Name    = "DepHealth Landing Page Certificate"
-    Project = "dephealth"
+    Name    = "PkgWatch Landing Page Certificate"
+    Project = "pkgwatch"
   }
 
   lifecycle {
@@ -41,13 +41,13 @@ variable "aws_region" {
 variable "domain_name" {
   description = "Domain name for the landing page"
   type        = string
-  default     = "dephealth.laranjo.dev"
+  default     = "pkgwatch.laranjo.dev"
 }
 
 variable "bucket_name" {
   description = "S3 bucket name"
   type        = string
-  default     = "dephealth-landing-page"
+  default     = "pkgwatch-landing-page"
 }
 
 # S3 Bucket for static website
@@ -55,9 +55,9 @@ resource "aws_s3_bucket" "landing_page" {
   bucket = var.bucket_name
 
   tags = {
-    Name        = "DepHealth Landing Page"
+    Name        = "PkgWatch Landing Page"
     Environment = "production"
-    Project     = "dephealth"
+    Project     = "pkgwatch"
   }
 }
 
@@ -97,8 +97,8 @@ resource "aws_s3_bucket_policy" "landing_page" {
 
 # CloudFront Origin Access Control
 resource "aws_cloudfront_origin_access_control" "landing_page" {
-  name                              = "dephealth-oac"
-  description                       = "OAC for DepHealth landing page"
+  name                              = "pkgwatch-oac"
+  description                       = "OAC for PkgWatch landing page"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
@@ -106,7 +106,7 @@ resource "aws_cloudfront_origin_access_control" "landing_page" {
 
 # CloudFront Function for URL rewrites (handles /docs -> /docs/index.html)
 resource "aws_cloudfront_function" "url_rewrite" {
-  name    = "dephealth-url-rewrite"
+  name    = "pkgwatch-url-rewrite"
   runtime = "cloudfront-js-2.0"
   publish = true
   code    = <<-EOF
@@ -133,7 +133,7 @@ resource "aws_cloudfront_distribution" "landing_page" {
   enabled             = true
   is_ipv6_enabled     = true
   default_root_object = "index.html"
-  comment             = "DepHealth Landing Page"
+  comment             = "PkgWatch Landing Page"
   price_class         = "PriceClass_100"  # US, Canada, Europe only (cheapest)
 
   aliases = [var.domain_name]
@@ -188,9 +188,9 @@ resource "aws_cloudfront_distribution" "landing_page" {
   }
 
   tags = {
-    Name        = "DepHealth Landing Page CDN"
+    Name        = "PkgWatch Landing Page CDN"
     Environment = "production"
-    Project     = "dephealth"
+    Project     = "pkgwatch"
   }
 }
 

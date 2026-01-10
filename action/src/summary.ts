@@ -35,7 +35,7 @@ export async function generateSummary(
     );
   }
 
-  summary.addHeading("DepHealth Scan Results", 2);
+  summary.addHeading("PkgWatch Scan Results", 2);
   summary.addRaw(`Scanned **${result.total}** packages\n\n`);
 
   // Summary counts
@@ -101,7 +101,7 @@ export async function generateSummary(
 
   // Footer
   summary.addRaw("\n---\n");
-  summary.addRaw(`*[DepHealth](https://dephealth.laranjo.dev) v${VERSION}*\n`);
+  summary.addRaw(`*[PkgWatch](https://pkgwatch.laranjo.dev) v${VERSION}*\n`);
 
   await summary.write();
 }

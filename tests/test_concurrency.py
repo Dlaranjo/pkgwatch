@@ -1,5 +1,5 @@
 """
-Concurrency and Race Condition Tests for DepHealth.
+Concurrency and Race Condition Tests for PkgWatch.
 
 These tests verify that critical operations are properly protected against
 race conditions that could cause data corruption or inconsistent state.
@@ -211,7 +211,7 @@ class TestApiKeyCreationConcurrency:
         FIXED: create_api_key.py now uses atomic counter operations with
         conditional expressions to prevent race conditions.
         """
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -221,7 +221,7 @@ class TestApiKeyCreationConcurrency:
         )
 
         # Start with 4 keys (1 under limit)
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create META record to track key count (required for atomic counter approach)
         table.put_item(
@@ -233,7 +233,7 @@ class TestApiKeyCreationConcurrency:
         )
 
         for i in range(4):
-            key_hash = hashlib.sha256(f"dh_key{i}".encode()).hexdigest()
+            key_hash = hashlib.sha256(f"pw_key{i}".encode()).hexdigest()
             table.put_item(
                 Item={
                     "pk": "user_race",
@@ -318,7 +318,7 @@ class TestApiKeyRevocationConcurrency:
         FIXED: revoke_api_key.py now uses DynamoDB transactions to atomically
         check key count and delete, preventing race conditions.
         """
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -327,7 +327,7 @@ class TestApiKeyRevocationConcurrency:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create USER_META record to track key count (required for atomic counter approach)
         table.put_item(
@@ -341,7 +341,7 @@ class TestApiKeyRevocationConcurrency:
         # Create exactly 2 keys
         key_hashes = []
         for i in range(2):
-            key_hash = hashlib.sha256(f"dh_revoke{i}".encode()).hexdigest()
+            key_hash = hashlib.sha256(f"pw_revoke{i}".encode()).hexdigest()
             key_hashes.append(key_hash)
             table.put_item(
                 Item={
@@ -432,7 +432,7 @@ class TestMagicLinkTokenConcurrency:
         The fix requires using ConditionExpression to ensure token exists
         before consuming it.
         """
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
         os.environ["BASE_URL"] = "https://test.example.com"
 
@@ -442,10 +442,10 @@ class TestMagicLinkTokenConcurrency:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create user with magic token
-        key_hash = hashlib.sha256(b"dh_magic_user").hexdigest()
+        key_hash = hashlib.sha256(b"pw_magic_user").hexdigest()
         magic_token = "test_magic_token_12345"
         expires = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()
 
@@ -592,7 +592,7 @@ class TestMonthlyResetConcurrency:
         # Pre-fill usage
         increment_usage(user_id, key_hash, count=100)
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
         reset_count = [0]
         lock = threading.Lock()
 
@@ -686,7 +686,7 @@ class TestAddVsSetForCounters:
         user_id = user["user_id"]
         key_hash = user["key_hash"]
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Simulate what would happen with SET (read-modify-write)
         # vs ADD (atomic increment)
@@ -726,7 +726,7 @@ class TestAddVsSetForCounters:
         user_id = user["user_id"]
         key_hash = user["key_hash"]
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Simulate SET-based increment (BAD - don't do this!)
         def bad_increment_with_set():
@@ -950,14 +950,14 @@ class TestRaceConditionFixes:
         import boto3
 
         # This demonstrates the fix pattern
-        table_name = "dephealth-api-keys"
+        table_name = "pkgwatch-api-keys"
         user_id = "user_atomic"
 
         dynamodb_client = boto3.client("dynamodb", region_name="us-east-1")
 
         # Create 4 keys first
         for i in range(4):
-            key_hash = hashlib.sha256(f"dh_atomic{i}".encode()).hexdigest()
+            key_hash = hashlib.sha256(f"pw_atomic{i}".encode()).hexdigest()
             dynamodb_client.put_item(
                 TableName=table_name,
                 Item={
@@ -971,7 +971,7 @@ class TestRaceConditionFixes:
 
         # The FIX would use a transaction like this:
         # (Note: This is pseudocode - actual implementation would be more complex)
-        new_key_hash = hashlib.sha256(b"dh_new_key").hexdigest()
+        new_key_hash = hashlib.sha256(b"pw_new_key").hexdigest()
 
         # Count current keys
         response = dynamodb_client.query(
@@ -996,12 +996,12 @@ class TestRaceConditionFixes:
 
         Use conditional delete that checks remaining key count.
         """
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create 2 keys
         key_hashes = []
         for i in range(2):
-            key_hash = hashlib.sha256(f"dh_cond{i}".encode()).hexdigest()
+            key_hash = hashlib.sha256(f"pw_cond{i}".encode()).hexdigest()
             key_hashes.append(key_hash)
             table.put_item(
                 Item={
@@ -1036,10 +1036,10 @@ class TestRaceConditionFixes:
 
         Use conditional update with attribute_exists(magic_token).
         """
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create user with magic token
-        key_hash = hashlib.sha256(b"dh_magic_fix").hexdigest()
+        key_hash = hashlib.sha256(b"pw_magic_fix").hexdigest()
         magic_token = "fix_token_12345"
         expires = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()
 

@@ -27,8 +27,8 @@ from shared.rate_limit_utils import check_usage_alerts, get_reset_timestamp
 DEMO_REQUESTS_PER_HOUR = 20
 # Production CORS origins - localhost only allowed if ALLOW_DEV_CORS is set
 _PROD_ORIGINS = [
-    "https://dephealth.laranjo.dev",
-    "https://app.dephealth.laranjo.dev",
+    "https://pkgwatch.laranjo.dev",
+    "https://app.pkgwatch.laranjo.dev",
 ]
 _DEV_ORIGINS = [
     "http://localhost:4321",  # Astro dev server
@@ -42,8 +42,8 @@ DEMO_ALLOWED_ORIGINS = (
 
 
 dynamodb = boto3.resource("dynamodb")
-PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")
-DEMO_RATE_LIMIT_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
+PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
+DEMO_RATE_LIMIT_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
 
 def _get_cors_headers(origin: str) -> dict:
@@ -361,7 +361,7 @@ def _rate_limit_response(user: dict, cors_headers: dict = None) -> dict:
                 "code": "rate_limit_exceeded",
                 "message": f"Monthly limit of {user['monthly_limit']} requests exceeded",
                 "retry_after_seconds": seconds_until_reset,
-                "upgrade_url": "https://dephealth.laranjo.dev/pricing",
+                "upgrade_url": "https://pkgwatch.laranjo.dev/pricing",
             }
         }),
     }
@@ -386,7 +386,7 @@ def _demo_rate_limit_response(cors_headers: dict = None) -> dict:
                 "code": "demo_rate_limit_exceeded",
                 "message": f"Demo limit of {DEMO_REQUESTS_PER_HOUR} requests per hour exceeded",
                 "retry_after_seconds": 3600,
-                "signup_url": "https://dephealth.laranjo.dev/signup",
+                "signup_url": "https://pkgwatch.laranjo.dev/signup",
             }
         }),
     }

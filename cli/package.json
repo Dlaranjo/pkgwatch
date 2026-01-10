@@ -1,8 +1,8 @@
 {
-  "name": "@dephealth/cli",
+  "name": "@pkgwatch/cli",
   "version": "1.1.0",
   "description": "Check npm package health scores from the command line",
-  "author": "DepHealth",
+  "author": "PkgWatch",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -10,7 +10,7 @@
     "./api": "./dist/api.js"
   },
   "bin": {
-    "dephealth": "./dist/index.js"
+    "pkgwatch": "./dist/index.js"
   },
   "engines": {
     "node": ">=20"
@@ -26,7 +26,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@dephealth/api-client": "1.0.0",
+    "@pkgwatch/api-client": "1.0.0",
     "cli-progress": "^3.12.0",
     "commander": "^12.0.0",
     "ora": "^8.2.0",
@@ -48,7 +48,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/dephealth/cli"
+    "url": "https://github.com/pkgwatch/cli"
   },
-  "homepage": "https://dephealth.laranjo.dev"
+  "homepage": "https://pkgwatch.laranjo.dev"
 }

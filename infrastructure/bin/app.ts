@@ -13,9 +13,9 @@ const env = {
 };
 
 // Storage stack (DynamoDB + S3)
-const storageStack = new StorageStack(app, "DepHealthStorage", {
+const storageStack = new StorageStack(app, "PkgWatchStorage", {
   env,
-  description: "DepHealth storage resources (DynamoDB tables, S3 buckets)",
+  description: "PkgWatch storage resources (DynamoDB tables, S3 buckets)",
 });
 
 // Pipeline stack (EventBridge + SQS + Lambda collectors)
@@ -28,9 +28,9 @@ if (!alertEmail) {
   );
 }
 
-const pipelineStack = new PipelineStack(app, "DepHealthPipeline", {
+const pipelineStack = new PipelineStack(app, "PkgWatchPipeline", {
   env,
-  description: "DepHealth data collection pipeline",
+  description: "PkgWatch data collection pipeline",
   packagesTable: storageStack.packagesTable,
   rawDataBucket: storageStack.rawDataBucket,
   apiKeysTable: storageStack.apiKeysTable, // For global GitHub rate limiting
@@ -38,9 +38,9 @@ const pipelineStack = new PipelineStack(app, "DepHealthPipeline", {
 });
 
 // API stack (API Gateway + Lambda handlers)
-const apiStack = new ApiStack(app, "DepHealthApi", {
+const apiStack = new ApiStack(app, "PkgWatchApi", {
   env,
-  description: "DepHealth REST API",
+  description: "PkgWatch REST API",
   packagesTable: storageStack.packagesTable,
   apiKeysTable: storageStack.apiKeysTable,
   alertTopic: pipelineStack.alertTopic,
@@ -48,6 +48,6 @@ const apiStack = new ApiStack(app, "DepHealthApi", {
 
 // Add tags to all resources
 const environment = process.env.CDK_ENV || "production";
-cdk.Tags.of(app).add("Project", "DepHealth");
+cdk.Tags.of(app).add("Project", "PkgWatch");
 cdk.Tags.of(app).add("Environment", environment);
 cdk.Tags.of(app).add("ManagedBy", "CDK");

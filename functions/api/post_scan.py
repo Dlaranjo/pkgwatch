@@ -49,7 +49,7 @@ def check_usage_alerts(user: dict, current_usage: int) -> Optional[dict]:
         return {
             "level": "exceeded",
             "percent": 100,
-            "message": f"Monthly limit exceeded. Upgrade at https://dephealth.laranjo.dev/pricing",
+            "message": f"Monthly limit exceeded. Upgrade at https://pkgwatch.laranjo.dev/pricing",
         }
     elif usage_percent >= 95:
         return {
@@ -68,7 +68,7 @@ def check_usage_alerts(user: dict, current_usage: int) -> Optional[dict]:
 
 
 dynamodb = boto3.resource("dynamodb")
-PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")
+PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 
 
 def handler(event, context):

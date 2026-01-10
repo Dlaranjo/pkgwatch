@@ -22,8 +22,8 @@ logger.setLevel(logging.INFO)
 
 dynamodb = boto3.resource("dynamodb")
 secretsmanager = boto3.client("secretsmanager")
-API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
-BASE_URL = os.environ.get("BASE_URL", "https://dephealth.laranjo.dev")
+API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
+BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.laranjo.dev")
 
 # Cached session secret (loaded from Secrets Manager) with TTL
 _session_secret_cache = None

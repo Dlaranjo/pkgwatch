@@ -15,7 +15,7 @@ class TestGetUsageHandler:
     @mock_aws
     def test_returns_usage_for_valid_api_key(self, seeded_api_keys_table, api_gateway_event):
         """Should return usage statistics for valid API key."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_usage import handler
 
@@ -36,11 +36,11 @@ class TestGetUsageHandler:
     @mock_aws
     def test_returns_401_for_invalid_api_key(self, mock_dynamodb, api_gateway_event):
         """Should return 401 for invalid API key."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_usage import handler
 
-        api_gateway_event["headers"]["x-api-key"] = "dh_invalid_key"
+        api_gateway_event["headers"]["x-api-key"] = "pw_invalid_key"
 
         result = handler(api_gateway_event, {})
 
@@ -51,7 +51,7 @@ class TestGetUsageHandler:
     @mock_aws
     def test_returns_401_without_api_key(self, mock_dynamodb, api_gateway_event):
         """Should return 401 when API key is missing."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_usage import handler
 
@@ -63,7 +63,7 @@ class TestGetUsageHandler:
     @mock_aws
     def test_calculates_correct_remaining_quota(self, seeded_api_keys_table, api_gateway_event):
         """Should calculate remaining quota correctly after usage."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table, test_key = seeded_api_keys_table
 
@@ -91,7 +91,7 @@ class TestGetUsageHandler:
     @mock_aws
     def test_includes_rate_limit_headers(self, seeded_api_keys_table, api_gateway_event):
         """Should include rate limit headers in response."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_usage import handler
 
@@ -108,7 +108,7 @@ class TestGetUsageHandler:
     @mock_aws
     def test_shows_correct_tier_limits(self, seeded_api_keys_table, api_gateway_event):
         """Should show all tier limits in response."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_usage import handler
 

@@ -44,7 +44,7 @@ class TestValidateApiKey:
         """Invalid API key should return None."""
         from shared.auth import validate_api_key
 
-        result = validate_api_key("dh_invalid_key_that_doesnt_exist")
+        result = validate_api_key("pw_invalid_key_that_doesnt_exist")
 
         assert result is None
 
@@ -58,7 +58,7 @@ class TestValidateApiKey:
 
     @mock_aws
     def test_wrong_prefix_returns_none(self, aws_credentials, mock_dynamodb):
-        """Key without 'dh_' prefix should return None."""
+        """Key without 'pw_' prefix should return None."""
         from shared.auth import validate_api_key
 
         assert validate_api_key("wrong_prefix_key") is None
@@ -69,7 +69,7 @@ class TestValidateApiKey:
         """Very long key should not crash."""
         from shared.auth import validate_api_key
 
-        long_key = "dh_" + "x" * 10000
+        long_key = "pw_" + "x" * 10000
         result = validate_api_key(long_key)
 
         assert result is None  # Should not crash, just return None
@@ -85,7 +85,7 @@ class TestGenerateApiKey:
 
         api_key = generate_api_key("user_123", tier="free")
 
-        assert api_key.startswith("dh_")
+        assert api_key.startswith("pw_")
         assert len(api_key) > 10
 
     @mock_aws

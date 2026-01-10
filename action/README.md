@@ -1,4 +1,4 @@
-# DepHealth GitHub Action
+# PkgWatch GitHub Action
 
 [![GitHub Action](https://img.shields.io/badge/GitHub-Action-blue.svg)](https://github.com/features/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -9,18 +9,18 @@ Scan your npm dependencies for health risks and security issues in CI/CD.
 
 ```yaml
 - name: Scan dependencies
-  uses: dephealth/action@v1
+  uses: pkgwatch/action@v1
   with:
-    api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+    api-key: ${{ secrets.PKGWATCH_API_KEY }}
 ```
 
-Get your API key at [dephealth.laranjo.dev](https://dephealth.laranjo.dev).
+Get your API key at [pkgwatch.laranjo.dev](https://pkgwatch.laranjo.dev).
 
 ## Inputs
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `api-key` | Yes | - | DepHealth API key |
+| `api-key` | Yes | - | PkgWatch API key |
 | `working-directory` | No | `.` | Directory containing package.json |
 | `fail-on` | No | - | Fail if risk level reached: `HIGH` or `CRITICAL` |
 | `include-dev` | No | `true` | Include devDependencies in scan |
@@ -54,29 +54,29 @@ on:
     branches: [main]
 
 jobs:
-  dephealth:
+  pkgwatch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Scan dependencies
-        uses: dephealth/action@v1
+        uses: pkgwatch/action@v1
         with:
-          api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+          api-key: ${{ secrets.PKGWATCH_API_KEY }}
 ```
 
 ### Fail on HIGH Risk
 
 ```yaml
 - name: Scan dependencies
-  id: dephealth
-  uses: dephealth/action@v1
+  id: pkgwatch
+  uses: pkgwatch/action@v1
   with:
-    api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+    api-key: ${{ secrets.PKGWATCH_API_KEY }}
     fail-on: HIGH
 
 - name: Notify on issues
-  if: steps.dephealth.outputs.has-issues == 'true'
+  if: steps.pkgwatch.outputs.has-issues == 'true'
   run: echo "Found risky dependencies!"
 ```
 
@@ -93,9 +93,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Scan ${{ matrix.package }}
-        uses: dephealth/action@v1
+        uses: pkgwatch/action@v1
         with:
-          api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+          api-key: ${{ secrets.PKGWATCH_API_KEY }}
           working-directory: packages/${{ matrix.package }}
           fail-on: CRITICAL
 ```
@@ -116,9 +116,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Scan dependencies
-        uses: dephealth/action@v1
+        uses: pkgwatch/action@v1
         with:
-          api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+          api-key: ${{ secrets.PKGWATCH_API_KEY }}
           fail-on: HIGH
 ```
 
@@ -126,19 +126,19 @@ jobs:
 
 ```yaml
 - name: Scan dependencies
-  id: dephealth
-  uses: dephealth/action@v1
+  id: pkgwatch
+  uses: pkgwatch/action@v1
   with:
-    api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+    api-key: ${{ secrets.PKGWATCH_API_KEY }}
 
 - name: Block deploy on critical issues
-  if: steps.dephealth.outputs.highest-risk == 'CRITICAL'
+  if: steps.pkgwatch.outputs.highest-risk == 'CRITICAL'
   run: |
     echo "Cannot deploy with CRITICAL risk dependencies"
     exit 1
 
 - name: Warn on high issues
-  if: steps.dephealth.outputs.highest-risk == 'HIGH'
+  if: steps.pkgwatch.outputs.highest-risk == 'HIGH'
   run: echo "::warning::HIGH risk dependencies detected"
 ```
 
@@ -148,9 +148,9 @@ Use `soft-fail: true` to set outputs and warnings without failing the workflow:
 
 ```yaml
 - name: Scan dependencies (informational)
-  uses: dephealth/action@v1
+  uses: pkgwatch/action@v1
   with:
-    api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+    api-key: ${{ secrets.PKGWATCH_API_KEY }}
     fail-on: HIGH
     soft-fail: true
 
@@ -190,9 +190,9 @@ The action automatically creates GitHub annotations for all CRITICAL and HIGH ri
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| `Authentication failed (401)` | Invalid or expired API key | Verify key at [dashboard](https://dephealth.laranjo.dev/dashboard) |
+| `Authentication failed (401)` | Invalid or expired API key | Verify key at [dashboard](https://pkgwatch.laranjo.dev/dashboard) |
 | `Rate limit exceeded (429)` | API quota exhausted | Upgrade plan or reduce scan frequency |
-| `Request timed out` | API unresponsive | Check [status page](https://status.dephealth.laranjo.dev) |
+| `Request timed out` | API unresponsive | Check [status page](https://status.pkgwatch.laranjo.dev) |
 | `Cannot find package.json` | Wrong path | Check `working-directory` input |
 
 ## Security

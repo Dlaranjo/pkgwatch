@@ -53,6 +53,6 @@ jobs:
       - name: Test action
         uses: ./action
         with:
-          api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+          api-key: ${{ secrets.PKGWATCH_API_KEY }}
           working-directory: action
         continue-on-error: true

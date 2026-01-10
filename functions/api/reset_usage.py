@@ -40,7 +40,7 @@ def handler(event, context):
     Returns:
         Dict with count of items processed
     """
-    table_name = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
+    table_name = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
     table = dynamodb.Table(table_name)
 
     reset_time = datetime.now(timezone.utc).isoformat()

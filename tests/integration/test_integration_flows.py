@@ -1,5 +1,5 @@
 """
-Integration tests for DepHealth end-to-end user flows.
+Integration tests for PkgWatch end-to-end user flows.
 
 These tests verify complete user journeys through the system,
 using moto for full AWS mocking.
@@ -49,7 +49,7 @@ def mock_aws_services():
 
         # API keys table with all GSIs
         dynamodb.create_table(
-            TableName="dephealth-api-keys",
+            TableName="pkgwatch-api-keys",
             KeySchema=[
                 {"AttributeName": "pk", "KeyType": "HASH"},
                 {"AttributeName": "sk", "KeyType": "RANGE"},
@@ -89,7 +89,7 @@ def mock_aws_services():
 
         # Packages table
         dynamodb.create_table(
-            TableName="dephealth-packages",
+            TableName="pkgwatch-packages",
             KeySchema=[
                 {"AttributeName": "pk", "KeyType": "HASH"},
                 {"AttributeName": "sk", "KeyType": "RANGE"},
@@ -103,7 +103,7 @@ def mock_aws_services():
 
         # Set up SES for email sending
         ses = boto3.client("ses", region_name="us-east-1")
-        ses.verify_email_identity(EmailAddress="noreply@dephealth.laranjo.dev")
+        ses.verify_email_identity(EmailAddress="noreply@pkgwatch.laranjo.dev")
 
         # Set up Secrets Manager for session secret
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -113,9 +113,9 @@ def mock_aws_services():
         )
 
         # Set environment variables
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["BASE_URL"] = "https://test.dephealth.example.com"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["BASE_URL"] = "https://test.pkgwatch.example.com"
         os.environ["SESSION_SECRET_ARN"] = "test-session-secret"
 
         yield {
@@ -143,7 +143,7 @@ def api_gateway_event():
 @pytest.fixture
 def packages_table_with_data(mock_aws_services):
     """Seed packages table with test data."""
-    table = mock_aws_services["dynamodb"].Table("dephealth-packages")
+    table = mock_aws_services["dynamodb"].Table("pkgwatch-packages")
 
     # Add multiple packages with varying health scores
     packages = [
@@ -299,7 +299,7 @@ class TestNewUserSignupFlow:
         assert "verification" in body["message"].lower() or "email" in body["message"].lower()
 
         # Verify pending user was created
-        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
         from boto3.dynamodb.conditions import Key
         response = table.query(
             IndexName="email-index",
@@ -331,14 +331,14 @@ class TestNewUserSignupFlow:
         # API key is now passed in a secure cookie (not URL) to prevent exposure in logs/history
         assert "Set-Cookie" in result["headers"]
         cookie = result["headers"]["Set-Cookie"]
-        assert "new_api_key=dh_" in cookie
+        assert "new_api_key=pw_" in cookie
 
         # Extract the API key from the cookie header
         import re
-        cookie_match = re.search(r"new_api_key=(dh_[^;]+)", cookie)
+        cookie_match = re.search(r"new_api_key=(pw_[^;]+)", cookie)
         assert cookie_match is not None
         api_key = cookie_match.group(1)
-        assert api_key.startswith("dh_")
+        assert api_key.startswith("pw_")
 
         # Verify PENDING record was deleted
         response = table.query(
@@ -398,7 +398,7 @@ class TestNewUserSignupFlow:
         assert result["statusCode"] == 201
         body = json.loads(result["body"])
         second_key = body["api_key"]
-        assert second_key.startswith("dh_")
+        assert second_key.startswith("pw_")
         assert second_key != api_key  # Different key
 
         # Verify both keys work
@@ -417,8 +417,8 @@ class TestNewUserSignupFlow:
         must return the same 200 response regardless of email existence.
         """
         # First, create a verified user
-        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
-        key_hash = hashlib.sha256(b"dh_existing_key").hexdigest()
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_existing_key").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_existing123",
@@ -465,7 +465,7 @@ class TestPackageLookupFlow:
     ):
         """Test the complete package lookup flow with API key."""
         # Create a user with API key
-        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
         from shared.auth import generate_api_key
 
@@ -531,7 +531,7 @@ class TestPackageLookupFlow:
         self, mock_aws_services, packages_table_with_data, api_gateway_event
     ):
         """Test that requests are blocked when rate limit is exceeded."""
-        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
         from shared.auth import generate_api_key
 
@@ -604,7 +604,7 @@ class TestBulkScanFlow:
         self, mock_aws_services, packages_table_with_data, api_gateway_event
     ):
         """Test the complete bulk scan flow."""
-        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
         from shared.auth import generate_api_key
 
@@ -744,7 +744,7 @@ class TestBillingUpgradeFlow:
         # Skip if stripe module is not installed
         pytest.importorskip("stripe")
 
-        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
         # Step 1: Create a free tier user
         from shared.auth import generate_api_key
@@ -841,7 +841,7 @@ class TestBillingUpgradeFlow:
         # Skip if stripe module is not installed
         pytest.importorskip("stripe")
 
-        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
         # Create a pro tier user with Stripe customer ID
         from shared.auth import generate_api_key
@@ -945,7 +945,7 @@ class TestApiKeyLifecycle:
         import api.auth_callback
         api.auth_callback._session_secret_cache = None
 
-        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
         user_id = "user_lifecycle_test"
         email = "lifecycle@example.com"
 
@@ -1061,7 +1061,7 @@ class TestApiKeyLifecycle:
         import api.auth_callback
         api.auth_callback._session_secret_cache = None
 
-        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
         user_id = "user_last_key_test"
         email = "lastkey@example.com"
 
@@ -1104,7 +1104,7 @@ class TestApiKeyLifecycle:
         import api.auth_callback
         api.auth_callback._session_secret_cache = None
 
-        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
         user_id = "user_max_keys_test"
         email = "maxkeys@example.com"
 
@@ -1158,7 +1158,7 @@ class TestMonthlyResetFlow:
         self, mock_aws_services, packages_table_with_data, api_gateway_event
     ):
         """Test the complete monthly reset flow."""
-        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
         # Create multiple users with usage
         from shared.auth import generate_api_key
@@ -1233,7 +1233,7 @@ class TestMonthlyResetFlow:
 
     def test_reset_skips_system_and_pending_records(self, mock_aws_services):
         """Test that reset skips SYSTEM# records and PENDING signups."""
-        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
         # Create a PENDING signup
         table.put_item(
@@ -1301,7 +1301,7 @@ class TestMonthlyResetFlow:
 
     def test_reset_resumes_from_stored_state(self, mock_aws_services):
         """Test that reset can resume from stored state."""
-        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
         # Create a stored reset state from a previous partial run
         current_month = datetime.now(timezone.utc).strftime("%Y-%m")
@@ -1353,7 +1353,7 @@ class TestEdgeCases:
             "",
             "invalid_key",
             "wrong_prefix_abc123",
-            "dh_",  # Too short
+            "pw_",  # Too short
             None,
         ]
 
@@ -1403,7 +1403,7 @@ class TestEdgeCases:
         """Test that concurrent requests are tracked atomically."""
         from shared.auth import generate_api_key, check_and_increment_usage
 
-        table = mock_aws_services["dynamodb"].Table("dephealth-api-keys")
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
         api_key = generate_api_key(
             user_id="user_concurrent_test",

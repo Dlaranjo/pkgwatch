@@ -16,7 +16,7 @@ export class StorageStack extends cdk.Stack {
     // S3: Access Logs Bucket (must be created first)
     // ===========================================
     this.accessLogsBucket = new s3.Bucket(this, "AccessLogsBucket", {
-      bucketName: `dephealth-access-logs-${this.account}`,
+      bucketName: `pkgwatch-access-logs-${this.account}`,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -36,7 +36,7 @@ export class StorageStack extends cdk.Stack {
     // SK: "LATEST" or version number
     // GSI: risk-level-index for querying risky packages
     this.packagesTable = new dynamodb.Table(this, "PackagesTable", {
-      tableName: "dephealth-packages",
+      tableName: "pkgwatch-packages",
       partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -45,10 +45,9 @@ export class StorageStack extends cdk.Stack {
       },
       encryption: dynamodb.TableEncryption.AWS_MANAGED, // Use AWS-managed CMK for encryption
       removalPolicy: cdk.RemovalPolicy.RETAIN,
-      // Stream temporarily disabled - will be re-enabled in follow-up commit
-      // The stream was disabled during a CloudFormation rollback and needs to be
-      // removed from the template first before it can be re-added
-      // stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
+      // Enable streams for score calculation trigger
+      // NEW_AND_OLD_IMAGES allows loop prevention by comparing old/new collected_at
+      stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
     });
 
     // GSI for querying packages by risk level
@@ -76,7 +75,7 @@ export class StorageStack extends cdk.Stack {
     // SK: key_hash (SHA-256 of API key)
     // GSI: key-hash-index for O(1) key validation lookups
     this.apiKeysTable = new dynamodb.Table(this, "ApiKeysTable", {
-      tableName: "dephealth-api-keys",
+      tableName: "pkgwatch-api-keys",
       partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -143,7 +142,7 @@ export class StorageStack extends cdk.Stack {
     // ===========================================
     // Stores raw API responses for debugging and reprocessing
     this.rawDataBucket = new s3.Bucket(this, "RawDataBucket", {
-      bucketName: `dephealth-raw-data-${this.account}`,
+      bucketName: `pkgwatch-raw-data-${this.account}`,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -165,19 +164,19 @@ export class StorageStack extends cdk.Stack {
     new cdk.CfnOutput(this, "PackagesTableName", {
       value: this.packagesTable.tableName,
       description: "DynamoDB packages table name",
-      exportName: "DepHealthPackagesTable",
+      exportName: "PkgWatchPackagesTable",
     });
 
     new cdk.CfnOutput(this, "ApiKeysTableName", {
       value: this.apiKeysTable.tableName,
       description: "DynamoDB API keys table name",
-      exportName: "DepHealthApiKeysTable",
+      exportName: "PkgWatchApiKeysTable",
     });
 
     new cdk.CfnOutput(this, "RawDataBucketName", {
       value: this.rawDataBucket.bucketName,
       description: "S3 raw data bucket name",
-      exportName: "DepHealthRawDataBucket",
+      exportName: "PkgWatchRawDataBucket",
     });
   }
 }

@@ -1,5 +1,5 @@
 """
-API Contract Tests for DepHealth.
+API Contract Tests for PkgWatch.
 
 These tests ensure all API endpoints return consistent, correct responses
 that match documented contracts.
@@ -97,8 +97,8 @@ class TestGetPackageContract:
         self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
     ):
         """Success response should have correct format and all required fields."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -146,11 +146,11 @@ class TestGetPackageContract:
         self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
     ):
         """Score components should be normalized 0-100."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Create package with score components
-        packages_table = mock_dynamodb.Table("dephealth-packages")
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
         packages_table.put_item(
             Item={
                 "pk": "npm#test-pkg",
@@ -194,8 +194,8 @@ class TestGetPackageContract:
         self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
     ):
         """404 error response should have correct format."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -216,8 +216,8 @@ class TestGetPackageContract:
         self, seeded_api_keys_table, api_gateway_event
     ):
         """400 error for invalid ecosystem should have correct format."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -238,12 +238,12 @@ class TestGetPackageContract:
         self, mock_dynamodb, seeded_packages_table, api_gateway_event
     ):
         """429 rate limit response should have correct format and headers."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Create user at rate limit
-        table = mock_dynamodb.Table("dephealth-api-keys")
-        test_key = "dh_ratelimited123456789"
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_ratelimited123456789"
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
         table.put_item(
@@ -285,11 +285,11 @@ class TestGetPackageContract:
         self, mock_dynamodb, seeded_packages_table, api_gateway_event
     ):
         """Demo mode 429 should have different error code and signup URL."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Create demo rate limit entry
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
         now = datetime.now(timezone.utc)
         current_hour = now.strftime("%Y-%m-%d-%H")
         client_ip = "127.0.0.1"
@@ -322,8 +322,8 @@ class TestGetPackageContract:
         self, mock_dynamodb, seeded_packages_table, api_gateway_event
     ):
         """Demo mode success response should include X-Demo-Mode header."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -348,8 +348,8 @@ class TestPostScanContract:
         self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
     ):
         """Success response should have correct format and all required fields."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -393,8 +393,8 @@ class TestPostScanContract:
         self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
     ):
         """Packages should be sorted by risk level (CRITICAL first)."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -421,8 +421,8 @@ class TestPostScanContract:
     @mock_aws
     def test_401_without_api_key(self, mock_dynamodb, api_gateway_event):
         """Should return 401 without API key (no demo mode for scan)."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -442,8 +442,8 @@ class TestPostScanContract:
     @mock_aws
     def test_400_invalid_json(self, seeded_api_keys_table, api_gateway_event):
         """Should return 400 for invalid JSON body."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -464,8 +464,8 @@ class TestPostScanContract:
     @mock_aws
     def test_400_no_dependencies(self, seeded_api_keys_table, api_gateway_event):
         """Should return 400 when no dependencies provided."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -488,8 +488,8 @@ class TestPostScanContract:
         self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
     ):
         """Response should include list of packages not found."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -534,7 +534,7 @@ class TestGetApiKeysContract:
     @mock_aws
     def test_success_response_format(self, mock_dynamodb, api_gateway_event):
         """Success response should have correct format."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -543,8 +543,8 @@ class TestGetApiKeysContract:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
-        key_hash = hashlib.sha256(b"dh_testkey").hexdigest()
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_testkey").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_test",
@@ -587,7 +587,7 @@ class TestGetApiKeysContract:
     @mock_aws
     def test_401_without_session(self, mock_dynamodb, api_gateway_event):
         """Should return 401 without session cookie."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
 
         from api.get_api_keys import handler
@@ -607,7 +607,7 @@ class TestCreateApiKeyContract:
     @mock_aws
     def test_success_response_format(self, mock_dynamodb, api_gateway_event):
         """Success response should include the new API key."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -616,8 +616,8 @@ class TestCreateApiKeyContract:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
-        key_hash = hashlib.sha256(b"dh_existing").hexdigest()
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_existing").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_create",
@@ -644,13 +644,13 @@ class TestCreateApiKeyContract:
 
         body = json.loads(result["body"])
         assert "api_key" in body
-        assert body["api_key"].startswith("dh_")
+        assert body["api_key"].startswith("pw_")
         assert "message" in body
 
     @mock_aws
     def test_400_max_keys_reached(self, mock_dynamodb, api_gateway_event):
         """Should return 400 when max keys reached."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -659,11 +659,11 @@ class TestCreateApiKeyContract:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create 5 keys (max)
         for i in range(5):
-            key_hash = hashlib.sha256(f"dh_key{i}".encode()).hexdigest()
+            key_hash = hashlib.sha256(f"pw_key{i}".encode()).hexdigest()
             table.put_item(
                 Item={
                     "pk": "user_maxkeys",
@@ -698,7 +698,7 @@ class TestRevokeApiKeyContract:
     @mock_aws
     def test_success_response_format(self, mock_dynamodb, api_gateway_event):
         """Success response should have message."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -707,11 +707,11 @@ class TestRevokeApiKeyContract:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create 2 keys (need 2 to revoke 1)
-        key_hash1 = hashlib.sha256(b"dh_torevoke").hexdigest()
-        key_hash2 = hashlib.sha256(b"dh_tokeep").hexdigest()
+        key_hash1 = hashlib.sha256(b"pw_torevoke").hexdigest()
+        key_hash2 = hashlib.sha256(b"pw_tokeep").hexdigest()
 
         for key_hash in [key_hash1, key_hash2]:
             table.put_item(
@@ -743,7 +743,7 @@ class TestRevokeApiKeyContract:
     @mock_aws
     def test_404_key_not_found(self, mock_dynamodb, api_gateway_event):
         """Should return 404 for non-existent key."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -752,8 +752,8 @@ class TestRevokeApiKeyContract:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
-        key_hash = hashlib.sha256(b"dh_existing").hexdigest()
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_existing").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_notfound",
@@ -782,7 +782,7 @@ class TestRevokeApiKeyContract:
     @mock_aws
     def test_400_cannot_revoke_last_key(self, mock_dynamodb, api_gateway_event):
         """Should return 400 when trying to revoke last key."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -791,8 +791,8 @@ class TestRevokeApiKeyContract:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
-        key_hash = hashlib.sha256(b"dh_onlykey").hexdigest()
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_onlykey").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_onlykey",
@@ -832,7 +832,7 @@ class TestAuthMeContract:
     @mock_aws
     def test_success_response_format(self, mock_dynamodb, api_gateway_event):
         """Success response should have user info."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
@@ -841,8 +841,8 @@ class TestAuthMeContract:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
-        key_hash = hashlib.sha256(b"dh_testkey").hexdigest()
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_testkey").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_me",
@@ -886,7 +886,7 @@ class TestAuthMeContract:
     @mock_aws
     def test_401_without_session(self, mock_dynamodb, api_gateway_event):
         """Should return 401 without session."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
 
         from api.auth_me import handler
@@ -905,7 +905,7 @@ class TestAuthCallbackContract:
         """Success should redirect with secure cookie."""
         import secrets
 
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
@@ -915,11 +915,11 @@ class TestAuthCallbackContract:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
         magic_token = secrets.token_urlsafe(32)
         expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
 
-        key_hash = hashlib.sha256(b"dh_existing").hexdigest()
+        key_hash = hashlib.sha256(b"pw_existing").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_callback",
@@ -961,7 +961,7 @@ class TestAuthCallbackContract:
     @mock_aws
     def test_error_redirect_format(self, mock_dynamodb, api_gateway_event):
         """Error should redirect to login with error params."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
 
@@ -999,8 +999,8 @@ class TestCorsHeaders:
         self, mock_dynamodb, seeded_packages_table, api_gateway_event
     ):
         """Should include CORS headers for allowed origins."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["ALLOW_DEV_CORS"] = "true"
 
         # Need to reload the module to pick up the env var change
@@ -1028,8 +1028,8 @@ class TestContentTypeConsistency:
         self, mock_dynamodb, seeded_packages_table, api_gateway_event
     ):
         """All JSON responses should have Content-Type: application/json."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler as get_package_handler
         from api.post_scan import handler as post_scan_handler

@@ -16,11 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # DepHealth dogfooding - scan our own dependencies
+      # PkgWatch dogfooding - scan our own dependencies
       - name: Scan monorepo dependencies
         uses: ./action
         with:
-          api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+          api-key: ${{ secrets.PKGWATCH_API_KEY }}
           working-directory: '.'
           include-dev: 'true'
           soft-fail: 'true'
@@ -29,7 +29,7 @@ jobs:
       - name: Scan infrastructure dependencies
         uses: ./action
         with:
-          api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+          api-key: ${{ secrets.PKGWATCH_API_KEY }}
           working-directory: 'infrastructure'
           include-dev: 'true'
           soft-fail: 'true'
@@ -38,7 +38,7 @@ jobs:
       - name: Scan landing page dependencies
         uses: ./action
         with:
-          api-key: ${{ secrets.DEPHEALTH_API_KEY }}
+          api-key: ${{ secrets.PKGWATCH_API_KEY }}
           working-directory: 'landing-page'
           include-dev: 'true'
           soft-fail: 'true'
@@ -126,7 +126,7 @@ jobs:
         run: |
           npm ci
           npm run build
-          aws s3 sync dist/ s3://dephealth-landing-page \
+          aws s3 sync dist/ s3://pkgwatch-landing-page \
             --delete \
             --cache-control "max-age=86400" \
             --exclude ".DS_Store"

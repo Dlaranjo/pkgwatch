@@ -530,7 +530,7 @@ describe("run() - Error Handling", () => {
       expect.stringContaining("Authentication failed (401)")
     );
     expect(core.setFailed).toHaveBeenCalledWith(
-      expect.stringContaining("dephealth.laranjo.dev/dashboard")
+      expect.stringContaining("pkgwatch.laranjo.dev/dashboard")
     );
   });
 
@@ -579,7 +579,7 @@ describe("run() - Error Handling", () => {
       expect.stringContaining("Rate limit exceeded (429)")
     );
     expect(core.setFailed).toHaveBeenCalledWith(
-      expect.stringContaining("dephealth.laranjo.dev/pricing")
+      expect.stringContaining("pkgwatch.laranjo.dev/pricing")
     );
   });
 
@@ -628,7 +628,7 @@ describe("run() - Error Handling", () => {
       expect.stringContaining("Network error")
     );
     expect(core.setFailed).toHaveBeenCalledWith(
-      expect.stringContaining("status.dephealth.laranjo.dev")
+      expect.stringContaining("status.pkgwatch.laranjo.dev")
     );
   });
 
@@ -642,7 +642,7 @@ describe("run() - Error Handling", () => {
       }
     });
 
-    const error = new Error("Invalid API key format. Keys should start with 'dh_'");
+    const error = new Error("Invalid API key format. Keys should start with 'pw_'");
     vi.mocked(scanDependencies).mockRejectedValue(error);
 
     vi.resetModules();
@@ -654,7 +654,7 @@ describe("run() - Error Handling", () => {
       expect.stringContaining("Invalid API key format")
     );
     expect(core.setFailed).toHaveBeenCalledWith(
-      expect.stringContaining("dephealth.laranjo.dev/dashboard")
+      expect.stringContaining("pkgwatch.laranjo.dev/dashboard")
     );
   });
 

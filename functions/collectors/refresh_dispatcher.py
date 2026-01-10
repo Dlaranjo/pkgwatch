@@ -22,7 +22,7 @@ logger.setLevel(logging.INFO)
 dynamodb = boto3.resource("dynamodb")
 sqs = boto3.client("sqs")
 
-PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")
+PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 PACKAGE_QUEUE_URL = os.environ.get("PACKAGE_QUEUE_URL")
 
 # Configurable jitter by tier (in seconds)

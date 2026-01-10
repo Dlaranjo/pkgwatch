@@ -12,11 +12,11 @@ import boto3
 def packages_table():
     """Create a mock packages table."""
     with mock_aws():
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         table = dynamodb.create_table(
-            TableName="dephealth-packages",
+            TableName="pkgwatch-packages",
             KeySchema=[
                 {"AttributeName": "pk", "KeyType": "HASH"},
                 {"AttributeName": "sk", "KeyType": "RANGE"},

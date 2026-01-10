@@ -22,7 +22,7 @@
   <text x="140" y="305" font-size="48" text-anchor="middle" fill="white">&#x1F6E1;</text>
 
   <!-- Title -->
-  <text x="200" y="300" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="bold" fill="white">DepHealth</text>
+  <text x="200" y="300" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="bold" fill="white">PkgWatch</text>
 
   <!-- Tagline -->
   <text x="100" y="380" font-family="system-ui, -apple-system, sans-serif" font-size="32" fill="#a1a1aa">Know which dependencies will fail</text>
@@ -34,5 +34,5 @@
   <text x="700" y="520" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="#10b981">&#x2713; CLI &amp; GitHub Action</text>
 
   <!-- URL -->
-  <text x="100" y="580" font-family="system-ui, -apple-system, sans-serif" font-size="20" fill="#71717a">dephealth.laranjo.dev</text>
+  <text x="100" y="580" font-family="system-ui, -apple-system, sans-serif" font-size="20" fill="#71717a">pkgwatch.laranjo.dev</text>
 </svg>

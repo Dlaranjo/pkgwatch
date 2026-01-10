@@ -38,7 +38,7 @@ export class PipelineStack extends cdk.Stack {
       this,
       "GitHubTokenSecret",
       {
-        secretName: "dephealth/github-token",
+        secretName: "pkgwatch/github-token",
         description: "GitHub Personal Access Token for API access",
         removalPolicy: cdk.RemovalPolicy.RETAIN, // Protect secrets from accidental deletion
       }
@@ -50,7 +50,7 @@ export class PipelineStack extends cdk.Stack {
 
     // Dead letter queue for failed messages
     const dlq = new sqs.Queue(this, "PackageQueueDLQ", {
-      queueName: "dephealth-package-dlq",
+      queueName: "pkgwatch-package-dlq",
       retentionPeriod: cdk.Duration.days(14),
       encryption: sqs.QueueEncryption.SQS_MANAGED, // Enable encryption at rest
     });
@@ -58,7 +58,7 @@ export class PipelineStack extends cdk.Stack {
     // Main queue for package processing jobs
     // Visibility timeout should be 6x Lambda timeout to prevent message reprocessing
     const packageQueue = new sqs.Queue(this, "PackageQueue", {
-      queueName: "dephealth-package-queue",
+      queueName: "pkgwatch-package-queue",
       visibilityTimeout: cdk.Duration.minutes(30), // 6x Lambda timeout (5 min) per AWS best practices
       encryption: sqs.QueueEncryption.SQS_MANAGED, // Enable encryption at rest
       deadLetterQueue: {
@@ -127,7 +127,7 @@ export class PipelineStack extends cdk.Stack {
     // Triggered by EventBridge schedule, enqueues packages for refresh
     const refreshDispatcher = new lambda.Function(this, "RefreshDispatcher", {
       ...commonLambdaProps,
-      functionName: "dephealth-refresh-dispatcher",
+      functionName: "pkgwatch-refresh-dispatcher",
       handler: "refresh_dispatcher.handler",
       code: collectorsCode,
       description: "Dispatches package refresh jobs to SQS based on tier",
@@ -142,7 +142,7 @@ export class PipelineStack extends cdk.Stack {
     // Processes packages from SQS queue
     const packageCollector = new lambda.Function(this, "PackageCollector", {
       ...commonLambdaProps,
-      functionName: "dephealth-package-collector",
+      functionName: "pkgwatch-package-collector",
       handler: "package_collector.handler",
       code: collectorsCode,
       timeout: cdk.Duration.minutes(5),
@@ -173,7 +173,7 @@ export class PipelineStack extends cdk.Stack {
     // Triggered by DynamoDB Streams when package data is updated
     const scoreCalculator = new lambda.Function(this, "ScoreCalculator", {
       ...commonLambdaProps,
-      functionName: "dephealth-score-calculator",
+      functionName: "pkgwatch-score-calculator",
       handler: "score_package.handler",
       code: scoringCode,
       description: "Calculates health scores for packages",
@@ -187,27 +187,27 @@ export class PipelineStack extends cdk.Stack {
 
     // DLQ for DynamoDB Streams failures
     const streamsDlq = new sqs.Queue(this, "StreamsDLQ", {
-      queueName: "dephealth-streams-dlq",
+      queueName: "pkgwatch-streams-dlq",
       retentionPeriod: cdk.Duration.days(14),
       encryption: sqs.QueueEncryption.SQS_MANAGED, // Enable encryption at rest
     });
 
-    // DynamoDB Streams trigger temporarily disabled
-    // The stream was disabled during a CloudFormation rollback
-    // TODO: Re-enable once stream is restored on the packages table
-    // scoreCalculator.addEventSource(
-    //   new lambdaEventSources.DynamoEventSource(packagesTable, {
-    //     startingPosition: lambda.StartingPosition.LATEST,
-    //     batchSize: 10,
-    //     retryAttempts: 3,
-    //     reportBatchItemFailures: true,
-    //     onFailure: new lambdaEventSources.SqsDlq(streamsDlq),
-    //   })
-    // );
+    // Add DynamoDB Streams trigger to calculate scores after data collection
+    // Loop prevention: Lambda checks if record has collected_at (collectors set this)
+    // Score updates only set scored_at, so they don't trigger re-processing
+    scoreCalculator.addEventSource(
+      new lambdaEventSources.DynamoEventSource(packagesTable, {
+        startingPosition: lambda.StartingPosition.LATEST,
+        batchSize: 10,
+        retryAttempts: 3,
+        reportBatchItemFailures: true,
+        onFailure: new lambdaEventSources.SqsDlq(streamsDlq),
+      })
+    );
 
     // CloudWatch alarm for streams DLQ
     const streamsDlqAlarm = new cloudwatch.Alarm(this, "StreamsDlqAlarm", {
-      alarmName: "dephealth-streams-dlq-messages",
+      alarmName: "pkgwatch-streams-dlq-messages",
       alarmDescription: "Messages in Streams DLQ - score calculation failing",
       metric: streamsDlq.metricApproximateNumberOfMessagesVisible({
         period: cdk.Duration.minutes(5),
@@ -226,7 +226,7 @@ export class PipelineStack extends cdk.Stack {
 
     // Daily refresh at 2:00 AM UTC
     new events.Rule(this, "DailyRefreshRule", {
-      ruleName: "dephealth-daily-refresh",
+      ruleName: "pkgwatch-daily-refresh",
       schedule: events.Schedule.cron({ hour: "2", minute: "0" }),
       description: "Triggers daily package refresh for Tier 1 packages",
       targets: [
@@ -241,7 +241,7 @@ export class PipelineStack extends cdk.Stack {
 
     // Every 3 days refresh (Tier 2) - runs at 3:00 AM on days 1, 4, 7, 10, 13, 16, 19, 22, 25, 28
     new events.Rule(this, "ThreeDayRefreshRule", {
-      ruleName: "dephealth-three-day-refresh",
+      ruleName: "pkgwatch-three-day-refresh",
       schedule: events.Schedule.expression(
         "cron(0 3 1,4,7,10,13,16,19,22,25,28 * ? *)"
       ),
@@ -258,7 +258,7 @@ export class PipelineStack extends cdk.Stack {
 
     // Weekly refresh (Tier 3) - runs at 4:00 AM on Sundays
     new events.Rule(this, "WeeklyRefreshRule", {
-      ruleName: "dephealth-weekly-refresh",
+      ruleName: "pkgwatch-weekly-refresh",
       schedule: events.Schedule.cron({
         hour: "4",
         minute: "0",
@@ -281,7 +281,7 @@ export class PipelineStack extends cdk.Stack {
     // Reprocesses failed messages with exponential backoff and retry tracking
     const dlqProcessor = new lambda.Function(this, "DLQProcessor", {
       ...commonLambdaProps,
-      functionName: "dephealth-dlq-processor",
+      functionName: "pkgwatch-dlq-processor",
       handler: "dlq_processor.handler",
       code: collectorsCode,
       description: "Processes failed messages from DLQ with retry tracking",
@@ -301,7 +301,7 @@ export class PipelineStack extends cdk.Stack {
 
     // Schedule to run every 15 minutes
     new events.Rule(this, "DLQProcessorSchedule", {
-      ruleName: "dephealth-dlq-processor",
+      ruleName: "pkgwatch-dlq-processor",
       schedule: events.Schedule.rate(cdk.Duration.minutes(15)),
       description: "Triggers DLQ processor to reprocess failed messages",
       targets: [new targets.LambdaFunction(dlqProcessor)],
@@ -313,8 +313,8 @@ export class PipelineStack extends cdk.Stack {
 
     // SNS Topic for alerts
     this.alertTopic = new sns.Topic(this, "AlertTopic", {
-      topicName: "dephealth-alerts",
-      displayName: "DepHealth Alerts",
+      topicName: "pkgwatch-alerts",
+      displayName: "PkgWatch Alerts",
     });
 
     // CRITICAL: Subscribe email to alerts - without this, all alarms go nowhere
@@ -326,7 +326,7 @@ export class PipelineStack extends cdk.Stack {
 
     // 1. DLQ Messages Alarm (Critical - indicates processing failures)
     const dlqAlarm = new cloudwatch.Alarm(this, "DlqAlarm", {
-      alarmName: "dephealth-dlq-messages",
+      alarmName: "pkgwatch-dlq-messages",
       alarmDescription:
         "Messages in DLQ - package collection failing after retries",
       metric: dlq.metricApproximateNumberOfMessagesVisible({
@@ -350,7 +350,7 @@ export class PipelineStack extends cdk.Stack {
       this,
       "DispatcherErrorAlarm",
       {
-        alarmName: "dephealth-dispatcher-errors",
+        alarmName: "pkgwatch-dispatcher-errors",
         alarmDescription:
           "Refresh dispatcher failing - pipeline not triggering",
         metric: refreshDispatcher.metricErrors({
@@ -373,7 +373,7 @@ export class PipelineStack extends cdk.Stack {
       this,
       "CollectorErrorAlarm",
       {
-        alarmName: "dephealth-collector-errors",
+        alarmName: "pkgwatch-collector-errors",
         alarmDescription: "High error rate in package collector Lambda",
         metric: packageCollector.metricErrors({
           period: cdk.Duration.minutes(5),
@@ -390,7 +390,7 @@ export class PipelineStack extends cdk.Stack {
 
     // 4. Score Calculator Error Rate
     const scoreErrorAlarm = new cloudwatch.Alarm(this, "ScoreErrorAlarm", {
-      alarmName: "dephealth-score-calculator-errors",
+      alarmName: "pkgwatch-score-calculator-errors",
       alarmDescription: "High error rate in score calculator Lambda",
       metric: scoreCalculator.metricErrors({
         period: cdk.Duration.minutes(5),
@@ -406,7 +406,7 @@ export class PipelineStack extends cdk.Stack {
 
     // 5. DynamoDB Throttling Alarm (packages table)
     const throttleAlarm = new cloudwatch.Alarm(this, "DynamoThrottleAlarm", {
-      alarmName: "dephealth-dynamo-throttling",
+      alarmName: "pkgwatch-dynamo-throttling",
       alarmDescription: "DynamoDB throttling detected - may need capacity increase",
       metric: packagesTable.metricThrottledRequestsForOperations({
         operations: [
@@ -427,7 +427,7 @@ export class PipelineStack extends cdk.Stack {
 
     // 6. API Keys Table Throttling Alarm (CRITICAL - auth failures go silent without this)
     const apiKeysThrottleAlarm = new cloudwatch.Alarm(this, "ApiKeysThrottleAlarm", {
-      alarmName: "dephealth-apikeys-throttling",
+      alarmName: "pkgwatch-apikeys-throttling",
       alarmDescription: "API Keys table throttling - authentication requests may fail",
       metric: apiKeysTable.metricThrottledRequestsForOperations({
         operations: [
@@ -451,7 +451,7 @@ export class PipelineStack extends cdk.Stack {
     // If dispatcher hasn't been invoked in 24 hours, something is wrong with scheduling
     // Note: Using 24h (86400s) which is the max standard CloudWatch period
     const dispatcherNotRunningAlarm = new cloudwatch.Alarm(this, "DispatcherNotRunningAlarm", {
-      alarmName: "dephealth-dispatcher-not-running",
+      alarmName: "pkgwatch-dispatcher-not-running",
       alarmDescription: "Refresh dispatcher has not run in 24 hours - data staleness risk",
       metric: refreshDispatcher.metricInvocations({
         period: cdk.Duration.hours(24), // Max standard CloudWatch period
@@ -467,7 +467,7 @@ export class PipelineStack extends cdk.Stack {
 
     // 6. Operations Dashboard
     new cloudwatch.Dashboard(this, "OperationsDashboard", {
-      dashboardName: "DepHealth-Operations",
+      dashboardName: "PkgWatch-Operations",
       widgets: [
         // Row 1: Queue metrics
         [
@@ -546,19 +546,19 @@ export class PipelineStack extends cdk.Stack {
     new cdk.CfnOutput(this, "PackageQueueUrl", {
       value: packageQueue.queueUrl,
       description: "SQS queue URL for package processing",
-      exportName: "DepHealthPackageQueueUrl",
+      exportName: "PkgWatchPackageQueueUrl",
     });
 
     new cdk.CfnOutput(this, "GitHubTokenSecretArn", {
       value: githubTokenSecret.secretArn,
       description: "GitHub token secret ARN (set value manually)",
-      exportName: "DepHealthGitHubTokenSecretArn",
+      exportName: "PkgWatchGitHubTokenSecretArn",
     });
 
     new cdk.CfnOutput(this, "AlertTopicArn", {
       value: this.alertTopic.topicArn,
       description: "SNS topic ARN for alerts (subscribe email/Slack)",
-      exportName: "DepHealthAlertTopicArn",
+      exportName: "PkgWatchAlertTopicArn",
     });
   }
 }

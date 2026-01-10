@@ -58,7 +58,7 @@ jobs:
         id: version
         run: |
           CURRENT_VERSION=$(node -p "require('./package.json').version")
-          NPM_VERSION=$(npm view @dephealth/cli version 2>/dev/null || echo "0.0.0")
+          NPM_VERSION=$(npm view @pkgwatch/cli version 2>/dev/null || echo "0.0.0")
           if [ "$CURRENT_VERSION" != "$NPM_VERSION" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
             echo "Version changed: $NPM_VERSION -> $CURRENT_VERSION"

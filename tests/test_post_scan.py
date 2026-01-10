@@ -17,8 +17,8 @@ class TestPostScanHandler:
         self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
     ):
         """Should scan dependencies from package.json content."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -47,8 +47,8 @@ class TestPostScanHandler:
         self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
     ):
         """Should scan dependencies from direct object."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -74,8 +74,8 @@ class TestPostScanHandler:
         self, mock_dynamodb, api_gateway_event
     ):
         """Should return 401 for unauthenticated requests."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -95,8 +95,8 @@ class TestPostScanHandler:
         self, seeded_api_keys_table, api_gateway_event
     ):
         """Should return 400 for invalid JSON body."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -117,8 +117,8 @@ class TestPostScanHandler:
         self, seeded_api_keys_table, api_gateway_event
     ):
         """Should return 400 when no dependencies found."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -139,8 +139,8 @@ class TestPostScanHandler:
         self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
     ):
         """Should track packages not found in database."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -165,8 +165,8 @@ class TestPostScanHandler:
         self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
     ):
         """Should count packages by risk level."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -192,8 +192,8 @@ class TestPostScanHandler:
         self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
     ):
         """Should include rate limit headers in response."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -216,8 +216,8 @@ class TestPostScanHandler:
         self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
     ):
         """Should scan devDependencies as well."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 

@@ -5,7 +5,7 @@
  */
 export {
   // Client
-  DepHealthClient,
+  PkgWatchClient,
   ApiClientError,
   // Types
   type PackageHealth,
@@ -13,4 +13,4 @@ export {
   type AbandonmentRisk,
   type RiskLevel,
   type ErrorCode,
-} from "@dephealth/api-client";
+} from "@pkgwatch/api-client";

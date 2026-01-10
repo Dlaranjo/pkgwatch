@@ -17,13 +17,13 @@ class TestResetUsageHandler:
     @mock_aws
     def test_resets_all_user_counters(self, mock_dynamodb):
         """Should reset requests_this_month for all users."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create users with usage
         for i in range(3):
-            key_hash = hashlib.sha256(f"dh_user{i}".encode()).hexdigest()
+            key_hash = hashlib.sha256(f"pw_user{i}".encode()).hexdigest()
             table.put_item(
                 Item={
                     "pk": f"user_{i}",
@@ -51,7 +51,7 @@ class TestResetUsageHandler:
 
         # Verify all users were reset
         for i in range(3):
-            key_hash = hashlib.sha256(f"dh_user{i}".encode()).hexdigest()
+            key_hash = hashlib.sha256(f"pw_user{i}".encode()).hexdigest()
             response = table.get_item(Key={"pk": f"user_{i}", "sk": key_hash})
             item = response.get("Item")
             assert item["requests_this_month"] == 0
@@ -59,9 +59,9 @@ class TestResetUsageHandler:
     @mock_aws
     def test_skips_pending_records(self, mock_dynamodb):
         """Should not reset PENDING signup records."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create PENDING record
         table.put_item(
@@ -74,7 +74,7 @@ class TestResetUsageHandler:
         )
 
         # Create verified user
-        key_hash = hashlib.sha256(b"dh_verified").hexdigest()
+        key_hash = hashlib.sha256(b"pw_verified").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_verified",
@@ -104,9 +104,9 @@ class TestResetUsageHandler:
     @mock_aws
     def test_skips_demo_rate_limit_records(self, mock_dynamodb):
         """Should not reset demo rate limit records."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create demo rate limit record
         table.put_item(
@@ -118,7 +118,7 @@ class TestResetUsageHandler:
         )
 
         # Create verified user
-        key_hash = hashlib.sha256(b"dh_user").hexdigest()
+        key_hash = hashlib.sha256(b"pw_user").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_real",
@@ -144,9 +144,9 @@ class TestResetUsageHandler:
     @mock_aws
     def test_skips_system_records(self, mock_dynamodb):
         """Should not reset SYSTEM# records."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create system state record
         table.put_item(
@@ -158,7 +158,7 @@ class TestResetUsageHandler:
         )
 
         # Create verified user
-        key_hash = hashlib.sha256(b"dh_user").hexdigest()
+        key_hash = hashlib.sha256(b"pw_user").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_real",
@@ -184,11 +184,11 @@ class TestResetUsageHandler:
     @mock_aws
     def test_resumes_from_stored_state(self, mock_dynamodb):
         """Should resume from stored state on re-invocation."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from datetime import datetime, timezone
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create reset state
         current_month = datetime.now(timezone.utc).strftime("%Y-%m")
@@ -211,12 +211,12 @@ class TestResetUsageHandler:
     @mock_aws
     def test_clears_state_on_completion(self, mock_dynamodb):
         """Should clear stored state when reset completes."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create one user to reset
-        key_hash = hashlib.sha256(b"dh_single").hexdigest()
+        key_hash = hashlib.sha256(b"pw_single").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_single",
@@ -247,12 +247,12 @@ class TestResetUsageHandler:
     @patch("api.reset_usage.lambda_client")
     def test_self_invokes_on_timeout(self, mock_lambda, mock_dynamodb):
         """Should invoke self when running low on time."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create a user
-        key_hash = hashlib.sha256(b"dh_timeout").hexdigest()
+        key_hash = hashlib.sha256(b"pw_timeout").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_timeout",
@@ -283,7 +283,7 @@ class TestResetUsageHandler:
     @patch("api.reset_usage.lambda_client")
     def test_raises_on_self_invoke_failure(self, mock_lambda, mock_dynamodb):
         """Should raise exception if self-invocation fails."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Mock Lambda invoke to fail
         mock_lambda.invoke.side_effect = Exception("Lambda invocation failed")
@@ -296,11 +296,11 @@ class TestResetUsageHandler:
     @mock_aws
     def test_resets_payment_failures(self, mock_dynamodb):
         """Should reset payment_failures to 0."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
 
-        key_hash = hashlib.sha256(b"dh_failures").hexdigest()
+        key_hash = hashlib.sha256(b"pw_failures").hexdigest()
         table.put_item(
             Item={
                 "pk": "user_failures",

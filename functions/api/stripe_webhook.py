@@ -22,7 +22,7 @@ logger.setLevel(logging.INFO)
 dynamodb = boto3.resource("dynamodb")
 secretsmanager = boto3.client("secretsmanager")
 
-API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
+API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
 STRIPE_WEBHOOK_SECRET_ARN = os.environ.get("STRIPE_WEBHOOK_SECRET_ARN")
 

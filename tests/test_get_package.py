@@ -18,8 +18,8 @@ class TestGetPackageHandler:
     ):
         """Should return package health data for authenticated request."""
         # Set env vars before import
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -41,8 +41,8 @@ class TestGetPackageHandler:
         self, mock_dynamodb, seeded_packages_table, api_gateway_event
     ):
         """Should return package data for demo (unauthenticated) request."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -61,8 +61,8 @@ class TestGetPackageHandler:
         self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
     ):
         """Should return 404 for packages not in database."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -81,8 +81,8 @@ class TestGetPackageHandler:
         self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
     ):
         """Should return 400 for unsupported ecosystem."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -101,8 +101,8 @@ class TestGetPackageHandler:
         self, seeded_api_keys_table, api_gateway_event
     ):
         """Should return 400 when package name is missing."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -121,11 +121,11 @@ class TestGetPackageHandler:
         self, seeded_api_keys_table, seeded_packages_table, mock_dynamodb, api_gateway_event
     ):
         """Should decode URL-encoded scoped package names."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Add a scoped package
-        packages_table = mock_dynamodb.Table("dephealth-packages")
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
         packages_table.put_item(
             Item={
                 "pk": "npm#@babel/core",
@@ -156,8 +156,8 @@ class TestGetPackageHandler:
         self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
     ):
         """Should include rate limit headers in response."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -176,8 +176,8 @@ class TestGetPackageHandler:
         self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
     ):
         """Should increment usage counter for authenticated requests."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_package import handler
 
@@ -202,12 +202,12 @@ class TestGetPackageHandler:
         """Should return 429 when authenticated user exceeds monthly limit."""
         import hashlib
 
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Create a user that's already at their limit
-        table = mock_dynamodb.Table("dephealth-api-keys")
-        test_key = "dh_overlimit1234567890"
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_overlimit1234567890"
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
         table.put_item(
@@ -244,11 +244,11 @@ class TestGetPackageHandler:
         """Should return 429 when demo mode IP exceeds hourly limit."""
         from datetime import datetime, timezone
 
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Seed demo rate limit data to exceed the limit
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
         now = datetime.now(timezone.utc)
         current_hour = now.strftime("%Y-%m-%d-%H")
         client_ip = "127.0.0.1"

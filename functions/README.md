@@ -1,6 +1,6 @@
-# DepHealth Lambda Functions
+# PkgWatch Lambda Functions
 
-Python Lambda functions for the DepHealth API and data pipeline.
+Python Lambda functions for the PkgWatch API and data pipeline.
 
 ## Structure
 
@@ -83,9 +83,9 @@ pytest tests/test_scoring.py::TestHealthScore::test_healthy_package -v
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PACKAGES_TABLE` | DynamoDB packages table name | `dephealth-packages` |
-| `API_KEYS_TABLE` | DynamoDB API keys table name | `dephealth-api-keys` |
-| `RAW_DATA_BUCKET` | S3 bucket for raw data | `dephealth-raw-data` |
+| `PACKAGES_TABLE` | DynamoDB packages table name | `pkgwatch-packages` |
+| `API_KEYS_TABLE` | DynamoDB API keys table name | `pkgwatch-api-keys` |
+| `RAW_DATA_BUCKET` | S3 bucket for raw data | `pkgwatch-raw-data` |
 | `PACKAGE_QUEUE_URL` | SQS queue URL | - |
 | `DLQ_URL` | Dead letter queue URL | - |
 | `SESSION_SECRET_ARN` | Secrets Manager ARN | - |

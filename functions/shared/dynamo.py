@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # Lazy initialization to avoid boto3 resource creation at import time
 # This prevents "NoRegionError" during test collection when AWS isn't configured
 _dynamodb = None
-PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "dephealth-packages")
+PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 
 
 def _get_dynamodb():

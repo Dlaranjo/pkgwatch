@@ -1,5 +1,5 @@
 """
-Comprehensive tests for DepHealth data collectors.
+Comprehensive tests for PkgWatch data collectors.
 
 Tests cover:
 - github_collector.py: URL parsing, API requests, rate limits, bus factor
@@ -1282,10 +1282,10 @@ class TestCollectPackageData:
         with patch.dict(
             os.environ,
             {
-                "PACKAGES_TABLE": "dephealth-packages",
-                "RAW_DATA_BUCKET": "dephealth-raw-data",
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
                 "GITHUB_TOKEN_SECRET_ARN": "",
-                "API_KEYS_TABLE": "dephealth-api-keys",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
             },
         ):
             with patch.object(httpx.AsyncClient, "__init__", patched_init), \
@@ -1347,10 +1347,10 @@ class TestCollectPackageData:
         with patch.dict(
             os.environ,
             {
-                "PACKAGES_TABLE": "dephealth-packages",
-                "RAW_DATA_BUCKET": "dephealth-raw-data",
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
                 "GITHUB_TOKEN_SECRET_ARN": "",
-                "API_KEYS_TABLE": "dephealth-api-keys",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
             },
         ):
             with patch.object(httpx.AsyncClient, "__init__", patched_init), \
@@ -1375,7 +1375,7 @@ class TestStorePackageData:
         # Set up mock DynamoDB
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         dynamodb.create_table(
-            TableName="dephealth-packages",
+            TableName="pkgwatch-packages",
             KeySchema=[
                 {"AttributeName": "pk", "KeyType": "HASH"},
                 {"AttributeName": "sk", "KeyType": "RANGE"},
@@ -1387,7 +1387,7 @@ class TestStorePackageData:
             BillingMode="PAY_PER_REQUEST",
         )
 
-        with patch.dict(os.environ, {"PACKAGES_TABLE": "dephealth-packages"}):
+        with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
             # Need to reimport to get fresh boto3 resources
             from importlib import reload
 
@@ -1405,7 +1405,7 @@ class TestStorePackageData:
             package_collector.store_package_data("npm", "test-pkg", data, tier=2)
 
             # Verify data was stored
-            table = dynamodb.Table("dephealth-packages")
+            table = dynamodb.Table("pkgwatch-packages")
             response = table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})
 
             assert "Item" in response
@@ -1420,7 +1420,7 @@ class TestStorePackageData:
         """Test that None values are not stored in DynamoDB."""
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         dynamodb.create_table(
-            TableName="dephealth-packages",
+            TableName="pkgwatch-packages",
             KeySchema=[
                 {"AttributeName": "pk", "KeyType": "HASH"},
                 {"AttributeName": "sk", "KeyType": "RANGE"},
@@ -1432,7 +1432,7 @@ class TestStorePackageData:
             BillingMode="PAY_PER_REQUEST",
         )
 
-        with patch.dict(os.environ, {"PACKAGES_TABLE": "dephealth-packages"}):
+        with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
             from importlib import reload
 
             import package_collector
@@ -1448,7 +1448,7 @@ class TestStorePackageData:
 
             package_collector.store_package_data("npm", "test-pkg", data, tier=3)
 
-            table = dynamodb.Table("dephealth-packages")
+            table = dynamodb.Table("pkgwatch-packages")
             response = table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})
 
             item = response["Item"]
@@ -1465,7 +1465,7 @@ class TestHandler:
         # Set up AWS mocks
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         dynamodb.create_table(
-            TableName="dephealth-packages",
+            TableName="pkgwatch-packages",
             KeySchema=[
                 {"AttributeName": "pk", "KeyType": "HASH"},
                 {"AttributeName": "sk", "KeyType": "RANGE"},
@@ -1478,7 +1478,7 @@ class TestHandler:
         )
 
         s3 = boto3.client("s3", region_name="us-east-1")
-        s3.create_bucket(Bucket="dephealth-raw-data")
+        s3.create_bucket(Bucket="pkgwatch-raw-data")
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
@@ -1523,10 +1523,10 @@ class TestHandler:
         with patch.dict(
             os.environ,
             {
-                "PACKAGES_TABLE": "dephealth-packages",
-                "RAW_DATA_BUCKET": "dephealth-raw-data",
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
                 "GITHUB_TOKEN_SECRET_ARN": "",
-                "API_KEYS_TABLE": "dephealth-api-keys",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
             },
         ):
             with patch.object(httpx.AsyncClient, "__init__", patched_init), \
@@ -1565,8 +1565,8 @@ class TestHandler:
         with patch.dict(
             os.environ,
             {
-                "PACKAGES_TABLE": "dephealth-packages",
-                "RAW_DATA_BUCKET": "dephealth-raw-data",
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
                 "GITHUB_TOKEN_SECRET_ARN": "",
             },
         ):
@@ -1590,8 +1590,8 @@ class TestHandler:
         with patch.dict(
             os.environ,
             {
-                "PACKAGES_TABLE": "dephealth-packages",
-                "RAW_DATA_BUCKET": "dephealth-raw-data",
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
                 "GITHUB_TOKEN_SECRET_ARN": "",
             },
         ):
@@ -2130,7 +2130,7 @@ class TestRateLimitAtomicOperation:
         # Set up mock DynamoDB
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         dynamodb.create_table(
-            TableName="dephealth-api-keys",
+            TableName="pkgwatch-api-keys",
             KeySchema=[
                 {"AttributeName": "pk", "KeyType": "HASH"},
                 {"AttributeName": "sk", "KeyType": "RANGE"},
@@ -2145,7 +2145,7 @@ class TestRateLimitAtomicOperation:
         with patch.dict(
             os.environ,
             {
-                "API_KEYS_TABLE": "dephealth-api-keys",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
             },
         ):
             from importlib import reload
@@ -2161,7 +2161,7 @@ class TestRateLimitAtomicOperation:
         """Test rate limit enforcement with atomic operation."""
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         table = dynamodb.create_table(
-            TableName="dephealth-api-keys",
+            TableName="pkgwatch-api-keys",
             KeySchema=[
                 {"AttributeName": "pk", "KeyType": "HASH"},
                 {"AttributeName": "sk", "KeyType": "RANGE"},
@@ -2176,7 +2176,7 @@ class TestRateLimitAtomicOperation:
         with patch.dict(
             os.environ,
             {
-                "API_KEYS_TABLE": "dephealth-api-keys",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
             },
         ):
             from importlib import reload
@@ -2417,7 +2417,7 @@ class TestPipelineMetrics:
             mock_cw.put_metric_data.assert_called_once()
             call_args = mock_cw.put_metric_data.call_args
 
-            assert call_args.kwargs["Namespace"] == "DepHealth"
+            assert call_args.kwargs["Namespace"] == "PkgWatch"
             assert call_args.kwargs["MetricData"][0]["MetricName"] == "TestMetric"
             assert call_args.kwargs["MetricData"][0]["Value"] == 5.0
 
@@ -2512,7 +2512,7 @@ class TestHelperFunctions:
         """Test getting total GitHub calls when no shards exist."""
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         dynamodb.create_table(
-            TableName="dephealth-api-keys",
+            TableName="pkgwatch-api-keys",
             KeySchema=[
                 {"AttributeName": "pk", "KeyType": "HASH"},
                 {"AttributeName": "sk", "KeyType": "RANGE"},
@@ -2524,7 +2524,7 @@ class TestHelperFunctions:
             BillingMode="PAY_PER_REQUEST",
         )
 
-        with patch.dict(os.environ, {"API_KEYS_TABLE": "dephealth-api-keys"}):
+        with patch.dict(os.environ, {"API_KEYS_TABLE": "pkgwatch-api-keys"}):
             from importlib import reload
             import package_collector
             reload(package_collector)
@@ -2537,7 +2537,7 @@ class TestHelperFunctions:
         """Test getting total GitHub calls across shards."""
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         table = dynamodb.create_table(
-            TableName="dephealth-api-keys",
+            TableName="pkgwatch-api-keys",
             KeySchema=[
                 {"AttributeName": "pk", "KeyType": "HASH"},
                 {"AttributeName": "sk", "KeyType": "RANGE"},
@@ -2555,7 +2555,7 @@ class TestHelperFunctions:
         table.put_item(Item={"pk": "github_rate_limit#1", "sk": window_key, "calls": 150})
         table.put_item(Item={"pk": "github_rate_limit#2", "sk": window_key, "calls": 200})
 
-        with patch.dict(os.environ, {"API_KEYS_TABLE": "dephealth-api-keys"}):
+        with patch.dict(os.environ, {"API_KEYS_TABLE": "pkgwatch-api-keys"}):
             from importlib import reload
             import package_collector
             reload(package_collector)

@@ -1,5 +1,5 @@
 """
-Tests for error handling paths in DepHealth.
+Tests for error handling paths in PkgWatch.
 
 This module ensures all error paths are tested and handle failures gracefully:
 1. DynamoDB failures (ClientError, batch operations, conditional expressions)
@@ -36,8 +36,8 @@ class TestDynamoDBFailures:
         self, mock_dynamodb, seeded_api_keys_table, api_gateway_event
     ):
         """Should return 500 when DynamoDB get_item fails."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table, test_key = seeded_api_keys_table
         api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
@@ -63,7 +63,7 @@ class TestDynamoDBFailures:
     @mock_aws
     def test_validate_api_key_dynamodb_error_returns_none(self, mock_dynamodb):
         """Should return None when DynamoDB query fails during API key validation."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         with patch("shared.auth._get_dynamodb") as mock_get_dynamo:
             mock_dynamo = MagicMock()
@@ -76,7 +76,7 @@ class TestDynamoDBFailures:
             )
 
             from shared.auth import validate_api_key
-            result = validate_api_key("dh_test_key_12345")
+            result = validate_api_key("pw_test_key_12345")
 
         assert result is None
 
@@ -85,7 +85,7 @@ class TestDynamoDBFailures:
         self, seeded_api_keys_table
     ):
         """Should propagate DynamoDB errors other than ConditionalCheckFailed."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table, test_key = seeded_api_keys_table
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
@@ -112,11 +112,11 @@ class TestDynamoDBFailures:
         self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
     ):
         """Should handle batch operations with partial failures (UnprocessedKeys)."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Seed packages
-        packages_table = mock_dynamodb.Table("dephealth-packages")
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
         packages_table.put_item(Item={
             "pk": "npm#lodash", "sk": "LATEST", "name": "lodash",
             "health_score": 85, "risk_level": "LOW"
@@ -142,11 +142,11 @@ class TestDynamoDBFailures:
     @mock_aws
     def test_signup_conditional_check_failure(self, mock_dynamodb, api_gateway_event):
         """Should handle ConditionalCheckFailedException during signup."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
 
         # Pre-create a user to trigger the race condition
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
         email = "test@example.com"
         user_id = f"user_{hashlib.sha256(email.encode()).hexdigest()[:16]}"
         table.put_item(Item={
@@ -171,7 +171,7 @@ class TestDynamoDBFailures:
         self, mock_dynamodb, api_gateway_event
     ):
         """Should return 500 when DynamoDB fails during auth/me."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
 
         # Create a valid session token
@@ -218,8 +218,8 @@ class TestDynamoDemoRateLimitFailures:
         self, mock_dynamodb, seeded_packages_table, api_gateway_event
     ):
         """Should fail closed (deny) when demo rate limit check fails."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
         # No API key - demo mode
@@ -568,8 +568,8 @@ class TestInputValidationErrors:
     @mock_aws
     def test_invalid_json_body_returns_400(self, seeded_api_keys_table, api_gateway_event):
         """Should return 400 for malformed JSON."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table, test_key = seeded_api_keys_table
 
@@ -588,8 +588,8 @@ class TestInputValidationErrors:
     @mock_aws
     def test_empty_body_returns_400(self, seeded_api_keys_table, api_gateway_event):
         """Should return 400 for empty request body."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table, test_key = seeded_api_keys_table
 
@@ -613,8 +613,8 @@ class TestInputValidationErrors:
         "{}" for missing body, but if body is explicitly None, json.loads(None)
         would fail. Currently the handler defaults correctly due to the fallback.
         """
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table, test_key = seeded_api_keys_table
 
@@ -638,8 +638,8 @@ class TestInputValidationErrors:
         self, seeded_api_keys_table, api_gateway_event
     ):
         """Should return 400 for unsupported ecosystem."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table, test_key = seeded_api_keys_table
 
@@ -660,8 +660,8 @@ class TestInputValidationErrors:
         self, seeded_api_keys_table, api_gateway_event
     ):
         """Should return 400 when package name is missing."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table, test_key = seeded_api_keys_table
 
@@ -681,7 +681,7 @@ class TestInputValidationErrors:
         self, mock_dynamodb, api_gateway_event
     ):
         """Should return 400 for invalid email in signup."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.signup import handler
 
@@ -699,7 +699,7 @@ class TestInputValidationErrors:
         self, mock_dynamodb, api_gateway_event
     ):
         """Should return 400 when email is missing from signup."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.signup import handler
 
@@ -717,8 +717,8 @@ class TestInputValidationErrors:
         self, seeded_api_keys_table, api_gateway_event
     ):
         """Should handle malformed dependencies object."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table, test_key = seeded_api_keys_table
 
@@ -746,8 +746,8 @@ class TestAuthErrors:
     @mock_aws
     def test_missing_api_key_scan_returns_401(self, mock_dynamodb, api_gateway_event):
         """Should return 401 for POST /scan without API key."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -763,13 +763,13 @@ class TestAuthErrors:
     @mock_aws
     def test_invalid_api_key_returns_401(self, mock_dynamodb, api_gateway_event):
         """Should return 401 for invalid API key."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
         api_gateway_event["httpMethod"] = "POST"
-        api_gateway_event["headers"]["x-api-key"] = "dh_invalid_key_1234567890"
+        api_gateway_event["headers"]["x-api-key"] = "pw_invalid_key_1234567890"
         api_gateway_event["body"] = json.dumps({"dependencies": {"lodash": "^4.17.21"}})
 
         result = handler(api_gateway_event, {})
@@ -780,9 +780,9 @@ class TestAuthErrors:
 
     @mock_aws
     def test_wrong_prefix_api_key_returns_401(self, mock_dynamodb, api_gateway_event):
-        """Should return 401 for API key without dh_ prefix."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        """Should return 401 for API key without pw_ prefix."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -797,7 +797,7 @@ class TestAuthErrors:
     @mock_aws
     def test_missing_session_cookie_returns_401(self, mock_dynamodb, api_gateway_event):
         """Should return 401 for auth/me without session cookie."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
 
         from api.auth_me import handler
@@ -811,7 +811,7 @@ class TestAuthErrors:
     @mock_aws
     def test_expired_session_returns_401(self, mock_dynamodb, api_gateway_event):
         """Should return 401 for expired session token."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
 
         import base64
@@ -842,7 +842,7 @@ class TestAuthErrors:
     @mock_aws
     def test_corrupted_session_data_returns_401(self, mock_dynamodb, api_gateway_event):
         """Should return 401 for corrupted session token."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
 
         api_gateway_event["headers"]["cookie"] = "session=not.a.valid.token"
@@ -855,7 +855,7 @@ class TestAuthErrors:
     @mock_aws
     def test_tampered_session_signature_returns_401(self, mock_dynamodb, api_gateway_event):
         """Should return 401 for session with tampered signature."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
 
         import base64
@@ -881,7 +881,7 @@ class TestAuthErrors:
     @mock_aws
     def test_secrets_manager_failure_returns_error(self, mock_dynamodb, api_gateway_event):
         """Should handle Secrets Manager failures gracefully."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
         os.environ["SESSION_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123456789:secret:test"
 
@@ -928,8 +928,8 @@ class TestErrorResponseConsistency:
     @mock_aws
     def test_400_error_format(self, seeded_api_keys_table, api_gateway_event):
         """400 errors should follow standard format."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table, test_key = seeded_api_keys_table
 
@@ -947,8 +947,8 @@ class TestErrorResponseConsistency:
     @mock_aws
     def test_401_error_format(self, mock_dynamodb, api_gateway_event):
         """401 errors should follow standard format."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.post_scan import handler
 
@@ -966,8 +966,8 @@ class TestErrorResponseConsistency:
         self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
     ):
         """404 errors should follow standard format."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table, test_key = seeded_api_keys_table
 
@@ -989,12 +989,12 @@ class TestErrorResponseConsistency:
         """429 errors should follow standard format with extra fields."""
         import hashlib
 
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Create overlimit user
-        table = mock_dynamodb.Table("dephealth-api-keys")
-        test_key = "dh_overlimit1234567890"
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_overlimit1234567890"
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
         table.put_item(Item={
@@ -1024,8 +1024,8 @@ class TestErrorResponseConsistency:
         self, seeded_api_keys_table, api_gateway_event
     ):
         """500 errors should follow standard format."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table, test_key = seeded_api_keys_table
 
@@ -1051,8 +1051,8 @@ class TestErrorResponseConsistency:
         self, seeded_api_keys_table, api_gateway_event
     ):
         """All error responses should have Content-Type header."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table, test_key = seeded_api_keys_table
 
@@ -1172,12 +1172,12 @@ class TestRateLimitErrors:
         """Should return 429 when scan would exceed remaining limit."""
         import hashlib
 
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Create user with only 1 request remaining
-        table = mock_dynamodb.Table("dephealth-api-keys")
-        test_key = "dh_almostlimit12345"
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_almostlimit12345"
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
         table.put_item(Item={
@@ -1218,11 +1218,11 @@ class TestRateLimitErrors:
         """Demo rate limit error should include signup URL."""
         from datetime import datetime, timezone
 
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Seed demo rate limit to exceed limit
-        table = mock_dynamodb.Table("dephealth-api-keys")
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
         now = datetime.now(timezone.utc)
         current_hour = now.strftime("%Y-%m-%d-%H")
         client_ip = "127.0.0.1"
@@ -1258,8 +1258,8 @@ class TestSecurityErrors:
         self, seeded_api_keys_table, api_gateway_event
     ):
         """DynamoDB errors should not expose table names."""
-        os.environ["PACKAGES_TABLE"] = "dephealth-packages"
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table, test_key = seeded_api_keys_table
 
@@ -1270,7 +1270,7 @@ class TestSecurityErrors:
             mock_table = MagicMock()
             mock_dynamo.Table.return_value = mock_table
             mock_table.get_item.side_effect = ClientError(
-                {"Error": {"Code": "ResourceNotFoundException", "Message": "Table dephealth-packages not found"}},
+                {"Error": {"Code": "ResourceNotFoundException", "Message": "Table pkgwatch-packages not found"}},
                 "GetItem"
             )
 
@@ -1279,15 +1279,15 @@ class TestSecurityErrors:
 
         body = json.loads(result["body"])
         # Should not contain table name
-        assert "dephealth-packages" not in body["error"]["message"]
-        assert "dephealth-packages" not in str(body)
+        assert "pkgwatch-packages" not in body["error"]["message"]
+        assert "pkgwatch-packages" not in str(body)
 
     @mock_aws
     def test_email_enumeration_prevented_magic_link(
         self, mock_dynamodb, api_gateway_event
     ):
         """Magic link should return same response for existing and non-existing emails."""
-        os.environ["API_KEYS_TABLE"] = "dephealth-api-keys"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"
 
         from api.magic_link import handler

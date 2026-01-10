@@ -24,7 +24,7 @@ from botocore.exceptions import ClientError
 # Lazy initialization to avoid boto3 resource creation at import time
 # This prevents "NoRegionError" during test collection when AWS isn't configured
 _dynamodb = None
-API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
+API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
 
 def _get_dynamodb():
@@ -51,7 +51,7 @@ def generate_api_key(user_id: str, tier: str = "free", email: str = None) -> str
         The generated API key (only returned once, store securely!)
     """
     # Generate secure random key with prefix
-    api_key = f"dh_{secrets.token_urlsafe(32)}"
+    api_key = f"pw_{secrets.token_urlsafe(32)}"
     key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
     table = _get_dynamodb().Table(API_KEYS_TABLE)
@@ -85,7 +85,7 @@ def validate_api_key(api_key: str) -> Optional[dict]:
     Uses key-hash-index GSI for O(1) lookup.
 
     Args:
-        api_key: The API key to validate (e.g., "dh_abc123...")
+        api_key: The API key to validate (e.g., "pw_abc123...")
 
     Returns:
         User info dict or None if invalid
@@ -94,7 +94,7 @@ def validate_api_key(api_key: str) -> Optional[dict]:
         return None
 
     # Check prefix
-    if not api_key.startswith("dh_"):
+    if not api_key.startswith("pw_"):
         return None
 
     # Hash the key for lookup

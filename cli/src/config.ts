@@ -1,16 +1,16 @@
 /**
- * Configuration management for DepHealth CLI.
+ * Configuration management for PkgWatch CLI.
  *
  * API Key resolution priority:
- * 1. DEPHEALTH_API_KEY environment variable (for CI)
- * 2. ~/.dephealth/config.json file
+ * 1. PKGWATCH_API_KEY environment variable (for CI)
+ * 2. ~/.pkgwatch/config.json file
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const CONFIG_DIR = join(homedir(), ".dephealth");
+const CONFIG_DIR = join(homedir(), ".pkgwatch");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
 // Expected secure permissions: owner read/write only (0600)
@@ -55,7 +55,7 @@ function hasSecurePermissions(filePath: string): boolean {
  */
 export function getApiKey(): string | undefined {
   // Priority 1: Environment variable
-  const envKey = process.env.DEPHEALTH_API_KEY;
+  const envKey = process.env.PKGWATCH_API_KEY;
   if (envKey) {
     return envKey;
   }
@@ -77,7 +77,7 @@ export function readConfig(): Config {
   if (!hasSecurePermissions(CONFIG_FILE)) {
     console.error(
       "Warning: Config file has insecure permissions. " +
-      "Run 'chmod 600 ~/.dephealth/config.json' to fix."
+      "Run 'chmod 600 ~/.pkgwatch/config.json' to fix."
     );
   }
 

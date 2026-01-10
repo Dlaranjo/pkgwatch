@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { DepHealthClient, ApiClientError } from "../src/api.js";
+import { PkgWatchClient, ApiClientError } from "../src/api.js";
 
 // Mock global fetch
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-describe("DepHealthClient", () => {
+describe("PkgWatchClient", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
@@ -31,15 +31,15 @@ describe("DepHealthClient", () => {
         json: () => Promise.resolve(mockResponse),
       });
 
-      const client = new DepHealthClient("dh_test-api-key");
+      const client = new PkgWatchClient("pw_test-api-key");
       const result = await client.scan({ lodash: "^4.17.21" });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://api.dephealth.laranjo.dev/v1/scan",
+        "https://api.pkgwatch.laranjo.dev/v1/scan",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({
-            "X-API-Key": "dh_test-api-key",
+            "X-API-Key": "pw_test-api-key",
             "Content-Type": "application/json",
           }),
           body: JSON.stringify({ dependencies: { lodash: "^4.17.21" } }),
@@ -57,7 +57,7 @@ describe("DepHealthClient", () => {
           Promise.resolve({ error: "unauthorized", message: "Invalid API key" }),
       });
 
-      const client = new DepHealthClient("dh_bad-key");
+      const client = new PkgWatchClient("pw_bad-key");
 
       try {
         await client.scan({ lodash: "^4.17.21" });
@@ -79,7 +79,7 @@ describe("DepHealthClient", () => {
       });
 
       // Use maxRetries: 0 to skip retry delays in test
-      const client = new DepHealthClient("dh_test-key", { maxRetries: 0 });
+      const client = new PkgWatchClient("pw_test-key", { maxRetries: 0 });
 
       try {
         await client.scan({});
@@ -94,35 +94,35 @@ describe("DepHealthClient", () => {
       mockFetch.mockRejectedValue(new Error("Network failure"));
 
       // Use maxRetries: 0 to skip retry delays in test
-      const client = new DepHealthClient("dh_test-key", { maxRetries: 0 });
+      const client = new PkgWatchClient("pw_test-key", { maxRetries: 0 });
 
       await expect(client.scan({})).rejects.toThrow("Network error");
     });
   });
 });
 
-describe("DepHealthClient - API Key Validation", () => {
-  it("rejects API keys without dh_ prefix", () => {
-    expect(() => new DepHealthClient("invalid-key")).toThrow(
-      "Invalid API key format. Keys should start with 'dh_'"
+describe("PkgWatchClient - API Key Validation", () => {
+  it("rejects API keys without pw_ prefix", () => {
+    expect(() => new PkgWatchClient("invalid-key")).toThrow(
+      "Invalid API key format. Keys should start with 'pw_'"
     );
   });
 
   it("rejects empty API keys", () => {
-    expect(() => new DepHealthClient("")).toThrow(
+    expect(() => new PkgWatchClient("")).toThrow(
       "API key is required and cannot be empty"
     );
   });
 
   it("rejects whitespace-only API keys", () => {
-    expect(() => new DepHealthClient("   ")).toThrow(
+    expect(() => new PkgWatchClient("   ")).toThrow(
       "API key is required and cannot be empty"
     );
   });
 
-  it("accepts valid dh_ prefixed keys", () => {
+  it("accepts valid pw_ prefixed keys", () => {
     // Should not throw - we don't make actual requests, just verify construction
-    expect(() => new DepHealthClient("dh_valid_key")).not.toThrow();
+    expect(() => new PkgWatchClient("pw_valid_key")).not.toThrow();
   });
 });
 

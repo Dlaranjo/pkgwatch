@@ -25,7 +25,7 @@ from shared.response_utils import error_response
 
 dynamodb = boto3.resource("dynamodb")
 dynamodb_client = boto3.client("dynamodb")
-API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "dephealth-api-keys")
+API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
 # Max keys per user
 MAX_KEYS_PER_USER = 5
@@ -100,7 +100,7 @@ def handler(event, context):
         return error_response(500, "internal_error", "Failed to create API key")
 
     # Generate new API key
-    api_key = f"dh_{secrets.token_urlsafe(32)}"
+    api_key = f"pw_{secrets.token_urlsafe(32)}"
     key_hash = hashlib.sha256(api_key.encode()).hexdigest()
     now = datetime.now(timezone.utc).isoformat()
 

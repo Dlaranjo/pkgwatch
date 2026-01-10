@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { scanDependencies } from "../src/scanner.js";
-import { DepHealthClient } from "../src/api.js";
+import { PkgWatchClient } from "../src/api.js";
 
 // Mock fs module
 vi.mock("node:fs", () => ({
@@ -14,7 +14,7 @@ const mockScan = vi.fn();
 
 // Mock API client
 vi.mock("../src/api.js", () => ({
-  DepHealthClient: vi.fn().mockImplementation(() => ({
+  PkgWatchClient: vi.fn().mockImplementation(() => ({
     scan: mockScan,
   })),
 }));
