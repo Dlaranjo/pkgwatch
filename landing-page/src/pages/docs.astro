@@ -18,15 +18,21 @@ const endpoints = [
   },
   {
     method: 'GET',
-    path: '/packages/npm/{name}',
-    description: 'Get health score and details for a single npm package.',
+    path: '/packages/{ecosystem}/{name}',
+    description: 'Get health score and details for a package. Supports npm and pypi ecosystems.',
     auth: true,
     params: [
+      { name: 'ecosystem', type: 'string', description: 'Package ecosystem: npm or pypi' },
       { name: 'name', type: 'string', description: 'Package name (URL-encoded for scoped packages)' }
     ],
     example: {
-      request: `curl -H "X-API-Key: YOUR_KEY" \\
-  https://api.pkgwatch.laranjo.dev/packages/npm/express`,
+      request: `# npm package
+curl -H "X-API-Key: YOUR_KEY" \\
+  https://api.pkgwatch.laranjo.dev/packages/npm/express
+
+# PyPI package
+curl -H "X-API-Key: YOUR_KEY" \\
+  https://api.pkgwatch.laranjo.dev/packages/pypi/requests`,
       response: `{
   "package": "express",
   "ecosystem": "npm",
@@ -81,7 +87,7 @@ const endpoints = [
   {
     method: 'POST',
     path: '/scan',
-    description: 'Scan multiple packages from a package.json file.',
+    description: 'Scan multiple packages from a package.json or requirements.txt file.',
     auth: true,
     body: `{
   "dependencies": {

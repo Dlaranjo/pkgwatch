@@ -1,5 +1,5 @@
 name: 'PkgWatch Scan'
-description: 'Scan npm dependencies for health risks and security issues'
+description: 'Scan npm and Python dependencies for health risks and security issues'
 author: 'PkgWatch'
 
 branding:
@@ -11,7 +11,7 @@ inputs:
     description: 'PkgWatch API key. Get one at https://pkgwatch.laranjo.dev'
     required: true
   working-directory:
-    description: 'Directory containing package.json to scan'
+    description: 'Directory containing package.json or requirements.txt to scan'
     required: false
     default: '.'
   fail-on:

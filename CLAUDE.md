@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PkgWatch is a dependency health intelligence platform that predicts npm package abandonment, maintenance decline, and security issues. It provides health scores (0-100) and abandonment risk predictions via REST API, CLI tool, and GitHub Action.
+PkgWatch is a dependency health intelligence platform that predicts npm and Python package abandonment, maintenance decline, and security issues. It provides health scores (0-100) and abandonment risk predictions via REST API, CLI tool, and GitHub Action.
 
 ## Build and Test Commands
 
@@ -70,14 +70,14 @@ npm run build     # Production build
 3. **pipeline-stack.ts** - EventBridge schedules, SQS queues, data collectors
 
 ### Data Flow
-1. **Collectors** (EventBridge scheduled) fetch from deps.dev, npm registry, GitHub API
+1. **Collectors** (EventBridge scheduled) fetch from deps.dev, npm registry, PyPI registry, GitHub API
 2. Data stored in DynamoDB with raw JSON in S3
 3. **DynamoDB Streams** trigger scoring Lambda on data changes
 4. **API Gateway** serves scored data to clients
 
 ### Lambda Function Organization
 - `functions/api/` - API endpoint handlers (get_package, post_scan, auth, etc.)
-- `functions/collectors/` - Data collection pipeline (npm, deps.dev, GitHub)
+- `functions/collectors/` - Data collection pipeline (npm, PyPI, deps.dev, GitHub)
 - `functions/scoring/` - Health score and abandonment risk algorithms
 - `functions/shared/` - Auth, DynamoDB helpers, response utilities, error classes
 

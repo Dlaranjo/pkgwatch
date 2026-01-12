@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * PkgWatch CLI - Check npm package health scores from the command line.
+ * PkgWatch CLI - Check package health scores from the command line.
  *
  * Usage:
  *   pkgwatch check <package>      Check a single package
@@ -293,7 +293,7 @@ async function prompt(question: string): Promise<string> {
 
 program
   .name("pkgwatch")
-  .description("Monitor npm package health and catch risks early")
+  .description("Monitor npm and PyPI package health and catch risks early")
   .version(VERSION)
   .option("-q, --quiet", "Suppress non-essential output")
   .option("-v, --verbose", "Show detailed output")

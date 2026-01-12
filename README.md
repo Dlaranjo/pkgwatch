@@ -1,6 +1,6 @@
 # PkgWatch - Dependency Health Intelligence
 
-Predict which npm packages are at risk of abandonment, maintenance decline, or security issues — BEFORE problems occur.
+Predict which npm and Python packages are at risk of abandonment, maintenance decline, or security issues — BEFORE problems occur.
 
 **Live:**
 - API: https://api.pkgwatch.laranjo.dev/v1/
@@ -49,9 +49,13 @@ pkgwatch scan --fail-on HIGH
 ### API
 
 ```bash
-# Get health score for a package
+# Get health score for npm package
 curl -H "X-API-Key: pw_your_key" \
   https://api.pkgwatch.laranjo.dev/v1/packages/npm/lodash
+
+# Get health score for Python package
+curl -H "X-API-Key: pw_your_key" \
+  https://api.pkgwatch.laranjo.dev/v1/packages/pypi/requests
 
 # Scan multiple packages
 curl -X POST -H "X-API-Key: pw_your_key" \
@@ -133,7 +137,7 @@ pkgwatch/
 - **CLI/Action:** TypeScript, Commander.js
 - **Website:** Astro, Tailwind CSS
 - **Infrastructure:** AWS CDK, Terraform (landing page)
-- **Data Sources:** deps.dev, npm registry, GitHub API
+- **Data Sources:** deps.dev, npm registry, PyPI registry, GitHub API
 
 ## Development
 
@@ -194,6 +198,7 @@ npm run build
 |--------|------------|------|
 | deps.dev | Unlimited | Dependencies, advisories, OpenSSF |
 | npm registry | ~1000/hr | Downloads, maintainers, deprecation |
+| PyPI registry | ~500/hr | Downloads, maintainers, classifiers |
 | GitHub API | 5000/hr | Commits, contributors, stars |
 
 ## Data Refresh

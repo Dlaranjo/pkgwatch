@@ -16,11 +16,15 @@ import { PkgWatchClient, ApiClientError } from '@pkgwatch/api-client';
 // Initialize client
 const client = new PkgWatchClient('pw_your_api_key');
 
-// Get package health (full details)
+// Get npm package health (full details)
 const result = await client.getPackage('lodash');
 console.log(result.health_score);  // 85
 console.log(result.risk_level);    // "LOW"
 console.log(result.components);    // { maintainer_health: 90, ... }
+
+// Get Python package health
+const pyResult = await client.getPackage('requests', 'pypi');
+console.log(pyResult.health_score);
 
 // Scan package.json dependencies
 const scan = await client.scan({

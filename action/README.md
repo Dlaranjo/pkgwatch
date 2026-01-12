@@ -3,7 +3,7 @@
 [![GitHub Action](https://img.shields.io/badge/GitHub-Action-blue.svg)](https://github.com/features/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Scan your npm dependencies for health risks and security issues in CI/CD.
+Scan your npm and Python dependencies for health risks and security issues in CI/CD.
 
 ## Quick Start
 

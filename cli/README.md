@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 
-Keep watch over your npm dependencies. Monitor package health and detect risks before they become problems.
+Keep watch over your npm and Python dependencies. Monitor package health and detect risks before they become problems.
 
 ## Installation
 

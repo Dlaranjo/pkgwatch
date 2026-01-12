@@ -28,6 +28,7 @@ functions/
 │   ├── dlq_processor.py        # Dead letter queue
 │   ├── github_collector.py     # GitHub API integration
 │   ├── npm_collector.py        # npm registry integration
+│   ├── pypi_collector.py       # PyPI registry integration
 │   ├── depsdev_collector.py    # deps.dev API integration
 │   └── bundlephobia_collector.py
 │

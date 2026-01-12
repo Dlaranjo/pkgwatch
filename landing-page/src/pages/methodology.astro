@@ -222,7 +222,7 @@ const components = [
       <!-- Data Sources -->
       <section class="mb-16">
         <h2 class="text-2xl font-semibold text-white mb-6">Data Sources</h2>
-        <div class="grid md:grid-cols-3 gap-4">
+        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div class="bg-zinc-800/50 rounded-lg p-4 border border-zinc-700/50">
             <h3 class="font-medium text-white mb-2">deps.dev</h3>
             <p class="text-sm text-zinc-400">Primary source for dependencies, dependents, advisories, OpenSSF scores</p>
@@ -232,8 +232,12 @@ const components = [
             <p class="text-sm text-zinc-400">Downloads, maintainers, deprecation status, release dates</p>
           </div>
           <div class="bg-zinc-800/50 rounded-lg p-4 border border-zinc-700/50">
+            <h3 class="font-medium text-white mb-2">PyPI Registry</h3>
+            <p class="text-sm text-zinc-400">Python package metadata, downloads, maintainers, classifiers</p>
+          </div>
+          <div class="bg-zinc-800/50 rounded-lg p-4 border border-zinc-700/50">
             <h3 class="font-medium text-white mb-2">GitHub API</h3>
-            <p class="text-sm text-zinc-400">Commits, contributors, stars, issue response times, PR merge velocity, archived status</p>
+            <p class="text-sm text-zinc-400">Commits, contributors, stars, issue response times, PR merge velocity</p>
           </div>
         </div>
       </section>
