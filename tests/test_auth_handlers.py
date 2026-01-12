@@ -103,6 +103,250 @@ class TestAuthMeHandler:
         body = json.loads(result["body"])
         assert body["error"]["code"] == "unauthorized"
 
+    @mock_aws
+    def test_aggregates_requests_across_all_keys(self, mock_dynamodb, api_gateway_event):
+        """Should aggregate requests_this_month across ALL API keys."""
+        import hashlib
+        from datetime import datetime, timedelta, timezone
+        import boto3
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        # Set up secrets manager mock
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create multiple API keys with different request counts
+        key_hash1 = hashlib.sha256(b"pw_key1").hexdigest()
+        key_hash2 = hashlib.sha256(b"pw_key2").hexdigest()
+
+        table.put_item(
+            Item={
+                "pk": "user_aggregate_test",
+                "sk": key_hash1,
+                "key_hash": key_hash1,
+                "email": "aggregate@example.com",
+                "tier": "free",
+                "requests_this_month": 50,
+                "created_at": "2024-01-01T00:00:00Z",
+                "email_verified": True,
+            }
+        )
+        table.put_item(
+            Item={
+                "pk": "user_aggregate_test",
+                "sk": key_hash2,
+                "key_hash": key_hash2,
+                "email": "aggregate@example.com",
+                "tier": "free",
+                "requests_this_month": 126,
+                "created_at": "2024-01-02T00:00:00Z",
+                "email_verified": True,
+            }
+        )
+
+        from api.auth_me import handler
+        from api.auth_callback import _create_session_token
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        # Create valid session token
+        data = {
+            "user_id": "user_aggregate_test",
+            "email": "aggregate@example.com",
+            "tier": "free",
+            "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+        }
+        session_token = _create_session_token(data, "test-secret-key-for-signing-sessions")
+
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        # Should be 50 + 126 = 176 (aggregated across both keys)
+        assert body["requests_this_month"] == 176
+
+    @mock_aws
+    def test_excludes_user_meta_from_key_list(self, mock_dynamodb, api_gateway_event):
+        """Should not count USER_META as an API key."""
+        import hashlib
+        from datetime import datetime, timedelta, timezone
+        import boto3
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create API key
+        key_hash = hashlib.sha256(b"pw_single_key").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_meta_test",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "meta@example.com",
+                "tier": "free",
+                "requests_this_month": 100,
+                "created_at": "2024-01-01T00:00:00Z",
+                "email_verified": True,
+            }
+        )
+        # Create USER_META record (should be ignored)
+        table.put_item(
+            Item={
+                "pk": "user_meta_test",
+                "sk": "USER_META",
+                "key_count": 1,
+            }
+        )
+
+        from api.auth_me import handler
+        from api.auth_callback import _create_session_token
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        data = {
+            "user_id": "user_meta_test",
+            "email": "meta@example.com",
+            "tier": "free",
+            "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+        }
+        session_token = _create_session_token(data, "test-secret-key-for-signing-sessions")
+
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        # Should only count the actual API key's requests, not USER_META
+        assert body["requests_this_month"] == 100
+
+    @mock_aws
+    def test_returns_404_when_no_api_keys(self, mock_dynamodb, api_gateway_event):
+        """Should return 404 when user has no API keys (only PENDING or USER_META)."""
+        from datetime import datetime, timedelta, timezone
+        import boto3
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create only PENDING record (no actual API keys)
+        table.put_item(
+            Item={
+                "pk": "user_no_keys",
+                "sk": "PENDING",
+                "email": "nokeys@example.com",
+            }
+        )
+
+        from api.auth_me import handler
+        from api.auth_callback import _create_session_token
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        data = {
+            "user_id": "user_no_keys",
+            "email": "nokeys@example.com",
+            "tier": "free",
+            "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+        }
+        session_token = _create_session_token(data, "test-secret-key-for-signing-sessions")
+
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 404
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "user_not_found"
+
+    @mock_aws
+    def test_excludes_pending_from_aggregation(self, mock_dynamodb, api_gateway_event):
+        """Should exclude PENDING records from request aggregation."""
+        import hashlib
+        from datetime import datetime, timedelta, timezone
+        import boto3
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create API key
+        key_hash = hashlib.sha256(b"pw_real_key").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_pending_test",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "pending@example.com",
+                "tier": "free",
+                "requests_this_month": 50,
+                "created_at": "2024-01-01T00:00:00Z",
+                "email_verified": True,
+            }
+        )
+        # Create PENDING record (should be excluded)
+        table.put_item(
+            Item={
+                "pk": "user_pending_test",
+                "sk": "PENDING",
+                "email": "pending@example.com",
+            }
+        )
+
+        from api.auth_me import handler
+        from api.auth_callback import _create_session_token
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        data = {
+            "user_id": "user_pending_test",
+            "email": "pending@example.com",
+            "tier": "free",
+            "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+        }
+        session_token = _create_session_token(data, "test-secret-key-for-signing-sessions")
+
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        # Should only count the actual API key, not PENDING
+        assert body["requests_this_month"] == 50
+
 
 class TestCheckAndIncrementUsage:
     """Tests for the atomic rate limit function."""

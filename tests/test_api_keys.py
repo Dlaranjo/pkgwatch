@@ -153,6 +153,102 @@ class TestCreateApiKeyHandler:
         assert body["api_key"].startswith("pw_")
 
     @mock_aws
+    def test_creates_user_meta_on_first_key_creation(self, mock_dynamodb, api_gateway_event):
+        """Should create USER_META record when creating first key for user without one."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create existing API key without USER_META
+        key_hash = hashlib.sha256(b"pw_existing_no_meta").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_no_meta",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "nometa@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+
+        from api.create_api_key import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        session_token = _create_test_session_token("user_no_meta", "nometa@example.com")
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 201
+
+        # Verify USER_META was created with correct key_count
+        meta_response = table.get_item(Key={"pk": "user_no_meta", "sk": "USER_META"})
+        assert "Item" in meta_response
+        assert meta_response["Item"]["key_count"] == 2  # 1 existing + 1 new
+
+    @mock_aws
+    def test_increments_user_meta_key_count(self, mock_dynamodb, api_gateway_event):
+        """Should increment USER_META.key_count when creating additional keys."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create existing API key with USER_META
+        key_hash = hashlib.sha256(b"pw_with_meta").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_with_meta",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "withmeta@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+        table.put_item(
+            Item={
+                "pk": "user_with_meta",
+                "sk": "USER_META",
+                "key_count": 1,
+            }
+        )
+
+        from api.create_api_key import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        session_token = _create_test_session_token("user_with_meta", "withmeta@example.com")
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 201
+
+        # Verify USER_META.key_count was incremented
+        meta_response = table.get_item(Key={"pk": "user_with_meta", "sk": "USER_META"})
+        assert meta_response["Item"]["key_count"] == 2
+
+    @mock_aws
     def test_enforces_max_keys_limit(self, mock_dynamodb, api_gateway_event):
         """Should return 400 when user has too many keys."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
