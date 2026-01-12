@@ -227,13 +227,22 @@ export class ApiStack extends cdk.Stack {
       "pkgwatch/session-secret"
     );
 
+    // Explicit policy for session secret access (fromSecretNameV2 grants don't work with suffixed ARNs)
+    const sessionSecretPolicy = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ["secretsmanager:GetSecretValue"],
+      resources: [
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:pkgwatch/session-secret*`,
+      ],
+    });
+
     // Common props for auth handlers
     const authLambdaProps = {
       ...commonLambdaProps,
       environment: {
         ...commonLambdaProps.environment,
         BASE_URL: "https://pkgwatch.laranjo.dev",
-        SESSION_SECRET_ARN: sessionSecret.secretArn,
+        SESSION_SECRET_ARN: "pkgwatch/session-secret",  // Use name, not partial ARN
         VERIFICATION_EMAIL_SENDER: "noreply@pkgwatch.laranjo.dev",
         LOGIN_EMAIL_SENDER: "noreply@pkgwatch.laranjo.dev",
       },
@@ -263,13 +272,16 @@ export class ApiStack extends cdk.Stack {
       description: "DKIM CNAME record names for DNS configuration",
     });
 
-    // Grant SES permissions for email sending - SCOPED to domain identity
+    // Grant SES permissions for email sending
+    // In sandbox mode, need access to both sender domain AND recipient identities
     const sesPolicy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ["ses:SendEmail", "ses:SendRawEmail"],
       resources: [
         // Domain-level identity allows sending from any address @pkgwatch.laranjo.dev
         `arn:aws:ses:${this.region}:${this.account}:identity/pkgwatch.laranjo.dev`,
+        // Wildcard for verified email recipients (required in sandbox mode)
+        `arn:aws:ses:${this.region}:${this.account}:identity/*`,
       ],
     });
 
@@ -308,7 +320,7 @@ export class ApiStack extends cdk.Stack {
     });
 
     apiKeysTable.grantReadWriteData(authCallbackHandler);
-    sessionSecret.grantRead(authCallbackHandler);
+    authCallbackHandler.addToRolePolicy(sessionSecretPolicy);
 
     // GET /auth/me - Get current user info
     const authMeHandler = new lambda.Function(this, "AuthMeHandler", {
@@ -320,7 +332,7 @@ export class ApiStack extends cdk.Stack {
     });
 
     apiKeysTable.grantReadData(authMeHandler);
-    sessionSecret.grantRead(authMeHandler);
+    authMeHandler.addToRolePolicy(sessionSecretPolicy);
 
     // GET /api-keys - List user's API keys
     const getApiKeysHandler = new lambda.Function(this, "GetApiKeysHandler", {
@@ -332,7 +344,7 @@ export class ApiStack extends cdk.Stack {
     });
 
     apiKeysTable.grantReadData(getApiKeysHandler);
-    sessionSecret.grantRead(getApiKeysHandler);
+    getApiKeysHandler.addToRolePolicy(sessionSecretPolicy);
 
     // POST /api-keys - Create new API key
     const createApiKeyHandler = new lambda.Function(this, "CreateApiKeyHandler", {
@@ -344,7 +356,7 @@ export class ApiStack extends cdk.Stack {
     });
 
     apiKeysTable.grantReadWriteData(createApiKeyHandler);
-    sessionSecret.grantRead(createApiKeyHandler);
+    createApiKeyHandler.addToRolePolicy(sessionSecretPolicy);
 
     // DELETE /api-keys/{key_id} - Revoke API key
     const revokeApiKeyHandler = new lambda.Function(this, "RevokeApiKeyHandler", {
@@ -356,7 +368,7 @@ export class ApiStack extends cdk.Stack {
     });
 
     apiKeysTable.grantReadWriteData(revokeApiKeyHandler);
-    sessionSecret.grantRead(revokeApiKeyHandler);
+    revokeApiKeyHandler.addToRolePolicy(sessionSecretPolicy);
 
     // ===========================================
     // API Gateway

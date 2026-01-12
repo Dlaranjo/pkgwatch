@@ -1,0 +1,730 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/Navbar.astro';
+import Footer from '../components/Footer.astro';
+---
+
+<Layout title="Dashboard | PkgWatch">
+  <Navbar />
+
+  <main id="main-content" class="max-w-4xl mx-auto px-4 py-24 pt-32">
+    <!-- Loading Skeleton (shown initially) -->
+    <div id="dashboard-skeleton" class="space-y-8 animate-fade-in-up">
+      <!-- Profile skeleton -->
+      <div class="animate-pulse">
+        <div class="h-8 bg-zinc-800 rounded w-48 mb-4"></div>
+        <div class="h-4 bg-zinc-800 rounded w-32"></div>
+      </div>
+      <!-- Usage card skeleton -->
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 animate-pulse">
+        <div class="h-5 bg-zinc-800 rounded w-24 mb-4"></div>
+        <div class="h-2 bg-zinc-800 rounded w-full mb-3"></div>
+        <div class="h-4 bg-zinc-800 rounded w-40"></div>
+      </div>
+      <!-- Keys card skeleton -->
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 animate-pulse">
+        <div class="flex justify-between items-center mb-6">
+          <div class="h-5 bg-zinc-800 rounded w-24"></div>
+          <div class="h-9 bg-zinc-800 rounded w-28"></div>
+        </div>
+        <div class="space-y-4">
+          <div class="h-14 bg-zinc-800 rounded"></div>
+          <div class="h-14 bg-zinc-800 rounded"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Auth Error State (hidden by default) -->
+    <div id="auth-error" class="hidden text-center py-16 animate-fade-in-up">
+      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-red-900/30 flex items-center justify-center">
+        <svg class="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m0 0v2m0-2h2m-2 0H10m2-10a4 4 0 00-4 4v4h8v-4a4 4 0 00-4-4z"></path>
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold text-white mb-2">Session Expired</h1>
+      <p class="text-zinc-400 mb-6">Please sign in again to access your dashboard.</p>
+      <a href="/login" class="inline-block px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg transition">
+        Sign In
+      </a>
+    </div>
+
+    <!-- Dashboard Content (hidden until loaded) -->
+    <div id="dashboard-content" class="hidden space-y-8 animate-fade-in-up">
+      <!-- Profile Header -->
+      <section aria-labelledby="profile-heading">
+        <h1 id="profile-heading" class="text-3xl font-bold text-white mb-2">Welcome back</h1>
+        <div class="flex items-center gap-3 flex-wrap">
+          <span id="user-email" class="text-zinc-400">loading...</span>
+          <span id="user-tier" class="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-400 uppercase">
+            Free
+          </span>
+        </div>
+      </section>
+
+      <!-- Usage Stats Card -->
+      <section aria-labelledby="usage-heading" class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <h2 id="usage-heading" class="text-lg font-semibold text-white mb-4">API Usage</h2>
+
+        <div class="mb-4">
+          <div class="flex justify-between text-sm mb-2">
+            <span class="text-zinc-400">Requests this month</span>
+            <span id="usage-count" class="text-white font-medium">0 / 100</span>
+          </div>
+          <div class="h-2 bg-zinc-800 rounded-full overflow-hidden" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="usage-bar-container">
+            <div id="usage-bar" class="h-full bg-emerald-500 rounded-full transition-all duration-500" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <p class="text-sm text-zinc-500">
+          Resets on the 1st of each month
+        </p>
+      </section>
+
+      <!-- API Keys Section -->
+      <section aria-labelledby="keys-heading" class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="flex items-center justify-between mb-6 flex-wrap gap-4">
+          <h2 id="keys-heading" class="text-lg font-semibold text-white">API Keys</h2>
+          <button
+            id="create-key-btn"
+            class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition flex items-center gap-2"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+            </svg>
+            <span id="create-key-text">Create Key</span>
+            <svg id="create-key-loading" class="hidden w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Max keys warning -->
+        <div id="max-keys-warning" class="hidden mb-4 p-3 bg-yellow-900/20 border border-yellow-500/30 rounded-lg">
+          <p class="text-sm text-yellow-400 flex items-center gap-2">
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+            Maximum of 5 API keys reached. Revoke an existing key to create a new one.
+          </p>
+        </div>
+
+        <!-- Keys table -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm" id="keys-table">
+            <thead>
+              <tr class="text-left text-zinc-400 border-b border-zinc-800">
+                <th scope="col" class="pb-3 font-medium">Key</th>
+                <th scope="col" class="pb-3 font-medium">Created</th>
+                <th scope="col" class="pb-3 font-medium hidden sm:table-cell">Requests</th>
+                <th scope="col" class="pb-3 font-medium sr-only">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="keys-body" class="text-zinc-300">
+              <!-- Populated by JavaScript -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Empty state -->
+        <div id="no-keys" class="hidden text-center py-8">
+          <p class="text-zinc-400">No API keys found. Create one to get started.</p>
+        </div>
+      </section>
+
+      <!-- Quick Links -->
+      <section class="grid sm:grid-cols-3 gap-4">
+        <a href="/docs" class="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl hover:border-zinc-700 transition group">
+          <h3 class="font-medium text-white group-hover:text-emerald-400 transition">API Docs</h3>
+          <p class="text-sm text-zinc-500">Learn how to use the API</p>
+        </a>
+        <a href="/docs#cli" class="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl hover:border-zinc-700 transition group">
+          <h3 class="font-medium text-white group-hover:text-emerald-400 transition">CLI Setup</h3>
+          <p class="text-sm text-zinc-500">Install the command line tool</p>
+        </a>
+        <a href="/pricing" class="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl hover:border-zinc-700 transition group">
+          <h3 class="font-medium text-white group-hover:text-emerald-400 transition">Upgrade</h3>
+          <p class="text-sm text-zinc-500">Get more requests</p>
+        </a>
+      </section>
+    </div>
+  </main>
+
+  <!-- New Key Modal -->
+  <div id="new-key-modal" class="hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" id="modal-backdrop"></div>
+
+    <!-- Modal content -->
+    <div class="relative min-h-screen flex items-center justify-center p-4">
+      <div class="bg-[#111113] border border-zinc-800 rounded-xl max-w-lg w-full shadow-2xl" role="document">
+        <!-- Warning header -->
+        <div class="p-4 bg-yellow-900/20 border-b border-yellow-500/30 rounded-t-xl">
+          <p class="text-sm text-yellow-400 flex items-center gap-2">
+            <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+            <span><strong>Important:</strong> This key will only be shown once. Copy it now!</span>
+          </p>
+        </div>
+
+        <!-- Modal body -->
+        <div class="p-6">
+          <h2 id="modal-title" class="text-xl font-bold text-white mb-4">Your New API Key</h2>
+
+          <div class="relative">
+            <input
+              type="text"
+              id="new-key-value"
+              readonly
+              class="w-full px-4 py-3 pr-24 bg-black/50 border border-zinc-700 rounded-lg font-mono text-sm text-emerald-400 select-all focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              aria-label="Your new API key"
+            />
+            <button
+              id="copy-key-btn"
+              class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs font-medium rounded transition flex items-center gap-1"
+            >
+              <svg id="copy-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
+              </svg>
+              <svg id="check-icon" class="w-4 h-4 hidden text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+              </svg>
+              <span id="copy-text">Copy</span>
+            </button>
+          </div>
+
+          <div class="mt-6">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" id="confirm-saved" class="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0">
+              <span class="text-sm text-zinc-400">I have copied and saved this API key</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Modal footer -->
+        <div class="p-4 border-t border-zinc-800 flex justify-end">
+          <button
+            id="close-modal-btn"
+            disabled
+            class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Revoke Confirmation Modal -->
+  <div id="revoke-modal" class="hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="revoke-title">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" id="revoke-backdrop"></div>
+
+    <!-- Modal content -->
+    <div class="relative min-h-screen flex items-center justify-center p-4">
+      <div class="bg-[#111113] border border-zinc-800 rounded-xl max-w-md w-full shadow-2xl" role="document">
+        <div class="p-6">
+          <h2 id="revoke-title" class="text-xl font-bold text-white mb-2">Revoke API Key</h2>
+          <p class="text-zinc-400 mb-4">Are you sure you want to revoke this key? This action cannot be undone.</p>
+
+          <div class="p-3 bg-zinc-900 border border-zinc-800 rounded-lg mb-4">
+            <div class="font-mono text-sm text-zinc-300" id="revoke-key-prefix">pw_abc123...</div>
+            <div class="text-xs text-zinc-500 mt-1" id="revoke-key-info">Created 3 days ago</div>
+          </div>
+
+          <div id="last-key-warning" class="hidden p-3 bg-red-900/20 border border-red-500/30 rounded-lg mb-4">
+            <p class="text-sm text-red-400 flex items-center gap-2">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+              </svg>
+              This is your only API key. You must keep at least one active key.
+            </p>
+          </div>
+        </div>
+
+        <div class="p-4 border-t border-zinc-800 flex gap-3 justify-end">
+          <button
+            id="cancel-revoke-btn"
+            class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium rounded-lg transition"
+          >
+            Cancel
+          </button>
+          <button
+            id="confirm-revoke-btn"
+            class="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition flex items-center gap-2"
+          >
+            <span id="revoke-text">Revoke Key</span>
+            <svg id="revoke-loading" class="hidden w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <Footer />
+</Layout>
+
+<script>
+  const API_BASE = 'https://api.pkgwatch.laranjo.dev';
+
+  // DOM Elements
+  const skeleton = document.getElementById('dashboard-skeleton');
+  const authError = document.getElementById('auth-error');
+  const content = document.getElementById('dashboard-content');
+  const userEmail = document.getElementById('user-email');
+  const userTier = document.getElementById('user-tier');
+  const usageCount = document.getElementById('usage-count');
+  const usageBar = document.getElementById('usage-bar');
+  const usageBarContainer = document.getElementById('usage-bar-container');
+  const keysBody = document.getElementById('keys-body');
+  const createKeyBtn = document.getElementById('create-key-btn');
+  const maxKeysWarning = document.getElementById('max-keys-warning');
+  const noKeys = document.getElementById('no-keys');
+
+  // Modal elements
+  const newKeyModal = document.getElementById('new-key-modal');
+  const newKeyValue = document.getElementById('new-key-value') as HTMLInputElement;
+  const copyKeyBtn = document.getElementById('copy-key-btn');
+  const confirmSaved = document.getElementById('confirm-saved') as HTMLInputElement;
+  const closeModalBtn = document.getElementById('close-modal-btn') as HTMLButtonElement;
+
+  const revokeModal = document.getElementById('revoke-modal');
+  const revokeKeyPrefix = document.getElementById('revoke-key-prefix');
+  const revokeKeyInfo = document.getElementById('revoke-key-info');
+  const lastKeyWarning = document.getElementById('last-key-warning');
+  const cancelRevokeBtn = document.getElementById('cancel-revoke-btn');
+  const confirmRevokeBtn = document.getElementById('confirm-revoke-btn') as HTMLButtonElement;
+
+  // State
+  let apiKeys: any[] = [];
+  let keyToRevoke: string | null = null;
+
+  // Utility functions
+  function formatNumber(num: number): string {
+    return num.toLocaleString();
+  }
+
+  function getRelativeTime(dateStr: string): string {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'today';
+    if (diffDays === 1) return 'yesterday';
+    if (diffDays < 30) return `${diffDays} days ago`;
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  async function copyToClipboard(text: string): Promise<boolean> {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (err) {
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.cssText = 'position:absolute;left:-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        return true;
+      } catch {
+        return false;
+      } finally {
+        document.body.removeChild(textarea);
+      }
+    }
+  }
+
+  // API Functions
+  async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+    const response = await fetch(url, {
+      ...options,
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+
+    if (response.status === 401) {
+      throw new Error('UNAUTHORIZED');
+    }
+
+    return response;
+  }
+
+  async function loadUserData(): Promise<any> {
+    const response = await fetchWithAuth(`${API_BASE}/auth/me`);
+    return response.json();
+  }
+
+  async function loadApiKeys(): Promise<any> {
+    const response = await fetchWithAuth(`${API_BASE}/api-keys`);
+    return response.json();
+  }
+
+  async function createApiKey(): Promise<any> {
+    const response = await fetchWithAuth(`${API_BASE}/api-keys`, {
+      method: 'POST',
+    });
+    return response.json();
+  }
+
+  async function revokeApiKey(keyId: string): Promise<boolean> {
+    const response = await fetchWithAuth(`${API_BASE}/api-keys/${keyId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error?.message || 'Failed to revoke key');
+    }
+
+    return true;
+  }
+
+  // UI Update Functions
+  function showAuthError(): void {
+    skeleton?.classList.add('hidden');
+    content?.classList.add('hidden');
+    authError?.classList.remove('hidden');
+  }
+
+  function showContent(): void {
+    skeleton?.classList.add('hidden');
+    authError?.classList.add('hidden');
+    content?.classList.remove('hidden');
+  }
+
+  function updateUserInfo(userData: any): void {
+    if (userEmail) userEmail.textContent = userData.email;
+    if (userTier) {
+      const tier = userData.tier || 'free';
+      userTier.textContent = tier.charAt(0).toUpperCase() + tier.slice(1);
+
+      // Update tier badge color
+      userTier.classList.remove('bg-emerald-500/20', 'text-emerald-400', 'bg-purple-500/20', 'text-purple-400', 'bg-blue-500/20', 'text-blue-400');
+      if (tier === 'pro') {
+        userTier.classList.add('bg-purple-500/20', 'text-purple-400');
+      } else if (tier === 'enterprise') {
+        userTier.classList.add('bg-blue-500/20', 'text-blue-400');
+      } else {
+        userTier.classList.add('bg-emerald-500/20', 'text-emerald-400');
+      }
+    }
+  }
+
+  function updateUsage(userData: any): void {
+    const requests = userData.requests_this_month || 0;
+    const limit = userData.monthly_limit || 100;
+    const percentage = Math.min((requests / limit) * 100, 100);
+
+    if (usageCount) {
+      usageCount.textContent = `${formatNumber(requests)} / ${formatNumber(limit)}`;
+    }
+
+    if (usageBar) {
+      usageBar.style.width = `${percentage}%`;
+
+      // Color coding for usage levels
+      usageBar.classList.remove('bg-emerald-500', 'bg-yellow-500', 'bg-red-500');
+      if (percentage >= 90) {
+        usageBar.classList.add('bg-red-500');
+      } else if (percentage >= 75) {
+        usageBar.classList.add('bg-yellow-500');
+      } else {
+        usageBar.classList.add('bg-emerald-500');
+      }
+    }
+
+    if (usageBarContainer) {
+      usageBarContainer.setAttribute('aria-valuenow', String(Math.round(percentage)));
+    }
+  }
+
+  function updateKeysList(keys: any[]): void {
+    apiKeys = keys;
+
+    if (!keysBody) return;
+
+    if (keys.length === 0) {
+      keysBody.innerHTML = '';
+      noKeys?.classList.remove('hidden');
+      return;
+    }
+
+    noKeys?.classList.add('hidden');
+
+    keysBody.innerHTML = keys.map(key => `
+      <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition">
+        <td class="py-4">
+          <code class="px-2 py-1 bg-black/30 rounded text-zinc-300 font-mono text-xs">
+            ${key.key_prefix}
+          </code>
+        </td>
+        <td class="py-4 text-zinc-400">${getRelativeTime(key.created_at)}</td>
+        <td class="py-4 text-zinc-400 hidden sm:table-cell">${formatNumber(key.requests_this_month || 0)}</td>
+        <td class="py-4">
+          <button
+            class="revoke-btn px-3 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition"
+            data-key-id="${key.key_id}"
+            data-key-prefix="${key.key_prefix}"
+            data-key-requests="${key.requests_this_month || 0}"
+            data-key-created="${key.created_at}"
+            aria-label="Revoke key ${key.key_prefix}"
+          >
+            Revoke
+          </button>
+        </td>
+      </tr>
+    `).join('');
+
+    // Update max keys warning and button state
+    if (keys.length >= 5) {
+      maxKeysWarning?.classList.remove('hidden');
+      if (createKeyBtn) (createKeyBtn as HTMLButtonElement).disabled = true;
+    } else {
+      maxKeysWarning?.classList.add('hidden');
+      if (createKeyBtn) (createKeyBtn as HTMLButtonElement).disabled = false;
+    }
+
+    // Add event listeners to revoke buttons
+    document.querySelectorAll('.revoke-btn').forEach(btn => {
+      btn.addEventListener('click', () => openRevokeModal(btn as HTMLElement));
+    });
+  }
+
+  // Modal Functions
+  function openNewKeyModal(apiKey: string): void {
+    if (!newKeyModal || !newKeyValue) return;
+
+    newKeyValue.value = apiKey;
+    if (confirmSaved) confirmSaved.checked = false;
+    if (closeModalBtn) closeModalBtn.disabled = true;
+
+    // Reset copy button state
+    document.getElementById('copy-icon')?.classList.remove('hidden');
+    document.getElementById('check-icon')?.classList.add('hidden');
+    const copyText = document.getElementById('copy-text');
+    if (copyText) copyText.textContent = 'Copy';
+
+    newKeyModal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+
+    // Focus and select the key input for easy copying
+    setTimeout(() => {
+      newKeyValue.focus();
+      newKeyValue.select();
+    }, 100);
+  }
+
+  function closeNewKeyModal(): void {
+    newKeyModal?.classList.add('hidden');
+    document.body.style.overflow = '';
+    createKeyBtn?.focus();
+  }
+
+  function openRevokeModal(btn: HTMLElement): void {
+    const keyId = btn.dataset.keyId;
+    const keyPrefix = btn.dataset.keyPrefix;
+    const requests = btn.dataset.keyRequests;
+    const created = btn.dataset.keyCreated;
+
+    if (!keyId) return;
+
+    keyToRevoke = keyId;
+
+    if (revokeKeyPrefix) revokeKeyPrefix.textContent = `${keyPrefix}`;
+    if (revokeKeyInfo) {
+      revokeKeyInfo.textContent = `Created ${getRelativeTime(created || '')} - ${formatNumber(parseInt(requests || '0'))} requests`;
+    }
+
+    // Check if last key
+    if (apiKeys.length === 1) {
+      lastKeyWarning?.classList.remove('hidden');
+      if (confirmRevokeBtn) confirmRevokeBtn.disabled = true;
+    } else {
+      lastKeyWarning?.classList.add('hidden');
+      if (confirmRevokeBtn) confirmRevokeBtn.disabled = false;
+    }
+
+    revokeModal?.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    cancelRevokeBtn?.focus();
+  }
+
+  function closeRevokeModal(): void {
+    revokeModal?.classList.add('hidden');
+    document.body.style.overflow = '';
+    keyToRevoke = null;
+  }
+
+  // Event Handlers
+  async function handleCreateKey(): Promise<void> {
+    const textEl = document.getElementById('create-key-text');
+    const loadingEl = document.getElementById('create-key-loading');
+
+    if (createKeyBtn) (createKeyBtn as HTMLButtonElement).disabled = true;
+    textEl?.classList.add('hidden');
+    loadingEl?.classList.remove('hidden');
+
+    try {
+      const data = await createApiKey();
+
+      if (data.error) {
+        alert(data.error.message || 'Failed to create key');
+        return;
+      }
+
+      // Show the new key in modal
+      openNewKeyModal(data.api_key);
+
+      // Refresh the keys list
+      const keysData = await loadApiKeys();
+      updateKeysList(keysData.api_keys || []);
+
+    } catch (error: any) {
+      if (error.message === 'UNAUTHORIZED') {
+        showAuthError();
+      } else {
+        alert('Failed to create key. Please try again.');
+      }
+    } finally {
+      if (createKeyBtn) (createKeyBtn as HTMLButtonElement).disabled = false;
+      textEl?.classList.remove('hidden');
+      loadingEl?.classList.add('hidden');
+    }
+  }
+
+  async function handleRevokeKey(): Promise<void> {
+    if (!keyToRevoke) return;
+
+    const textEl = document.getElementById('revoke-text');
+    const loadingEl = document.getElementById('revoke-loading');
+
+    if (confirmRevokeBtn) confirmRevokeBtn.disabled = true;
+    textEl?.classList.add('hidden');
+    loadingEl?.classList.remove('hidden');
+
+    try {
+      await revokeApiKey(keyToRevoke);
+
+      closeRevokeModal();
+
+      // Refresh the keys list
+      const keysData = await loadApiKeys();
+      updateKeysList(keysData.api_keys || []);
+
+    } catch (error: any) {
+      if (error.message === 'UNAUTHORIZED') {
+        showAuthError();
+      } else {
+        alert(error.message || 'Failed to revoke key. Please try again.');
+      }
+    } finally {
+      if (confirmRevokeBtn) confirmRevokeBtn.disabled = false;
+      textEl?.classList.remove('hidden');
+      loadingEl?.classList.add('hidden');
+    }
+  }
+
+  async function handleCopyKey(): Promise<void> {
+    const key = newKeyValue?.value;
+    if (!key) return;
+
+    const success = await copyToClipboard(key);
+
+    if (success) {
+      const copyIcon = document.getElementById('copy-icon');
+      const checkIcon = document.getElementById('check-icon');
+      const copyText = document.getElementById('copy-text');
+
+      copyIcon?.classList.add('hidden');
+      checkIcon?.classList.remove('hidden');
+      if (copyText) copyText.textContent = 'Copied!';
+
+      // Reset after 2 seconds
+      setTimeout(() => {
+        copyIcon?.classList.remove('hidden');
+        checkIcon?.classList.add('hidden');
+        if (copyText) copyText.textContent = 'Copy';
+      }, 2000);
+    }
+  }
+
+  // Initialize
+  async function init(): Promise<void> {
+    try {
+      // Load user data and API keys in parallel
+      const [userData, keysData] = await Promise.all([
+        loadUserData(),
+        loadApiKeys(),
+      ]);
+
+      if (userData.error) {
+        showAuthError();
+        return;
+      }
+
+      updateUserInfo(userData);
+      updateUsage(userData);
+      updateKeysList(keysData.api_keys || []);
+
+      showContent();
+
+    } catch (error: any) {
+      console.error('Failed to load dashboard:', error);
+      showAuthError();
+    }
+  }
+
+  // Event Listeners
+  createKeyBtn?.addEventListener('click', handleCreateKey);
+  copyKeyBtn?.addEventListener('click', handleCopyKey);
+
+  confirmSaved?.addEventListener('change', () => {
+    if (closeModalBtn) closeModalBtn.disabled = !confirmSaved.checked;
+  });
+
+  closeModalBtn?.addEventListener('click', () => {
+    if (confirmSaved?.checked) {
+      closeNewKeyModal();
+    }
+  });
+
+  cancelRevokeBtn?.addEventListener('click', closeRevokeModal);
+  confirmRevokeBtn?.addEventListener('click', handleRevokeKey);
+
+  // Close modals on backdrop click
+  document.getElementById('modal-backdrop')?.addEventListener('click', () => {
+    if (confirmSaved?.checked) {
+      closeNewKeyModal();
+    }
+  });
+  document.getElementById('revoke-backdrop')?.addEventListener('click', closeRevokeModal);
+
+  // Close modals on Escape key
+  document.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      if (!newKeyModal?.classList.contains('hidden')) {
+        if (confirmSaved?.checked) {
+          closeNewKeyModal();
+        }
+      }
+      if (!revokeModal?.classList.contains('hidden')) {
+        closeRevokeModal();
+      }
+    }
+  });
+
+  // Start loading
+  init();
+</script>

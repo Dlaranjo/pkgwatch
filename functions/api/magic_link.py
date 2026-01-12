@@ -27,6 +27,7 @@ LOGIN_EMAIL_SENDER = os.environ.get(
     "LOGIN_EMAIL_SENDER", "noreply@pkgwatch.laranjo.dev"
 )
 BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.laranjo.dev")
+API_URL = os.environ.get("API_URL", "https://api.pkgwatch.laranjo.dev")
 
 # Email validation regex
 EMAIL_REGEX = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
@@ -134,7 +135,7 @@ def handler(event, context):
         )
 
     # Send magic link email
-    magic_url = f"{BASE_URL}/api/v1/auth/callback?token={magic_token}"
+    magic_url = f"{API_URL}/auth/callback?token={magic_token}"
     try:
         _send_magic_link_email(email, magic_url)
     except Exception as e:
