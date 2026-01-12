@@ -138,19 +138,19 @@ export class ApiClientError extends Error {
 // ===========================================
 
 export class PkgWatchClient {
-  private apiKey: string;
+  private apiKey: string | undefined;
   private baseUrl: string;
   private timeout: number;
   private maxRetries: number;
 
-  constructor(apiKey: string, options: ClientOptions = {}) {
-    // Validate API key
-    if (!apiKey || apiKey.trim() === "") {
-      throw new Error("API key is required and cannot be empty");
-    }
-    if (!apiKey.startsWith("pw_")) {
+  constructor(apiKey?: string, options: ClientOptions = {}) {
+    // Validate API key format if provided
+    if (apiKey && apiKey.trim() !== "" && !apiKey.startsWith("pw_")) {
       throw new Error("Invalid API key format. Keys should start with 'pw_'");
     }
+
+    // Store undefined if empty string was passed
+    this.apiKey = apiKey && apiKey.trim() !== "" ? apiKey : undefined;
 
     // Validate baseUrl uses HTTPS (except localhost for development)
     const baseUrl = options.baseUrl ?? DEFAULT_API_BASE;
@@ -168,7 +168,6 @@ export class PkgWatchClient {
       }
     }
 
-    this.apiKey = apiKey;
     this.baseUrl = baseUrl;
     this.timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
     this.maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
@@ -202,10 +201,14 @@ export class PkgWatchClient {
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers: HeadersInit = {
-      "X-API-Key": this.apiKey,
       "Content-Type": "application/json",
       ...options.headers,
     };
+
+    // Only add API key header if configured (demo mode works without it)
+    if (this.apiKey) {
+      (headers as Record<string, string>)["X-API-Key"] = this.apiKey;
+    }
 
     let lastError: ApiClientError | null = null;
 

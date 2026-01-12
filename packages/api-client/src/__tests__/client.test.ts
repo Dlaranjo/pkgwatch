@@ -12,16 +12,16 @@ import {
 
 describe("PkgWatchClient", () => {
   describe("constructor", () => {
-    it("throws error for empty API key", () => {
-      expect(() => new PkgWatchClient("")).toThrow(
-        "API key is required and cannot be empty"
-      );
+    it("allows empty API key for demo mode", () => {
+      expect(() => new PkgWatchClient("")).not.toThrow();
     });
 
-    it("throws error for whitespace-only API key", () => {
-      expect(() => new PkgWatchClient("   ")).toThrow(
-        "API key is required and cannot be empty"
-      );
+    it("allows whitespace-only API key for demo mode", () => {
+      expect(() => new PkgWatchClient("   ")).not.toThrow();
+    });
+
+    it("allows undefined API key for demo mode", () => {
+      expect(() => new PkgWatchClient()).not.toThrow();
     });
 
     it("throws error for API key without pw_ prefix", () => {

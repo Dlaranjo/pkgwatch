@@ -9,7 +9,7 @@
  *   pkgwatch config <action>      Manage configuration
  */
 
-import { program } from "commander";
+import { program, Option } from "commander";
 import pc from "picocolors";
 import ora, { type Ora } from "ora";
 import cliProgress from "cli-progress";
@@ -99,19 +99,12 @@ import {
 } from "./config.js";
 
 /**
- * Get API client, exiting if no API key is configured.
+ * Get API client, supports demo mode (no API key) or authenticated mode.
  */
 function getClient(): PkgWatchClient {
   const apiKey = getApiKey();
   if (!apiKey) {
-    console.error(pc.red("Error: No API key configured."));
-    console.error("");
-    console.error("Set your API key using one of:");
-    console.error(`  ${pc.cyan("pkgwatch config set")}           # Interactive setup`);
-    console.error(`  ${pc.cyan("export PKGWATCH_API_KEY=pw_...")}  # Environment variable`);
-    console.error("");
-    console.error(`Get your API key at ${pc.underline("https://pkgwatch.laranjo.dev")}`);
-    process.exit(EXIT_CLI_ERROR);
+    logVerbose("No API key configured, using demo mode (20 requests/hour)");
   }
   return new PkgWatchClient(apiKey);
 }
@@ -311,13 +304,14 @@ program
   .alias("c")
   .description("Check health score for a single package")
   .option("--json", "Output as JSON")
-  .action(async (packageName: string, options: { json?: boolean }) => {
+  .addOption(new Option("-e, --ecosystem <name>", "Package ecosystem").choices(["npm", "pypi"]).default("npm"))
+  .action(async (packageName: string, options: { json?: boolean; ecosystem: string }) => {
     const client = getClient();
-    const spinner = createSpinner(`Checking ${packageName}...`);
+    const spinner = createSpinner(`Checking ${packageName} (${options.ecosystem})...`);
     logVerbose(`Fetching package data from API`);
 
     try {
-      const pkg = await client.getPackage(packageName);
+      const pkg = await client.getPackage(packageName, options.ecosystem);
       spinner?.stop();
 
       if (options.json) {
@@ -361,11 +355,12 @@ program
 program
   .command("scan [path]")
   .alias("s")
-  .description("Scan dependencies in a package.json file")
+  .description("Scan dependencies in a package.json or requirements.txt file")
   .option("--json", "Output as JSON (deprecated, use --output json)")
   .option("-o, --output <format>", "Output format: table, json, sarif", "table")
   .option("--fail-on <level>", "Exit 1 if risk level reached (HIGH or CRITICAL)")
-  .action(async (path: string | undefined, options: { json?: boolean; output?: string; failOn?: string }) => {
+  .addOption(new Option("-e, --ecosystem <name>", "Override detected ecosystem").choices(["npm", "pypi"]))
+  .action(async (path: string | undefined, options: { json?: boolean; output?: string; failOn?: string; ecosystem?: string }) => {
     // Handle backward compatibility: --json flag
     let outputFormat = options.output || "table";
     if (options.json) {
