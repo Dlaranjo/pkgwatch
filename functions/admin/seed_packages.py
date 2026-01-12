@@ -73,48 +73,107 @@ def fetch_top_npm_packages(count: int) -> list[dict]:
     """
     Fetch top npm packages.
 
-    Uses npm registry search API with pagination.
+    Uses npm registry search API with common keywords to find popular packages.
     Returns list of {name, rank} dicts.
     """
     packages = []
+    seen = set()
 
-    # npm search API returns max 250 per request
+    # Use common framework/library keywords to find popular packages
+    # These cover most of the npm ecosystem
+    search_terms = [
+        "react", "vue", "angular", "express", "webpack", "babel",
+        "typescript", "eslint", "jest", "lodash", "axios", "moment",
+        "redux", "graphql", "apollo", "next", "gatsby", "nuxt",
+        "node", "npm", "yarn", "gulp", "grunt", "rollup", "vite",
+        "socket", "mongoose", "sequelize", "prisma", "knex",
+        "aws", "google", "azure", "firebase", "supabase",
+        "test", "mock", "faker", "chai", "mocha", "jasmine",
+        "crypto", "bcrypt", "jwt", "passport", "auth",
+        "http", "https", "fetch", "request", "got",
+        "fs", "path", "stream", "buffer", "util",
+        "cli", "commander", "yargs", "inquirer", "chalk",
+        "date", "time", "uuid", "nanoid", "shortid",
+        "json", "yaml", "xml", "csv", "markdown",
+        "image", "sharp", "canvas", "pdf", "excel",
+        "email", "nodemailer", "sendgrid", "mailgun",
+        "cache", "redis", "memcached", "lru",
+        "queue", "bull", "bee", "agenda",
+        "log", "winston", "bunyan", "pino", "debug",
+        "config", "dotenv", "convict", "nconf",
+        "validation", "joi", "yup", "zod", "ajv",
+        "orm", "database", "sql", "postgres", "mysql", "sqlite", "mongo",
+        "api", "rest", "swagger", "openapi",
+        "ui", "component", "button", "form", "table", "modal",
+        "style", "css", "sass", "less", "styled", "tailwind", "bootstrap",
+        "animation", "transition", "motion", "framer",
+        "chart", "graph", "d3", "echarts", "highcharts",
+        "map", "leaflet", "mapbox", "google-maps",
+        "video", "audio", "media", "player",
+        "build", "bundle", "compile", "transpile", "minify",
+        "lint", "format", "prettier", "standard",
+        "type", "types", "typing", "interface",
+        "async", "promise", "observable", "rxjs",
+        "state", "store", "flux", "mobx", "recoil",
+        "router", "route", "navigation", "history",
+        "server", "client", "ssr", "ssg", "spa",
+        "plugin", "extension", "addon", "middleware",
+        "util", "helper", "tool", "kit", "core", "common", "shared",
+    ]
+
     page_size = 250
-    offset = 0
 
-    while len(packages) < count:
-        url = f"https://registry.npmjs.org/-/v1/search?text=boost-exact:true&popularity=1.0&quality=1.0&maintenance=1.0&size={page_size}&from={offset}"
-
-        try:
-            data = fetch_json(url)
-            objects = data.get("objects", [])
-
-            if not objects:
-                logger.info(f"No more npm packages at offset {offset}")
-                break
-
-            for obj in objects:
-                pkg_name = obj.get("package", {}).get("name")
-                if pkg_name and len(packages) < count:
-                    packages.append({
-                        "name": pkg_name,
-                        "rank": len(packages) + 1,
-                    })
-
-            offset += page_size
-            logger.info(f"Fetched {len(packages)} npm packages so far...")
-
-            # Safety limit
-            if offset > 20000:
-                logger.warning("Reached npm search offset limit")
-                break
-
-        except Exception as e:
-            logger.error(f"Error fetching npm packages at offset {offset}: {e}")
+    for term in search_terms:
+        if len(packages) >= count:
             break
 
+        offset = 0
+        # Limit pages per term to avoid getting stuck
+        max_pages_per_term = 4
+
+        while len(packages) < count and offset < max_pages_per_term * page_size:
+            url = f"https://registry.npmjs.org/-/v1/search?text={term}&size={page_size}&from={offset}&popularity=1.0"
+
+            try:
+                data = fetch_json(url)
+                objects = data.get("objects", [])
+
+                if not objects:
+                    break
+
+                added_this_page = 0
+                for obj in objects:
+                    pkg_name = obj.get("package", {}).get("name")
+                    if pkg_name and pkg_name not in seen and len(packages) < count:
+                        score = obj.get("score", {}).get("final", 0)
+                        packages.append({
+                            "name": pkg_name,
+                            "rank": len(packages) + 1,
+                            "score": score,
+                        })
+                        seen.add(pkg_name)
+                        added_this_page += 1
+
+                # If no new packages were added, move to next term
+                if added_this_page == 0:
+                    break
+
+                offset += page_size
+
+            except Exception as e:
+                logger.warning(f"Error fetching npm packages for term '{term}' at offset {offset}: {e}")
+                break
+
+        if len(packages) % 500 == 0 or len(packages) >= count:
+            logger.info(f"Fetched {len(packages)} npm packages so far...")
+
+    # Sort by score and re-assign ranks for better tier distribution
+    packages.sort(key=lambda x: x.get("score", 0), reverse=True)
+    for i, pkg in enumerate(packages):
+        pkg["rank"] = i + 1
+
     logger.info(f"Total npm packages fetched: {len(packages)}")
-    return packages
+    return packages[:count]
 
 
 def fetch_top_pypi_packages(count: int) -> list[dict]:
