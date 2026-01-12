@@ -18,7 +18,7 @@ logger.setLevel(logging.INFO)
 
 # Import session verification
 from api.auth_callback import verify_session_token
-from shared.response_utils import error_response
+from shared.response_utils import error_response, get_cors_headers
 
 dynamodb = boto3.resource("dynamodb")
 dynamodb_client = boto3.client("dynamodb")
@@ -31,8 +31,11 @@ def handler(event, context):
 
     Revokes the specified API key if it belongs to the authenticated user.
     """
-    # Extract session cookie
+    # Extract origin for CORS
     headers = event.get("headers", {})
+    origin = headers.get("origin") or headers.get("Origin")
+
+    # Extract session cookie
     cookie_header = headers.get("cookie") or headers.get("Cookie") or ""
 
     session_token = None
@@ -43,12 +46,12 @@ def handler(event, context):
             session_token = cookies["session"].value
 
     if not session_token:
-        return error_response(401, "unauthorized", "Not authenticated")
+        return error_response(401, "unauthorized", "Not authenticated", origin=origin)
 
     # Verify session token
     session_data = verify_session_token(session_token)
     if not session_data:
-        return error_response(401, "session_expired", "Session expired. Please log in again.")
+        return error_response(401, "session_expired", "Session expired. Please log in again.", origin=origin)
 
     user_id = session_data.get("user_id")
 
@@ -57,7 +60,7 @@ def handler(event, context):
     key_id = path_params.get("key_id")
 
     if not key_id:
-        return error_response(400, "missing_key_id", "API key ID is required")
+        return error_response(400, "missing_key_id", "API key ID is required", origin=origin)
 
     # Get all API keys for user to find matching one
     table = dynamodb.Table(API_KEYS_TABLE)
@@ -78,7 +81,7 @@ def handler(event, context):
                 break
 
         if not target_key:
-            return error_response(404, "key_not_found", "API key not found")
+            return error_response(404, "key_not_found", "API key not found", origin=origin)
 
         # Initialize USER_META if it doesn't exist (for users created before this feature)
         try:
@@ -112,7 +115,7 @@ def handler(event, context):
                         raise
         except Exception as e:
             logger.error(f"Error initializing USER_META: {e}")
-            return error_response(500, "internal_error", "Failed to revoke API key")
+            return error_response(500, "internal_error", "Failed to revoke API key", origin=origin)
 
         # Use transaction to atomically:
         # 1. Decrement key count in USER_META with condition > 1
@@ -160,21 +163,25 @@ def handler(event, context):
                         return error_response(
                             400,
                             "cannot_revoke_last_key",
-                            "Cannot revoke your only API key. Create a new one first."
+                            "Cannot revoke your only API key. Create a new one first.",
+                            origin=origin
                         )
                 logger.error(f"Transaction failed: {e}")
-                return error_response(500, "internal_error", "Failed to revoke API key")
+                return error_response(500, "internal_error", "Failed to revoke API key", origin=origin)
             logger.error(f"Error revoking API key: {e}")
-            return error_response(500, "internal_error", "Failed to revoke API key")
+            return error_response(500, "internal_error", "Failed to revoke API key", origin=origin)
 
     except Exception as e:
         logger.error(f"Error revoking API key: {e}")
-        return error_response(500, "internal_error", "Failed to revoke API key")
+        return error_response(500, "internal_error", "Failed to revoke API key", origin=origin)
 
     # 204 No Content is the correct status for successful DELETE
+    # Include CORS headers
+    response_headers = get_cors_headers(origin)
+
     return {
         "statusCode": 204,
-        "headers": {},
+        "headers": response_headers,
         "body": "",
     }
 

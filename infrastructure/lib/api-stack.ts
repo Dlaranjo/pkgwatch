@@ -80,9 +80,11 @@ export class ApiStack extends cdk.Stack {
           "bash",
           "-c",
           [
-            "cp -r /asset-input/api/* /asset-output/",
-            "cp -r /asset-input/shared/* /asset-output/",
+            // Preserve api/ directory structure for imports like 'from api.auth_callback'
+            "cp -r /asset-input/api /asset-output/",
+            // Copy shared/ directory
             "cp -r /asset-input/shared /asset-output/",
+            // Install dependencies
             "pip install -r /asset-input/api/requirements.txt -t /asset-output/ --quiet",
           ].join(" && "),
         ],
@@ -115,7 +117,7 @@ export class ApiStack extends cdk.Stack {
     const healthHandler = new lambda.Function(this, "HealthHandler", {
       ...commonLambdaProps,
       functionName: "pkgwatch-api-health",
-      handler: "health.handler",
+      handler: "api.health.handler",
       code: apiCodeWithShared,
       description: "API health check endpoint",
     });
@@ -124,7 +126,7 @@ export class ApiStack extends cdk.Stack {
     const getPackageHandler = new lambda.Function(this, "GetPackageHandler", {
       ...commonLambdaProps,
       functionName: "pkgwatch-api-get-package",
-      handler: "get_package.handler",
+      handler: "api.get_package.handler",
       code: apiCodeWithShared,
       description: "Get package health score",
       // Note: Removed reservedConcurrentExecutions to avoid account limit issues
@@ -143,7 +145,7 @@ export class ApiStack extends cdk.Stack {
     const scanHandler = new lambda.Function(this, "ScanHandler", {
       ...commonLambdaProps,
       functionName: "pkgwatch-api-scan",
-      handler: "post_scan.handler",
+      handler: "api.post_scan.handler",
       code: apiCodeWithShared,
       timeout: cdk.Duration.seconds(90), // Increased from 60s for batch operations
       memorySize: 1024, // Increased from 512 - heavy batch operations need more resources
@@ -158,7 +160,7 @@ export class ApiStack extends cdk.Stack {
     const getUsageHandler = new lambda.Function(this, "GetUsageHandler", {
       ...commonLambdaProps,
       functionName: "pkgwatch-api-get-usage",
-      handler: "get_usage.handler",
+      handler: "api.get_usage.handler",
       code: apiCodeWithShared,
       description: "Get API usage statistics",
     });
@@ -172,7 +174,7 @@ export class ApiStack extends cdk.Stack {
       {
         ...commonLambdaProps,
         functionName: "pkgwatch-api-stripe-webhook",
-        handler: "stripe_webhook.handler",
+        handler: "api.stripe_webhook.handler",
         code: apiCodeWithShared,
         description: "Handle Stripe webhook events",
         environment: {
@@ -193,7 +195,7 @@ export class ApiStack extends cdk.Stack {
     const resetUsageHandler = new lambda.Function(this, "ResetUsageHandler", {
       ...commonLambdaProps,
       functionName: "pkgwatch-api-reset-usage",
-      handler: "reset_usage.handler",
+      handler: "api.reset_usage.handler",
       code: apiCodeWithShared,
       timeout: cdk.Duration.minutes(5), // Table scan may take time
       description: "Reset monthly usage counters on 1st of each month",
@@ -252,7 +254,7 @@ export class ApiStack extends cdk.Stack {
     const signupHandler = new lambda.Function(this, "SignupHandler", {
       ...authLambdaProps,
       functionName: "pkgwatch-api-signup",
-      handler: "signup.handler",
+      handler: "api.signup.handler",
       code: apiCodeWithShared,
       description: "User signup - creates pending account and sends verification email",
     });
@@ -291,7 +293,7 @@ export class ApiStack extends cdk.Stack {
     const verifyHandler = new lambda.Function(this, "VerifyEmailHandler", {
       ...authLambdaProps,
       functionName: "pkgwatch-api-verify-email",
-      handler: "verify_email.handler",
+      handler: "api.verify_email.handler",
       code: apiCodeWithShared,
       description: "Verify email and activate user account",
     });
@@ -302,7 +304,7 @@ export class ApiStack extends cdk.Stack {
     const magicLinkHandler = new lambda.Function(this, "MagicLinkHandler", {
       ...authLambdaProps,
       functionName: "pkgwatch-api-magic-link",
-      handler: "magic_link.handler",
+      handler: "api.magic_link.handler",
       code: apiCodeWithShared,
       description: "Send magic link for passwordless authentication",
     });
@@ -314,7 +316,7 @@ export class ApiStack extends cdk.Stack {
     const authCallbackHandler = new lambda.Function(this, "AuthCallbackHandler", {
       ...authLambdaProps,
       functionName: "pkgwatch-api-auth-callback",
-      handler: "auth_callback.handler",
+      handler: "api.auth_callback.handler",
       code: apiCodeWithShared,
       description: "Handle magic link callback and create session",
     });
@@ -326,7 +328,7 @@ export class ApiStack extends cdk.Stack {
     const authMeHandler = new lambda.Function(this, "AuthMeHandler", {
       ...authLambdaProps,
       functionName: "pkgwatch-api-auth-me",
-      handler: "auth_me.handler",
+      handler: "api.auth_me.handler",
       code: apiCodeWithShared,
       description: "Get current authenticated user info",
     });
@@ -338,7 +340,7 @@ export class ApiStack extends cdk.Stack {
     const getApiKeysHandler = new lambda.Function(this, "GetApiKeysHandler", {
       ...authLambdaProps,
       functionName: "pkgwatch-api-get-api-keys",
-      handler: "get_api_keys.handler",
+      handler: "api.get_api_keys.handler",
       code: apiCodeWithShared,
       description: "List all API keys for authenticated user",
     });
@@ -350,7 +352,7 @@ export class ApiStack extends cdk.Stack {
     const createApiKeyHandler = new lambda.Function(this, "CreateApiKeyHandler", {
       ...authLambdaProps,
       functionName: "pkgwatch-api-create-api-key",
-      handler: "create_api_key.handler",
+      handler: "api.create_api_key.handler",
       code: apiCodeWithShared,
       description: "Create new API key for authenticated user",
     });
@@ -362,7 +364,7 @@ export class ApiStack extends cdk.Stack {
     const revokeApiKeyHandler = new lambda.Function(this, "RevokeApiKeyHandler", {
       ...authLambdaProps,
       functionName: "pkgwatch-api-revoke-api-key",
-      handler: "revoke_api_key.handler",
+      handler: "api.revoke_api_key.handler",
       code: apiCodeWithShared,
       description: "Revoke API key for authenticated user",
     });

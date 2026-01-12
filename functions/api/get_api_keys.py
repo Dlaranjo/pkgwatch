@@ -13,7 +13,7 @@ from http.cookies import SimpleCookie
 import boto3
 from boto3.dynamodb.conditions import Key
 
-from shared.response_utils import decimal_default, error_response
+from shared.response_utils import decimal_default, error_response, get_cors_headers
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -32,8 +32,11 @@ def handler(event, context):
     Returns all API keys for the authenticated user.
     Note: Only returns key metadata (prefix, creation date, usage) - not the actual keys.
     """
-    # Extract session cookie
+    # Extract origin for CORS
     headers = event.get("headers", {})
+    origin = headers.get("origin") or headers.get("Origin")
+
+    # Extract session cookie
     cookie_header = headers.get("cookie") or headers.get("Cookie") or ""
 
     session_token = None
@@ -44,12 +47,12 @@ def handler(event, context):
             session_token = cookies["session"].value
 
     if not session_token:
-        return error_response(401, "unauthorized", "Not authenticated")
+        return error_response(401, "unauthorized", "Not authenticated", origin=origin)
 
     # Verify session token
     session_data = verify_session_token(session_token)
     if not session_data:
-        return error_response(401, "session_expired", "Session expired. Please log in again.")
+        return error_response(401, "session_expired", "Session expired. Please log in again.", origin=origin)
 
     user_id = session_data.get("user_id")
 
@@ -80,11 +83,15 @@ def handler(event, context):
 
     except Exception as e:
         logger.error(f"Error fetching API keys: {e}")
-        return error_response(500, "internal_error", "Failed to fetch API keys")
+        return error_response(500, "internal_error", "Failed to fetch API keys", origin=origin)
+
+    # Return with CORS headers
+    response_headers = {"Content-Type": "application/json"}
+    response_headers.update(get_cors_headers(origin))
 
     return {
         "statusCode": 200,
-        "headers": {"Content-Type": "application/json"},
+        "headers": response_headers,
         "body": json.dumps({"api_keys": api_keys}, default=decimal_default),
     }
 

@@ -21,7 +21,7 @@ logger.setLevel(logging.INFO)
 
 # Import session verification and shared utilities
 from api.auth_callback import verify_session_token
-from shared.response_utils import error_response
+from shared.response_utils import error_response, get_cors_headers
 
 dynamodb = boto3.resource("dynamodb")
 dynamodb_client = boto3.client("dynamodb")
@@ -43,8 +43,11 @@ def handler(event, context):
     Creates a new API key for the authenticated user.
     Returns the full API key (shown only once).
     """
-    # Extract session cookie
+    # Extract origin for CORS
     headers = event.get("headers", {})
+    origin = headers.get("origin") or headers.get("Origin")
+
+    # Extract session cookie
     cookie_header = headers.get("cookie") or headers.get("Cookie") or ""
 
     session_token = None
@@ -55,12 +58,12 @@ def handler(event, context):
             session_token = cookies["session"].value
 
     if not session_token:
-        return error_response(401, "unauthorized", "Not authenticated")
+        return error_response(401, "unauthorized", "Not authenticated", origin=origin)
 
     # Verify session token
     session_data = verify_session_token(session_token)
     if not session_data:
-        return error_response(401, "session_expired", "Session expired. Please log in again.")
+        return error_response(401, "session_expired", "Session expired. Please log in again.", origin=origin)
 
     user_id = session_data.get("user_id")
     email = session_data.get("email")
@@ -92,12 +95,13 @@ def handler(event, context):
             return error_response(
                 400,
                 "max_keys_reached",
-                f"Maximum {MAX_KEYS_PER_USER} API keys allowed. Revoke an existing key to create a new one."
+                f"Maximum {MAX_KEYS_PER_USER} API keys allowed. Revoke an existing key to create a new one.",
+                origin=origin
             )
 
     except Exception as e:
         logger.error(f"Error checking key count: {e}")
-        return error_response(500, "internal_error", "Failed to create API key")
+        return error_response(500, "internal_error", "Failed to create API key", origin=origin)
 
     # Generate new API key
     api_key = f"pw_{secrets.token_urlsafe(32)}"
@@ -146,16 +150,21 @@ def handler(event, context):
             return error_response(
                 409,
                 "key_creation_failed",
-                "Failed to create key. Please try again."
+                "Failed to create key. Please try again.",
+                origin=origin
             )
         logger.error(f"Error creating API key: {e}")
-        return error_response(500, "internal_error", "Failed to create API key")
+        return error_response(500, "internal_error", "Failed to create API key", origin=origin)
 
     logger.info(f"New API key created for user {user_id}")
 
+    # Return with CORS headers
+    response_headers = {"Content-Type": "application/json"}
+    response_headers.update(get_cors_headers(origin))
+
     return {
         "statusCode": 201,
-        "headers": {"Content-Type": "application/json"},
+        "headers": response_headers,
         "body": json.dumps({
             "api_key": api_key,
             "key_id": key_hash[:16],
