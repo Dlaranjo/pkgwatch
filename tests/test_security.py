@@ -690,11 +690,14 @@ class TestRateLimitingSecurity:
         table, test_key = seeded_api_keys_table
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
-        # Set usage to limit - 1
-        table.update_item(
-            Key={"pk": "user_test123", "sk": key_hash},
-            UpdateExpression="SET requests_this_month = :val",
-            ExpressionAttributeValues={":val": 4999},
+        # Set USER_META.requests_this_month to limit - 1 (rate limiting is user-level)
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": "USER_META",
+                "key_count": 1,
+                "requests_this_month": 4999,
+            }
         )
 
         # First request should succeed

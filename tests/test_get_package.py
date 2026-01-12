@@ -217,9 +217,19 @@ class TestGetPackageHandler:
                 "key_hash": key_hash,
                 "email": "overlimit@example.com",
                 "tier": "free",
-                "requests_this_month": 5000,  # Already at free tier limit
+                "requests_this_month": 5000,  # Per-key counter (for analytics)
                 "created_at": "2024-01-01T00:00:00Z",
                 "email_verified": True,
+            }
+        )
+
+        # Add USER_META with requests_this_month at limit (rate limiting is user-level)
+        table.put_item(
+            Item={
+                "pk": "user_overlimit",
+                "sk": "USER_META",
+                "key_count": 1,
+                "requests_this_month": 5000,  # At free tier limit
             }
         )
 

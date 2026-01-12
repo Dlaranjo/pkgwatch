@@ -160,15 +160,15 @@ def increment_usage(user_id: str, key_hash: str, count: int = 1) -> int:
 
 def check_and_increment_usage(user_id: str, key_hash: str, limit: int) -> tuple[bool, int]:
     """
-    Atomically check limit and increment usage counter.
+    Atomically check limit and increment usage counter at USER_META level.
 
-    This prevents race conditions where concurrent requests can exceed the limit.
-    Uses DynamoDB conditional expression to ensure the increment only happens
-    if the current count is below the limit.
+    Rate limiting is enforced at the user level (USER_META.requests_this_month)
+    to prevent gaming via key deletion. Per-key counters are maintained for
+    analytics purposes (best-effort, non-blocking).
 
     Args:
         user_id: User's partition key (pk)
-        key_hash: Key hash (sort key / sk)
+        key_hash: Key hash (sort key / sk) - used for per-key analytics
         limit: Maximum allowed requests
 
     Returns:
@@ -179,8 +179,9 @@ def check_and_increment_usage(user_id: str, key_hash: str, limit: int) -> tuple[
     table = _get_dynamodb().Table(API_KEYS_TABLE)
 
     try:
+        # Atomically check and increment USER_META.requests_this_month
         response = table.update_item(
-            Key={"pk": user_id, "sk": key_hash},
+            Key={"pk": user_id, "sk": "USER_META"},
             UpdateExpression="SET requests_this_month = if_not_exists(requests_this_month, :zero) + :inc",
             ConditionExpression="attribute_not_exists(requests_this_month) OR requests_this_month < :limit",
             ExpressionAttributeValues={
@@ -191,13 +192,24 @@ def check_and_increment_usage(user_id: str, key_hash: str, limit: int) -> tuple[
             ReturnValues="UPDATED_NEW",
         )
         new_count = response.get("Attributes", {}).get("requests_this_month", 1)
+
+        # Also increment per-key counter for analytics (best-effort, non-blocking)
+        try:
+            table.update_item(
+                Key={"pk": user_id, "sk": key_hash},
+                UpdateExpression="ADD requests_this_month :inc",
+                ExpressionAttributeValues={":inc": 1},
+            )
+        except Exception:
+            logger.warning(f"Failed to increment per-key counter for {user_id}/{key_hash[:8]}...")
+
         return True, new_count
     except ClientError as e:
         if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
             # Rate limit exceeded - get current count for accurate remaining calculation
             try:
                 get_response = table.get_item(
-                    Key={"pk": user_id, "sk": key_hash},
+                    Key={"pk": user_id, "sk": "USER_META"},
                     ProjectionExpression="requests_this_month",
                 )
                 current_count = get_response.get("Item", {}).get("requests_this_month", limit)
@@ -211,15 +223,15 @@ def check_and_increment_usage_batch(
     user_id: str, key_hash: str, limit: int, count: int
 ) -> tuple[bool, int]:
     """
-    Atomically check limit and increment usage counter by a batch count.
+    Atomically check limit and increment usage counter by a batch count at USER_META level.
 
-    This prevents race conditions where concurrent requests can exceed the limit.
-    Uses DynamoDB conditional expression to ensure the increment only happens
-    if the resulting count would still be within the limit.
+    Rate limiting is enforced at the user level (USER_META.requests_this_month)
+    to prevent gaming via key deletion. Per-key counters are maintained for
+    analytics purposes (best-effort, non-blocking).
 
     Args:
         user_id: User's partition key (pk)
-        key_hash: Key hash (sort key / sk)
+        key_hash: Key hash (sort key / sk) - used for per-key analytics
         limit: Maximum allowed requests
         count: Number of requests to increment by (for batch operations)
 
@@ -235,8 +247,9 @@ def check_and_increment_usage_batch(
     threshold = limit - count + 1  # Current must be < threshold for increment to be allowed
 
     try:
+        # Atomically check and increment USER_META.requests_this_month
         response = table.update_item(
-            Key={"pk": user_id, "sk": key_hash},
+            Key={"pk": user_id, "sk": "USER_META"},
             UpdateExpression="SET requests_this_month = if_not_exists(requests_this_month, :zero) + :inc",
             ConditionExpression="attribute_not_exists(requests_this_month) OR requests_this_month < :threshold",
             ExpressionAttributeValues={
@@ -247,13 +260,24 @@ def check_and_increment_usage_batch(
             ReturnValues="UPDATED_NEW",
         )
         new_count = response.get("Attributes", {}).get("requests_this_month", count)
+
+        # Also increment per-key counter for analytics (best-effort, non-blocking)
+        try:
+            table.update_item(
+                Key={"pk": user_id, "sk": key_hash},
+                UpdateExpression="ADD requests_this_month :inc",
+                ExpressionAttributeValues={":inc": count},
+            )
+        except Exception:
+            logger.warning(f"Failed to increment per-key counter for {user_id}/{key_hash[:8]}...")
+
         return True, new_count
     except ClientError as e:
         if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
             # Rate limit would be exceeded - get current count for accurate remaining
             try:
                 get_response = table.get_item(
-                    Key={"pk": user_id, "sk": key_hash},
+                    Key={"pk": user_id, "sk": "USER_META"},
                     ProjectionExpression="requests_this_month",
                 )
                 current_count = get_response.get("Item", {}).get(

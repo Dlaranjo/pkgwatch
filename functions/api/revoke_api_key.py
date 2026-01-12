@@ -92,20 +92,25 @@ def handler(event, context):
             )
 
             if "Item" not in meta_response:
-                # USER_META doesn't exist - count existing keys and initialize
+                # USER_META doesn't exist - count existing keys and calculate total usage
                 active_keys = [
                     i for i in items
                     if i.get("sk") not in ("PENDING", "USER_META")
                 ]
                 current_count = len(active_keys)
+                # Sum existing usage across all keys for authoritative count
+                total_usage = sum(
+                    int(i.get("requests_this_month", 0)) for i in active_keys
+                )
 
-                # Initialize USER_META with current count
+                # Initialize USER_META with current count and aggregated usage
                 try:
                     table.put_item(
                         Item={
                             "pk": user_id,
                             "sk": "USER_META",
                             "key_count": current_count,
+                            "requests_this_month": total_usage,
                         },
                         ConditionExpression="attribute_not_exists(pk)",
                     )

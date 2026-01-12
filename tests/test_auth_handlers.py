@@ -370,15 +370,19 @@ class TestCheckAndIncrementUsage:
         """Should deny request when at limit."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        # Update user to be at limit
+        # Update USER_META to be at limit (rate limiting is now user-level)
         table, test_key = seeded_api_keys_table
         import hashlib
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
-        table.update_item(
-            Key={"pk": "user_test123", "sk": key_hash},
-            UpdateExpression="SET requests_this_month = :val",
-            ExpressionAttributeValues={":val": 5000},
+        # Set USER_META.requests_this_month to limit
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": "USER_META",
+                "key_count": 1,
+                "requests_this_month": 5000,
+            }
         )
 
         from shared.auth import check_and_increment_usage

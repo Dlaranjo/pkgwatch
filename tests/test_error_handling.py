@@ -1006,6 +1006,14 @@ class TestErrorResponseConsistency:
             "email_verified": True,
         })
 
+        # Add USER_META with requests_this_month at limit (rate limiting is user-level)
+        table.put_item(Item={
+            "pk": "user_overlimit",
+            "sk": "USER_META",
+            "key_count": 1,
+            "requests_this_month": 5000,
+        })
+
         from api.get_package import handler
 
         api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
@@ -1185,8 +1193,16 @@ class TestRateLimitErrors:
             "sk": key_hash,
             "key_hash": key_hash,
             "tier": "free",
-            "requests_this_month": 4999,  # 1 remaining
+            "requests_this_month": 4999,  # 1 remaining (per-key, for analytics)
             "email_verified": True,
+        })
+
+        # Add USER_META with requests_this_month at 4999 (rate limiting is user-level)
+        table.put_item(Item={
+            "pk": "user_almost",
+            "sk": "USER_META",
+            "key_count": 1,
+            "requests_this_month": 4999,  # 1 remaining
         })
 
         from api.post_scan import handler

@@ -198,6 +198,54 @@ class TestCreateApiKeyHandler:
         assert meta_response["Item"]["key_count"] == 2  # 1 existing + 1 new
 
     @mock_aws
+    def test_key_creation_aggregates_existing_usage(self, mock_dynamodb, api_gateway_event):
+        """Creating a key for user without USER_META should aggregate existing per-key usage."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create existing API key with usage but NO USER_META
+        key_hash = hashlib.sha256(b"pw_has_usage").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_has_usage",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "hasusage@example.com",
+                "tier": "free",
+                "email_verified": True,
+                "requests_this_month": 500,  # Existing usage
+            }
+        )
+
+        from api.create_api_key import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        session_token = _create_test_session_token("user_has_usage", "hasusage@example.com")
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 201
+
+        # Verify USER_META was created with AGGREGATED usage (not 0!)
+        meta_response = table.get_item(Key={"pk": "user_has_usage", "sk": "USER_META"})
+        assert "Item" in meta_response
+        assert meta_response["Item"]["key_count"] == 2
+        # Critical: usage should be preserved, not reset to 0
+        assert meta_response["Item"]["requests_this_month"] == 500
+
+    @mock_aws
     def test_increments_user_meta_key_count(self, mock_dynamodb, api_gateway_event):
         """Should increment USER_META.key_count when creating additional keys."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"

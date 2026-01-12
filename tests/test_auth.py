@@ -269,3 +269,225 @@ class TestResetMonthlyUsage:
 
         user_after = validate_api_key(api_key)
         assert user_after["requests_this_month"] == 0
+
+
+class TestUserLevelRateLimiting:
+    """Tests for user-level rate limiting (USER_META.requests_this_month).
+
+    Rate limiting is enforced at the user level to prevent gaming via key deletion.
+    """
+
+    @mock_aws
+    def test_check_and_increment_uses_user_meta(self, aws_credentials, mock_dynamodb):
+        """check_and_increment_usage should update USER_META, not per-key counter."""
+        from shared.auth import generate_api_key, check_and_increment_usage, validate_api_key
+        import boto3
+
+        # Generate a key
+        user_id = "user_meta_test"
+        api_key = generate_api_key(user_id, tier="free")
+        user = validate_api_key(api_key)
+
+        # Make some requests
+        for _ in range(5):
+            allowed, _ = check_and_increment_usage(user["user_id"], user["key_hash"], 5000)
+            assert allowed
+
+        # Check USER_META has the count
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+        meta = table.get_item(Key={"pk": user_id, "sk": "USER_META"})
+        assert "Item" in meta
+        assert meta["Item"]["requests_this_month"] == 5
+
+    @mock_aws
+    def test_rate_limit_shared_across_keys(self, aws_credentials, mock_dynamodb):
+        """Rate limit should be enforced across all keys for a user."""
+        from shared.auth import generate_api_key, check_and_increment_usage, validate_api_key
+
+        user_id = "user_multikey"
+
+        # Create USER_META first (normally done by create_api_key.py)
+        import boto3
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+        table.put_item(Item={"pk": user_id, "sk": "USER_META", "key_count": 0, "requests_this_month": 0})
+
+        # Generate two keys
+        key1 = generate_api_key(user_id, tier="free")
+        key2 = generate_api_key(user_id, tier="free")
+
+        user1 = validate_api_key(key1)
+        user2 = validate_api_key(key2)
+
+        # Use key1 for 3 requests
+        for _ in range(3):
+            allowed, count = check_and_increment_usage(user1["user_id"], user1["key_hash"], 5)
+            assert allowed
+
+        # Use key2 for 2 more requests (should work, total = 5)
+        allowed, count = check_and_increment_usage(user2["user_id"], user2["key_hash"], 5)
+        assert allowed
+        assert count == 4
+
+        allowed, count = check_and_increment_usage(user2["user_id"], user2["key_hash"], 5)
+        assert allowed
+        assert count == 5
+
+        # Now both keys should be rate limited
+        allowed, count = check_and_increment_usage(user1["user_id"], user1["key_hash"], 5)
+        assert not allowed
+        assert count == 5
+
+        allowed, count = check_and_increment_usage(user2["user_id"], user2["key_hash"], 5)
+        assert not allowed
+        assert count == 5
+
+    @mock_aws
+    def test_batch_increment_uses_user_meta(self, aws_credentials, mock_dynamodb):
+        """check_and_increment_usage_batch should also use USER_META."""
+        from shared.auth import generate_api_key, check_and_increment_usage_batch, validate_api_key
+        import boto3
+
+        user_id = "user_batch_test"
+        api_key = generate_api_key(user_id, tier="free")
+        user = validate_api_key(api_key)
+
+        # Batch increment by 10
+        allowed, count = check_and_increment_usage_batch(
+            user["user_id"], user["key_hash"], 5000, count=10
+        )
+        assert allowed
+        assert count == 10
+
+        # Check USER_META
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+        meta = table.get_item(Key={"pk": user_id, "sk": "USER_META"})
+        assert meta["Item"]["requests_this_month"] == 10
+
+    @mock_aws
+    def test_batch_limit_enforced_at_user_level(self, aws_credentials, mock_dynamodb):
+        """Batch increment should be limited by user-level usage."""
+        from shared.auth import generate_api_key, check_and_increment_usage, check_and_increment_usage_batch, validate_api_key
+        import boto3
+
+        user_id = "user_batch_limit"
+
+        # Initialize USER_META
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+        table.put_item(Item={"pk": user_id, "sk": "USER_META", "key_count": 0, "requests_this_month": 0})
+
+        # Create two keys
+        key1 = generate_api_key(user_id, tier="free")
+        key2 = generate_api_key(user_id, tier="free")
+
+        user1 = validate_api_key(key1)
+        user2 = validate_api_key(key2)
+
+        # Use key1 to consume 8 of 10 requests
+        for _ in range(8):
+            allowed, _ = check_and_increment_usage(user1["user_id"], user1["key_hash"], 10)
+            assert allowed
+
+        # Try batch of 5 with key2 - should fail (would exceed 10)
+        allowed, count = check_and_increment_usage_batch(user2["user_id"], user2["key_hash"], 10, count=5)
+        assert not allowed
+        assert count == 8
+
+        # Batch of 2 should work
+        allowed, count = check_and_increment_usage_batch(user2["user_id"], user2["key_hash"], 10, count=2)
+        assert allowed
+        assert count == 10
+
+    @mock_aws
+    def test_user_meta_auto_created_on_first_request(self, aws_credentials, mock_dynamodb):
+        """USER_META should be auto-created with count=1 on first rate-limited request."""
+        from shared.auth import generate_api_key, check_and_increment_usage, validate_api_key
+        import boto3
+
+        user_id = "user_auto_create"
+        api_key = generate_api_key(user_id, tier="free")
+        user = validate_api_key(api_key)
+
+        # USER_META shouldn't exist yet (generate_api_key doesn't create it)
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+        meta_before = table.get_item(Key={"pk": user_id, "sk": "USER_META"})
+        assert "Item" not in meta_before
+
+        # First request should auto-create USER_META
+        allowed, count = check_and_increment_usage(user["user_id"], user["key_hash"], 5000)
+        assert allowed
+        assert count == 1
+
+        # Verify USER_META was created
+        meta_after = table.get_item(Key={"pk": user_id, "sk": "USER_META"})
+        assert "Item" in meta_after
+        assert meta_after["Item"]["requests_this_month"] == 1
+
+    @mock_aws
+    def test_revoke_key_preserves_user_usage(self, aws_credentials, mock_dynamodb):
+        """Revoking a key should NOT reset USER_META.requests_this_month."""
+        from shared.auth import generate_api_key, check_and_increment_usage, validate_api_key, revoke_api_key
+        import boto3
+
+        user_id = "user_revoke_test"
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+
+        # Create USER_META with initial usage
+        table.put_item(Item={
+            "pk": user_id,
+            "sk": "USER_META",
+            "key_count": 2,
+            "requests_this_month": 100,
+        })
+
+        # Create two keys
+        key1 = generate_api_key(user_id, tier="free")
+        key2 = generate_api_key(user_id, tier="free")
+        user1 = validate_api_key(key1)
+        user2 = validate_api_key(key2)
+
+        # Use some more quota
+        for _ in range(50):
+            check_and_increment_usage(user1["user_id"], user1["key_hash"], 5000)
+
+        # Usage should now be 150
+        meta_before = table.get_item(Key={"pk": user_id, "sk": "USER_META"})
+        assert meta_before["Item"]["requests_this_month"] == 150
+
+        # Revoke key1
+        revoke_api_key(user1["user_id"], user1["key_hash"])
+
+        # Usage should STILL be 150 (not reset!)
+        meta_after = table.get_item(Key={"pk": user_id, "sk": "USER_META"})
+        assert meta_after["Item"]["requests_this_month"] == 150
+
+    @mock_aws
+    def test_new_key_inherits_user_rate_limit(self, aws_credentials, mock_dynamodb):
+        """A newly created key should be rate-limited if user is already at limit."""
+        from shared.auth import generate_api_key, check_and_increment_usage, validate_api_key
+        import boto3
+
+        user_id = "user_inherit_limit"
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+
+        # Create USER_META at limit
+        table.put_item(Item={
+            "pk": user_id,
+            "sk": "USER_META",
+            "key_count": 1,
+            "requests_this_month": 5000,  # At free tier limit
+        })
+
+        # Create first key
+        key1 = generate_api_key(user_id, tier="free")
+        user1 = validate_api_key(key1)
+
+        # Create second key
+        key2 = generate_api_key(user_id, tier="free")
+        user2 = validate_api_key(key2)
+
+        # Both keys should be rate-limited immediately
+        allowed1, _ = check_and_increment_usage(user1["user_id"], user1["key_hash"], 5000)
+        allowed2, _ = check_and_increment_usage(user2["user_id"], user2["key_hash"], 5000)
+
+        assert not allowed1
+        assert not allowed2

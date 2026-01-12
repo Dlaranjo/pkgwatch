@@ -542,11 +542,21 @@ class TestPackageLookupFlow:
         )
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
-        # Set user to be at limit
+        # Set user to be at limit (per-key for analytics)
         table.update_item(
             Key={"pk": "user_rate_limited", "sk": key_hash},
             UpdateExpression="SET requests_this_month = :val",
             ExpressionAttributeValues={":val": 5000},
+        )
+
+        # Set USER_META.requests_this_month to limit (rate limiting is user-level)
+        table.put_item(
+            Item={
+                "pk": "user_rate_limited",
+                "sk": "USER_META",
+                "key_count": 1,
+                "requests_this_month": 5000,
+            }
         )
 
         from api.get_package import handler as get_package_handler

@@ -427,12 +427,15 @@ class TestAuthEdgeCases:
         api_key = generate_api_key("user_at_limit", tier="free")
         user = validate_api_key(api_key)
 
-        # Manually set usage to exactly at limit
+        # Set USER_META.requests_this_month to exactly at limit (rate limiting is user-level)
         table = mock_dynamodb.Table("pkgwatch-api-keys")
-        table.update_item(
-            Key={"pk": user["user_id"], "sk": user["key_hash"]},
-            UpdateExpression="SET requests_this_month = :count",
-            ExpressionAttributeValues={":count": TIER_LIMITS["free"]},
+        table.put_item(
+            Item={
+                "pk": user["user_id"],
+                "sk": "USER_META",
+                "key_count": 1,
+                "requests_this_month": TIER_LIMITS["free"],
+            }
         )
 
         # Try to increment - should be denied
@@ -451,12 +454,15 @@ class TestAuthEdgeCases:
         api_key = generate_api_key("user_under_limit", tier="free")
         user = validate_api_key(api_key)
 
-        # Set usage to one under limit
+        # Set USER_META.requests_this_month to one under limit (rate limiting is user-level)
         table = mock_dynamodb.Table("pkgwatch-api-keys")
-        table.update_item(
-            Key={"pk": user["user_id"], "sk": user["key_hash"]},
-            UpdateExpression="SET requests_this_month = :count",
-            ExpressionAttributeValues={":count": TIER_LIMITS["free"] - 1},
+        table.put_item(
+            Item={
+                "pk": user["user_id"],
+                "sk": "USER_META",
+                "key_count": 1,
+                "requests_this_month": TIER_LIMITS["free"] - 1,
+            }
         )
 
         # Should be allowed

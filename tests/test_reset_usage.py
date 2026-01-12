@@ -142,6 +142,55 @@ class TestResetUsageHandler:
         assert result["items_processed"] == 1  # Only real user
 
     @mock_aws
+    def test_resets_user_meta_counters(self, mock_dynamodb):
+        """Should reset USER_META.requests_this_month along with per-key counters."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create user with API key
+        key_hash = hashlib.sha256(b"pw_meta_user").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_meta_test",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "meta@example.com",
+                "tier": "free",
+                "requests_this_month": 500,
+                "email_verified": True,
+            }
+        )
+
+        # Create USER_META with usage
+        table.put_item(
+            Item={
+                "pk": "user_meta_test",
+                "sk": "USER_META",
+                "key_count": 1,
+                "requests_this_month": 500,
+            }
+        )
+
+        from api.reset_usage import handler
+
+        context = MagicMock()
+        context.get_remaining_time_in_millis.return_value = 300000
+        context.function_name = "test-reset-function"
+
+        result = handler({}, context)
+
+        assert result["items_processed"] == 2  # API key + USER_META
+
+        # Verify per-key counter was reset
+        key_response = table.get_item(Key={"pk": "user_meta_test", "sk": key_hash})
+        assert key_response["Item"]["requests_this_month"] == 0
+
+        # Verify USER_META.requests_this_month was also reset
+        meta_response = table.get_item(Key={"pk": "user_meta_test", "sk": "USER_META"})
+        assert meta_response["Item"]["requests_this_month"] == 0
+
+    @mock_aws
     def test_skips_system_records(self, mock_dynamodb):
         """Should not reset SYSTEM# records."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"

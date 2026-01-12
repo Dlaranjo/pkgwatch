@@ -81,11 +81,16 @@ def handler(event, context):
         if not api_keys:
             return error_response(404, "user_not_found", "User account not found", origin=origin)
 
-        # Aggregate requests_this_month across ALL API keys
-        total_requests = sum(
-            int(key.get("requests_this_month", 0))
-            for key in api_keys
-        )
+        # Get authoritative usage from USER_META (if exists)
+        # Fall back to aggregating per-key counters for backward compatibility
+        if user_meta and "requests_this_month" in user_meta:
+            total_requests = int(user_meta.get("requests_this_month", 0))
+        else:
+            # Backward compatibility: sum per-key counters
+            total_requests = sum(
+                int(key.get("requests_this_month", 0))
+                for key in api_keys
+            )
 
         # Use the first key for metadata (tier, created_at, etc.)
         # All keys should have the same tier

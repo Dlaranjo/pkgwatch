@@ -253,9 +253,19 @@ class TestGetPackageContract:
                 "key_hash": key_hash,
                 "email": "limited@example.com",
                 "tier": "free",
-                "requests_this_month": 5000,  # At limit
+                "requests_this_month": 5000,  # At limit (per-key, for analytics)
                 "created_at": "2024-01-01T00:00:00Z",
                 "email_verified": True,
+            }
+        )
+
+        # Add USER_META with requests_this_month at limit (rate limiting is user-level)
+        table.put_item(
+            Item={
+                "pk": "user_ratelimited",
+                "sk": "USER_META",
+                "key_count": 1,
+                "requests_this_month": 5000,  # At limit
             }
         )
 

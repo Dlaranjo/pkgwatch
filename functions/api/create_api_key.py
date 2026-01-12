@@ -85,8 +85,17 @@ def handler(event, context):
         )
         items = response.get("Items", [])
 
-        # Count active keys (excluding PENDING)
-        active_keys = [i for i in items if i.get("sk") != "PENDING"]
+        # Separate API keys from metadata records
+        active_keys = []
+        user_meta = None
+        for item in items:
+            sk = item.get("sk", "")
+            if sk == "PENDING":
+                continue
+            elif sk == "USER_META":
+                user_meta = item
+            else:
+                active_keys.append(item)
         current_count = len(active_keys)
 
         if current_count >= MAX_KEYS_PER_USER:
@@ -126,9 +135,6 @@ def handler(event, context):
     else:
         new_key_item["key_name"] = {"S": f"Key {current_count + 1}"}
 
-    # Check if USER_META exists to decide whether to initialize or increment
-    user_meta_exists = any(item.get("sk") == "USER_META" for item in items)
-
     # Build transaction items
     transact_items = [
         {
@@ -140,7 +146,7 @@ def handler(event, context):
         }
     ]
 
-    if user_meta_exists:
+    if user_meta is not None:
         # Increment existing USER_META.key_count
         transact_items.append({
             "Update": {
@@ -156,7 +162,11 @@ def handler(event, context):
             }
         })
     else:
-        # Create USER_META with key_count = current_count + 1
+        # Create USER_META with key_count and aggregated requests_this_month
+        # Aggregate existing usage to prevent gaming via key creation
+        total_usage = sum(
+            int(key.get("requests_this_month", 0)) for key in active_keys
+        )
         transact_items.append({
             "Put": {
                 "TableName": API_KEYS_TABLE,
@@ -164,6 +174,7 @@ def handler(event, context):
                     "pk": {"S": user_id},
                     "sk": {"S": "USER_META"},
                     "key_count": {"N": str(current_count + 1)},
+                    "requests_this_month": {"N": str(total_usage)},
                 },
                 "ConditionExpression": "attribute_not_exists(pk) OR attribute_not_exists(sk)",
             }

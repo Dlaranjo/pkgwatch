@@ -794,18 +794,31 @@ class TestConditionExpressionUsage:
     @mock_aws
     def test_condition_expression_format(self, mock_dynamodb):
         """Verify the condition expression properly handles edge cases."""
+        import boto3
         from shared.auth import (
             check_and_increment_usage,
             generate_api_key,
             validate_api_key,
         )
 
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+
+        # Test with limit of 0 - should deny if USER_META exists with any usage
         api_key = generate_api_key("user_edge_case")
         user = validate_api_key(api_key)
         user_id = user["user_id"]
         key_hash = user["key_hash"]
 
-        # Test with limit of 0 - should deny immediately
+        # Pre-create USER_META at limit 0 (rate limiting is user-level)
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "key_count": 1,
+                "requests_this_month": 0,
+            }
+        )
+
         allowed, count = check_and_increment_usage(user_id, key_hash, limit=0)
         assert not allowed
 
