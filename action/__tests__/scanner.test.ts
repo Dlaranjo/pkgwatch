@@ -3,7 +3,7 @@ import { scanDependencies } from "../src/scanner.js";
 import { PkgWatchClient } from "../src/api.js";
 
 // Use vi.hoisted to ensure these are available when vi.mock is executed
-const { mockScan, mockReadDependencies, mockReadDependenciesFromFile, MockDependencyParseError } = vi.hoisted(() => {
+const { mockScan, mockReadDependencies, mockReadDependenciesFromFile, MockDependencyParseError, mockExistsSync, mockStatSync } = vi.hoisted(() => {
   class MockDependencyParseError extends Error {
     constructor(message: string) {
       super(message);
@@ -16,6 +16,8 @@ const { mockScan, mockReadDependencies, mockReadDependenciesFromFile, MockDepend
     mockReadDependencies: vi.fn(),
     mockReadDependenciesFromFile: vi.fn(),
     MockDependencyParseError,
+    mockExistsSync: vi.fn(),
+    mockStatSync: vi.fn(),
   };
 });
 
@@ -29,9 +31,18 @@ vi.mock("../src/api.js", () => ({
   readDependenciesFromFile: (...args: unknown[]) => mockReadDependenciesFromFile(...args),
 }));
 
+// Mock node:fs for existsSync and statSync
+vi.mock("node:fs", () => ({
+  existsSync: (...args: unknown[]) => mockExistsSync(...args),
+  statSync: (...args: unknown[]) => mockStatSync(...args),
+}));
+
 describe("scanDependencies", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: path exists and is a directory
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ isFile: () => false, isDirectory: () => true });
     // Default mock response
     mockScan.mockResolvedValue({
       total: 2,
@@ -64,6 +75,8 @@ describe("scanDependencies", () => {
   });
 
   it("handles direct package.json path", async () => {
+    // Mock as a file instead of directory
+    mockStatSync.mockReturnValue({ isFile: () => true, isDirectory: () => false });
     mockReadDependenciesFromFile.mockReturnValue({
       dependencies: { express: "^4.0.0" },
       ecosystem: "npm",
@@ -135,6 +148,9 @@ describe("scanDependencies", () => {
 describe("scanDependencies - Batch Processing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: path exists and is a directory
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ isFile: () => false, isDirectory: () => true });
   });
 
   it("processes dependencies in batches when > 25 packages", async () => {

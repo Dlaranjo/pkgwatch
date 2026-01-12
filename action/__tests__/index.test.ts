@@ -439,6 +439,8 @@ describe("sanitizeForAnnotation", () => {
           last_updated: "2024-01-01",
         },
       ],
+      format: "package.json",
+      ecosystem: "npm",
     });
 
     vi.resetModules();
@@ -482,6 +484,8 @@ describe("sanitizeForAnnotation", () => {
           last_updated: "2024-01-01",
         },
       ],
+      format: "package.json",
+      ecosystem: "npm",
     });
 
     vi.resetModules();
