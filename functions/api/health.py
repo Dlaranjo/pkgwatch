@@ -6,13 +6,10 @@ No authentication required.
 """
 
 import json
-import os
-import sys
 import time
 from datetime import datetime, timezone
 
 # Import structured logging utilities
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from shared.logging_utils import configure_structured_logging, set_request_id, log_api_request
 
 # Configure structured logging

@@ -45,6 +45,21 @@ import Footer from '../components/Footer.astro';
 
       <p id="error-message" class="text-red-400 text-sm hidden" role="alert" aria-live="polite"></p>
       <p id="success-message" class="text-emerald-400 text-sm hidden" role="status" aria-live="polite"></p>
+
+      <!-- Resend verification email (shown after success) -->
+      <div id="resend-container" class="hidden mt-4 p-4 bg-zinc-900/50 border border-zinc-800 rounded-lg">
+        <p class="text-zinc-400 text-sm mb-3">
+          Didn't receive the email? Check your spam folder first, then try resending.
+        </p>
+        <button
+          id="resend-btn"
+          type="button"
+          class="text-emerald-400 hover:text-emerald-300 text-sm font-medium underline underline-offset-2 disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+        >
+          <span id="resend-text">Resend verification email</span>
+          <span id="resend-cooldown" class="hidden"></span>
+        </button>
+      </div>
     </form>
 
     <div class="mt-8 text-center text-sm text-zinc-500">
@@ -59,17 +74,160 @@ import Footer from '../components/Footer.astro';
 </Layout>
 
 <script>
+  const API_BASE = 'https://api.pkgwatch.laranjo.dev';
+
   const form = document.getElementById('signup-form');
+  const emailInput = document.getElementById('email') as HTMLInputElement;
   const submitBtn = form?.querySelector('button[type="submit"]') as HTMLButtonElement;
   const btnText = document.getElementById('btn-text');
   const btnLoading = document.getElementById('btn-loading');
   const errorMsg = document.getElementById('error-message');
   const successMsg = document.getElementById('success-message');
 
+  // Resend elements
+  const resendContainer = document.getElementById('resend-container');
+  const resendBtn = document.getElementById('resend-btn') as HTMLButtonElement;
+  const resendText = document.getElementById('resend-text');
+  const resendCooldown = document.getElementById('resend-cooldown');
+
+  // State
+  let lastSubmittedEmail = '';
+  let resendTimeoutId: number | null = null;
+  let buttonCooldownTimeoutId: number | null = null;
+  let resendCooldownTimeoutId: number | null = null;
+
+  // Cleanup function to prevent memory leaks on navigation
+  function cleanupTimeouts(): void {
+    if (resendTimeoutId) clearTimeout(resendTimeoutId);
+    if (buttonCooldownTimeoutId) clearTimeout(buttonCooldownTimeoutId);
+    if (resendCooldownTimeoutId) clearTimeout(resendCooldownTimeoutId);
+  }
+  window.addEventListener('beforeunload', cleanupTimeouts);
+
+  // Show resend option after delay
+  function showResendAfterDelay(delayMs: number = 30000): void {
+    if (resendTimeoutId) {
+      clearTimeout(resendTimeoutId);
+    }
+    resendTimeoutId = window.setTimeout(() => {
+      resendContainer?.classList.remove('hidden');
+    }, delayMs);
+  }
+
+  // Handle button cooldown after success
+  function startButtonCooldown(seconds: number): void {
+    if (!submitBtn || !btnText) return;
+
+    // Clear any existing cooldown
+    if (buttonCooldownTimeoutId) {
+      clearTimeout(buttonCooldownTimeoutId);
+    }
+
+    submitBtn.disabled = true;
+    let remaining = seconds;
+
+    const updateCooldown = () => {
+      btnText.textContent = `Submit again in ${remaining}s`;
+      remaining--;
+
+      if (remaining < 0) {
+        submitBtn.disabled = false;
+        btnText.textContent = 'Get API Key';
+        buttonCooldownTimeoutId = null;
+      } else {
+        buttonCooldownTimeoutId = window.setTimeout(updateCooldown, 1000);
+      }
+    };
+    updateCooldown();
+  }
+
+  // Handle resend cooldown UI
+  function startResendCooldown(seconds: number): void {
+    if (!resendBtn || !resendText || !resendCooldown) return;
+
+    // Clear any existing cooldown
+    if (resendCooldownTimeoutId) {
+      clearTimeout(resendCooldownTimeoutId);
+    }
+
+    resendBtn.disabled = true;
+    resendText.classList.add('hidden');
+    resendCooldown.classList.remove('hidden');
+
+    let remaining = seconds;
+    const updateCooldown = () => {
+      if (resendCooldown) {
+        resendCooldown.textContent = `Wait ${remaining}s to resend`;
+      }
+      remaining--;
+
+      if (remaining < 0) {
+        // Cooldown complete
+        resendBtn.disabled = false;
+        resendText?.classList.remove('hidden');
+        resendCooldown?.classList.add('hidden');
+        resendCooldownTimeoutId = null;
+      } else {
+        resendCooldownTimeoutId = window.setTimeout(updateCooldown, 1000);
+      }
+    };
+    updateCooldown();
+  }
+
+  // Handle resend click
+  async function handleResend(): Promise<void> {
+    if (!lastSubmittedEmail) return;
+
+    // Disable button immediately
+    if (resendBtn) resendBtn.disabled = true;
+    errorMsg?.classList.add('hidden');
+
+    try {
+      const response = await fetch(`${API_BASE}/auth/resend-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: lastSubmittedEmail }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        if (successMsg) successMsg.textContent = data.message || 'Verification email resent!';
+        successMsg?.classList.remove('hidden');
+        // Start 60-second cooldown
+        startResendCooldown(60);
+      } else if (response.status === 429) {
+        // Cooldown error from server - extract remaining seconds
+        const match = data.error?.message?.match(/(\d+) seconds/);
+        const remaining = match ? parseInt(match[1]) : 60;
+        startResendCooldown(remaining);
+        if (errorMsg) errorMsg.textContent = data.error?.message || 'Please wait before requesting another email.';
+        errorMsg?.classList.remove('hidden');
+      } else {
+        if (errorMsg) errorMsg.textContent = data.error?.message || 'Failed to resend email.';
+        errorMsg?.classList.remove('hidden');
+        if (resendBtn) resendBtn.disabled = false;
+      }
+    } catch (error) {
+      if (errorMsg) errorMsg.textContent = 'Network error. Please try again.';
+      errorMsg?.classList.remove('hidden');
+      if (resendBtn) resendBtn.disabled = false;
+    }
+  }
+
+  // Main form submit handler
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const email = (document.getElementById('email') as HTMLInputElement).value;
+    const email = emailInput?.value || '';
+    lastSubmittedEmail = email;
+
+    // Hide resend container and reset state
+    resendContainer?.classList.add('hidden');
+    if (resendTimeoutId) {
+      clearTimeout(resendTimeoutId);
+      resendTimeoutId = null;
+    }
 
     // Disable button and show loading state
     if (submitBtn) submitBtn.disabled = true;
@@ -79,7 +237,7 @@ import Footer from '../components/Footer.astro';
     successMsg?.classList.add('hidden');
 
     try {
-      const response = await fetch('https://api.pkgwatch.laranjo.dev/signup', {
+      const response = await fetch(`${API_BASE}/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -88,21 +246,33 @@ import Footer from '../components/Footer.astro';
       const data = await response.json();
 
       if (response.ok) {
-        if (successMsg) successMsg.textContent = 'Check your email for a verification link!';
+        if (successMsg) successMsg.textContent = data.message || 'Check your email (including spam folder) for a verification link!';
         successMsg?.classList.remove('hidden');
         form?.reset();
+        // Show resend option after 30 seconds
+        showResendAfterDelay(30000);
+        // Start button cooldown
+        btnLoading?.classList.add('hidden');
+        btnText?.classList.remove('hidden');
+        startButtonCooldown(30);
       } else {
         if (errorMsg) errorMsg.textContent = data.error?.message || 'Something went wrong';
         errorMsg?.classList.remove('hidden');
+        // Re-enable button on error
+        if (submitBtn) submitBtn.disabled = false;
+        btnText?.classList.remove('hidden');
+        btnLoading?.classList.add('hidden');
       }
     } catch (error) {
       if (errorMsg) errorMsg.textContent = 'Network error. Please try again.';
       errorMsg?.classList.remove('hidden');
-    } finally {
-      // Re-enable button and hide loading state
+      // Re-enable button on error
       if (submitBtn) submitBtn.disabled = false;
       btnText?.classList.remove('hidden');
       btnLoading?.classList.add('hidden');
     }
   });
+
+  // Resend button click handler
+  resendBtn?.addEventListener('click', handleResend);
 </script>

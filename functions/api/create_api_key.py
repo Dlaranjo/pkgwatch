@@ -31,9 +31,7 @@ API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 MAX_KEYS_PER_USER = 5
 
 # Import tier limits from shared constants
-import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
-from constants import TIER_LIMITS
+from shared.constants import TIER_LIMITS
 
 
 def handler(event, context):

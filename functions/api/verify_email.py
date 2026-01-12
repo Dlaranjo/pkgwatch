@@ -4,14 +4,15 @@ Verify Email Endpoint - GET /verify?token=xxx
 Verifies email and activates the user account with an API key.
 """
 
-import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 
 import boto3
 from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -23,6 +24,12 @@ dynamodb = boto3.resource("dynamodb")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.laranjo.dev")
 
+# Pending key display TTL (5 minutes)
+PENDING_KEY_TTL_SECONDS = 300
+
+# Minimum response time to normalize timing and prevent enumeration attacks
+MIN_RESPONSE_TIME_SECONDS = 1.0
+
 
 def handler(event, context):
     """
@@ -31,12 +38,14 @@ def handler(event, context):
     Verifies the token and creates the user's API key.
     Redirects to dashboard on success.
     """
+    start_time = time.time()
+
     # Extract token from query parameters
     params = event.get("queryStringParameters") or {}
     token = params.get("token", "")
 
     if not token:
-        return _redirect_with_error("missing_token", "Verification token is required")
+        return _timed_redirect_with_error(start_time, "missing_token", "Verification token is required")
 
     table = dynamodb.Table(API_KEYS_TABLE)
     now = datetime.now(timezone.utc)
@@ -49,11 +58,11 @@ def handler(event, context):
         )
     except Exception as e:
         logger.error(f"Error querying for token: {e}")
-        return _redirect_with_error("internal_error", "Failed to verify token")
+        return _timed_redirect_with_error(start_time, "internal_error", "Failed to verify token")
 
     items = response.get("Items", [])
     if not items:
-        return _redirect_with_error("invalid_token", "Invalid or expired verification token")
+        return _timed_redirect_with_error(start_time, "invalid_token", "Invalid or expired verification token")
 
     # GSI returns KEYS_ONLY, so fetch full record
     gsi_item = items[0]
@@ -62,29 +71,51 @@ def handler(event, context):
 
     # Verify it's a PENDING record (not some other record with same token somehow)
     if sk != "PENDING":
-        return _redirect_with_error("invalid_token", "Invalid or expired verification token")
+        return _timed_redirect_with_error(start_time, "invalid_token", "Invalid or expired verification token")
 
     # Fetch full record to get email and expiration
     try:
         full_response = table.get_item(Key={"pk": user_id, "sk": sk})
         pending_user = full_response.get("Item")
         if not pending_user:
-            return _redirect_with_error("invalid_token", "Invalid or expired verification token")
+            return _timed_redirect_with_error(start_time, "invalid_token", "Invalid or expired verification token")
     except Exception as e:
         logger.error(f"Error fetching user record: {e}")
-        return _redirect_with_error("internal_error", "Failed to verify token")
+        return _timed_redirect_with_error(start_time, "internal_error", "Failed to verify token")
 
     email = pending_user["email"]
 
-    # Check expiration
+    # Atomically delete pending record with conditional check to prevent replay attacks
+    # SECURITY: Token must match to prevent race condition where attacker intercepts
+    # verification link and uses it multiple times before user does
+    try:
+        table.delete_item(
+            Key={"pk": user_id, "sk": "PENDING"},
+            ConditionExpression="attribute_exists(verification_token) AND verification_token = :expected_token",
+            ExpressionAttributeValues={":expected_token": token},
+        )
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            logger.warning(f"Verification token replay attempt for {user_id}")
+            return _timed_redirect_with_error(
+                start_time,
+                "token_already_used",
+                "This verification link has already been used. Please request a new one."
+            )
+        logger.error(f"Failed to delete pending record: {e}")
+        return _timed_redirect_with_error(start_time, "internal_error", "Failed to verify token")
+    except Exception as e:
+        logger.error(f"Failed to delete pending record: {e}")
+        return _timed_redirect_with_error(start_time, "internal_error", "Failed to verify token")
+
+    # Check expiration (after atomic delete to maintain security)
     expires_str = pending_user.get("verification_expires", "")
     if expires_str:
         try:
             expires = datetime.fromisoformat(expires_str.replace("Z", "+00:00"))
             if expires < now:
-                # Delete expired pending signup
-                table.delete_item(Key={"pk": user_id, "sk": "PENDING"})
-                return _redirect_with_error(
+                return _timed_redirect_with_error(
+                    start_time,
                     "token_expired",
                     "Verification link has expired. Please sign up again."
                 )
@@ -96,45 +127,38 @@ def handler(event, context):
         api_key = generate_api_key(user_id=user_id, tier="free", email=email)
     except Exception as e:
         logger.error(f"Error generating API key: {e}")
-        return _redirect_with_error("internal_error", "Failed to create API key")
-
-    # Delete the pending signup record
-    try:
-        table.delete_item(Key={"pk": user_id, "sk": "PENDING"})
-    except Exception as e:
-        logger.warning(f"Failed to delete pending record: {e}")
-        # Not critical - continue anyway
+        return _timed_redirect_with_error(start_time, "internal_error", "Failed to create API key")
 
     # Log without full email for privacy (GDPR compliance)
     email_prefix = email.split("@")[0][:3] if "@" in email else email[:3]
     email_domain = email.split("@")[1] if "@" in email else "unknown"
     logger.info(f"Email verified for {email_prefix}***@{email_domain}, API key created")
 
-    # Store API key in short-lived cookie for one-time display
-    # SECURITY CONSIDERATIONS:
-    # - NOT HttpOnly because dashboard JS needs to read and display it once
-    # - Short Max-Age (60s) minimizes exposure window
-    # - Secure + SameSite=Strict prevents CSRF and network interception
-    # - Path=/dashboard limits cookie scope
-    # - More secure than URL (appears in logs/history/referrer)
-    # - CSP header on redirect helps mitigate XSS during transit
-    # TODO: For enhanced security, implement server-side display token approach:
-    #       1. Store display_token -> api_key mapping in DynamoDB (60s TTL)
-    #       2. Redirect with display_token in URL
-    #       3. Dashboard fetches API key via authenticated endpoint (one-time use)
-    cookie_value = (
-        f"new_api_key={api_key}; "
-        f"Path=/dashboard; "  # Limit cookie scope to dashboard path
-        f"Secure; "
-        f"SameSite=Strict; "
-        f"Max-Age=60"  # Very short - 60 seconds
-    )
+    # Store API key server-side for one-time retrieval via authenticated endpoint
+    # SECURITY IMPROVEMENT: Key never exposed in cookie (even short-lived non-HttpOnly)
+    # - Stored in PENDING_DISPLAY record with 5-minute TTL
+    # - Retrieved via /auth/pending-key (requires session auth)
+    # - One-time use: deleted after first retrieval
+    ttl_timestamp = int(time.time()) + PENDING_KEY_TTL_SECONDS
+
+    try:
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "PENDING_DISPLAY",
+                "api_key": api_key,
+                "created_at": now.isoformat(),
+                "ttl": ttl_timestamp,
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to store pending key display: {e}")
+        # Continue anyway - user can still see key in dashboard list
 
     return {
         "statusCode": 302,
         "headers": {
             "Location": f"{BASE_URL}/dashboard?verified=true",
-            "Set-Cookie": cookie_value,
             "Cache-Control": "no-store",
             # Security headers to mitigate XSS during redirect
             "Content-Security-Policy": "default-src 'none'",
@@ -160,3 +184,16 @@ def _redirect_with_error(code: str, message: str) -> dict:
         },
         "body": "",
     }
+
+
+def _timed_redirect_with_error(start_time: float, code: str, message: str) -> dict:
+    """
+    Redirect to signup page with error message, after ensuring minimum response time.
+
+    Timing normalization prevents attackers from distinguishing between
+    'token not found' (fast) and 'token found but expired' (slower).
+    """
+    elapsed = time.time() - start_time
+    if elapsed < MIN_RESPONSE_TIME_SECONDS:
+        time.sleep(MIN_RESPONSE_TIME_SECONDS - elapsed)
+    return _redirect_with_error(code, message)

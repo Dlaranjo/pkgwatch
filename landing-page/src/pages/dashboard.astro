@@ -37,7 +37,7 @@ import Footer from '../components/Footer.astro';
     <!-- Auth Error State (hidden by default) -->
     <div id="auth-error" class="hidden text-center py-16 animate-fade-in-up">
       <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-red-900/30 flex items-center justify-center">
-        <svg class="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg aria-hidden="true" class="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m0 0v2m0-2h2m-2 0H10m2-10a4 4 0 00-4 4v4h8v-4a4 4 0 00-4-4z"></path>
         </svg>
       </div>
@@ -88,21 +88,31 @@ import Footer from '../components/Footer.astro';
             id="create-key-btn"
             class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition flex items-center gap-2"
           >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
             <span id="create-key-text">Create Key</span>
-            <svg id="create-key-loading" class="hidden w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <svg aria-hidden="true" id="create-key-loading" class="hidden w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
           </button>
         </div>
 
+        <!-- Error message -->
+        <div id="keys-error" class="hidden mb-4 p-3 bg-red-900/20 border border-red-500/30 rounded-lg">
+          <p class="text-sm text-red-400 flex items-center gap-2" id="keys-error-text">
+            <svg aria-hidden="true" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span id="keys-error-message">An error occurred</span>
+          </p>
+        </div>
+
         <!-- Max keys warning -->
         <div id="max-keys-warning" class="hidden mb-4 p-3 bg-yellow-900/20 border border-yellow-500/30 rounded-lg">
           <p class="text-sm text-yellow-400 flex items-center gap-2">
-            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
             </svg>
             Maximum of 5 API keys reached. Revoke an existing key to create a new one.
@@ -161,10 +171,21 @@ import Footer from '../components/Footer.astro';
         <!-- Warning header -->
         <div class="p-4 bg-yellow-900/20 border-b border-yellow-500/30 rounded-t-xl">
           <p class="text-sm text-yellow-400 flex items-center gap-2">
-            <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
             </svg>
             <span><strong>Important:</strong> This key will only be shown once. Copy it now!</span>
+          </p>
+        </div>
+
+        <!-- Countdown timer (shown for new verification) -->
+        <div id="key-timer-container" class="hidden px-4 py-2 bg-zinc-900 border-b border-zinc-800">
+          <p class="text-sm flex items-center justify-center gap-2">
+            <svg aria-hidden="true" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span id="key-timer" class="font-mono text-emerald-400">5:00</span>
+            <span class="text-zinc-400">remaining to copy this key</span>
           </p>
         </div>
 
@@ -184,10 +205,10 @@ import Footer from '../components/Footer.astro';
               id="copy-key-btn"
               class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs font-medium rounded transition flex items-center gap-1"
             >
-              <svg id="copy-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg aria-hidden="true" id="copy-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
               </svg>
-              <svg id="check-icon" class="w-4 h-4 hidden text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg aria-hidden="true" id="check-icon" class="w-4 h-4 hidden text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
               </svg>
               <span id="copy-text">Copy</span>
@@ -235,7 +256,7 @@ import Footer from '../components/Footer.astro';
 
           <div id="last-key-warning" class="hidden p-3 bg-red-900/20 border border-red-500/30 rounded-lg mb-4">
             <p class="text-sm text-red-400 flex items-center gap-2">
-              <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg aria-hidden="true" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
               </svg>
               This is your only API key. You must keep at least one active key.
@@ -255,7 +276,7 @@ import Footer from '../components/Footer.astro';
             class="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition flex items-center gap-2"
           >
             <span id="revoke-text">Revoke Key</span>
-            <svg id="revoke-loading" class="hidden w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <svg aria-hidden="true" id="revoke-loading" class="hidden w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
@@ -283,6 +304,8 @@ import Footer from '../components/Footer.astro';
   const keysBody = document.getElementById('keys-body');
   const createKeyBtn = document.getElementById('create-key-btn');
   const maxKeysWarning = document.getElementById('max-keys-warning');
+  const keysError = document.getElementById('keys-error');
+  const keysErrorMessage = document.getElementById('keys-error-message');
   const noKeys = document.getElementById('no-keys');
 
   // Modal elements
@@ -299,13 +322,24 @@ import Footer from '../components/Footer.astro';
   const cancelRevokeBtn = document.getElementById('cancel-revoke-btn');
   const confirmRevokeBtn = document.getElementById('confirm-revoke-btn') as HTMLButtonElement;
 
+  // Timer elements
+  const keyTimerContainer = document.getElementById('key-timer-container');
+  const keyTimer = document.getElementById('key-timer');
+
   // State
   let apiKeys: any[] = [];
   let keyToRevoke: string | null = null;
+  let countdownInterval: number | null = null;
 
   // Utility functions
   function formatNumber(num: number): string {
     return num.toLocaleString();
+  }
+
+  function escapeHtml(str: string): string {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
   }
 
   function getRelativeTime(dateStr: string): string {
@@ -316,8 +350,9 @@ import Footer from '../components/Footer.astro';
 
     if (diffDays === 0) return 'today';
     if (diffDays === 1) return 'yesterday';
-    if (diffDays < 30) return `${diffDays} days ago`;
-    if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+    if (diffDays < 30) return diffDays === 1 ? '1 day ago' : `${diffDays} days ago`;
+    const months = Math.floor(diffDays / 30);
+    if (diffDays < 365) return months === 1 ? '1 month ago' : `${months} months ago`;
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
@@ -363,11 +398,19 @@ import Footer from '../components/Footer.astro';
 
   async function loadUserData(): Promise<any> {
     const response = await fetchWithAuth(`${API_BASE}/auth/me`);
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error?.message || 'Failed to load user data');
+    }
     return response.json();
   }
 
   async function loadApiKeys(): Promise<any> {
     const response = await fetchWithAuth(`${API_BASE}/api-keys`);
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error?.message || 'Failed to load API keys');
+    }
     return response.json();
   }
 
@@ -375,6 +418,10 @@ import Footer from '../components/Footer.astro';
     const response = await fetchWithAuth(`${API_BASE}/api-keys`, {
       method: 'POST',
     });
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error?.message || 'Failed to create API key');
+    }
     return response.json();
   }
 
@@ -391,6 +438,88 @@ import Footer from '../components/Footer.astro';
     return true;
   }
 
+  async function getPendingKey(): Promise<{api_key: string} | null> {
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/auth/pending-key`);
+      if (response.status === 404) {
+        // No pending key (already retrieved or expired)
+        return null;
+      }
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error?.message || 'Failed to get pending key');
+      }
+      return response.json();
+    } catch (error: any) {
+      if (error.message === 'UNAUTHORIZED') {
+        throw error;
+      }
+      console.error('Failed to get pending key:', error);
+      return null;
+    }
+  }
+
+  function startCountdown(seconds: number): void {
+    // Stop any existing countdown
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+    }
+
+    // Reset timer color in case modal was reopened
+    keyTimer?.classList.remove('text-red-400');
+    keyTimer?.classList.add('text-emerald-400');
+
+    // Show timer container
+    keyTimerContainer?.classList.remove('hidden');
+
+    // Use timestamp-based calculation to prevent drift over time
+    const endTime = Date.now() + (seconds * 1000);
+
+    const updateTimer = () => {
+      // Calculate remaining from actual time to prevent drift
+      const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+      const mins = Math.floor(remaining / 60);
+      const secs = remaining % 60;
+      const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
+
+      if (keyTimer) {
+        keyTimer.textContent = timeStr;
+
+        // Turn red when under 60 seconds
+        if (remaining <= 60) {
+          keyTimer.classList.remove('text-emerald-400');
+          keyTimer.classList.add('text-red-400');
+        }
+      }
+
+      // Check for expiration (remaining is 0, not negative)
+      if (remaining <= 0) {
+        // Timer expired
+        if (countdownInterval) {
+          clearInterval(countdownInterval);
+          countdownInterval = null;
+        }
+        // Close modal and show warning
+        closeNewKeyModal();
+        showInlineError('Time expired! The key display window has closed. Your key is still active - you can view it in the table above (only the prefix is shown for security).');
+      }
+    };
+
+    updateTimer();
+    countdownInterval = window.setInterval(updateTimer, 1000);
+  }
+
+  function stopCountdown(): void {
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
+    keyTimerContainer?.classList.add('hidden');
+    // Reset timer color
+    keyTimer?.classList.remove('text-red-400');
+    keyTimer?.classList.add('text-emerald-400');
+  }
+
   // UI Update Functions
   function showAuthError(): void {
     skeleton?.classList.add('hidden');
@@ -402,6 +531,19 @@ import Footer from '../components/Footer.astro';
     skeleton?.classList.add('hidden');
     authError?.classList.add('hidden');
     content?.classList.remove('hidden');
+  }
+
+  function showInlineError(message: string): void {
+    if (keysErrorMessage) keysErrorMessage.textContent = message;
+    keysError?.classList.remove('hidden');
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+      keysError?.classList.add('hidden');
+    }, 5000);
+  }
+
+  function hideInlineError(): void {
+    keysError?.classList.add('hidden');
   }
 
   function updateUserInfo(userData: any): void {
@@ -467,19 +609,19 @@ import Footer from '../components/Footer.astro';
       <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition">
         <td class="py-4">
           <code class="px-2 py-1 bg-black/30 rounded text-zinc-300 font-mono text-xs">
-            ${key.key_prefix}
+            ${escapeHtml(key.key_prefix)}
           </code>
         </td>
-        <td class="py-4 text-zinc-400">${getRelativeTime(key.created_at)}</td>
+        <td class="py-4 text-zinc-400">${escapeHtml(getRelativeTime(key.created_at))}</td>
         <td class="py-4 text-zinc-400 hidden sm:table-cell">${formatNumber(key.requests_this_month || 0)}</td>
         <td class="py-4">
           <button
             class="revoke-btn px-3 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition"
-            data-key-id="${key.key_id}"
-            data-key-prefix="${key.key_prefix}"
+            data-key-id="${escapeHtml(key.key_id)}"
+            data-key-prefix="${escapeHtml(key.key_prefix)}"
             data-key-requests="${key.requests_this_month || 0}"
-            data-key-created="${key.created_at}"
-            aria-label="Revoke key ${key.key_prefix}"
+            data-key-created="${escapeHtml(key.created_at)}"
+            aria-label="Revoke key ${escapeHtml(key.key_prefix)}"
           >
             Revoke
           </button>
@@ -529,6 +671,7 @@ import Footer from '../components/Footer.astro';
   function closeNewKeyModal(): void {
     newKeyModal?.classList.add('hidden');
     document.body.style.overflow = '';
+    stopCountdown();
     createKeyBtn?.focus();
   }
 
@@ -579,11 +722,6 @@ import Footer from '../components/Footer.astro';
     try {
       const data = await createApiKey();
 
-      if (data.error) {
-        alert(data.error.message || 'Failed to create key');
-        return;
-      }
-
       // Show the new key in modal
       openNewKeyModal(data.api_key);
 
@@ -595,7 +733,10 @@ import Footer from '../components/Footer.astro';
       if (error.message === 'UNAUTHORIZED') {
         showAuthError();
       } else {
-        alert('Failed to create key. Please try again.');
+        console.error('Failed to create key:', error);
+        // Show error inline instead of alert for better UX
+        const errorMsg = error.message || 'Failed to create key. Please try again.';
+        showInlineError(errorMsg);
       }
     } finally {
       if (createKeyBtn) (createKeyBtn as HTMLButtonElement).disabled = false;
@@ -627,7 +768,9 @@ import Footer from '../components/Footer.astro';
       if (error.message === 'UNAUTHORIZED') {
         showAuthError();
       } else {
-        alert(error.message || 'Failed to revoke key. Please try again.');
+        console.error('Failed to revoke key:', error);
+        closeRevokeModal();
+        showInlineError(error.message || 'Failed to revoke key. Please try again.');
       }
     } finally {
       if (confirmRevokeBtn) confirmRevokeBtn.disabled = false;
@@ -679,6 +822,21 @@ import Footer from '../components/Footer.astro';
       updateKeysList(keysData.api_keys || []);
 
       showContent();
+
+      // Check if user just verified their email
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('verified')) {
+        // Clean up URL immediately
+        window.history.replaceState({}, '', '/dashboard');
+
+        // Fetch the pending key
+        const pendingKeyData = await getPendingKey();
+        if (pendingKeyData?.api_key) {
+          // Show the key in modal with countdown timer
+          openNewKeyModal(pendingKeyData.api_key);
+          startCountdown(300); // 5 minutes
+        }
+      }
 
     } catch (error: any) {
       console.error('Failed to load dashboard:', error);

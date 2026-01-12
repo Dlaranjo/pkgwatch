@@ -32,10 +32,11 @@ def handler(event, context):
 
     Returns the current authenticated user's info.
     """
+    # Extract origin for CORS (outside try block so exception handler can use it)
+    headers = event.get("headers", {}) or {}
+    origin = headers.get("origin") or headers.get("Origin")
+
     try:
-        # Extract origin for CORS
-        headers = event.get("headers", {})
-        origin = headers.get("origin") or headers.get("Origin")
 
         # Extract session cookie
         cookie_header = headers.get("cookie") or headers.get("Cookie") or ""
@@ -94,7 +95,7 @@ def handler(event, context):
         }
     except Exception as e:
         logger.error(f"Error in auth_me handler: {e}")
-        return error_response(500, "internal_error", "An error occurred processing your request")
+        return error_response(500, "internal_error", "An error occurred processing your request", origin=origin)
 
 
 

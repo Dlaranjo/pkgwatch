@@ -33,6 +33,10 @@ VERIFICATION_EMAIL_SENDER = os.environ.get(
     "VERIFICATION_EMAIL_SENDER", "noreply@pkgwatch.laranjo.dev"
 )
 BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.laranjo.dev")
+API_URL = os.environ.get("API_URL", "https://api.pkgwatch.laranjo.dev")
+
+# Magic link TTL (same as login flow)
+MAGIC_LINK_TTL_MINUTES = 15
 
 # Email validation regex
 EMAIL_REGEX = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
@@ -64,9 +68,10 @@ def handler(event, context):
     origin = _get_origin(event)
 
     # Generic success message - same whether email exists or not
+    # Mentions spam folder to help users find the email
     success_message = (
-        "Check your email for a verification link. "
-        "If you already have an account, try logging in instead."
+        "Check your email (including spam folder) for a verification link. "
+        "If you already have an account, we've sent you a sign-in link instead."
     )
 
     # Parse request body
@@ -92,10 +97,16 @@ def handler(event, context):
         )
         existing_items = response.get("Items", [])
 
-        # Check for verified users - return same response to prevent enumeration
+        # Check for verified users - send magic link instead of just returning
         for item in existing_items:
             if item.get("email_verified", False):
-                logger.info(f"Signup attempted for existing verified email (not revealing)")
+                logger.info(f"Signup attempted for existing verified email - sending magic link")
+                # Send magic link to help user log in (same UX as login flow)
+                try:
+                    _send_magic_link_for_existing_user(table, item, email)
+                except Exception as e:
+                    logger.error(f"Failed to send magic link to existing user: {e}")
+                    # Don't fail - still return same response for enumeration prevention
                 # Same response as new signup - no enumeration possible
                 return _timed_response(start_time, success_response({"message": success_message}, origin=origin))
 
@@ -142,6 +153,7 @@ def handler(event, context):
                 "verification_token": verification_token,
                 "verification_expires": verification_expires,
                 "created_at": now.isoformat(),
+                "last_verification_sent": now.isoformat(),  # For resend cooldown tracking
                 "email_verified": False,
                 "ttl": ttl_timestamp,  # Auto-cleanup of expired PENDING records
             },
@@ -221,6 +233,89 @@ This link expires in 24 hours. If you didn't sign up for PkgWatch, you can ignor
             },
         },
     )
+
+
+def _send_magic_link_for_existing_user(table, user_item: dict, email: str):
+    """
+    Send magic link to existing user who tried to sign up.
+
+    This helps users who forgot they already have an account by sending
+    them a sign-in link instead of leaving them confused.
+    """
+    user_id = user_item["pk"]
+    now = datetime.now(timezone.utc)
+
+    # Generate magic link token (same TTL as login flow)
+    magic_token = secrets.token_urlsafe(32)
+    magic_expires = (now + timedelta(minutes=MAGIC_LINK_TTL_MINUTES)).isoformat()
+
+    # Store magic token on the user record
+    table.update_item(
+        Key={"pk": user_id, "sk": user_item["sk"]},
+        UpdateExpression="SET magic_token = :token, magic_expires = :expires",
+        ExpressionAttributeValues={
+            ":token": magic_token,
+            ":expires": magic_expires,
+        },
+    )
+
+    # Send email with "Welcome back!" messaging
+    magic_url = f"{API_URL}/auth/callback?token={magic_token}"
+
+    ses.send_email(
+        Source=VERIFICATION_EMAIL_SENDER,
+        Destination={"ToAddresses": [email]},
+        Message={
+            "Subject": {"Data": "Sign in to PkgWatch", "Charset": "UTF-8"},
+            "Body": {
+                "Html": {
+                    "Data": f"""
+                    <html>
+                    <body style="font-family: system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                        <h1 style="color: #1e293b;">Welcome back to PkgWatch!</h1>
+                        <p style="color: #475569; font-size: 16px;">
+                            You already have an account. Click the button below to sign in:
+                        </p>
+                        <a href="{magic_url}"
+                           style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px;
+                                  text-decoration: none; border-radius: 6px; margin: 20px 0;">
+                            Sign In
+                        </a>
+                        <p style="color: #64748b; font-size: 14px;">
+                            Or copy this link: <a href="{magic_url}">{magic_url}</a>
+                        </p>
+                        <p style="color: #dc2626; font-size: 14px; font-weight: 500;">
+                            <strong>Important:</strong> This link expires in {MAGIC_LINK_TTL_MINUTES} minutes.
+                        </p>
+                        <p style="color: #94a3b8; font-size: 12px;">
+                            If you didn't request this, you can ignore this email.
+                        </p>
+                    </body>
+                    </html>
+                    """,
+                    "Charset": "UTF-8",
+                },
+                "Text": {
+                    "Data": f"""Welcome back to PkgWatch!
+
+You already have an account. Click the link below to sign in:
+
+{magic_url}
+
+Important: This link expires in {MAGIC_LINK_TTL_MINUTES} minutes.
+
+If you didn't request this, you can ignore this email.
+""",
+                    "Charset": "UTF-8",
+                },
+            },
+        },
+    )
+
+    # Log without full email for privacy
+    email_prefix = email.split("@")[0][:3] if "@" in email else email[:3]
+    email_domain = email.split("@")[1] if "@" in email else "unknown"
+    logger.info(f"Magic link sent to existing user {email_prefix}***@{email_domain}")
 
 
 def _timed_response(start_time: float, response: dict) -> dict:

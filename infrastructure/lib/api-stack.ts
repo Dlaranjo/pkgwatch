@@ -244,6 +244,7 @@ export class ApiStack extends cdk.Stack {
       environment: {
         ...commonLambdaProps.environment,
         BASE_URL: "https://pkgwatch.laranjo.dev",
+        API_URL: "https://api.pkgwatch.laranjo.dev",  // Used for magic link callbacks
         SESSION_SECRET_ARN: "pkgwatch/session-secret",  // Use name, not partial ARN
         VERIFICATION_EMAIL_SENDER: "noreply@pkgwatch.laranjo.dev",
         LOGIN_EMAIL_SENDER: "noreply@pkgwatch.laranjo.dev",
@@ -275,15 +276,15 @@ export class ApiStack extends cdk.Stack {
     });
 
     // Grant SES permissions for email sending
-    // In sandbox mode, need access to both sender domain AND recipient identities
+    // SECURITY: Restrict to domain identity only (no wildcard)
+    // Note: If still in SES sandbox mode, emails can only be sent to verified identities.
+    // Request production access at: https://console.aws.amazon.com/ses/home#/account
     const sesPolicy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ["ses:SendEmail", "ses:SendRawEmail"],
       resources: [
         // Domain-level identity allows sending from any address @pkgwatch.laranjo.dev
         `arn:aws:ses:${this.region}:${this.account}:identity/pkgwatch.laranjo.dev`,
-        // Wildcard for verified email recipients (required in sandbox mode)
-        `arn:aws:ses:${this.region}:${this.account}:identity/*`,
       ],
     });
 
@@ -335,6 +336,30 @@ export class ApiStack extends cdk.Stack {
 
     apiKeysTable.grantReadData(authMeHandler);
     authMeHandler.addToRolePolicy(sessionSecretPolicy);
+
+    // GET /auth/pending-key - Get newly created API key for one-time display
+    const getPendingKeyHandler = new lambda.Function(this, "GetPendingKeyHandler", {
+      ...authLambdaProps,
+      functionName: "pkgwatch-api-get-pending-key",
+      handler: "api.get_pending_key.handler",
+      code: apiCodeWithShared,
+      description: "Get pending API key for one-time display after verification",
+    });
+
+    apiKeysTable.grantReadWriteData(getPendingKeyHandler);
+    getPendingKeyHandler.addToRolePolicy(sessionSecretPolicy);
+
+    // POST /auth/resend-verification - Resend verification email with cooldown
+    const resendVerificationHandler = new lambda.Function(this, "ResendVerificationHandler", {
+      ...authLambdaProps,
+      functionName: "pkgwatch-api-resend-verification",
+      handler: "api.resend_verification.handler",
+      code: apiCodeWithShared,
+      description: "Resend verification email for pending signups",
+    });
+
+    apiKeysTable.grantReadWriteData(resendVerificationHandler);
+    resendVerificationHandler.addToRolePolicy(sesPolicy);
 
     // GET /api-keys - List user's API keys
     const getApiKeysHandler = new lambda.Function(this, "GetApiKeysHandler", {
@@ -504,6 +529,26 @@ export class ApiStack extends cdk.Stack {
       },
     });
 
+    // Model for /auth/resend-verification endpoint
+    const resendVerificationModel = new apigateway.Model(this, "ResendVerificationModel", {
+      restApi: this.api,
+      contentType: "application/json",
+      modelName: "ResendVerificationRequest",
+      schema: {
+        type: apigateway.JsonSchemaType.OBJECT,
+        required: ["email"],
+        properties: {
+          email: {
+            type: apigateway.JsonSchemaType.STRING,
+            format: "email",
+            minLength: 5,
+            maxLength: 254,
+          },
+        },
+        additionalProperties: false,
+      },
+    });
+
     // Model for /api-keys POST endpoint
     // Note: name is optional - handler defaults to "Key {n}" if not provided
     const createApiKeyModel = new apigateway.Model(this, "CreateApiKeyModel", {
@@ -636,6 +681,26 @@ export class ApiStack extends cdk.Stack {
     meResource.addMethod(
       "GET",
       new apigateway.LambdaIntegration(authMeHandler)
+    );
+
+    // GET /auth/pending-key
+    const pendingKeyResource = authResource.addResource("pending-key");
+    pendingKeyResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(getPendingKeyHandler)
+    );
+
+    // POST /auth/resend-verification
+    const resendVerificationResource = authResource.addResource("resend-verification");
+    resendVerificationResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(resendVerificationHandler),
+      {
+        requestValidator: bodyValidator,
+        requestModels: {
+          "application/json": resendVerificationModel,
+        },
+      }
     );
 
     // /api-keys routes
@@ -859,6 +924,8 @@ export class ApiStack extends cdk.Stack {
     createLambdaAlarms(magicLinkHandler, "MagicLink");
     createLambdaAlarms(authCallbackHandler, "AuthCallback");
     createLambdaAlarms(authMeHandler, "AuthMe");
+    createLambdaAlarms(getPendingKeyHandler, "GetPendingKey");
+    createLambdaAlarms(resendVerificationHandler, "ResendVerification");
     createLambdaAlarms(getApiKeysHandler, "GetApiKeys");
     createLambdaAlarms(createApiKeyHandler, "CreateApiKey");
     createLambdaAlarms(revokeApiKeyHandler, "RevokeApiKey");

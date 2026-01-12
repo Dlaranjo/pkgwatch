@@ -65,7 +65,10 @@ def handler(event, context):
     origin = _get_origin(event)
 
     # Generic success message - same whether email exists or not
-    success_message = "If an account exists with this email, a login link has been sent."
+    success_message = (
+        "If an account exists with this email, a login link has been sent. "
+        "Check your email (including spam folder)."
+    )
 
     # Parse request body
     try:
@@ -135,15 +138,14 @@ def handler(event, context):
         )
 
     # Send magic link email
+    # SECURITY: Return same success message even on SES failure to prevent email enumeration
+    # (Returning an error would reveal that the email exists in our system)
     magic_url = f"{API_URL}/auth/callback?token={magic_token}"
     try:
         _send_magic_link_email(email, magic_url)
     except Exception as e:
         logger.error(f"Failed to send magic link email: {e}")
-        return _timed_response(
-            start_time,
-            error_response(500, "internal_error", "Failed to send login email", origin=origin),
-        )
+        # Don't reveal SES failure - return success to prevent enumeration
 
     # Log without full email for privacy (GDPR compliance)
     email_prefix = email.split("@")[0][:3] if "@" in email else email[:3]
@@ -177,8 +179,10 @@ def _send_magic_link_email(email: str, magic_url: str):
                         <p style="color: #64748b; font-size: 14px;">
                             Or copy this link: <a href="{magic_url}">{magic_url}</a>
                         </p>
+                        <p style="color: #dc2626; font-size: 14px; font-weight: 500;">
+                            <strong>Important:</strong> This link expires in {MAGIC_LINK_TTL_MINUTES} minutes.
+                        </p>
                         <p style="color: #94a3b8; font-size: 12px;">
-                            This link expires in {MAGIC_LINK_TTL_MINUTES} minutes.
                             If you didn't request this, you can ignore this email.
                         </p>
                     </body>
@@ -193,7 +197,9 @@ Click the link below to sign in to your account:
 
 {magic_url}
 
-This link expires in {MAGIC_LINK_TTL_MINUTES} minutes. If you didn't request this, you can ignore this email.
+IMPORTANT: This link expires in {MAGIC_LINK_TTL_MINUTES} minutes.
+
+If you didn't request this, you can ignore this email.
 """,
                     "Charset": "UTF-8",
                 },

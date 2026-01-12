@@ -59,12 +59,77 @@ import Footer from '../components/Footer.astro';
 </Layout>
 
 <script>
+  const API_BASE = 'https://api.pkgwatch.laranjo.dev';
+
   const form = document.getElementById('login-form');
   const submitBtn = form?.querySelector('button[type="submit"]') as HTMLButtonElement;
   const btnText = document.getElementById('btn-text');
   const btnLoading = document.getElementById('btn-loading');
   const errorMsg = document.getElementById('error-message');
   const successMsg = document.getElementById('success-message');
+
+  // State for timeout tracking
+  let buttonCooldownTimeoutId: number | null = null;
+
+  // Cleanup function to prevent memory leaks on navigation
+  window.addEventListener('beforeunload', () => {
+    if (buttonCooldownTimeoutId) clearTimeout(buttonCooldownTimeoutId);
+  });
+
+  // Handle button cooldown after success
+  function startButtonCooldown(seconds: number): void {
+    if (!submitBtn || !btnText) return;
+
+    // Clear any existing cooldown
+    if (buttonCooldownTimeoutId) {
+      clearTimeout(buttonCooldownTimeoutId);
+    }
+
+    submitBtn.disabled = true;
+    let remaining = seconds;
+
+    const updateCooldown = () => {
+      btnText.textContent = `Send again in ${remaining}s`;
+      remaining--;
+
+      if (remaining < 0) {
+        submitBtn.disabled = false;
+        btnText.textContent = 'Send Magic Link';
+        buttonCooldownTimeoutId = null;
+      } else {
+        buttonCooldownTimeoutId = window.setTimeout(updateCooldown, 1000);
+      }
+    };
+    updateCooldown();
+  }
+
+  // Predefined error messages mapped from error codes (prevents URL-based phishing)
+  const ERROR_MESSAGES: Record<string, string> = {
+    'invalid_token': 'Invalid or expired login link. Please request a new one.',
+    'token_expired': 'Your sign-in link has expired (links are valid for 15 minutes). Please request a new one.',
+    'token_already_used': 'This login link has already been used. Please request a new one.',
+    'missing_token': 'Login token is required.',
+    'internal_error': 'Something went wrong. Please try again.',
+  };
+
+  // Check for error params from auth callback redirects
+  // SECURITY: Only display predefined messages based on error code to prevent phishing
+  function handleErrorParams(): void {
+    const params = new URLSearchParams(window.location.search);
+    const errorCode = params.get('error');
+
+    if (errorCode && errorMsg) {
+      // Only display known error messages - ignore arbitrary 'message' param
+      const message = ERROR_MESSAGES[errorCode] || 'An error occurred. Please try again.';
+      errorMsg.textContent = message;
+      errorMsg.classList.remove('hidden');
+      // Clean up URL
+      window.history.replaceState({}, '', '/login');
+    }
+  }
+
+  // Run on page load
+  handleErrorParams();
 
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -79,7 +144,7 @@ import Footer from '../components/Footer.astro';
     successMsg?.classList.add('hidden');
 
     try {
-      const response = await fetch('https://api.pkgwatch.laranjo.dev/auth/magic-link', {
+      const response = await fetch(`${API_BASE}/auth/magic-link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -88,18 +153,27 @@ import Footer from '../components/Footer.astro';
       const data = await response.json();
 
       if (response.ok) {
-        if (successMsg) successMsg.textContent = 'Check your email for a magic link to sign in!';
+        if (successMsg) {
+          successMsg.textContent = data.message || 'Check your email (including spam folder) for a magic link to sign in!';
+        }
         successMsg?.classList.remove('hidden');
         form?.reset();
+        // Show loading state briefly then start cooldown
+        btnLoading?.classList.add('hidden');
+        btnText?.classList.remove('hidden');
+        startButtonCooldown(30);
       } else {
         if (errorMsg) errorMsg.textContent = data.error?.message || 'Something went wrong';
         errorMsg?.classList.remove('hidden');
+        // Re-enable button on error
+        if (submitBtn) submitBtn.disabled = false;
+        btnText?.classList.remove('hidden');
+        btnLoading?.classList.add('hidden');
       }
     } catch (error) {
       if (errorMsg) errorMsg.textContent = 'Network error. Please try again.';
       errorMsg?.classList.remove('hidden');
-    } finally {
-      // Re-enable button and hide loading state
+      // Re-enable button on error
       if (submitBtn) submitBtn.disabled = false;
       btnText?.classList.remove('hidden');
       btnLoading?.classList.add('hidden');

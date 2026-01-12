@@ -119,45 +119,67 @@ def handler(event, context):
     user_id = user["pk"]
     email = user["email"]
 
-    # Check expiration
-    expires_str = user.get("magic_expires", "")
-    if expires_str:
-        try:
-            expires = datetime.fromisoformat(expires_str.replace("Z", "+00:00"))
-            if expires < now:
-                # Clear the expired magic token
-                table.update_item(
-                    Key={"pk": user_id, "sk": user["sk"]},
-                    UpdateExpression="REMOVE magic_token, magic_expires",
-                )
-                return _redirect_with_error(
-                    "token_expired",
-                    "Login link has expired. Please request a new one."
-                )
-        except (ValueError, TypeError):
-            pass
-
-    # Clear the magic token (single use) with conditional check to prevent replay attacks
+    # Atomically consume magic token with combined checks to prevent TOCTOU race:
+    # - Token must exist and match (prevents replay attacks)
+    # - Token must not be expired (ISO 8601 strings sort lexicographically correctly)
+    now_iso = now.isoformat()
     try:
         table.update_item(
             Key={"pk": user_id, "sk": user["sk"]},
             UpdateExpression="REMOVE magic_token, magic_expires SET last_login = :now",
-            ConditionExpression="attribute_exists(magic_token) AND magic_token = :expected_token",
+            ConditionExpression=(
+                "attribute_exists(magic_token) AND "
+                "magic_token = :expected_token AND "
+                "magic_expires > :now_iso"
+            ),
             ExpressionAttributeValues={
-                ":now": now.isoformat(),
+                ":now": now_iso,
                 ":expected_token": token,
+                ":now_iso": now_iso,
             },
         )
     except ClientError as e:
         if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-            logger.warning(f"Magic token replay attempt for {user_id}")
-            return _redirect_with_error(
-                "token_already_used",
-                "This login link has already been used. Please request a new one."
-            )
+            # Conditional failed - determine why for appropriate error message
+            # Re-check the user record to distinguish expired vs already-used
+            try:
+                recheck = table.get_item(Key={"pk": user_id, "sk": user["sk"]})
+                current_user = recheck.get("Item", {})
+                current_token = current_user.get("magic_token")
+                current_expires = current_user.get("magic_expires", "")
+
+                if not current_token:
+                    # Token was already consumed
+                    logger.warning(f"Magic token replay attempt for {user_id}")
+                    return _redirect_with_error(
+                        "token_already_used",
+                        "This login link has already been used. Please request a new one."
+                    )
+                elif current_expires and current_expires <= now_iso:
+                    # Token exists but is expired - clean it up
+                    table.update_item(
+                        Key={"pk": user_id, "sk": user["sk"]},
+                        UpdateExpression="REMOVE magic_token, magic_expires",
+                    )
+                    return _redirect_with_error(
+                        "token_expired",
+                        "Your sign-in link has expired (links are valid for 15 minutes). Please request a new one."
+                    )
+                else:
+                    # Token mismatch (shouldn't happen in normal flow)
+                    logger.warning(f"Magic token mismatch for {user_id}")
+                    return _redirect_with_error(
+                        "invalid_token",
+                        "Invalid or expired login link"
+                    )
+            except Exception as recheck_error:
+                logger.error(f"Error rechecking user state: {recheck_error}")
+                return _redirect_with_error("internal_error", "Failed to verify token")
         logger.warning(f"Failed to clear magic token: {e}")
+        return _redirect_with_error("internal_error", "Failed to process login")
     except Exception as e:
         logger.warning(f"Failed to clear magic token: {e}")
+        return _redirect_with_error("internal_error", "Failed to process login")
 
     # Create session token
     session_expires = now + timedelta(days=SESSION_TTL_DAYS)
