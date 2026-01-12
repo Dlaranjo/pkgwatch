@@ -103,6 +103,16 @@ def handler(event, context):
     except json.JSONDecodeError:
         return error_response(400, "invalid_json", "Request body must be valid JSON", origin=origin)
 
+    # Extract ecosystem (default to npm for backwards compatibility)
+    ecosystem = body.get("ecosystem", "npm")
+    if not isinstance(ecosystem, str) or ecosystem not in ("npm", "pypi"):
+        return error_response(
+            400,
+            "invalid_ecosystem",
+            f"Invalid ecosystem '{ecosystem}'. Supported: npm, pypi",
+            origin=origin,
+        )
+
     # Extract dependencies
     dependencies = _extract_dependencies(body)
 
@@ -145,7 +155,7 @@ def handler(event, context):
         try:
             request_items = {
                 PACKAGES_TABLE: {
-                    "Keys": [{"pk": f"npm#{name}", "sk": "LATEST"} for name in batch]
+                    "Keys": [{"pk": f"{ecosystem}#{name}", "sk": "LATEST"} for name in batch]
                 }
             }
 

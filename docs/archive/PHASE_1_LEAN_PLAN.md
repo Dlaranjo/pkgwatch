@@ -1064,7 +1064,7 @@ def run_backtest() -> dict:
 # openapi.yaml (simplified)
 openapi: 3.0.3
 info:
-  title: DepHealth API
+  title: PkgWatch API
   version: 1.0.0
 
 servers:

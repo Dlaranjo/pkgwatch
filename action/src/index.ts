@@ -95,7 +95,7 @@ async function run(): Promise<void> {
           `${safeName}: ${pkg.risk_level} risk (score: ${pkg.health_score}/100)${reason}`,
           {
             title: pkg.risk_level === "CRITICAL" ? "Critical Dependency Risk" : "High Dependency Risk",
-            file: "package.json",
+            file: result.format,
           }
         );
       }

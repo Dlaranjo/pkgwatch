@@ -22,4 +22,17 @@ export {
   // Utilities
   getRiskColor,
   formatBytes,
+  // Dependency parsing
+  type Ecosystem,
+  type DependencyFormat,
+  type DependencyFile,
+  type ParseResult,
+  DependencyParseError,
+  detectDependencyFile,
+  parsePackageJson,
+  parseRequirementsTxt,
+  parsePyprojectToml,
+  parsePipfile,
+  readDependencies,
+  readDependenciesFromFile,
 } from "@pkgwatch/api-client";

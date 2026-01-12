@@ -331,11 +331,14 @@ export class PkgWatchClient {
 
   /**
    * Scan dependencies and get health scores.
+   *
+   * @param dependencies - Map of package names to version specifiers
+   * @param ecosystem - Package ecosystem: "npm" (default) or "pypi"
    */
-  async scan(dependencies: Record<string, string>): Promise<ScanResult> {
+  async scan(dependencies: Record<string, string>, ecosystem = "npm"): Promise<ScanResult> {
     return this.request<ScanResult>("/scan", {
       method: "POST",
-      body: JSON.stringify({ dependencies }),
+      body: JSON.stringify({ dependencies, ecosystem }),
     });
   }
 
@@ -388,3 +391,22 @@ export function formatBytes(bytes: number): string {
   );
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
+
+// ===========================================
+// Dependency Parser Re-exports
+// ===========================================
+
+export {
+  type Ecosystem,
+  type DependencyFormat,
+  type DependencyFile,
+  type ParseResult,
+  DependencyParseError,
+  detectDependencyFile,
+  parsePackageJson,
+  parseRequirementsTxt,
+  parsePyprojectToml,
+  parsePipfile,
+  readDependencies,
+  readDependenciesFromFile,
+} from "./dependencies.js";

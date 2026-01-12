@@ -638,7 +638,7 @@ def run_backtest(test_packages: list, historical_date: str) -> dict:
 # openapi.yaml
 openapi: 3.0.3
 info:
-  title: DepHealth API
+  title: PkgWatch API
   version: 1.0.0
   description: Predictive health intelligence for open source packages
 

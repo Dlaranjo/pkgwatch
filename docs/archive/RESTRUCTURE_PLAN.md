@@ -1,8 +1,8 @@
-# DepHealth Repository Restructure Plan
+# PkgWatch Repository Restructure Plan
 
 ## Executive Summary
 
-This plan consolidates DepHealth from a fragmented multi-repo structure into a clean monorepo with unified infrastructure, eliminating technical debt and preparing for scale.
+This plan consolidates PkgWatch from a fragmented multi-repo structure into a clean monorepo with unified infrastructure, eliminating technical debt and preparing for scale.
 
 ## Current State Analysis
 
@@ -231,7 +231,7 @@ This plan consolidates DepHealth from a fragmented multi-repo structure into a c
 
 2. Add to `bin/app.ts`:
    ```typescript
-   new LandingPageStack(app, 'DepHealthLandingPage', { env });
+   new LandingPageStack(app, 'PkgWatchLandingPage', { env });
    ```
 
 3. Test deploy to new stack (parallel with Terraform)
@@ -321,7 +321,7 @@ This plan consolidates DepHealth from a fragmented multi-repo structure into a c
          - uses: actions/checkout@v4
          - uses: actions/setup-node@v4
          - run: cd apps/landing-page && npm ci && npm run build
-         - run: cd infrastructure && npm ci && npx cdk deploy DepHealthLandingPage --require-approval never
+         - run: cd infrastructure && npm ci && npx cdk deploy PkgWatchLandingPage --require-approval never
    ```
 
 3. Add AWS credentials as GitHub secrets

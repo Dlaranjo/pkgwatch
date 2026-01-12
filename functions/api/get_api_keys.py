@@ -85,8 +85,11 @@ def handler(event, context):
         logger.error(f"Error fetching API keys: {e}")
         return error_response(500, "internal_error", "Failed to fetch API keys", origin=origin)
 
-    # Return with CORS headers
-    response_headers = {"Content-Type": "application/json"}
+    # Return with CORS headers and no-cache to prevent stale data
+    response_headers = {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+    }
     response_headers.update(get_cors_headers(origin))
 
     return {

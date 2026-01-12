@@ -1,4 +1,4 @@
-# DepHealth Repository Restructure Plan v2
+# PkgWatch Repository Restructure Plan v2
 ## (Refined based on Opus Agent Reviews)
 
 ## Executive Summary

@@ -1,49 +1,90 @@
-import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { statSync, existsSync } from "node:fs";
 import * as core from "@actions/core";
-import { PkgWatchClient, ScanResult, PackageHealth, ApiClientError } from "./api";
+import {
+  PkgWatchClient,
+  ScanResult,
+  PackageHealth,
+  ApiClientError,
+  readDependencies,
+  readDependenciesFromFile,
+  DependencyParseError,
+  Ecosystem,
+} from "./api";
 
 const BATCH_SIZE = 25;
+
+export interface ScanOptions {
+  apiKey: string;
+  basePath: string;
+  includeDev: boolean;
+  ecosystemOverride?: Ecosystem;
+}
+
+export interface ScanResultWithMeta extends ScanResult {
+  /** The dependency file format that was scanned */
+  format: string;
+  /** The detected ecosystem */
+  ecosystem: string;
+}
 
 export async function scanDependencies(
   apiKey: string,
   basePath: string,
-  includeDev: boolean
-): Promise<ScanResult> {
-  const packagePath = basePath.endsWith(".json")
-    ? resolve(basePath)
-    : resolve(basePath, "package.json");
+  includeDev: boolean,
+  ecosystemOverride?: Ecosystem
+): Promise<ScanResultWithMeta> {
+  // Determine if basePath is a file or directory and read dependencies
+  let dependencies: Record<string, string>;
+  let ecosystem: Ecosystem;
+  let format: string;
 
-  if (!existsSync(packagePath)) {
-    throw new Error(
-      `Cannot find package.json at ${packagePath}\n\nEnsure the 'working-directory' input is correct.`
-    );
-  }
-
-  const content = readFileSync(packagePath, "utf-8");
-
-  let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
   try {
-    pkg = JSON.parse(content);
-  } catch {
-    throw new Error(
-      `Invalid JSON in package.json at ${packagePath}\n\nEnsure the file contains valid JSON.`
-    );
+    const resolvedPath = resolve(basePath);
+
+    // Check if path exists
+    if (!existsSync(resolvedPath)) {
+      throw new DependencyParseError(`Path does not exist: ${resolvedPath}`);
+    }
+
+    // Use stat to properly determine if path is a file or directory
+    const stats = statSync(resolvedPath);
+    if (stats.isFile()) {
+      const result = readDependenciesFromFile(resolvedPath, includeDev);
+      dependencies = result.dependencies;
+      ecosystem = result.ecosystem;
+      format = result.format;
+    } else if (stats.isDirectory()) {
+      const result = readDependencies(resolvedPath, includeDev);
+      dependencies = result.dependencies;
+      ecosystem = result.ecosystem;
+      format = result.format;
+    } else {
+      throw new DependencyParseError(`Path is not a file or directory: ${resolvedPath}`);
+    }
+  } catch (err) {
+    if (err instanceof DependencyParseError) {
+      throw new Error(
+        `${err.message}\n\nEnsure the 'working-directory' input points to a directory containing a supported dependency file.`
+      );
+    }
+    throw err;
   }
 
-  const dependencies: Record<string, string> = {
-    ...(pkg.dependencies || {}),
-    ...(includeDev ? pkg.devDependencies || {} : {}),
-  };
+  // Allow ecosystem override
+  if (ecosystemOverride) {
+    ecosystem = ecosystemOverride;
+    core.debug(`Ecosystem overridden to ${ecosystem}`);
+  }
 
   const depCount = Object.keys(dependencies).length;
 
   if (depCount === 0) {
-    core.info("No dependencies found in package.json");
-    return { total: 0, critical: 0, high: 0, medium: 0, low: 0, packages: [] };
+    core.info(`No dependencies found in ${format}`);
+    return { total: 0, critical: 0, high: 0, medium: 0, low: 0, packages: [], format, ecosystem };
   }
 
-  core.info(`Found ${depCount} dependencies, analyzing health scores...`);
+  core.info(`Found ${depCount} ${ecosystem} dependencies in ${format}, analyzing health scores...`);
 
   const client = new PkgWatchClient(apiKey);
 
@@ -51,7 +92,8 @@ export async function scanDependencies(
   if (depCount <= BATCH_SIZE) {
     // Small enough to process in one request
     try {
-      return await client.scan(dependencies);
+      const result = await client.scan(dependencies, ecosystem);
+      return { ...result, format, ecosystem };
     } catch (error) {
       // For single batch, we can't recover - rethrow with context
       if (error instanceof ApiClientError) {
@@ -77,7 +119,7 @@ export async function scanDependencies(
     const batchDeps = Object.fromEntries(batchEntries);
 
     try {
-      const batchResult = await client.scan(batchDeps);
+      const batchResult = await client.scan(batchDeps, ecosystem);
       allPackages.push(...batchResult.packages);
       if (batchResult.not_found) {
         notFound.push(...batchResult.not_found);
@@ -111,5 +153,7 @@ export async function scanDependencies(
     low: allPackages.filter((p: PackageHealth) => p.risk_level === "LOW").length,
     packages: allPackages,
     not_found: notFound.length > 0 ? notFound : undefined,
+    format,
+    ecosystem,
   };
 }

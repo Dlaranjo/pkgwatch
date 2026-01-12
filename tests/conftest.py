@@ -221,6 +221,40 @@ def seeded_packages_table(mock_dynamodb, sample_healthy_package):
         }
     )
 
+    # Add a PyPI package
+    table.put_item(
+        Item={
+            "pk": "pypi#requests",
+            "sk": "LATEST",
+            "ecosystem": "pypi",
+            "name": "requests",
+            "health_score": 90,
+            "risk_level": "LOW",
+            "abandonment_risk": {"probability": 10, "risk_level": "LOW"},
+            "last_updated": "2024-01-01T00:00:00Z",
+            "days_since_last_commit": 14,
+            "active_contributors_90d": 8,
+            "weekly_downloads": 5_000_000,
+        }
+    )
+
+    # Add a risky PyPI package
+    table.put_item(
+        Item={
+            "pk": "pypi#old-flask-lib",
+            "sk": "LATEST",
+            "ecosystem": "pypi",
+            "name": "old-flask-lib",
+            "health_score": 30,
+            "risk_level": "HIGH",
+            "abandonment_risk": {"probability": 80, "risk_level": "HIGH"},
+            "last_updated": "2024-01-01T00:00:00Z",
+            "days_since_last_commit": 500,
+            "active_contributors_90d": 0,
+            "weekly_downloads": 100,
+        }
+    )
+
     return table
 
 

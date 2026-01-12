@@ -13,8 +13,8 @@ import { program, Option } from "commander";
 import pc from "picocolors";
 import ora, { type Ora } from "ora";
 import cliProgress from "cli-progress";
-import { readFileSync, existsSync } from "node:fs";
-import { resolve as resolvePath, relative as relativePath } from "node:path";
+import { resolve as resolvePath, relative as relativePath, basename } from "node:path";
+import { statSync, existsSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { createRequire } from "node:module";
 
@@ -85,9 +85,13 @@ import {
   PkgWatchClient,
   ApiClientError,
   getRiskColor,
+  readDependencies,
+  readDependenciesFromFile,
+  DependencyParseError,
   type PackageHealthFull,
   type PackageHealth,
   type ScanResult,
+  type Ecosystem,
 } from "./api.js";
 import {
   getApiKey,
@@ -240,28 +244,6 @@ function printPackageDetails(pkg: PackageHealthFull): void {
   console.log("");
 }
 
-/**
- * Read and parse package.json from path.
- */
-function readPackageJson(filePath: string): Record<string, string> {
-  if (!existsSync(filePath)) {
-    console.error(pc.red(`Error: File not found: ${filePath}`));
-    process.exit(EXIT_CLI_ERROR);
-  }
-
-  try {
-    const content = readFileSync(filePath, "utf-8");
-    const pkg = JSON.parse(content);
-    return {
-      ...(pkg.dependencies || {}),
-      ...(pkg.devDependencies || {}),
-    };
-  } catch (error) {
-    console.error(pc.red(`Error: Failed to parse ${filePath}`));
-    console.error((error as Error).message);
-    process.exit(EXIT_CLI_ERROR);
-  }
-}
 
 /**
  * Prompt for input (for API key).
@@ -359,8 +341,9 @@ program
   .option("--json", "Output as JSON (deprecated, use --output json)")
   .option("-o, --output <format>", "Output format: table, json, sarif", "table")
   .option("--fail-on <level>", "Exit 1 if risk level reached (HIGH or CRITICAL)")
+  .option("--no-dev", "Exclude dev dependencies from scan")
   .addOption(new Option("-e, --ecosystem <name>", "Override detected ecosystem").choices(["npm", "pypi"]))
-  .action(async (path: string | undefined, options: { json?: boolean; output?: string; failOn?: string; ecosystem?: string }) => {
+  .action(async (path: string | undefined, options: { json?: boolean; output?: string; failOn?: string; ecosystem?: string; dev?: boolean }) => {
     // Handle backward compatibility: --json flag
     let outputFormat = options.output || "table";
     if (options.json) {
@@ -385,35 +368,79 @@ program
     }
 
     const client = getClient();
-
-    // Resolve the file path
     const cwd = process.cwd();
-    let filePath: string;
-    if (!path) {
-      filePath = resolvePath(cwd, "package.json");
-    } else if (path.endsWith(".json")) {
-      filePath = resolvePath(cwd, path);
-    } else {
-      filePath = resolvePath(cwd, path, "package.json");
+    const includeDev = options.dev !== false; // --no-dev sets this to false
+
+    // Read and parse dependencies
+    let dependencies: Record<string, string>;
+    let ecosystem: Ecosystem;
+    let format: string;
+
+    try {
+      if (!path) {
+        // Auto-detect dependency file in current directory
+        const result = readDependencies(cwd, includeDev);
+        dependencies = result.dependencies;
+        ecosystem = result.ecosystem;
+        format = result.format;
+        logVerbose(`Detected ${format} (${ecosystem})`);
+      } else {
+        // Determine if path is a file or directory
+        const resolvedPath = resolvePath(cwd, path);
+
+        // Security: Log when scanning outside cwd
+        const relPath = relativePath(cwd, resolvedPath);
+        if (relPath.startsWith("..") || relPath.startsWith("..\\")) {
+          logVerbose(`Scanning path outside current directory: ${resolvedPath}`);
+        }
+
+        // Check if path exists and determine if it's a file or directory
+        if (!existsSync(resolvedPath)) {
+          throw new DependencyParseError(`Path does not exist: ${resolvedPath}`);
+        }
+
+        const stats = statSync(resolvedPath);
+        if (stats.isFile()) {
+          const result = readDependenciesFromFile(resolvedPath, includeDev);
+          dependencies = result.dependencies;
+          ecosystem = result.ecosystem;
+          format = result.format;
+        } else if (stats.isDirectory()) {
+          // Path is a directory - auto-detect
+          const result = readDependencies(resolvedPath, includeDev);
+          dependencies = result.dependencies;
+          ecosystem = result.ecosystem;
+          format = result.format;
+        } else {
+          throw new DependencyParseError(`Path is not a file or directory: ${resolvedPath}`);
+        }
+        logVerbose(`Detected ${format} (${ecosystem})`);
+      }
+    } catch (err) {
+      if (err instanceof DependencyParseError) {
+        console.error(pc.red(`Error: ${err.message}`));
+      } else if (err instanceof Error) {
+        console.error(pc.red(`Error reading dependencies: ${err.message}`));
+      } else {
+        console.error(pc.red(`Error reading dependencies: ${String(err)}`));
+      }
+      process.exit(EXIT_CLI_ERROR);
     }
 
-    // Security: Validate path is within current working directory
-    const relPath = relativePath(cwd, filePath);
-    if (relPath.startsWith("..") && !relPath.startsWith("..\\") && relPath !== "..") {
-      // Allow paths like "../sibling-project/package.json" for monorepo use
-      // but warn the user
-      logVerbose(`Scanning path outside current directory: ${filePath}`);
+    // Allow --ecosystem to override detected ecosystem
+    if (options.ecosystem) {
+      ecosystem = options.ecosystem as Ecosystem;
+      logVerbose(`Ecosystem overridden to ${ecosystem}`);
     }
 
-    const dependencies = readPackageJson(filePath);
     const depCount = Object.keys(dependencies).length;
 
     if (depCount === 0) {
-      log(pc.yellow("No dependencies found in package.json"));
+      log(pc.yellow(`No dependencies found in ${format}`));
       process.exit(EXIT_SUCCESS);
     }
 
-    logVerbose(`Reading ${filePath}`);
+    logVerbose(`Found ${depCount} dependencies in ${format}`);
 
     // Constants for progress bar and batching
     const PROGRESS_BAR_THRESHOLD = 20;
@@ -426,7 +453,7 @@ program
       // Use progress bar for large scans (20+ dependencies)
       if (depCount >= PROGRESS_BAR_THRESHOLD && outputFormat === "table" && !quietMode) {
         activeProgressBar = new cliProgress.SingleBar({
-          format: 'Scanning |{bar}| {percentage}% | {value}/{total} packages',
+          format: `Scanning ${ecosystem} |{bar}| {percentage}% | {value}/{total} packages`,
           barCompleteChar: '█',
           barIncompleteChar: '░',
         });
@@ -444,7 +471,7 @@ program
           const batchDeps = Object.fromEntries(batchEntries);
 
           try {
-            const batchResult = await client.scan(batchDeps);
+            const batchResult = await client.scan(batchDeps, ecosystem);
             allPackages.push(...batchResult.packages);
             if (batchResult.not_found) {
               notFound.push(...batchResult.not_found);
@@ -490,8 +517,8 @@ program
         };
       } else {
         // Use spinner for smaller scans
-        const spinner = outputFormat !== "table" ? null : createSpinner(`Scanning ${depCount} dependencies...`);
-        result = await client.scan(dependencies);
+        const spinner = outputFormat !== "table" ? null : createSpinner(`Scanning ${depCount} ${ecosystem} dependencies...`);
+        result = await client.scan(dependencies, ecosystem);
         spinner?.stop();
       }
 
@@ -798,13 +825,20 @@ Exit Codes:
   2   CLI error (invalid arguments, missing config)
 
 Examples:
-  pkgwatch check lodash              Check single package
-  pkgwatch c lodash                  Check with alias
-  pkgwatch scan --fail-on HIGH       Scan and fail on HIGH+ risk
-  pkgwatch scan ./packages/frontend  Scan specific directory
-  pkgwatch scan -o json              Output as JSON
-  pkgwatch scan -o sarif             Output as SARIF
-  pkgwatch doctor                    Diagnose configuration issues
+  pkgwatch check lodash                Check npm package (default)
+  pkgwatch check requests -e pypi      Check Python package
+  pkgwatch scan                        Auto-detect and scan dependencies
+  pkgwatch scan ./python-project       Scan Python project (auto-detects requirements.txt)
+  pkgwatch scan --fail-on HIGH         Scan and fail on HIGH+ risk
+  pkgwatch scan -e pypi                Override ecosystem to PyPI
+  pkgwatch scan --no-dev               Exclude dev dependencies
+  pkgwatch scan -o json                Output as JSON
+  pkgwatch scan -o sarif               Output as SARIF
+  pkgwatch doctor                      Diagnose configuration issues
+
+Supported dependency files:
+  npm:  package.json
+  pypi: pyproject.toml, requirements.txt, Pipfile
 `);
 
 // Parse and run

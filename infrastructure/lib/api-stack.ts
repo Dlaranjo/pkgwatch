@@ -425,6 +425,25 @@ export class ApiStack extends cdk.Stack {
             cacheTtl: cdk.Duration.minutes(5),
             cacheDataEncrypted: true,
           },
+          // Disable caching for user-specific endpoints that change frequently
+          "/auth/me/GET": {
+            cachingEnabled: false,
+          },
+          "/api-keys/GET": {
+            cachingEnabled: false,
+          },
+          "/api-keys/POST": {
+            cachingEnabled: false,
+          },
+          "/api-keys/{key_id}/DELETE": {
+            cachingEnabled: false,
+          },
+          "/usage/GET": {
+            cachingEnabled: false,
+          },
+          "/scan/POST": {
+            cachingEnabled: false,
+          },
         },
       },
       defaultCorsPreflightOptions: {

@@ -13,4 +13,10 @@ export {
   type AbandonmentRisk,
   type RiskLevel,
   type ErrorCode,
+  // Dependency parsing
+  type Ecosystem,
+  type ParseResult,
+  DependencyParseError,
+  readDependencies,
+  readDependenciesFromFile,
 } from "@pkgwatch/api-client";

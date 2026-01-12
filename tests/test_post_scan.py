@@ -239,3 +239,187 @@ class TestPostScanHandler:
         body = json.loads(result["body"])
         assert body["total"] == 1
         assert body["packages"][0]["package"] == "lodash"
+
+
+class TestPostScanEcosystem:
+    """Tests for ecosystem parameter handling."""
+
+    @mock_aws
+    def test_default_ecosystem_is_npm(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """Should default to npm ecosystem when not specified."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": {"lodash": "^4.17.21"},
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["total"] == 1
+        assert body["packages"][0]["package"] == "lodash"
+
+    @mock_aws
+    def test_explicit_npm_ecosystem(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """Should scan npm packages when ecosystem is explicitly npm."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "ecosystem": "npm",
+            "dependencies": {"lodash": "^4.17.21"},
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["total"] == 1
+        assert body["packages"][0]["package"] == "lodash"
+
+    @mock_aws
+    def test_pypi_ecosystem(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """Should scan PyPI packages when ecosystem is pypi."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "ecosystem": "pypi",
+            "dependencies": {"requests": ">=2.28.0"},
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["total"] == 1
+        assert body["packages"][0]["package"] == "requests"
+        assert body["packages"][0]["health_score"] == 90
+
+    @mock_aws
+    def test_pypi_ecosystem_with_multiple_packages(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """Should correctly count risk levels for PyPI packages."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "ecosystem": "pypi",
+            "dependencies": {"requests": ">=2.28.0", "old-flask-lib": ">=1.0.0"},
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["total"] == 2
+        assert body["low"] == 1
+        assert body["high"] == 1
+
+    @mock_aws
+    def test_invalid_ecosystem_returns_400(
+        self, seeded_api_keys_table, api_gateway_event
+    ):
+        """Should return 400 for invalid ecosystem value."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "ecosystem": "invalid",
+            "dependencies": {"lodash": "^4.17.21"},
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_ecosystem"
+
+    @mock_aws
+    def test_ecosystem_case_sensitive(
+        self, seeded_api_keys_table, api_gateway_event
+    ):
+        """Should reject uppercase ecosystem values (case-sensitive)."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "ecosystem": "NPM",
+            "dependencies": {"lodash": "^4.17.21"},
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_ecosystem"
+
+    @mock_aws
+    def test_ecosystem_non_string_returns_400(
+        self, seeded_api_keys_table, api_gateway_event
+    ):
+        """Should return 400 when ecosystem is not a string."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "ecosystem": ["npm"],  # Array instead of string
+            "dependencies": {"lodash": "^4.17.21"},
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_ecosystem"

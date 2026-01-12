@@ -1,22 +1,32 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { existsSync, readFileSync } from "node:fs";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { scanDependencies } from "../src/scanner.js";
 import { PkgWatchClient } from "../src/api.js";
 
-// Mock fs module
-vi.mock("node:fs", () => ({
-  existsSync: vi.fn(),
-  readFileSync: vi.fn(),
-}));
+// Use vi.hoisted to ensure these are available when vi.mock is executed
+const { mockScan, mockReadDependencies, mockReadDependenciesFromFile, MockDependencyParseError } = vi.hoisted(() => {
+  class MockDependencyParseError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = "DependencyParseError";
+    }
+  }
 
-// Create a mock scan function we can control
-const mockScan = vi.fn();
+  return {
+    mockScan: vi.fn(),
+    mockReadDependencies: vi.fn(),
+    mockReadDependenciesFromFile: vi.fn(),
+    MockDependencyParseError,
+  };
+});
 
-// Mock API client
+// Mock API client and dependency parsing
 vi.mock("../src/api.js", () => ({
   PkgWatchClient: vi.fn().mockImplementation(() => ({
     scan: mockScan,
   })),
+  DependencyParseError: MockDependencyParseError,
+  readDependencies: (...args: unknown[]) => mockReadDependencies(...args),
+  readDependenciesFromFile: (...args: unknown[]) => mockReadDependenciesFromFile(...args),
 }));
 
 describe("scanDependencies", () => {
@@ -37,43 +47,49 @@ describe("scanDependencies", () => {
   });
 
   it("reads package.json and returns scan results", async () => {
-    vi.mocked(existsSync).mockReturnValue(true);
-    vi.mocked(readFileSync).mockReturnValue(
-      JSON.stringify({
-        dependencies: { lodash: "^4.17.21" },
-        devDependencies: { vitest: "^2.0.0" },
-      })
-    );
+    mockReadDependencies.mockReturnValue({
+      dependencies: { lodash: "^4.17.21", vitest: "^2.0.0" },
+      ecosystem: "npm",
+      format: "package.json",
+      count: 2,
+    });
 
     const result = await scanDependencies("test-key", "/repo", true);
 
-    expect(existsSync).toHaveBeenCalledWith("/repo/package.json");
+    expect(mockReadDependencies).toHaveBeenCalledWith("/repo", true);
     expect(result.total).toBe(2);
     expect(result.high).toBe(1);
+    // Verify scan was called with npm ecosystem
+    expect(mockScan).toHaveBeenCalledWith(expect.any(Object), "npm");
   });
 
   it("handles direct package.json path", async () => {
-    vi.mocked(existsSync).mockReturnValue(true);
-    vi.mocked(readFileSync).mockReturnValue(
-      JSON.stringify({ dependencies: { express: "^4.0.0" } })
-    );
+    mockReadDependenciesFromFile.mockReturnValue({
+      dependencies: { express: "^4.0.0" },
+      ecosystem: "npm",
+      format: "package.json",
+      count: 1,
+    });
 
     await scanDependencies("test-key", "/repo/package.json", true);
 
-    expect(existsSync).toHaveBeenCalledWith("/repo/package.json");
+    expect(mockReadDependenciesFromFile).toHaveBeenCalledWith("/repo/package.json", true);
   });
 
-  it("throws error when package.json not found", async () => {
-    vi.mocked(existsSync).mockReturnValue(false);
+  it("throws error when no dependency file found", async () => {
+    mockReadDependencies.mockImplementation(() => {
+      throw new MockDependencyParseError("No dependency file found in /missing");
+    });
 
     await expect(scanDependencies("test-key", "/missing", true)).rejects.toThrow(
-      "Cannot find package.json"
+      "No dependency file found"
     );
   });
 
   it("throws error for invalid JSON", async () => {
-    vi.mocked(existsSync).mockReturnValue(true);
-    vi.mocked(readFileSync).mockReturnValue("{ invalid json }");
+    mockReadDependencies.mockImplementation(() => {
+      throw new MockDependencyParseError("Invalid JSON in package.json");
+    });
 
     await expect(scanDependencies("test-key", "/repo", true)).rejects.toThrow(
       "Invalid JSON"
@@ -81,13 +97,12 @@ describe("scanDependencies", () => {
   });
 
   it("excludes devDependencies when includeDev is false", async () => {
-    vi.mocked(existsSync).mockReturnValue(true);
-    vi.mocked(readFileSync).mockReturnValue(
-      JSON.stringify({
-        dependencies: { lodash: "^4.17.21" },
-        devDependencies: { vitest: "^2.0.0" },
-      })
-    );
+    mockReadDependencies.mockReturnValue({
+      dependencies: { lodash: "^4.17.21" },
+      ecosystem: "npm",
+      format: "package.json",
+      count: 1,
+    });
 
     mockScan.mockResolvedValue({
       total: 1, critical: 0, high: 0, medium: 0, low: 1,
@@ -96,13 +111,19 @@ describe("scanDependencies", () => {
 
     await scanDependencies("test-key", "/repo", false);
 
-    // Verify only dependencies (not devDependencies) were passed
-    expect(mockScan).toHaveBeenCalledWith({ lodash: "^4.17.21" });
+    // Verify includeDev=false was passed
+    expect(mockReadDependencies).toHaveBeenCalledWith("/repo", false);
+    // Verify scan was called with npm ecosystem
+    expect(mockScan).toHaveBeenCalledWith({ lodash: "^4.17.21" }, "npm");
   });
 
   it("returns empty result for no dependencies", async () => {
-    vi.mocked(existsSync).mockReturnValue(true);
-    vi.mocked(readFileSync).mockReturnValue(JSON.stringify({}));
+    mockReadDependencies.mockReturnValue({
+      dependencies: {},
+      ecosystem: "npm",
+      format: "package.json",
+      count: 0,
+    });
 
     const result = await scanDependencies("test-key", "/repo", true);
 
@@ -123,8 +144,12 @@ describe("scanDependencies - Batch Processing", () => {
       dependencies[`pkg-${i}`] = "^1.0.0";
     }
 
-    vi.mocked(existsSync).mockReturnValue(true);
-    vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ dependencies }));
+    mockReadDependencies.mockReturnValue({
+      dependencies,
+      ecosystem: "npm",
+      format: "package.json",
+      count: 30,
+    });
 
     // Mock responses for two batches
     mockScan
@@ -172,8 +197,12 @@ describe("scanDependencies - Batch Processing", () => {
       dependencies[`pkg-${i}`] = "^1.0.0";
     }
 
-    vi.mocked(existsSync).mockReturnValue(true);
-    vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ dependencies }));
+    mockReadDependencies.mockReturnValue({
+      dependencies,
+      ecosystem: "npm",
+      format: "package.json",
+      count: 30,
+    });
 
     // Mock responses with not_found packages in both batches
     mockScan
@@ -211,8 +240,12 @@ describe("scanDependencies - Batch Processing", () => {
       dependencies[`pkg-${i}`] = "^1.0.0";
     }
 
-    vi.mocked(existsSync).mockReturnValue(true);
-    vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ dependencies }));
+    mockReadDependencies.mockReturnValue({
+      dependencies,
+      ecosystem: "npm",
+      format: "package.json",
+      count: 20,
+    });
 
     mockScan.mockResolvedValue({
       total: 20,

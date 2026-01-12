@@ -91,8 +91,11 @@ def handler(event, context):
         # All keys should have the same tier
         primary_key = api_keys[0]
 
-        # Return user info with CORS headers
-        response_headers = {"Content-Type": "application/json"}
+        # Return user info with CORS headers and no-cache to prevent stale data
+        response_headers = {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+        }
         response_headers.update(get_cors_headers(origin))
 
         return {

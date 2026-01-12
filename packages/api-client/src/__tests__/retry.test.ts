@@ -495,7 +495,26 @@ describe("PkgWatchClient retry behavior", () => {
       expect.stringContaining("/scan"),
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ dependencies: { lodash: "^4.0.0" } }),
+        body: JSON.stringify({ dependencies: { lodash: "^4.0.0" }, ecosystem: "npm" }),
+      })
+    );
+  });
+
+  it("sends POST request for scan with pypi ecosystem", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({ total: 1, critical: 0, high: 0, medium: 0, low: 1, packages: [] }),
+    });
+
+    const client = createClient();
+    await client.scan({ requests: ">=2.0" }, "pypi");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/scan"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ dependencies: { requests: ">=2.0" }, ecosystem: "pypi" }),
       })
     );
   });

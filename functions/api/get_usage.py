@@ -57,6 +57,7 @@ def handler(event, context):
             "statusCode": 200,
             "headers": {
                 "Content-Type": "application/json",
+                "Cache-Control": "no-store, no-cache, must-revalidate",
                 "X-RateLimit-Limit": str(user["monthly_limit"]),
                 "X-RateLimit-Remaining": str(
                     max(0, user["monthly_limit"] - user["requests_this_month"])
