@@ -1,34 +1,4 @@
 ---
-const quadrants = [
-  {
-    position: 'top-left',
-    label: 'Predictive + Security',
-    tools: [],
-    highlight: false,
-    empty: true
-  },
-  {
-    position: 'top-right',
-    label: 'Predictive + Maintenance',
-    tools: ['PkgWatch'],
-    highlight: true,
-    empty: false
-  },
-  {
-    position: 'bottom-left',
-    label: 'Reactive + Security',
-    tools: ['Snyk', 'Dependabot', 'npm audit'],
-    highlight: false,
-    empty: false
-  },
-  {
-    position: 'bottom-right',
-    label: 'Reactive + Maintenance',
-    tools: ['deps.dev', 'libraries.io'],
-    highlight: false,
-    empty: false
-  }
-]
 ---
 
 <section class="py-16 border-t border-[#1a1a1f] animate-fade-in-up stagger-4 opacity-0">
@@ -44,59 +14,52 @@ const quadrants = [
     Security scanners alert you to known CVEs. We predict abandonment 6-12 months before it happens. Different problem, different solution.
   </p>
 
-  <!-- Positioning Grid -->
+  <!-- Positioning Grid with Headers -->
   <div class="max-w-2xl mx-auto">
-    <!-- Axis Labels -->
-    <div class="relative">
-      <!-- Y-axis label -->
-      <div class="absolute -left-8 md:-left-12 top-1/2 -translate-y-1/2 -rotate-90 text-xs text-zinc-500 font-medium tracking-wide whitespace-nowrap">
-        PREDICTIVE ← → REACTIVE
+    <!-- Column Headers -->
+    <div class="grid grid-cols-[80px_1fr_1fr] gap-3 mb-2">
+      <div></div>
+      <div class="text-center text-xs text-zinc-500 font-medium tracking-wide uppercase">Security</div>
+      <div class="text-center text-xs text-zinc-500 font-medium tracking-wide uppercase">Maintenance</div>
+    </div>
+
+    <!-- Row 1: Predictive -->
+    <div class="grid grid-cols-[80px_1fr_1fr] gap-3 mb-3">
+      <div class="flex items-center justify-end pr-3">
+        <span class="text-xs text-zinc-500 font-medium tracking-wide uppercase">Predictive</span>
       </div>
 
-      <!-- X-axis label -->
-      <div class="text-center text-xs text-zinc-500 font-medium tracking-wide mb-4">
-        SECURITY ← → MAINTENANCE
+      <!-- Predictive + Security (empty) -->
+      <div class="bg-[#111113] border border-[#1a1a1f] rounded-xl p-5 min-h-[120px] flex items-center justify-center">
+        <span class="text-zinc-600 text-sm italic">emerging space</span>
       </div>
 
-      <!-- 2x2 Grid -->
-      <div class="grid grid-cols-2 gap-3">
-        <!-- Top Left: Predictive + Security (empty) -->
-        <div class="bg-[#111113] border border-[#1a1a1f] rounded-xl p-5 min-h-[140px] flex flex-col">
-          <span class="text-xs text-zinc-600 mb-3">Predictive + Security</span>
-          <div class="flex-1 flex items-center justify-center">
-            <span class="text-zinc-700 text-sm italic">emerging space</span>
-          </div>
-        </div>
+      <!-- Predictive + Maintenance (PkgWatch - highlighted) -->
+      <div class="relative bg-gradient-to-br from-blue-500/10 to-purple-500/10 border-2 border-blue-500/50 rounded-xl p-5 min-h-[120px] flex flex-col items-center justify-center shadow-lg shadow-blue-500/10">
+        <span class="text-xl font-bold text-white mb-1">PkgWatch</span>
+        <span class="text-xs text-blue-300">We created this category</span>
+        <!-- Glow effect -->
+        <div class="absolute inset-0 rounded-xl bg-blue-500/5 blur-xl -z-10"></div>
+      </div>
+    </div>
 
-        <!-- Top Right: Predictive + Maintenance (PkgWatch - highlighted) -->
-        <div class="relative bg-gradient-to-br from-blue-500/10 to-purple-500/10 border-2 border-blue-500/50 rounded-xl p-5 min-h-[140px] flex flex-col shadow-lg shadow-blue-500/10">
-          <span class="text-xs text-blue-400 mb-3">Predictive + Maintenance</span>
-          <div class="flex-1 flex flex-col items-center justify-center">
-            <span class="text-xl font-bold text-white mb-1">PkgWatch</span>
-            <span class="text-xs text-blue-300">We created this category</span>
-          </div>
-          <!-- Glow effect -->
-          <div class="absolute inset-0 rounded-xl bg-blue-500/5 blur-xl -z-10"></div>
-        </div>
+    <!-- Row 2: Reactive -->
+    <div class="grid grid-cols-[80px_1fr_1fr] gap-3">
+      <div class="flex items-center justify-end pr-3">
+        <span class="text-xs text-zinc-500 font-medium tracking-wide uppercase">Reactive</span>
+      </div>
 
-        <!-- Bottom Left: Reactive + Security -->
-        <div class="bg-[#111113] border border-[#1a1a1f] rounded-xl p-5 min-h-[140px] flex flex-col">
-          <span class="text-xs text-zinc-600 mb-3">Reactive + Security</span>
-          <div class="flex-1 flex flex-wrap items-center justify-center gap-2">
-            <span class="text-xs bg-zinc-800 text-zinc-400 px-2 py-1 rounded">Snyk</span>
-            <span class="text-xs bg-zinc-800 text-zinc-400 px-2 py-1 rounded">Dependabot</span>
-            <span class="text-xs bg-zinc-800 text-zinc-400 px-2 py-1 rounded">npm audit</span>
-          </div>
-        </div>
+      <!-- Reactive + Security -->
+      <div class="bg-[#111113] border border-[#1a1a1f] rounded-xl p-5 min-h-[120px] flex flex-wrap items-center justify-center gap-2">
+        <span class="text-xs bg-zinc-800 text-zinc-400 px-2 py-1 rounded">Snyk</span>
+        <span class="text-xs bg-zinc-800 text-zinc-400 px-2 py-1 rounded">Dependabot</span>
+        <span class="text-xs bg-zinc-800 text-zinc-400 px-2 py-1 rounded">npm audit</span>
+      </div>
 
-        <!-- Bottom Right: Reactive + Maintenance -->
-        <div class="bg-[#111113] border border-[#1a1a1f] rounded-xl p-5 min-h-[140px] flex flex-col">
-          <span class="text-xs text-zinc-600 mb-3">Reactive + Maintenance</span>
-          <div class="flex-1 flex flex-wrap items-center justify-center gap-2">
-            <span class="text-xs bg-zinc-800 text-zinc-400 px-2 py-1 rounded">deps.dev</span>
-            <span class="text-xs bg-zinc-800 text-zinc-400 px-2 py-1 rounded">libraries.io</span>
-          </div>
-        </div>
+      <!-- Reactive + Maintenance -->
+      <div class="bg-[#111113] border border-[#1a1a1f] rounded-xl p-5 min-h-[120px] flex flex-wrap items-center justify-center gap-2">
+        <span class="text-xs bg-zinc-800 text-zinc-400 px-2 py-1 rounded">deps.dev</span>
+        <span class="text-xs bg-zinc-800 text-zinc-400 px-2 py-1 rounded">libraries.io</span>
       </div>
     </div>
   </div>
