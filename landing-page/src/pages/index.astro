@@ -3,9 +3,11 @@ import Layout from '../layouts/Layout.astro'
 import Hero from '../components/Hero.astro'
 import Problem from '../components/Problem.astro'
 import LiveDemo from '../components/LiveDemo.astro'
+import WhyDifferent from '../components/WhyDifferent.astro'
 import Terminal from '../components/Terminal.astro'
 import Features from '../components/Features.astro'
 import DevTools from '../components/DevTools.astro'
+import FAQ from '../components/FAQ.astro'
 import CTA from '../components/CTA.astro'
 
 const FORM_ID = 'meeoyzeo'
@@ -15,8 +17,10 @@ const FORM_ID = 'meeoyzeo'
   <Hero formId={FORM_ID} />
   <Problem />
   <LiveDemo />
+  <WhyDifferent />
   <Terminal />
   <Features />
   <DevTools />
+  <FAQ />
   <CTA formId={FORM_ID} />
 </Layout>
