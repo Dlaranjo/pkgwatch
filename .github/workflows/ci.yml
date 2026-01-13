@@ -78,6 +78,23 @@ jobs:
           npm ci
           npm run synth
 
+      # Verify api-client and action bundle integrity
+      - name: Build and verify api-client
+        run: |
+          npm ci
+          npm run build -w @pkgwatch/api-client
+          cd packages/api-client
+          test -f dist/index.js || (echo "Missing dist/index.js" && exit 1)
+          test -f dist/dependencies.js || (echo "Missing dist/dependencies.js" && exit 1)
+          npm run verify-dist
+          echo "api-client dist verified"
+
+      - name: Build and verify action bundle
+        run: |
+          npm run build -w @pkgwatch/action
+          grep -q "DependencyParseError" action/dist/index.js || (echo "ERROR: DependencyParseError missing from action bundle" && exit 1)
+          echo "Action bundle verified"
+
       # Landing page build
       - name: Build landing page
         working-directory: landing-page

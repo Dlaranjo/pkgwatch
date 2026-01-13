@@ -1,6 +1,6 @@
 {
   "name": "@pkgwatch/api-client",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Shared API client for PkgWatch services",
   "type": "module",
   "main": "./dist/index.js",
@@ -24,7 +24,8 @@
     "clean": "rm -rf dist",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run build"
+    "verify-dist": "node -e \"const fs = require('fs'); ['dist/index.js', 'dist/index.d.ts', 'dist/dependencies.js', 'dist/dependencies.d.ts'].forEach(f => { if (!fs.existsSync(f)) throw new Error('Missing: ' + f); }); console.log('All dist files present');\"",
+    "prepublishOnly": "npm run clean && npm run build && npm run verify-dist"
   },
   "engines": {
     "node": ">=20"
