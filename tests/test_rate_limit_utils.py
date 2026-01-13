@@ -131,3 +131,176 @@ class TestCheckUsageAlerts:
 
         assert result is not None
         assert result["level"] == "exceeded"
+
+
+import os
+from unittest.mock import MagicMock, patch
+
+import pytest
+from botocore.exceptions import ClientError
+from moto import mock_aws
+
+
+class TestExternalRateLimiting:
+    """Tests for external service rate limiting with sharded counters."""
+
+    @mock_aws
+    def test_get_dynamodb_lazy_initialization(self, mock_dynamodb):
+        """Should lazily initialize DynamoDB resource on first use."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        import shared.rate_limit_utils as module
+
+        module._dynamodb = None
+
+        # First call should create DynamoDB resource
+        db1 = module._get_dynamodb()
+        assert db1 is not None
+
+        # Second call should return same instance
+        db2 = module._get_dynamodb()
+        assert db1 is db2
+
+    @mock_aws
+    def test_first_request_allowed_creates_counter(self, mock_dynamodb):
+        """Should allow first request and create counter in DynamoDB."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        import shared.rate_limit_utils as module
+
+        module._dynamodb = None  # Reset for test isolation
+
+        result = module.check_and_increment_external_rate_limit(
+            service="npm", hourly_limit=100, table_name="pkgwatch-api-keys"
+        )
+
+        assert result is True
+
+        # Verify counter was created in DynamoDB
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        response = table.scan()
+        rate_limit_items = [
+            item
+            for item in response["Items"]
+            if item.get("pk", "").startswith("npm_rate_limit#")
+        ]
+        assert len(rate_limit_items) == 1
+        assert rate_limit_items[0]["calls"] == 1
+
+    @mock_aws
+    def test_subsequent_requests_increment_counter(self, mock_dynamodb):
+        """Should increment counter for subsequent requests."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        import shared.rate_limit_utils as module
+
+        module._dynamodb = None
+
+        # Make multiple requests - use fixed shard to ensure same counter
+        with patch("shared.rate_limit_utils.random.randint", return_value=0):
+            for _ in range(5):
+                result = module.check_and_increment_external_rate_limit(
+                    service="npm", hourly_limit=100, table_name="pkgwatch-api-keys"
+                )
+                assert result is True
+
+        # Verify counter was incremented
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        response = table.scan()
+        rate_limit_items = [
+            item
+            for item in response["Items"]
+            if item.get("pk", "").startswith("npm_rate_limit#0")
+        ]
+        assert len(rate_limit_items) == 1
+        assert rate_limit_items[0]["calls"] == 5
+
+    @mock_aws
+    def test_shard_limit_reached_falls_back_to_other_shards(self, mock_dynamodb):
+        """Should try other shards when random shard is at limit."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        import shared.rate_limit_utils as module
+
+        module._dynamodb = None
+
+        # Pre-fill shard 0 to its limit (hourly_limit=20, 10 shards => shard_limit=3)
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        now = datetime.now(timezone.utc)
+        window_key = now.strftime("%Y-%m-%d-%H")
+
+        table.put_item(
+            Item={
+                "pk": "npm_rate_limit#0",
+                "sk": window_key,
+                "calls": 3,  # At shard limit
+                "ttl": int(now.timestamp()) + 7200,
+            }
+        )
+
+        # Mock random to always return shard 0 first
+        with patch("shared.rate_limit_utils.random.randint", return_value=0):
+            # Should still succeed by falling back to another shard
+            result = module.check_and_increment_external_rate_limit(
+                service="npm", hourly_limit=20, table_name="pkgwatch-api-keys"
+            )
+
+            assert result is True
+
+    @mock_aws
+    def test_all_shards_at_limit_returns_false(self, mock_dynamodb):
+        """Should return False when all shards are at their limit."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        import shared.rate_limit_utils as module
+
+        module._dynamodb = None
+
+        # Pre-fill ALL shards to their limits
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        now = datetime.now(timezone.utc)
+        window_key = now.strftime("%Y-%m-%d-%H")
+
+        # hourly_limit=20, 10 shards => shard_limit=3
+        for shard_id in range(10):
+            table.put_item(
+                Item={
+                    "pk": f"npm_rate_limit#{shard_id}",
+                    "sk": window_key,
+                    "calls": 3,
+                    "ttl": int(now.timestamp()) + 7200,
+                }
+            )
+
+        result = module.check_and_increment_external_rate_limit(
+            service="npm", hourly_limit=20, table_name="pkgwatch-api-keys"
+        )
+
+        assert result is False
+
+    @mock_aws
+    def test_non_conditional_check_errors_propagate(self, mock_dynamodb):
+        """Should propagate non-ConditionalCheckFailedException errors."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        import shared.rate_limit_utils as module
+
+        module._dynamodb = None
+
+        with patch.object(module, "_get_dynamodb") as mock_get_db:
+            mock_table = MagicMock()
+            mock_table.update_item.side_effect = ClientError(
+                {"Error": {"Code": "ProvisionedThroughputExceededException"}},
+                "UpdateItem",
+            )
+            mock_get_db.return_value.Table.return_value = mock_table
+
+            with pytest.raises(ClientError) as exc_info:
+                module.check_and_increment_external_rate_limit(
+                    service="npm", hourly_limit=100, table_name="pkgwatch-api-keys"
+                )
+
+            assert (
+                exc_info.value.response["Error"]["Code"]
+                == "ProvisionedThroughputExceededException"
+            )

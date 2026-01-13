@@ -132,6 +132,8 @@ def mock_dynamodb():
                 {"AttributeName": "tier", "AttributeType": "N"},
                 {"AttributeName": "risk_level", "AttributeType": "S"},
                 {"AttributeName": "last_updated", "AttributeType": "S"},
+                {"AttributeName": "data_status", "AttributeType": "S"},
+                {"AttributeName": "next_retry_at", "AttributeType": "S"},
             ],
             GlobalSecondaryIndexes=[
                 {
@@ -147,6 +149,14 @@ def mock_dynamodb():
                     "KeySchema": [
                         {"AttributeName": "risk_level", "KeyType": "HASH"},
                         {"AttributeName": "last_updated", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "ALL"},
+                },
+                {
+                    "IndexName": "data-status-index",
+                    "KeySchema": [
+                        {"AttributeName": "data_status", "KeyType": "HASH"},
+                        {"AttributeName": "next_retry_at", "KeyType": "RANGE"},
                     ],
                     "Projection": {"ProjectionType": "ALL"},
                 },

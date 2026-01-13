@@ -117,7 +117,7 @@ def handler(event, context):
                     {
                         "ecosystem": ecosystem,
                         "name": name,
-                        "tier": pkg.get("tier", 3),
+                        "tier": int(pkg.get("tier", 3)),
                         "force_refresh": True,
                         "retry_sources": pkg.get("missing_sources", []),
                         "reason": "incomplete_data_retry",
