@@ -211,17 +211,18 @@ def _handle_checkout_completed(session: dict):
     customer_id = session.get("customer")
     subscription_id = session.get("subscription")
 
-    logger.info(f"Checkout completed for {customer_email}")
-
-    if not customer_email:
-        logger.warning("No customer email in checkout session")
-        return
+    logger.info(f"Checkout completed for {customer_email or customer_id}")
 
     # Handle one-time payments (no subscription)
     if not subscription_id:
-        logger.info(f"One-time payment for {customer_email} (no subscription)")
-        # For one-time payments, just update customer ID without tier change
-        _update_user_tier(customer_email, "starter", customer_id, None)
+        if customer_email:
+            logger.info(f"One-time payment for {customer_email} (no subscription)")
+            _update_user_tier(customer_email, "starter", customer_id, None)
+        elif customer_id:
+            logger.info(f"One-time payment for customer {customer_id} (no subscription)")
+            _update_user_tier_by_customer_id(customer_id, "starter")
+        else:
+            logger.warning("No customer email or customer ID in checkout session")
         return
 
     # Get subscription details to determine tier
@@ -230,12 +231,23 @@ def _handle_checkout_completed(session: dict):
     price_id = subscription["items"]["data"][0]["price"]["id"]
     tier = PRICE_TO_TIER.get(price_id, "starter")
 
+    logger.info(f"Subscription tier from price {price_id}: {tier}")
+
     # Check if this is an upgrade (existing customer) vs new signup
     is_upgrade = customer_id and _customer_exists(customer_id)
 
     # Update user tier in DynamoDB
-    # Reset usage on upgrade to give users a fresh start with new limit
-    _update_user_tier(customer_email, tier, customer_id, subscription_id, reset_usage=is_upgrade)
+    # For existing customers (upgrades), use customer_id lookup
+    # For new customers, use email lookup
+    if customer_email:
+        # Reset usage on upgrade to give users a fresh start with new limit
+        _update_user_tier(customer_email, tier, customer_id, subscription_id, reset_usage=is_upgrade)
+    elif customer_id:
+        # Existing customer upgrading - lookup by customer ID
+        logger.info(f"Upgrading existing customer {customer_id} to {tier}")
+        _update_user_tier_by_customer_id(customer_id, tier)
+    else:
+        logger.warning("No customer email or customer ID in checkout session")
 
 
 def _handle_subscription_updated(subscription: dict):
@@ -425,23 +437,38 @@ def _update_user_tier_by_customer_id(customer_id: str, tier: str):
     new_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
 
     for item in items:
+        current_tier = item.get("tier", "free")
         current_usage = item.get("requests_this_month", 0)
 
+        # Check if this is an upgrade
+        tier_order = {"free": 0, "starter": 1, "pro": 2, "business": 3}
+        is_upgrade = tier_order.get(tier, 0) > tier_order.get(current_tier, 0)
+
         # Warn if downgrading and user is over new limit
-        if current_usage > new_limit:
+        if current_usage > new_limit and not is_upgrade:
             logger.warning(
                 f"User {item['pk']} downgraded to {tier} but has {current_usage} "
                 f"requests (limit: {new_limit}). User is over limit until reset."
             )
 
+        update_expr = "SET tier = :tier, tier_updated_at = :now, payment_failures = :zero, monthly_limit = :limit"
+        expr_values = {
+            ":tier": tier,
+            ":now": datetime.now(timezone.utc).isoformat(),
+            ":zero": 0,
+            ":limit": new_limit,
+        }
+
+        # Reset usage on upgrade to give fresh start with new limit
+        if is_upgrade:
+            update_expr += ", requests_this_month = :zero_usage"
+            expr_values[":zero_usage"] = 0
+            logger.info(f"Resetting usage for {item['pk']} on tier upgrade to {tier}")
+
         table.update_item(
             Key={"pk": item["pk"], "sk": item["sk"]},
-            UpdateExpression="SET tier = :tier, tier_updated_at = :now, payment_failures = :zero",
-            ExpressionAttributeValues={
-                ":tier": tier,
-                ":now": datetime.now(timezone.utc).isoformat(),
-                ":zero": 0,
-            },
+            UpdateExpression=update_expr,
+            ExpressionAttributeValues=expr_values,
         )
 
     logger.info(f"Updated {len(items)} API keys for customer {customer_id} to tier {tier}")
