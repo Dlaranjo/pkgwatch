@@ -30,6 +30,7 @@ BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.laranjo.dev")
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
 from response_utils import error_response, success_response
+from constants import TIER_ORDER
 
 # Price ID to tier mapping (configured via environment)
 TIER_TO_PRICE = {
@@ -37,9 +38,6 @@ TIER_TO_PRICE = {
     "pro": os.environ.get("STRIPE_PRICE_PRO") or None,
     "business": os.environ.get("STRIPE_PRICE_BUSINESS") or None,
 }
-
-# Tier ordering for upgrade validation
-TIER_ORDER = {"free": 0, "starter": 1, "pro": 2, "business": 3}
 
 # Cached Stripe API key with TTL
 _stripe_api_key_cache: str | None = None
@@ -168,6 +166,7 @@ def handler(event, context):
     items = response.get("Items", [])
 
     existing_customer_id = None
+    existing_subscription_id = None
     current_tier = "free"
     for item in items:
         # Skip PENDING records
@@ -175,8 +174,18 @@ def handler(event, context):
             continue
         if item.get("email_verified"):
             existing_customer_id = item.get("stripe_customer_id")
+            existing_subscription_id = item.get("stripe_subscription_id")
             current_tier = item.get("tier", "free")
             break
+
+    # Existing subscribers must use the upgrade flow for proper proration
+    if existing_subscription_id:
+        return error_response(
+            409,
+            "upgrade_required",
+            "Use /upgrade/preview and /upgrade/confirm for subscription upgrades with proration",
+            origin=origin,
+        )
 
     # Prevent downgrade via checkout (should use customer portal instead)
     if TIER_ORDER.get(tier, 0) <= TIER_ORDER.get(current_tier, 0):

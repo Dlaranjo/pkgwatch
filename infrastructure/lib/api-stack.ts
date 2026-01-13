@@ -294,6 +294,54 @@ export class ApiStack extends cdk.Stack {
     createBillingPortalHandler.addToRolePolicy(stripeSecretPolicy);
     createBillingPortalHandler.addToRolePolicy(sessionSecretPolicy);
 
+    // Upgrade preview handler - preview prorated subscription upgrade
+    const upgradePreviewHandler = new lambda.Function(
+      this,
+      "UpgradePreviewHandler",
+      {
+        ...commonLambdaProps,
+        functionName: "pkgwatch-api-upgrade-preview",
+        handler: "api.upgrade_preview.handler",
+        code: apiCodeWithShared,
+        description: "Preview prorated subscription upgrade",
+        environment: {
+          ...commonLambdaProps.environment,
+          STRIPE_PRICE_STARTER: process.env.STRIPE_PRICE_STARTER || "",
+          STRIPE_PRICE_PRO: process.env.STRIPE_PRICE_PRO || "",
+          STRIPE_PRICE_BUSINESS: process.env.STRIPE_PRICE_BUSINESS || "",
+          SESSION_SECRET_ARN: "pkgwatch/session-secret",
+        },
+      }
+    );
+
+    apiKeysTable.grantReadData(upgradePreviewHandler);
+    upgradePreviewHandler.addToRolePolicy(stripeSecretPolicy);
+    upgradePreviewHandler.addToRolePolicy(sessionSecretPolicy);
+
+    // Upgrade confirm handler - execute prorated subscription upgrade
+    const upgradeConfirmHandler = new lambda.Function(
+      this,
+      "UpgradeConfirmHandler",
+      {
+        ...commonLambdaProps,
+        functionName: "pkgwatch-api-upgrade-confirm",
+        handler: "api.upgrade_confirm.handler",
+        code: apiCodeWithShared,
+        description: "Execute prorated subscription upgrade",
+        environment: {
+          ...commonLambdaProps.environment,
+          STRIPE_PRICE_STARTER: process.env.STRIPE_PRICE_STARTER || "",
+          STRIPE_PRICE_PRO: process.env.STRIPE_PRICE_PRO || "",
+          STRIPE_PRICE_BUSINESS: process.env.STRIPE_PRICE_BUSINESS || "",
+          SESSION_SECRET_ARN: "pkgwatch/session-secret",
+        },
+      }
+    );
+
+    apiKeysTable.grantReadWriteData(upgradeConfirmHandler);
+    upgradeConfirmHandler.addToRolePolicy(stripeSecretPolicy);
+    upgradeConfirmHandler.addToRolePolicy(sessionSecretPolicy);
+
     // Common props for auth handlers
     const authLambdaProps = {
       ...commonLambdaProps,
@@ -506,6 +554,12 @@ export class ApiStack extends cdk.Stack {
           "/billing-portal/create/POST": {
             cachingEnabled: false,
           },
+          "/upgrade/preview/POST": {
+            cachingEnabled: false,
+          },
+          "/upgrade/confirm/POST": {
+            cachingEnabled: false,
+          },
         },
       },
       defaultCorsPreflightOptions: {
@@ -695,6 +749,27 @@ export class ApiStack extends cdk.Stack {
       },
     });
 
+    // Model for /upgrade/confirm endpoint
+    const upgradeConfirmModel = new apigateway.Model(this, "UpgradeConfirmModel", {
+      restApi: this.api,
+      contentType: "application/json",
+      modelName: "UpgradeConfirmRequest",
+      schema: {
+        type: apigateway.JsonSchemaType.OBJECT,
+        required: ["tier", "proration_date"],
+        properties: {
+          tier: {
+            type: apigateway.JsonSchemaType.STRING,
+            enum: ["pro", "business"],
+          },
+          proration_date: {
+            type: apigateway.JsonSchemaType.INTEGER,
+          },
+        },
+        additionalProperties: false,
+      },
+    });
+
     // Model for /api-keys POST endpoint
     // Note: name is optional - handler defaults to "Key {n}" if not provided
     const createApiKeyModel = new apigateway.Model(this, "CreateApiKeyModel", {
@@ -798,6 +873,38 @@ export class ApiStack extends cdk.Stack {
     createBillingPortalResource.addMethod(
       "POST",
       new apigateway.LambdaIntegration(createBillingPortalHandler)
+    );
+
+    // ===========================================
+    // Upgrade Routes (prorated subscription upgrades)
+    // ===========================================
+
+    const upgradeResource = this.api.root.addResource("upgrade");
+
+    // POST /upgrade/preview - Preview prorated upgrade cost
+    const upgradePreviewResource = upgradeResource.addResource("preview");
+    upgradePreviewResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(upgradePreviewHandler),
+      {
+        requestValidator: bodyValidator,
+        requestModels: {
+          "application/json": createCheckoutModel, // Same schema: { tier: string }
+        },
+      }
+    );
+
+    // POST /upgrade/confirm - Execute prorated upgrade
+    const upgradeConfirmResource = upgradeResource.addResource("confirm");
+    upgradeConfirmResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(upgradeConfirmHandler),
+      {
+        requestValidator: bodyValidator,
+        requestModels: {
+          "application/json": upgradeConfirmModel,
+        },
+      }
     );
 
     // ===========================================
@@ -1089,6 +1196,8 @@ export class ApiStack extends cdk.Stack {
     createLambdaAlarms(stripeWebhookHandler, "StripeWebhook");
     createLambdaAlarms(createCheckoutHandler, "CreateCheckout");
     createLambdaAlarms(createBillingPortalHandler, "CreateBillingPortal");
+    createLambdaAlarms(upgradePreviewHandler, "UpgradePreview");
+    createLambdaAlarms(upgradeConfirmHandler, "UpgradeConfirm");
     createLambdaAlarms(resetUsageHandler, "ResetUsage");
 
     // Auth/signup Lambda alarms - critical for user access

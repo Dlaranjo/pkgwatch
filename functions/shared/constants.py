@@ -12,6 +12,9 @@ TIER_LIMITS = {
 
 TIER_NAMES = list(TIER_LIMITS.keys())
 
+# Tier ordering for upgrade/downgrade validation
+TIER_ORDER = {"free": 0, "starter": 1, "pro": 2, "business": 3}
+
 # Rate limiting
 MAX_KEYS_PER_USER = 5
 DEMO_REQUESTS_PER_HOUR = 20

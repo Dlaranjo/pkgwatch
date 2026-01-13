@@ -29,7 +29,7 @@ STRIPE_WEBHOOK_SECRET_ARN = os.environ.get("STRIPE_WEBHOOK_SECRET_ARN")
 # Import shared utilities
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
-from constants import TIER_LIMITS
+from constants import TIER_LIMITS, TIER_ORDER
 
 # Tier mapping from Stripe price IDs (configured via environment)
 # Use `or` to handle empty string env vars (CDK fallback sets "" when not configured)
@@ -262,7 +262,8 @@ def _handle_subscription_updated(subscription: dict):
         f"cancel_at_period_end={cancel_at_period_end}"
     )
 
-    if status != "active":
+    # Handle both active and trialing subscriptions
+    if status not in ["active", "trialing"]:
         return
 
     # Get new tier from subscription items
@@ -457,8 +458,7 @@ def _update_user_tier_by_customer_id(customer_id: str, tier: str):
         current_usage = item.get("requests_this_month", 0)
 
         # Check if this is an upgrade
-        tier_order = {"free": 0, "starter": 1, "pro": 2, "business": 3}
-        is_upgrade = tier_order.get(tier, 0) > tier_order.get(current_tier, 0)
+        is_upgrade = TIER_ORDER.get(tier, 0) > TIER_ORDER.get(current_tier, 0)
 
         # Warn if downgrading and user is over new limit
         if current_usage > new_limit and not is_upgrade:
@@ -533,8 +533,7 @@ def _update_user_subscription_state(
             new_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
             current_usage = item.get("requests_this_month", 0)
 
-            tier_order = {"free": 0, "starter": 1, "pro": 2, "business": 3}
-            is_upgrade = tier_order.get(tier, 0) > tier_order.get(current_tier, 0)
+            is_upgrade = TIER_ORDER.get(tier, 0) > TIER_ORDER.get(current_tier, 0)
 
             # Warn if downgrading and user is over new limit
             if current_usage > new_limit and not is_upgrade:
