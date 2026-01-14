@@ -224,8 +224,8 @@ def handler(event, context):
         is_demo_mode = True
         logger.info(f"Demo request from IP: {client_ip}, remaining: {demo_remaining}")
 
-    # Extract path parameters
-    path_params = event.get("pathParameters", {})
+    # Extract path parameters (use `or {}` to handle explicit None)
+    path_params = event.get("pathParameters") or {}
     ecosystem = path_params.get("ecosystem", "npm")
     name = path_params.get("name")
 

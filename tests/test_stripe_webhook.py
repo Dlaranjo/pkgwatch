@@ -652,3 +652,140 @@ class TestUpdateUserSubscriptionState:
         # Cancellation state should be updated
         assert item["cancellation_pending"] == True
         assert item["cancellation_date"] == 1707955200
+
+
+class TestSubscriptionCreated:
+    """Tests for customer.subscription.created webhook handler."""
+
+    @mock_aws
+    def test_subscription_created_sets_tier(self, mock_dynamodb):
+        """customer.subscription.created should set user tier."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["STRIPE_PRICE_STARTER"] = "price_starter"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_subcreated").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_subcreated",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "subcreated@example.com",
+                "tier": "free",
+                "stripe_customer_id": "cus_subcreated",
+                "email_verified": True,
+            }
+        )
+
+        from api.stripe_webhook import _handle_subscription_created
+
+        subscription = {
+            "customer": "cus_subcreated",
+            "status": "active",
+            "items": {"data": [{"price": {"id": "price_starter"}}]},
+            "current_period_start": 1704067200,
+            "current_period_end": 1706745600,
+        }
+        _handle_subscription_created(subscription)
+
+        response = table.get_item(Key={"pk": "user_subcreated", "sk": key_hash})
+        item = response.get("Item")
+        assert item["tier"] == "starter"
+
+    @mock_aws
+    def test_subscription_created_ignores_incomplete(self, mock_dynamodb):
+        """Should skip subscriptions with incomplete status."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.stripe_webhook import _handle_subscription_created
+
+        subscription = {
+            "customer": "cus_incomplete",
+            "status": "incomplete",
+            "items": {"data": []},
+        }
+        # Should not raise and should not update anything
+        _handle_subscription_created(subscription)
+
+    @mock_aws
+    def test_subscription_created_ignores_past_due(self, mock_dynamodb):
+        """Should skip subscriptions with past_due status."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.stripe_webhook import _handle_subscription_created
+
+        subscription = {
+            "customer": "cus_pastdue",
+            "status": "past_due",
+            "items": {"data": [{"price": {"id": "price_starter"}}]},
+        }
+        # Should not raise and should not update anything
+        _handle_subscription_created(subscription)
+
+    @mock_aws
+    def test_subscription_created_handles_missing_customer(self, mock_dynamodb):
+        """Should handle missing customer ID gracefully."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.stripe_webhook import _handle_subscription_created
+
+        subscription = {
+            "status": "active",
+            "items": {"data": [{"price": {"id": "price_starter"}}]},
+        }
+        # Should not raise
+        _handle_subscription_created(subscription)
+
+    @mock_aws
+    def test_subscription_created_handles_empty_items(self, mock_dynamodb):
+        """Should handle empty subscription items gracefully."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.stripe_webhook import _handle_subscription_created
+
+        subscription = {
+            "customer": "cus_noitems",
+            "status": "active",
+            "items": {"data": []},
+        }
+        # Should not raise
+        _handle_subscription_created(subscription)
+
+    @mock_aws
+    def test_subscription_created_handles_trialing(self, mock_dynamodb):
+        """Should handle trialing subscriptions."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_trial").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_trial",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "trial@example.com",
+                "tier": "free",
+                "stripe_customer_id": "cus_trial",
+                "email_verified": True,
+            }
+        )
+
+        from api.stripe_webhook import _handle_subscription_created, PRICE_TO_TIER
+        from unittest.mock import patch
+
+        # Patch PRICE_TO_TIER since it reads env vars at module load time
+        with patch.dict(PRICE_TO_TIER, {"price_pro_trial": "pro"}):
+            subscription = {
+                "customer": "cus_trial",
+                "status": "trialing",
+                "items": {"data": [{"price": {"id": "price_pro_trial"}}]},
+                "current_period_start": 1704067200,
+                "current_period_end": 1706745600,
+            }
+            _handle_subscription_created(subscription)
+
+        response = table.get_item(Key={"pk": "user_trial", "sk": key_hash})
+        item = response.get("Item")
+        assert item["tier"] == "pro"

@@ -74,9 +74,9 @@ def handler(event, context):
         "If you already have an account, we've sent you a sign-in link instead."
     )
 
-    # Parse request body
+    # Parse request body (use `or "{}"` to handle explicit None)
     try:
-        body = json.loads(event.get("body", "{}"))
+        body = json.loads(event.get("body") or "{}")
     except json.JSONDecodeError:
         # Validation errors can return early - they don't reveal email existence
         return error_response(400, "invalid_json", "Request body must be valid JSON", origin=origin)

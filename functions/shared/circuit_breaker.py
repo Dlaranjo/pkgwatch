@@ -295,3 +295,17 @@ PYPI_CIRCUIT = InMemoryCircuitBreaker(
         success_threshold=3,
     )
 )
+
+# DynamoDB circuit breaker - for protecting against throttling cascades
+# NOTE: Available for future use - not yet wired to DynamoDB operations.
+# When integrated, wrap DynamoDB calls to prevent cascade failures during
+# throttling events or capacity issues.
+DYNAMODB_CIRCUIT = InMemoryCircuitBreaker(
+    "dynamodb",
+    CircuitBreakerConfig(
+        failure_threshold=3,     # DynamoDB failures are serious
+        timeout_seconds=30,      # Short timeout - DynamoDB recovers quickly
+        success_threshold=2,
+        half_open_max_calls=2,
+    )
+)

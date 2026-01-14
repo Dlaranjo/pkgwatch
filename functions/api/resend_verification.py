@@ -65,9 +65,9 @@ def handler(event, context):
         "Check your email (including spam folder)."
     )
 
-    # Parse request body
+    # Parse request body (use `or "{}"` to handle explicit None)
     try:
-        body = json.loads(event.get("body", "{}"))
+        body = json.loads(event.get("body") or "{}")
     except json.JSONDecodeError:
         return error_response(400, "invalid_json", "Request body must be valid JSON", origin=origin)
 

@@ -479,6 +479,16 @@ export class ApiStack extends cdk.Stack {
     apiKeysTable.grantReadData(authMeHandler);
     authMeHandler.addToRolePolicy(sessionSecretPolicy);
 
+    // POST /auth/logout - Clear session cookie
+    const logoutHandler = new lambda.Function(this, "LogoutHandler", {
+      ...authLambdaProps,
+      functionName: "pkgwatch-api-logout",
+      handler: "api.logout.handler",
+      code: apiCodeWithShared,
+      description: "Clear session cookie to log out user",
+    });
+    // Logout doesn't need table access - just clears cookie
+
     // GET /auth/pending-key - Get newly created API key for one-time display
     const getPendingKeyHandler = new lambda.Function(this, "GetPendingKeyHandler", {
       ...authLambdaProps,
@@ -1073,6 +1083,13 @@ export class ApiStack extends cdk.Stack {
     meResource.addMethod(
       "GET",
       new apigateway.LambdaIntegration(authMeHandler)
+    );
+
+    // POST /auth/logout
+    const logoutResource = authResource.addResource("logout");
+    logoutResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(logoutHandler)
     );
 
     // GET /auth/pending-key

@@ -274,6 +274,9 @@ def handler(event, context):
         elif event_type == "customer.subscription.deleted":
             _handle_subscription_deleted(data)
 
+        elif event_type == "customer.subscription.created":
+            _handle_subscription_created(data)
+
         elif event_type == "invoice.payment_failed":
             _handle_payment_failed(data)
 
@@ -475,6 +478,51 @@ def _handle_subscription_deleted(subscription: dict):
         tier="free",
         cancellation_pending=False,
         cancellation_date=None,
+    )
+
+
+def _handle_subscription_created(subscription: dict):
+    """Handle new subscription creation - set user tier.
+
+    Note: For subscriptions via Checkout, checkout.session.completed also fires.
+    This handler covers subscriptions created via API or Stripe dashboard.
+    Both handlers are idempotent - safe to run twice.
+    """
+    customer_id = subscription.get("customer")
+    status = subscription.get("status")
+    current_period_start = subscription.get("current_period_start")
+    current_period_end = subscription.get("current_period_end")
+
+    logger.info(f"Subscription created for customer {customer_id}: status={status}")
+
+    # Only process active/trialing (skip incomplete, past_due, canceled)
+    if status not in ["active", "trialing"]:
+        logger.info(f"Skipping subscription.created with status={status}")
+        return
+
+    if not customer_id:
+        logger.warning("No customer ID in subscription.created event")
+        return
+
+    # Get tier from subscription items
+    items = subscription.get("items", {}).get("data", [])
+    if not items:
+        logger.warning(f"No items in subscription for customer {customer_id}")
+        return
+
+    price_id = items[0].get("price", {}).get("id")
+    tier = PRICE_TO_TIER.get(price_id, "starter")
+
+    logger.info(f"Setting tier {tier} for customer {customer_id} from price {price_id}")
+
+    # Use _update_user_subscription_state for consistency with subscription_updated
+    _update_user_subscription_state(
+        customer_id=customer_id,
+        tier=tier,
+        cancellation_pending=False,
+        cancellation_date=None,
+        current_period_start=current_period_start,
+        current_period_end=current_period_end,
     )
 
 

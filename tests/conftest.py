@@ -56,13 +56,14 @@ def _reset_circuits():
     try:
         from shared.circuit_breaker import (
             GITHUB_CIRCUIT, NPM_CIRCUIT, DEPSDEV_CIRCUIT, BUNDLEPHOBIA_CIRCUIT,
-            PYPI_CIRCUIT, CircuitBreakerState
+            PYPI_CIRCUIT, DYNAMODB_CIRCUIT, CircuitBreakerState
         )
         GITHUB_CIRCUIT._state = CircuitBreakerState()
         NPM_CIRCUIT._state = CircuitBreakerState()
         DEPSDEV_CIRCUIT._state = CircuitBreakerState()
         BUNDLEPHOBIA_CIRCUIT._state = CircuitBreakerState()
         PYPI_CIRCUIT._state = CircuitBreakerState()
+        DYNAMODB_CIRCUIT._state = CircuitBreakerState()
     except ImportError:
         pass  # Circuit breakers not imported yet
 

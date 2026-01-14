@@ -142,7 +142,6 @@ class TestScoringExtremeValues:
         assert result["probability"] >= 0
         assert result["probability"] <= 100
 
-    @pytest.mark.xfail(reason="BUG: Negative time horizon produces negative probability")
     def test_negative_time_horizon_abandonment_risk(self):
         """Negative months time horizon should be handled.
 
@@ -163,7 +162,6 @@ class TestScoringExtremeValues:
         assert result["probability"] >= 0
         assert result["probability"] <= 100
 
-    @pytest.mark.xfail(reason="BUG: MAX_INT commits_90d causes OverflowError in math.exp")
     def test_max_int_values(self):
         """MAX_INT values should not cause overflow.
 
@@ -664,7 +662,6 @@ class TestGetPackageEdgeCases:
         # Empty name after URL decode should be treated as missing
         assert result["statusCode"] == 400
 
-    @pytest.mark.xfail(reason="BUG: pathParameters=None causes AttributeError")
     @mock_aws
     def test_missing_path_parameters(self, mock_dynamodb, api_gateway_event):
         """Missing pathParameters should be handled.
@@ -739,12 +736,12 @@ class TestPostScanEdgeCases:
 
         result = handler(api_gateway_event, {})
 
-        # Empty string is not valid JSON (json.loads("") fails)
+        # Empty string is treated as empty object {} (since "" is falsy, `"" or "{}"` gives "{}")
+        # An empty object has no dependencies, so validation fails with "no_dependencies"
         assert result["statusCode"] == 400
         body = json.loads(result["body"])
-        assert body["error"]["code"] == "invalid_json"
+        assert body["error"]["code"] == "no_dependencies"
 
-    @pytest.mark.xfail(reason="BUG: body=None causes TypeError in json.loads")
     @mock_aws
     def test_null_request_body(self, mock_dynamodb, api_gateway_event):
         """Null request body should return 400.

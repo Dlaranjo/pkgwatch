@@ -6,8 +6,6 @@ omit =
     functions/collectors/refresh_dispatcher.py
     # Pipeline health requires SQS/CloudWatch mocking
     functions/collectors/pipeline_health.py
-    # Stripe webhook requires complex Stripe API mocking
-    functions/api/stripe_webhook.py
     # Pure data definitions with no logic
     functions/shared/constants.py
     functions/shared/types.py

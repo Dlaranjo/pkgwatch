@@ -54,9 +54,9 @@ def handler(event, context):
     """Handle package request from user."""
     from shared.response_utils import error_response, success_response
 
-    # Parse request body
+    # Parse request body (use `or "{}"` to handle explicit None)
     try:
-        body = json.loads(event.get("body", "{}"))
+        body = json.loads(event.get("body") or "{}")
     except json.JSONDecodeError:
         return error_response(400, "invalid_json", "Invalid JSON body")
 
