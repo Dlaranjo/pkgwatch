@@ -134,6 +134,10 @@ def mock_dynamodb():
                 {"AttributeName": "last_updated", "AttributeType": "S"},
                 {"AttributeName": "data_status", "AttributeType": "S"},
                 {"AttributeName": "next_retry_at", "AttributeType": "S"},
+                {"AttributeName": "ecosystem", "AttributeType": "S"},
+                {"AttributeName": "weekly_downloads", "AttributeType": "N"},
+                {"AttributeName": "source", "AttributeType": "S"},
+                {"AttributeName": "created_at", "AttributeType": "S"},
             ],
             GlobalSecondaryIndexes=[
                 {
@@ -159,6 +163,22 @@ def mock_dynamodb():
                         {"AttributeName": "next_retry_at", "KeyType": "RANGE"},
                     ],
                     "Projection": {"ProjectionType": "ALL"},
+                },
+                {
+                    "IndexName": "downloads-index",
+                    "KeySchema": [
+                        {"AttributeName": "ecosystem", "KeyType": "HASH"},
+                        {"AttributeName": "weekly_downloads", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "INCLUDE", "NonKeyAttributes": ["name", "health_score", "risk_level"]},
+                },
+                {
+                    "IndexName": "source-index",
+                    "KeySchema": [
+                        {"AttributeName": "source", "KeyType": "HASH"},
+                        {"AttributeName": "created_at", "KeyType": "RANGE"},
+                    ],
+                    "Projection": {"ProjectionType": "KEYS_ONLY"},
                 },
             ],
             BillingMode="PAY_PER_REQUEST",

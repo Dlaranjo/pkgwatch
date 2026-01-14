@@ -39,23 +39,24 @@ def handler(event, context):
     try:
         body = json.loads(event.get("body", "{}"))
     except json.JSONDecodeError:
-        return error_response(400, "Invalid JSON body")
+        return error_response(400, "invalid_json", "Invalid JSON body")
 
     name = body.get("name", "").strip()
     ecosystem = body.get("ecosystem", "npm").lower()
 
     # Validate required fields
     if not name:
-        return error_response(400, "Package name is required")
+        return error_response(400, "missing_name", "Package name is required")
 
     if ecosystem not in ["npm", "pypi"]:
-        return error_response(400, "Ecosystem must be 'npm' or 'pypi'")
+        return error_response(400, "invalid_ecosystem", "Ecosystem must be 'npm' or 'pypi'")
 
     # Check rate limit
     client_ip = get_client_ip(event)
     if rate_limit_exceeded(client_ip):
         return error_response(
             429,
+            "rate_limit_exceeded",
             f"Rate limit exceeded. Maximum {RATE_LIMIT_PER_DAY} requests per day.",
         )
 
@@ -84,6 +85,7 @@ def handler(event, context):
     if not exists:
         return error_response(
             404,
+            "package_not_found",
             f"Package '{name}' not found in {ecosystem} registry",
         )
 
@@ -117,7 +119,7 @@ def handler(event, context):
         )
     except Exception as e:
         logger.error(f"Failed to add package: {e}")
-        return error_response(500, "Failed to add package")
+        return error_response(500, "db_error", "Failed to add package")
 
     # Queue for immediate collection
     if PACKAGE_QUEUE_URL:

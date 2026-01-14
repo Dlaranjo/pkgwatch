@@ -88,11 +88,16 @@ def handler(event, context):
         if weekly_downloads is None:
             continue
 
+        # Convert Decimal to int for JSON serialization
+        health_score = pkg.get("health_score")
+        if health_score is not None:
+            health_score = int(health_score)
+
         output["rows"].append(
             {
                 "project": pkg.get("name"),
                 "download_count": int(weekly_downloads),
-                "health_score": pkg.get("health_score"),
+                "health_score": health_score,
                 "risk_level": pkg.get("risk_level"),
             }
         )

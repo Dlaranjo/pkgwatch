@@ -14,6 +14,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import boto3
 import httpx
@@ -92,7 +93,7 @@ def handler(event, context):
                     "created_at": now,
                     "last_updated": now,
                     "data_status": "pending",
-                    "npmsio_score": score,
+                    "npmsio_score": Decimal(str(score)),
                 },
                 ConditionExpression="attribute_not_exists(pk)",
             )
