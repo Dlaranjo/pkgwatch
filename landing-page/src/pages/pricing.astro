@@ -402,6 +402,29 @@ const tiers = [
         // Success - redirect to dashboard
         window.location.href = '/dashboard?upgraded=true';
       } else {
+        const errorCode = data.error?.code;
+
+        // If proration expired, auto-refresh the preview
+        if (errorCode === 'proration_date_expired' && pendingUpgrade) {
+          if (upgradeErrorText) {
+            upgradeErrorText.textContent = 'Preview expired. Refreshing...';
+          }
+          upgradeError?.classList.remove('hidden');
+
+          // Store tier before closing modal clears it
+          const tierToRefresh = pendingUpgrade.tier;
+
+          // Get fresh preview after brief delay
+          setTimeout(async () => {
+            closeUpgradeModal();
+            const tierButton = document.querySelector(`[data-tier="${tierToRefresh}"]`) as HTMLButtonElement;
+            if (tierButton) {
+              await showUpgradePreview(tierToRefresh, tierButton);
+            }
+          }, 1000);
+          return;
+        }
+
         // Show error in modal
         if (upgradeErrorText) {
           upgradeErrorText.textContent = data.error?.message || 'Failed to process upgrade';
@@ -425,6 +448,7 @@ const tiers = [
     upgradeModal?.classList.add('hidden');
     document.body.style.overflow = '';
     pendingUpgrade = null;
+    upgradeError?.classList.add('hidden');  // Clear error state
   }
 
   // Create checkout session and redirect (for new subscriptions only)

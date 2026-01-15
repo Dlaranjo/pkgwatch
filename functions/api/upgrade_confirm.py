@@ -167,8 +167,17 @@ def handler(event, context):
             origin=origin,
         )
 
-    # Validate proration date isn't stale (5 minutes max)
+    # Validate proration date isn't in the future (security check)
     now = int(time.time())
+    if proration_date > now:
+        return error_response(
+            400,
+            "invalid_proration_date",
+            "Invalid proration date.",
+            origin=origin,
+        )
+
+    # Validate proration date isn't stale (5 minutes max)
     if proration_date < now - PRORATION_DATE_MAX_AGE:
         return error_response(
             400,
@@ -261,6 +270,7 @@ def handler(event, context):
         # Execute the upgrade with proration
         updated_subscription = stripe.Subscription.modify(
             stripe_subscription_id,
+            cancel_at_period_end=False,  # Clear any pending cancellation
             idempotency_key=f"upgrade-{user_id}-{tier}-{proration_date}",
             items=[{
                 "id": current_item_id,
@@ -296,20 +306,29 @@ def handler(event, context):
         now_iso = datetime.now(timezone.utc).isoformat()
 
         for item in user_items:
-            table.update_item(
-                Key={"pk": item["pk"], "sk": item["sk"]},
-                UpdateExpression=(
-                    "SET tier = :tier, tier_updated_at = :now, "
-                    "monthly_limit = :limit, requests_this_month = :zero, "
-                    "payment_failures = :zero"
-                ),
-                ExpressionAttributeValues={
-                    ":tier": tier,
-                    ":now": now_iso,
-                    ":limit": new_limit,
-                    ":zero": 0,
-                },
-            )
+            try:
+                table.update_item(
+                    Key={"pk": item["pk"], "sk": item["sk"]},
+                    UpdateExpression=(
+                        "SET tier = :tier, tier_updated_at = :now, "
+                        "monthly_limit = :limit, requests_this_month = :zero, "
+                        "payment_failures = :zero"
+                    ),
+                    ExpressionAttributeValues={
+                        ":tier": tier,
+                        ":now": now_iso,
+                        ":limit": new_limit,
+                        ":zero": 0,
+                        ":current_tier": current_tier,
+                    },
+                    # Prevent overwriting a higher tier set by concurrent upgrade
+                    ConditionExpression="tier = :current_tier OR attribute_not_exists(tier)",
+                )
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                    logger.warning(f"Tier changed during upgrade for {user_id}, skipping item {item['sk']}")
+                    continue
+                raise
 
         logger.info(f"Updated {len(user_items)} DynamoDB records for user {user_id}")
 
