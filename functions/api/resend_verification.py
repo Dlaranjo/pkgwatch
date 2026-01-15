@@ -33,6 +33,7 @@ VERIFICATION_EMAIL_SENDER = os.environ.get(
     "VERIFICATION_EMAIL_SENDER", "noreply@pkgwatch.laranjo.dev"
 )
 BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.laranjo.dev")
+API_URL = os.environ.get("API_URL", "https://api.pkgwatch.laranjo.dev")
 
 
 def _get_origin(event: dict) -> str | None:
@@ -137,7 +138,8 @@ def handler(event, context):
         )
 
         # Send verification email
-        verification_url = f"{BASE_URL}/verify?token={verification_token}"
+        # Note: Uses API_URL because /verify is an API Gateway endpoint
+        verification_url = f"{API_URL}/verify?token={verification_token}"
         try:
             _send_verification_email(email, verification_url)
         except Exception as e:

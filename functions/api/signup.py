@@ -171,7 +171,9 @@ def handler(event, context):
         )
 
     # Send verification email
-    verification_url = f"{BASE_URL}/verify?token={verification_token}"
+    # Note: Uses API_URL because /verify is an API Gateway endpoint that handles
+    # the token validation and redirects to the dashboard
+    verification_url = f"{API_URL}/verify?token={verification_token}"
     try:
         _send_verification_email(email, verification_url)
     except Exception as e:
