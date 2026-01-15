@@ -133,6 +133,89 @@ const tiers = [
       ))}
     </div>
 
+    <!-- Upgrade Preview Modal -->
+    <div id="upgrade-modal" class="hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title">
+      <!-- Backdrop -->
+      <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" id="upgrade-backdrop"></div>
+
+      <!-- Modal content -->
+      <div class="relative min-h-screen flex items-center justify-center p-4">
+        <div class="bg-[#111113] border border-zinc-800 rounded-xl max-w-md w-full shadow-2xl" role="document">
+          <div class="p-6">
+            <h2 id="upgrade-modal-title" class="text-xl font-bold text-white mb-4">Upgrade Your Plan</h2>
+
+            <!-- Upgrade details -->
+            <div class="space-y-4 mb-6">
+              <div class="flex justify-between items-center">
+                <span class="text-zinc-400">Current plan</span>
+                <span id="upgrade-current-tier" class="text-white font-medium capitalize">Starter</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-zinc-400">New plan</span>
+                <span id="upgrade-new-tier" class="text-emerald-400 font-medium capitalize">Pro</span>
+              </div>
+
+              <hr class="border-zinc-800" />
+
+              <div class="flex justify-between items-center text-sm">
+                <span class="text-zinc-500">Credit from current plan</span>
+                <span id="upgrade-credit" class="text-zinc-400">-$5.00</span>
+              </div>
+              <div class="flex justify-between items-center text-sm">
+                <span class="text-zinc-500">New plan (prorated)</span>
+                <span id="upgrade-new-cost" class="text-zinc-400">$49.00</span>
+              </div>
+
+              <hr class="border-zinc-800" />
+
+              <div class="flex justify-between items-center">
+                <span class="text-white font-medium">Amount due today</span>
+                <span id="upgrade-total" class="text-2xl font-bold text-emerald-400">$44.00</span>
+              </div>
+
+              <p id="upgrade-period-info" class="text-xs text-zinc-500 text-center">
+                Your billing cycle continues until Feb 13, 2026
+              </p>
+            </div>
+
+            <!-- Cancellation warning (if applicable) -->
+            <div id="upgrade-cancel-warning" class="hidden mb-4 p-3 bg-amber-900/20 border border-amber-500/30 rounded-lg">
+              <p class="text-sm text-amber-400 flex items-center gap-2">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
+                Your pending cancellation will be cleared when you upgrade.
+              </p>
+            </div>
+
+            <!-- Error message -->
+            <div id="upgrade-error" class="hidden mb-4 p-3 bg-red-900/20 border border-red-500/30 rounded-lg">
+              <p id="upgrade-error-text" class="text-sm text-red-400">An error occurred</p>
+            </div>
+          </div>
+
+          <div class="p-4 border-t border-zinc-800 flex gap-3 justify-end">
+            <button
+              id="upgrade-cancel-btn"
+              class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium rounded-lg transition"
+            >
+              Cancel
+            </button>
+            <button
+              id="upgrade-confirm-btn"
+              class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition flex items-center gap-2"
+            >
+              <span id="upgrade-confirm-text">Confirm Upgrade</span>
+              <svg id="upgrade-loading" class="hidden w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- FAQ -->
     <div class="mt-24">
       <h2 class="text-2xl font-bold text-white text-center mb-12">
@@ -184,8 +267,30 @@ const tiers = [
 
   const TIER_ORDER: Record<string, number> = { free: 0, starter: 1, pro: 2, business: 3 };
 
+  // State for upgrade modal
+  let pendingUpgrade: { tier: string; prorationDate: number } | null = null;
+
+  // Modal elements
+  const upgradeModal = document.getElementById('upgrade-modal');
+  const upgradeBackdrop = document.getElementById('upgrade-backdrop');
+  const upgradeCancelBtn = document.getElementById('upgrade-cancel-btn');
+  const upgradeConfirmBtn = document.getElementById('upgrade-confirm-btn') as HTMLButtonElement;
+  const upgradeConfirmText = document.getElementById('upgrade-confirm-text');
+  const upgradeLoading = document.getElementById('upgrade-loading');
+  const upgradeError = document.getElementById('upgrade-error');
+  const upgradeErrorText = document.getElementById('upgrade-error-text');
+  const upgradeCancelWarning = document.getElementById('upgrade-cancel-warning');
+
   function tierOrder(tier: string | null): number {
     return TIER_ORDER[tier || 'free'] || 0;
+  }
+
+  function formatCents(cents: number, currency: string = 'usd'): string {
+    const amount = cents / 100;
+    if (currency === 'usd') {
+      return `$${amount.toFixed(2)}`;
+    }
+    return `${amount.toFixed(2)} ${currency.toUpperCase()}`;
   }
 
   // Check if user is logged in and get their tier
@@ -203,7 +308,126 @@ const tiers = [
     return null;
   }
 
-  // Create checkout session and redirect
+  // Show upgrade preview modal with prorated pricing
+  async function showUpgradePreview(tier: string, button: HTMLButtonElement) {
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Loading...';
+
+    try {
+      const response = await fetch(`${API_BASE}/upgrade/preview`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.preview) {
+        const preview = data.preview;
+
+        // Store for confirmation
+        pendingUpgrade = { tier, prorationDate: preview.proration_date };
+
+        // Populate modal
+        const currentTierEl = document.getElementById('upgrade-current-tier');
+        const newTierEl = document.getElementById('upgrade-new-tier');
+        const creditEl = document.getElementById('upgrade-credit');
+        const newCostEl = document.getElementById('upgrade-new-cost');
+        const totalEl = document.getElementById('upgrade-total');
+        const periodInfoEl = document.getElementById('upgrade-period-info');
+
+        if (currentTierEl) currentTierEl.textContent = preview.current_tier;
+        if (newTierEl) newTierEl.textContent = preview.new_tier;
+        if (creditEl) creditEl.textContent = `-${formatCents(preview.credit_amount_cents, preview.currency)}`;
+        if (newCostEl) newCostEl.textContent = formatCents(preview.new_plan_prorated_cents, preview.currency);
+        if (totalEl) totalEl.textContent = preview.amount_due_formatted;
+        if (periodInfoEl && preview.current_period_end) {
+          const date = new Date(preview.current_period_end);
+          periodInfoEl.textContent = `Your billing cycle continues until ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        }
+
+        // Show cancellation warning if applicable
+        if (preview.cancellation_will_clear) {
+          upgradeCancelWarning?.classList.remove('hidden');
+        } else {
+          upgradeCancelWarning?.classList.add('hidden');
+        }
+
+        // Hide any previous errors
+        upgradeError?.classList.add('hidden');
+
+        // Show modal
+        upgradeModal?.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+
+      } else if (response.status === 401) {
+        window.location.href = `/login?redirect=${encodeURIComponent('/pricing')}`;
+      } else {
+        alert(data.error?.message || 'Failed to load upgrade preview');
+      }
+    } catch (error) {
+      console.error('Upgrade preview error:', error);
+      alert('Network error. Please try again.');
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+
+  // Confirm and execute the upgrade
+  async function confirmUpgrade() {
+    if (!pendingUpgrade) return;
+
+    if (upgradeConfirmBtn) upgradeConfirmBtn.disabled = true;
+    upgradeConfirmText?.classList.add('hidden');
+    upgradeLoading?.classList.remove('hidden');
+    upgradeError?.classList.add('hidden');
+
+    try {
+      const response = await fetch(`${API_BASE}/upgrade/confirm`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tier: pendingUpgrade.tier,
+          proration_date: pendingUpgrade.prorationDate,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Success - redirect to dashboard
+        window.location.href = '/dashboard?upgraded=true';
+      } else {
+        // Show error in modal
+        if (upgradeErrorText) {
+          upgradeErrorText.textContent = data.error?.message || 'Failed to process upgrade';
+        }
+        upgradeError?.classList.remove('hidden');
+      }
+    } catch (error) {
+      console.error('Upgrade confirm error:', error);
+      if (upgradeErrorText) {
+        upgradeErrorText.textContent = 'Network error. Please try again.';
+      }
+      upgradeError?.classList.remove('hidden');
+    } finally {
+      if (upgradeConfirmBtn) upgradeConfirmBtn.disabled = false;
+      upgradeConfirmText?.classList.remove('hidden');
+      upgradeLoading?.classList.add('hidden');
+    }
+  }
+
+  function closeUpgradeModal() {
+    upgradeModal?.classList.add('hidden');
+    document.body.style.overflow = '';
+    pendingUpgrade = null;
+  }
+
+  // Create checkout session and redirect (for new subscriptions only)
   async function startCheckout(tier: string, button: HTMLButtonElement) {
     const originalText = button.textContent;
     button.disabled = true;
@@ -220,16 +444,16 @@ const tiers = [
       const data = await response.json();
 
       if (response.ok && data.checkout_url) {
-        // Redirect to Stripe Checkout
+        // Redirect to Stripe Checkout (new subscription)
         window.location.href = data.checkout_url;
       } else if (response.status === 401) {
         // Not logged in - redirect to login with return URL
         window.location.href = `/login?redirect=${encodeURIComponent('/pricing')}`;
       } else if (response.status === 409 && data.error?.code === 'upgrade_required') {
-        // Existing subscriber - redirect to billing portal for plan changes
+        // Existing subscriber - show prorated upgrade preview
         button.disabled = false;
         button.textContent = originalText;
-        await redirectToBillingPortal();
+        await showUpgradePreview(tier, button);
       } else {
         alert(data.error?.message || 'Failed to start checkout');
         button.disabled = false;
@@ -240,24 +464,6 @@ const tiers = [
       alert('Network error. Please try again.');
       button.disabled = false;
       button.textContent = originalText;
-    }
-  }
-
-  // Redirect to Stripe billing portal for existing subscribers
-  async function redirectToBillingPortal() {
-    try {
-      const response = await fetch(`${API_BASE}/billing-portal/create`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      const data = await response.json();
-      if (data.portal_url) {
-        window.location.href = data.portal_url;
-      } else {
-        alert('Unable to open billing portal. Please try again.');
-      }
-    } catch {
-      alert('Network error. Please try again.');
     }
   }
 
@@ -285,6 +491,17 @@ const tiers = [
       } else {
         // Available for upgrade
         button.addEventListener('click', () => startCheckout(tier, button));
+      }
+    });
+
+    // Set up modal event listeners
+    upgradeCancelBtn?.addEventListener('click', closeUpgradeModal);
+    upgradeBackdrop?.addEventListener('click', closeUpgradeModal);
+    upgradeConfirmBtn?.addEventListener('click', confirmUpgrade);
+
+    document.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !upgradeModal?.classList.contains('hidden')) {
+        closeUpgradeModal();
       }
     });
   }
