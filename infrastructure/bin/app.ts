@@ -4,6 +4,7 @@ import * as cdk from "aws-cdk-lib";
 import { StorageStack } from "../lib/storage-stack";
 import { PipelineStack } from "../lib/pipeline-stack";
 import { ApiStack } from "../lib/api-stack";
+import { BudgetStack } from "../lib/budget-stack";
 
 const app = new cdk.App();
 
@@ -21,11 +22,20 @@ const storageStack = new StorageStack(app, "PkgWatchStorage", {
 // Pipeline stack (EventBridge + SQS + Lambda collectors)
 // IMPORTANT: Set ALERT_EMAIL env var to receive CloudWatch alarm notifications
 const alertEmail = process.env.ALERT_EMAIL?.trim() || undefined;
+const environment = process.env.CDK_ENV || "production";
+
 if (!alertEmail) {
-  console.warn(
-    "WARNING: ALERT_EMAIL not set. CloudWatch alarms will not send notifications. " +
-    "Set ALERT_EMAIL=your@email.com to receive alerts."
-  );
+  if (environment === "production") {
+    throw new Error(
+      "ALERT_EMAIL is required for production deployments. " +
+      "Set ALERT_EMAIL=your@email.com to receive CloudWatch alarm notifications."
+    );
+  } else {
+    console.warn(
+      "WARNING: ALERT_EMAIL not set. CloudWatch alarms will not send notifications. " +
+      "Set ALERT_EMAIL=your@email.com to receive alerts."
+    );
+  }
 }
 
 const pipelineStack = new PipelineStack(app, "PkgWatchPipeline", {
@@ -49,8 +59,16 @@ const apiStack = new ApiStack(app, "PkgWatchApi", {
   packageQueue: pipelineStack.packageQueue, // For package request API endpoint
 });
 
-// Add tags to all resources
-const environment = process.env.CDK_ENV || "production";
+// Budget stack (cost monitoring and alerting)
+const budgetStack = new BudgetStack(app, "PkgWatchBudgets", {
+  env,
+  description: "PkgWatch cost monitoring",
+  alertTopic: pipelineStack.alertTopic,
+  monthlyBudget: 200, // Alert at 80% of $200
+});
+budgetStack.addDependency(pipelineStack);
+
+// Add tags to all resources (environment already defined above)
 cdk.Tags.of(app).add("Project", "PkgWatch");
 cdk.Tags.of(app).add("Environment", environment);
 cdk.Tags.of(app).add("ManagedBy", "CDK");

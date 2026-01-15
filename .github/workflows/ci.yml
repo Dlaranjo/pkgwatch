@@ -52,6 +52,8 @@ jobs:
         run: |
           npm ci
           npm run synth
+        env:
+          CDK_ENV: ci  # Skip ALERT_EMAIL requirement for synth-only validation
 
   typescript-build:
     runs-on: ubuntu-latest
@@ -160,6 +162,7 @@ jobs:
           npm ci
           npx cdk deploy --all --require-approval never
         env:
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
           STRIPE_PRICE_STARTER: ${{ secrets.STRIPE_PRICE_STARTER }}
           STRIPE_PRICE_PRO: ${{ secrets.STRIPE_PRICE_PRO }}
           STRIPE_PRICE_BUSINESS: ${{ secrets.STRIPE_PRICE_BUSINESS }}

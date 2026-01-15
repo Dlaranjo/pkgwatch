@@ -108,6 +108,7 @@ export class ApiStack extends cdk.Stack {
 
     const commonLambdaProps = {
       runtime: lambda.Runtime.PYTHON_3_12,
+      architecture: lambda.Architecture.ARM_64, // Graviton2 - ~20% cost savings
       memorySize: 512, // Increased from 256 - doubles vCPU, ~40% faster cold starts
       timeout: cdk.Duration.seconds(30),
       tracing: lambda.Tracing.ACTIVE, // Enable X-Ray tracing

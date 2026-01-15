@@ -58,6 +58,7 @@ export class PipelineStack extends cdk.Stack {
     this.packageQueue = new sqs.Queue(this, "PackageQueue", {
       queueName: "pkgwatch-package-queue",
       visibilityTimeout: cdk.Duration.minutes(30), // 6x Lambda timeout (5 min) per AWS best practices
+      retentionPeriod: cdk.Duration.days(14), // Match DLQ retention for consistency
       encryption: sqs.QueueEncryption.SQS_MANAGED, // Enable encryption at rest
       deadLetterQueue: {
         queue: dlq,
@@ -66,13 +67,24 @@ export class PipelineStack extends cdk.Stack {
     });
     const packageQueue = this.packageQueue; // Alias for local usage
 
+    // Dead letter queue for discovery queue failures
+    const discoveryDlq = new sqs.Queue(this, "DiscoveryQueueDLQ", {
+      queueName: "pkgwatch-discovery-dlq",
+      retentionPeriod: cdk.Duration.days(14),
+      encryption: sqs.QueueEncryption.SQS_MANAGED,
+    });
+
     // Discovery queue for graph expansion workers
     // Used by graph_expander_dispatcher to distribute package processing
     const discoveryQueue = new sqs.Queue(this, "DiscoveryQueue", {
       queueName: "pkgwatch-discovery-queue",
-      visibilityTimeout: cdk.Duration.minutes(5),
+      visibilityTimeout: cdk.Duration.minutes(30), // 6x Lambda timeout (5 min) per AWS best practices
       retentionPeriod: cdk.Duration.days(1),
       encryption: sqs.QueueEncryption.SQS_MANAGED,
+      deadLetterQueue: {
+        queue: discoveryDlq,
+        maxReceiveCount: 3,
+      },
     });
 
     // ===========================================
@@ -151,6 +163,7 @@ export class PipelineStack extends cdk.Stack {
 
     const commonLambdaProps = {
       runtime: lambda.Runtime.PYTHON_3_12,
+      architecture: lambda.Architecture.ARM_64, // Graviton2 - ~20% cost savings
       memorySize: 512, // Increased from 256 - doubles vCPU, ~40% faster cold starts
       timeout: cdk.Duration.minutes(2),
       logRetention: logs.RetentionDays.ONE_MONTH, // Prevent unbounded CloudWatch costs
@@ -523,6 +536,13 @@ export class PipelineStack extends cdk.Stack {
       );
     }
 
+    // Note: For Slack integration, use AWS Chatbot (recommended) instead of direct webhooks.
+    // SNS message format is incompatible with Slack webhook expectations.
+    // To set up AWS Chatbot:
+    // 1. Go to AWS Chatbot console and authorize your Slack workspace
+    // 2. Create a Slack channel configuration pointing to this.alertTopic
+    // 3. AWS Chatbot will format CloudWatch alarm messages nicely for Slack
+
     // 1. DLQ Messages Alarm (Critical - indicates processing failures)
     const dlqAlarm = new cloudwatch.Alarm(this, "DlqAlarm", {
       alarmName: "pkgwatch-dlq-messages",
@@ -543,6 +563,54 @@ export class PipelineStack extends cdk.Stack {
     // Streams DLQ alarm (defined earlier, action added here after alertTopic exists)
     streamsDlqAlarm.addAlarmAction(new cloudwatchActions.SnsAction(this.alertTopic));
     streamsDlqAlarm.addOkAction(new cloudwatchActions.SnsAction(this.alertTopic));
+
+    // Discovery DLQ alarm - alerts when graph expansion is failing
+    const discoveryDlqAlarm = new cloudwatch.Alarm(this, "DiscoveryDlqAlarm", {
+      alarmName: "pkgwatch-discovery-dlq-messages",
+      alarmDescription: "Messages in Discovery DLQ - graph expansion failing",
+      metric: discoveryDlq.metricApproximateNumberOfMessagesVisible({
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 5, // Allow a few transient failures before alerting
+      evaluationPeriods: 1,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    discoveryDlqAlarm.addAlarmAction(new cloudwatchActions.SnsAction(this.alertTopic));
+    discoveryDlqAlarm.addOkAction(new cloudwatchActions.SnsAction(this.alertTopic));
+
+    // Package Queue Backlog Alarm - detects processing stalls
+    const queueBacklogAlarm = new cloudwatch.Alarm(this, "PackageQueueBacklogAlarm", {
+      alarmName: "pkgwatch-package-queue-backlog",
+      alarmDescription: "Package queue backing up - collection may be stalled",
+      metric: packageQueue.metricApproximateNumberOfMessagesVisible({
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 2000, // Allow for seed operations and batch processing
+      evaluationPeriods: 2,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    queueBacklogAlarm.addAlarmAction(new cloudwatchActions.SnsAction(this.alertTopic));
+    queueBacklogAlarm.addOkAction(new cloudwatchActions.SnsAction(this.alertTopic));
+
+    // Package Queue Message Age Alarm - detects stuck messages
+    const messageAgeAlarm = new cloudwatch.Alarm(this, "PackageQueueAgeAlarm", {
+      alarmName: "pkgwatch-package-queue-message-age",
+      alarmDescription: "Messages stuck in queue for >30 minutes",
+      metric: packageQueue.metricApproximateAgeOfOldestMessage({
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 1800, // 30 minutes in seconds
+      evaluationPeriods: 2,
+      comparisonOperator:
+        cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    messageAgeAlarm.addAlarmAction(new cloudwatchActions.SnsAction(this.alertTopic));
+    messageAgeAlarm.addOkAction(new cloudwatchActions.SnsAction(this.alertTopic));
 
     // 2. Refresh Dispatcher Error Alarm (Critical - single point of failure)
     const dispatcherErrorAlarm = new cloudwatch.Alarm(

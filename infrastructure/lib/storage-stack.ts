@@ -48,6 +48,7 @@ export class StorageStack extends cdk.Stack {
       },
       encryption: dynamodb.TableEncryption.AWS_MANAGED, // Use AWS-managed CMK for encryption
       removalPolicy: cdk.RemovalPolicy.RETAIN,
+      deletionProtection: true, // Prevent accidental table deletion
       // Enable streams for score calculation trigger
       // NEW_AND_OLD_IMAGES allows loop prevention by comparing old/new collected_at
       stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
@@ -119,6 +120,7 @@ export class StorageStack extends cdk.Stack {
       },
       encryption: dynamodb.TableEncryption.AWS_MANAGED, // Use AWS-managed CMK for encryption
       removalPolicy: cdk.RemovalPolicy.RETAIN,
+      deletionProtection: true, // Prevent accidental table deletion
       timeToLiveAttribute: "ttl", // Enable TTL for auto-expiring PENDING records
     });
 
@@ -189,6 +191,7 @@ export class StorageStack extends cdk.Stack {
       },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
+      deletionProtection: true, // Prevent accidental table deletion
       timeToLiveAttribute: "ttl", // Auto-expire events after 90 days
     });
 
@@ -218,11 +221,17 @@ export class StorageStack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       serverAccessLogsBucket: this.accessLogsBucket, // Enable access logging for audit
       serverAccessLogsPrefix: "raw-data-bucket/",
+      versioned: true, // Enable versioning for recovery from accidental overwrites
       lifecycleRules: [
         {
           // Delete raw data after 7 days (we only need it for debugging)
           // Reduced from 30 days for cost optimization
           expiration: cdk.Duration.days(7),
+          enabled: true,
+        },
+        {
+          // Clean up old versions to prevent storage cost explosion
+          noncurrentVersionExpiration: cdk.Duration.days(7),
           enabled: true,
         },
       ],
@@ -237,6 +246,7 @@ export class StorageStack extends cdk.Stack {
       bucketName: `pkgwatch-public-data-${this.account}`,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       encryption: s3.BucketEncryption.S3_MANAGED,
+      versioned: true, // Enable versioning for recovery from bad publishes
       // Allow public read for the data files (unlike other buckets)
       blockPublicAccess: new s3.BlockPublicAccess({
         blockPublicAcls: false,
@@ -245,6 +255,13 @@ export class StorageStack extends cdk.Stack {
         restrictPublicBuckets: false,
       }),
       websiteIndexDocument: "index.html",
+      lifecycleRules: [
+        {
+          // Clean up old versions after 30 days
+          noncurrentVersionExpiration: cdk.Duration.days(30),
+          enabled: true,
+        },
+      ],
     });
 
     // Bucket policy for public read access to data/* prefix only
