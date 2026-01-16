@@ -453,3 +453,30 @@ export {
   readDependencies,
   readDependenciesFromFile,
 } from "./dependencies.js";
+
+// ===========================================
+// Discovery Module Re-exports
+// ===========================================
+
+export {
+  type DiscoveryOptions,
+  type DiscoveredManifest,
+  type DiscoveryResult,
+  DEFAULT_EXCLUDES,
+  discoverManifests,
+  discoverManifestsByEcosystem,
+} from "./discovery.js";
+
+// ===========================================
+// Repo Scanner Re-exports
+// ===========================================
+
+export {
+  type ManifestStatus,
+  type ManifestScanResult,
+  type RepoScanSummary,
+  type RepoScanResult,
+  type RepoScanOptions,
+  scanRepository,
+  previewRepoScan,
+} from "./repo-scanner.js";

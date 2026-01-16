@@ -14,6 +14,18 @@ inputs:
     description: 'Directory containing package.json or requirements.txt to scan'
     required: false
     default: '.'
+  scan-mode:
+    description: 'Scan mode: single (default) scans one manifest, recursive scans all manifests in repo'
+    required: false
+    default: 'single'
+  exclude-patterns:
+    description: 'Glob patterns to exclude when using recursive mode (comma-separated)'
+    required: false
+    default: ''
+  max-manifests:
+    description: 'Maximum number of manifests to scan in recursive mode (default: 100)'
+    required: false
+    default: '100'
   fail-on:
     description: 'Fail workflow if risk level reached: HIGH or CRITICAL'
     required: false
@@ -48,6 +60,14 @@ outputs:
     description: 'Full scan results as JSON string'
   not-found-count:
     description: 'Count of packages not found in registry'
+  manifests-scanned:
+    description: 'Number of manifest files scanned (recursive mode only)'
+  manifests-failed:
+    description: 'Number of manifest files that failed to scan (recursive mode only)'
+  per-manifest-results:
+    description: 'JSON object with results per manifest file (recursive mode only)'
+  truncated:
+    description: 'True if max-manifests limit was reached (recursive mode only)'
 
 runs:
   using: 'node20'

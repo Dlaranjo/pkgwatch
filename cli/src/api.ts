@@ -35,4 +35,17 @@ export {
   parsePipfile,
   readDependencies,
   readDependenciesFromFile,
+  // Discovery and repo scanning
+  type DiscoveryOptions,
+  type DiscoveredManifest,
+  type DiscoveryResult,
+  type ManifestStatus,
+  type ManifestScanResult,
+  type RepoScanSummary,
+  type RepoScanResult,
+  type RepoScanOptions,
+  DEFAULT_EXCLUDES,
+  discoverManifests,
+  scanRepository,
+  previewRepoScan,
 } from "@pkgwatch/api-client";

@@ -88,10 +88,15 @@ import {
   readDependencies,
   readDependenciesFromFile,
   DependencyParseError,
+  scanRepository,
+  previewRepoScan,
+  DEFAULT_EXCLUDES,
   type PackageHealthFull,
   type PackageHealth,
   type ScanResult,
   type Ecosystem,
+  type RepoScanResult,
+  type ManifestScanResult,
 } from "./api.js";
 import {
   getApiKey,
@@ -335,6 +340,323 @@ program
   });
 
 // ------------------------------------------------------------
+// Recursive scan helper
+// ------------------------------------------------------------
+
+interface RecursiveScanOptions {
+  failOn?: string;
+  ecosystem?: string;
+  dev?: boolean;
+  exclude?: string;
+  maxManifests?: string;
+  confirm?: boolean;
+  ignoreNotFound?: boolean;
+}
+
+/**
+ * Prompt for yes/no confirmation.
+ */
+async function promptConfirm(question: string): Promise<boolean> {
+  const answer = await prompt(question);
+  return ["y", "yes", ""].includes(answer.toLowerCase());
+}
+
+/**
+ * Format status emoji for manifest scan result.
+ */
+function getStatusEmoji(status: string): string {
+  switch (status) {
+    case "success":
+      return pc.green("✓");
+    case "parse_error":
+      return pc.red("✗");
+    case "api_error":
+      return pc.yellow("⚠");
+    case "rate_limited":
+      return pc.red("⊘");
+    default:
+      return pc.dim("?");
+  }
+}
+
+/**
+ * Run recursive scan across all manifests in directory.
+ */
+async function runRecursiveScan(
+  path: string | undefined,
+  options: RecursiveScanOptions & { ecosystem?: string },
+  outputFormat: string
+): Promise<void> {
+  const cwd = process.cwd();
+  const basePath = path ? resolvePath(cwd, path) : cwd;
+  const includeDev = options.dev !== false;
+  const maxManifests = parseInt(options.maxManifests || "100", 10);
+
+  // Validate max-manifests
+  if (isNaN(maxManifests) || maxManifests < 1) {
+    console.error(pc.red("--max-manifests must be a positive integer"));
+    process.exit(EXIT_CLI_ERROR);
+  }
+
+  // Warn if --ecosystem is used with --recursive (it's ignored)
+  if (options.ecosystem) {
+    console.warn(pc.yellow("Note: --ecosystem is ignored in recursive mode (ecosystems are auto-detected per manifest)"));
+  }
+
+  // Parse exclude patterns - use defaults if empty or whitespace-only
+  const parsedPatterns = options.exclude
+    ? options.exclude.split(",").map((p) => p.trim()).filter(Boolean)
+    : [];
+  const excludePatterns = parsedPatterns.length > 0 ? parsedPatterns : DEFAULT_EXCLUDES;
+
+  // Check if path exists
+  if (!existsSync(basePath)) {
+    console.error(pc.red(`Path does not exist: ${basePath}`));
+    process.exit(EXIT_CLI_ERROR);
+  }
+
+  // Preview scan first (no API calls)
+  const spinner = createSpinner("Discovering manifest files...");
+  let preview;
+  try {
+    preview = previewRepoScan({
+      basePath,
+      includeDev,
+      excludePatterns,
+      maxManifests,
+    });
+    spinner?.stop();
+  } catch (err) {
+    spinner?.stop();
+    console.error(pc.red(`Error discovering manifests: ${err instanceof Error ? err.message : String(err)}`));
+    process.exit(EXIT_CLI_ERROR);
+  }
+
+  if (preview.manifests.length === 0) {
+    log(pc.yellow("No manifest files found"));
+    process.exit(EXIT_SUCCESS);
+  }
+
+  // Show discovery summary
+  const npmCount = preview.manifests.filter((m) => m.ecosystem === "npm").length;
+  const pypiCount = preview.manifests.filter((m) => m.ecosystem === "pypi").length;
+  const ecosystemParts = [];
+  if (npmCount > 0) ecosystemParts.push(`${npmCount} npm`);
+  if (pypiCount > 0) ecosystemParts.push(`${pypiCount} pypi`);
+
+  log(`Found ${pc.bold(String(preview.manifests.length))} manifest files (${ecosystemParts.join(", ")})`);
+  log(`Total unique packages: ${pc.bold(String(preview.packageCounts.total))}`);
+
+  if (preview.truncated) {
+    log(pc.yellow(`\n⚠ Truncated: Max manifest limit (${maxManifests}) reached`));
+  }
+
+  // Confirmation prompt (unless in CI or --no-confirm)
+  // Robust CI detection - check multiple environment variables
+  const isCI = Boolean(
+    process.env.CI ||
+    process.env.GITHUB_ACTIONS ||
+    process.env.GITLAB_CI ||
+    process.env.JENKINS_URL ||
+    process.env.CIRCLECI ||
+    process.env.TRAVIS ||
+    process.env.BUILDKITE
+  );
+  const skipConfirm = options.confirm === false || isCI;
+
+  if (!skipConfirm && outputFormat === "table") {
+    log("");
+    // Try to get usage info for quota display
+    const apiKey = getApiKey();
+    if (apiKey) {
+      try {
+        const client = new PkgWatchClient(apiKey);
+        const usage = await client.getUsage();
+        const remaining = usage.usage.remaining;
+        log(`This will use ${pc.bold(String(preview.packageCounts.total))} of your ${remaining.toLocaleString()} remaining requests.`);
+
+        // Warn if quota is insufficient
+        if (preview.packageCounts.total > remaining) {
+          log(pc.yellow(`\n⚠ Warning: This scan requires ${preview.packageCounts.total} requests but you only have ${remaining} remaining.`));
+          log(pc.yellow("The scan may be incomplete due to rate limiting."));
+        }
+      } catch {
+        // Ignore errors, just skip quota display
+      }
+    }
+
+    const confirmed = await promptConfirm("Continue? [Y/n] ");
+    if (!confirmed) {
+      log(pc.dim("Scan cancelled"));
+      process.exit(EXIT_SUCCESS);
+    }
+  }
+
+  log("");
+
+  // Run actual scan - requires API key
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    console.error(pc.red("Recursive scan requires an API key."));
+    console.error(pc.dim("Run: pkgwatch config set"));
+    console.error(pc.dim("Get your key at https://pkgwatch.laranjo.dev"));
+    process.exit(EXIT_CLI_ERROR);
+  }
+
+  let result: RepoScanResult;
+
+  try {
+    result = await scanRepository({
+      basePath,
+      apiKey,
+      includeDev,
+      excludePatterns,
+      maxManifests,
+      onProgress: (current, total, manifest) => {
+        if (!quietMode && outputFormat === "table") {
+          process.stdout.write(`\rScanning manifest ${current}/${total}: ${manifest}`);
+          process.stdout.write("\x1b[K"); // Clear to end of line
+        }
+      },
+    });
+
+    if (!quietMode && outputFormat === "table") {
+      process.stdout.write("\r\x1b[K"); // Clear progress line
+    }
+  } catch (err) {
+    if (err instanceof ApiClientError) {
+      handleApiError(err);
+    } else {
+      console.error(pc.red(`Error scanning repository: ${err instanceof Error ? err.message : String(err)}`));
+    }
+    process.exit(EXIT_CLI_ERROR);
+  }
+
+  // Output results
+  if (outputFormat === "json") {
+    console.log(JSON.stringify(result, null, 2));
+  } else if (outputFormat === "sarif") {
+    // SARIF output with all packages from all manifests
+    const allPackages: PackageHealth[] = [];
+    for (const m of result.manifests) {
+      if (m.packages) allPackages.push(...m.packages);
+    }
+    const sarifResult: ScanResult = {
+      total: allPackages.length,
+      critical: result.summary.critical,
+      high: result.summary.high,
+      medium: result.summary.medium,
+      low: result.summary.low,
+      packages: allPackages,
+    };
+    console.log(JSON.stringify(toSarif(sarifResult), null, 2));
+  } else {
+    // Table output - show results per manifest
+    log("");
+
+    for (const m of result.manifests) {
+      const status = getStatusEmoji(m.status);
+      const ecosystem = m.manifest.ecosystem.toUpperCase();
+      log(`${status} ${pc.bold(m.manifest.relativePath)} ${pc.dim(`(${ecosystem})`)}`);
+
+      if (m.status === "success" && m.packages) {
+        const critical = m.packages.filter((p) => p.risk_level === "CRITICAL");
+        const high = m.packages.filter((p) => p.risk_level === "HIGH");
+
+        if (critical.length > 0) {
+          log(`  ${pc.red(`CRITICAL (${critical.length}):`)} ${critical.map((p) => p.package).join(", ")}`);
+        }
+        if (high.length > 0) {
+          log(`  ${pc.red(`HIGH (${high.length}):`)} ${high.map((p) => p.package).join(", ")}`);
+        }
+        if (critical.length === 0 && high.length === 0 && m.packages.length > 0) {
+          log(`  ${pc.green("No high-risk issues")} (${m.packages.length} packages)`);
+        }
+        if (m.packages.length === 0) {
+          log(`  ${pc.dim("No dependencies")}`);
+        }
+      } else if (m.status === "parse_error") {
+        log(`  ${pc.red(`Error: ${m.error || "Parse error"}`)}`);
+      } else if (m.status === "api_error") {
+        log(`  ${pc.yellow(`API Error: ${m.error || "Unknown error"}`)}`);
+      } else if (m.status === "rate_limited") {
+        log(`  ${pc.red("Rate limited - skipped")}`);
+      }
+
+      // Show not found packages (unless --ignore-not-found)
+      if (!options.ignoreNotFound && m.notFound && m.notFound.length > 0) {
+        const shown = m.notFound.slice(0, 5);
+        const more = m.notFound.length - shown.length;
+        log(`  ${pc.dim(`Not found: ${shown.join(", ")}${more > 0 ? ` (+${more} more)` : ""}`)}`);
+      }
+
+      log("");
+    }
+
+    // Summary line
+    const { summary } = result;
+    log(pc.dim("─".repeat(50)));
+    log(`Summary: ${summary.totalManifests} manifests, ${summary.uniquePackages} unique packages`);
+    log(
+      `  ${pc.red(`${summary.critical} critical`)}, ${pc.red(`${summary.high} high`)}, ${pc.yellow(`${summary.medium} medium`)}, ${pc.green(`${summary.low} low`)}`
+    );
+
+    if (result.truncated) {
+      log(pc.yellow(`\n⚠ Truncated: Max manifest limit reached`));
+    }
+    if (result.rateLimited) {
+      log(pc.red(`\n⚠ Rate limited: Some manifests were not scanned`));
+    }
+  }
+
+  // Check rate limit warning
+  await checkRateLimitWarning(getClient());
+
+  // Check fail-on threshold
+  const { summary } = result;
+  if (options.failOn) {
+    const threshold = options.failOn.toUpperCase();
+    if (threshold === "CRITICAL" && summary.critical > 0) {
+      log(pc.red(`\nExiting with code 1: Found ${summary.critical} CRITICAL risk package(s) (--fail-on ${threshold})`));
+      process.exit(EXIT_RISK_EXCEEDED);
+    }
+    if (threshold === "HIGH" && (summary.critical > 0 || summary.high > 0)) {
+      const count = summary.critical + summary.high;
+      log(pc.red(`\nExiting with code 1: Found ${count} HIGH+ risk package(s) (--fail-on ${threshold})`));
+      process.exit(EXIT_RISK_EXCEEDED);
+    }
+  }
+
+  // Exit with error if ALL manifests failed
+  if (summary.successfulManifests === 0 && summary.failedManifests > 0) {
+    log(pc.red("\nAll manifests failed to scan"));
+    process.exit(EXIT_CLI_ERROR);
+  }
+
+  process.exit(EXIT_SUCCESS);
+}
+
+/**
+ * Handle API errors with user-friendly messages.
+ */
+function handleApiError(error: ApiClientError): void {
+  if (error.code === "rate_limited") {
+    console.error(pc.red("Rate limit exceeded."));
+    console.error(pc.dim("Your API quota has been exhausted. Try again later or upgrade your plan."));
+    console.error(pc.dim("  https://pkgwatch.laranjo.dev/pricing"));
+  } else if (error.code === "forbidden") {
+    console.error(pc.red("Access denied - check your API key permissions."));
+    console.error(pc.dim("Your API key may not have access to this resource."));
+  } else if (error.code === "unauthorized") {
+    console.error(pc.red("Authentication failed."));
+    console.error(pc.dim("Your API key may be invalid or expired."));
+    console.error(pc.dim("  https://pkgwatch.laranjo.dev/dashboard"));
+  } else {
+    console.error(pc.red(`API Error: ${error.message}`));
+  }
+}
+
+// ------------------------------------------------------------
 // scan [path]
 // ------------------------------------------------------------
 program
@@ -345,8 +667,13 @@ program
   .option("-o, --output <format>", "Output format: table, json, sarif", "table")
   .option("--fail-on <level>", "Exit 1 if risk level reached (HIGH or CRITICAL)")
   .option("--no-dev", "Exclude dev dependencies from scan")
+  .option("-r, --recursive", "Scan all manifest files in directory (monorepo mode)")
+  .option("--exclude <patterns>", "Glob patterns to exclude (comma-separated)")
+  .option("--max-manifests <n>", "Maximum number of manifests to scan", "100")
+  .option("--no-confirm", "Skip confirmation prompt for recursive scans")
+  .option("--ignore-not-found", "Don't show packages not found in registry")
   .addOption(new Option("-e, --ecosystem <name>", "Override detected ecosystem").choices(["npm", "pypi"]))
-  .action(async (path: string | undefined, options: { json?: boolean; output?: string; failOn?: string; ecosystem?: string; dev?: boolean }) => {
+  .action(async (path: string | undefined, options: { json?: boolean; output?: string; failOn?: string; ecosystem?: string; dev?: boolean; recursive?: boolean; exclude?: string; maxManifests?: string; confirm?: boolean; ignoreNotFound?: boolean }) => {
     // Handle backward compatibility: --json flag
     let outputFormat = options.output || "table";
     if (options.json) {
@@ -368,6 +695,12 @@ program
       console.error(pc.red(`Invalid --fail-on value: ${options.failOn}`));
       console.error(`Valid options: ${VALID_FAIL_ON.join(", ")}`);
       process.exit(EXIT_CLI_ERROR);
+    }
+
+    // Handle recursive mode
+    if (options.recursive) {
+      await runRecursiveScan(path, options, outputFormat);
+      return;
     }
 
     const client = getClient();
@@ -843,6 +1176,10 @@ Examples:
   pkgwatch scan --no-dev               Exclude dev dependencies
   pkgwatch scan -o json                Output as JSON
   pkgwatch scan -o sarif               Output as SARIF
+  pkgwatch scan --recursive            Scan all manifests in repo (monorepo mode)
+  pkgwatch scan -r --no-confirm        Recursive scan without confirmation
+  pkgwatch scan -r --max-manifests 50  Limit to 50 manifests
+  pkgwatch scan -r --ignore-not-found  Hide packages not found in registry
   pkgwatch doctor                      Diagnose configuration issues
 
 Supported dependency files:
