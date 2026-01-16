@@ -53,10 +53,10 @@ import Layout from '../layouts/Layout.astro';
           <span id="user-tier" class="px-3 py-1 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-400 uppercase">
             Free
           </span>
-          <!-- Manage Subscription Button (hidden for free tier) -->
+          <!-- Manage Subscription Button (hidden for free tier, aligned right) -->
           <button
             id="manage-subscription-btn"
-            class="hidden px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded-lg transition flex items-center gap-1.5"
+            class="hidden ml-auto px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded-lg transition flex items-center gap-1.5"
           >
             <svg aria-hidden="true" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
@@ -67,13 +67,6 @@ import Layout from '../layouts/Layout.astro';
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
-          </button>
-          <!-- Sign Out Button -->
-          <button
-            id="logout-btn"
-            class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded-lg transition"
-          >
-            Sign out
           </button>
         </div>
       </section>
@@ -1029,15 +1022,6 @@ import Layout from '../layouts/Layout.astro';
   createKeyBtn?.addEventListener('click', handleCreateKey);
   copyKeyBtn?.addEventListener('click', handleCopyKey);
   manageSubscriptionBtn?.addEventListener('click', handleManageSubscription);
-
-  // Logout button handler
-  document.getElementById('logout-btn')?.addEventListener('click', async () => {
-    try {
-      await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
-    } finally {
-      window.location.href = '/';
-    }
-  });
 
   confirmSaved?.addEventListener('change', () => {
     if (closeModalBtn) closeModalBtn.disabled = !confirmSaved.checked;
