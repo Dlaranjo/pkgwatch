@@ -3,6 +3,8 @@ import Layout from '../layouts/Layout.astro';
 ---
 
 <Layout title="Sign Up | PkgWatch" mainClass="max-w-md mx-auto px-4 py-24 pt-24">
+  <!-- Content hidden until auth check completes -->
+  <div id="signup-content" class="opacity-0 transition-opacity duration-150">
     <div class="text-center mb-8">
       <h1 class="text-3xl font-bold text-white mb-4">Get Your Free API Key</h1>
       <p class="text-zinc-400">
@@ -63,10 +65,33 @@ import Layout from '../layouts/Layout.astro';
         Sign in
       </a>
     </div>
+  </div>
 </Layout>
 
 <script>
   const API_BASE = 'https://api.pkgwatch.laranjo.dev';
+
+  // Handle auth state from Navbar (avoids duplicate auth request)
+  function handleAuthState(isLoggedIn: boolean) {
+    if (isLoggedIn) {
+      // Already logged in - redirect to dashboard
+      window.location.href = '/dashboard';
+    } else {
+      // Not logged in - show the form
+      document.getElementById('signup-content')?.classList.remove('opacity-0');
+    }
+  }
+
+  // Listen for auth event from Navbar
+  window.addEventListener('auth-state-changed', (e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    handleAuthState(detail?.user != null);
+  });
+
+  // Fallback: Check if Navbar already resolved auth (handles race condition)
+  if (window.pkgwatchAuth?.checked) {
+    handleAuthState(window.pkgwatchAuth.isLoggedIn);
+  }
 
   const form = document.getElementById('signup-form');
   const emailInput = document.getElementById('email') as HTMLInputElement;

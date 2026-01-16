@@ -1,9 +1,5 @@
 ---
-interface Props {
-  formId?: string
-}
 
-const { formId = 'YOUR_FORM_ID' } = Astro.props
 ---
 
 <section class="py-16 border-t border-[#1a1a1f] text-center animate-fade-in-up stagger-6 opacity-0">
@@ -17,7 +13,9 @@ const { formId = 'YOUR_FORM_ID' } = Astro.props
 
   <!-- CTA Buttons -->
   <div class="flex flex-col sm:flex-row gap-4 justify-center mb-8">
+    <!-- Logged-out state (default, visible) -->
     <a
+      id="cta-guest"
       href="/signup"
       class="btn-gradient px-8 py-4 text-base font-semibold text-white rounded-xl whitespace-nowrap inline-flex items-center justify-center gap-2"
     >
@@ -28,6 +26,21 @@ const { formId = 'YOUR_FORM_ID' } = Astro.props
       </svg>
       Get Free API Key
     </a>
+
+    <!-- Logged-in state (hidden by default) -->
+    <a
+      id="cta-user"
+      href="/dashboard"
+      class="hidden btn-gradient px-8 py-4 text-base font-semibold text-white rounded-xl whitespace-nowrap inline-flex items-center justify-center gap-2"
+    >
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+        <polyline points="9 22 9 12 15 12 15 22"/>
+      </svg>
+      Go to Dashboard
+    </a>
+
+    <!-- GitHub link (always visible) -->
     <a
       href="https://github.com/Dlaranjo/pkgwatch"
       target="_blank"
@@ -40,6 +53,26 @@ const { formId = 'YOUR_FORM_ID' } = Astro.props
       View on GitHub
     </a>
   </div>
+
+  <script>
+    function updateCTAAuth(isLoggedIn: boolean) {
+      if (isLoggedIn) {
+        document.getElementById('cta-guest')?.classList.add('hidden');
+        document.getElementById('cta-user')?.classList.remove('hidden');
+      }
+    }
+
+    // Listen for auth event from Navbar
+    window.addEventListener('auth-state-changed', (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      updateCTAAuth(detail?.user != null);
+    });
+
+    // Fallback: Check if Navbar already resolved auth (handles race condition)
+    if (window.pkgwatchAuth?.isLoggedIn) {
+      updateCTAAuth(true);
+    }
+  </script>
 
   <!-- Pricing Info -->
   <div class="flex flex-col sm:flex-row items-center justify-center gap-6 text-sm text-zinc-400">

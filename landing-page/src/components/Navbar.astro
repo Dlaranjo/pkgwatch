@@ -26,12 +26,28 @@
       <a href="/pricing" class="text-sm text-zinc-400 hover:text-white transition-colors">
         Pricing
       </a>
+
+      <!-- Logged-out state (default, visible) -->
       <a
+        id="nav-cta-guest"
         href="/signup"
         class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium rounded-lg transition"
       >
         Get API Key
       </a>
+
+      <!-- Logged-in state (hidden by default) -->
+      <div id="nav-cta-user" class="hidden flex items-center gap-3">
+        <span id="nav-user-tier" class="px-2 py-0.5 text-xs rounded-full bg-zinc-500/20 text-zinc-400">
+          Free
+        </span>
+        <a href="/dashboard" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium rounded-lg transition">
+          Dashboard
+        </a>
+        <button id="nav-logout-btn" class="text-zinc-400 hover:text-white text-sm transition">
+          Sign out
+        </button>
+      </div>
     </div>
 
     <!-- Mobile Menu Button -->
@@ -77,18 +93,145 @@
       <a href="/pricing" class="block py-3 text-zinc-400 hover:text-white transition-colors">
         Pricing
       </a>
+
+      <!-- Logged-out state (default, visible) -->
       <a
+        id="mobile-cta-guest"
         href="/signup"
         class="block w-full text-center px-4 py-2 bg-emerald-500 hover:bg-emerald-600
                text-white font-medium rounded-lg transition"
       >
         Get API Key
       </a>
+
+      <!-- Logged-in state (hidden by default) -->
+      <div id="mobile-cta-user" class="hidden flex flex-col gap-2 pt-2">
+        <span id="mobile-user-tier" class="px-2 py-0.5 text-xs rounded-full bg-zinc-500/20 text-zinc-400 w-fit">
+          Free
+        </span>
+        <a
+          href="/dashboard"
+          class="block w-full text-center px-4 py-2 bg-emerald-500 hover:bg-emerald-600
+                 text-white font-medium rounded-lg transition"
+        >
+          Dashboard
+        </a>
+        <button
+          id="mobile-logout-btn"
+          class="block w-full text-center px-4 py-2 text-zinc-400 hover:text-white transition"
+        >
+          Sign out
+        </button>
+      </div>
     </div>
   </div>
 </nav>
 
 <script>
+  const API_BASE = 'https://api.pkgwatch.laranjo.dev';
+
+  // Type definitions for global auth state
+  interface PkgwatchUser {
+    email: string;
+    tier: string;
+    [key: string]: unknown;
+  }
+
+  interface PkgwatchAuthState {
+    isLoggedIn: boolean;
+    user: PkgwatchUser | null;
+    checked: boolean;
+  }
+
+  declare global {
+    interface Window {
+      pkgwatchAuth: PkgwatchAuthState;
+    }
+  }
+
+  // Tier badge colors (match dashboard)
+  const tierColors: Record<string, string> = {
+    free: 'bg-zinc-500/20 text-zinc-400',
+    starter: 'bg-blue-500/20 text-blue-400',
+    pro: 'bg-emerald-500/20 text-emerald-400',
+    business: 'bg-purple-500/20 text-purple-400',
+  };
+
+  async function updateNavAuth() {
+    try {
+      const response = await fetch(`${API_BASE}/auth/me`, {
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const user = await response.json();
+
+        // Store globally for other components (CTA.astro, login.astro, signup.astro)
+        window.pkgwatchAuth = { isLoggedIn: true, user, checked: true };
+
+        // Desktop nav
+        document.getElementById('nav-cta-guest')?.classList.add('hidden');
+        document.getElementById('nav-cta-user')?.classList.remove('hidden');
+
+        // Mobile nav
+        document.getElementById('mobile-cta-guest')?.classList.add('hidden');
+        document.getElementById('mobile-cta-user')?.classList.remove('hidden');
+
+        // Update tier badges with color
+        const tier = user.tier || 'free';
+        const tierDisplay = tier.charAt(0).toUpperCase() + tier.slice(1);
+        const colorClass = tierColors[tier] || tierColors.free;
+
+        ['nav-user-tier', 'mobile-user-tier'].forEach(id => {
+          const badge = document.getElementById(id);
+          if (badge) {
+            badge.textContent = tierDisplay;
+            badge.className = `px-2 py-0.5 text-xs rounded-full ${colorClass}`;
+            // Add w-fit for mobile tier badge
+            if (id === 'mobile-user-tier') {
+              badge.classList.add('w-fit');
+            }
+          }
+        });
+
+        // Dispatch event for other components
+        window.dispatchEvent(new CustomEvent('auth-state-changed', {
+          detail: { user }
+        }));
+      } else {
+        window.pkgwatchAuth = { isLoggedIn: false, user: null, checked: true };
+        window.dispatchEvent(new CustomEvent('auth-state-changed', {
+          detail: { user: null, isLoggedIn: false }
+        }));
+      }
+    } catch (e) {
+      window.pkgwatchAuth = { isLoggedIn: false, user: null, checked: true };
+      window.dispatchEvent(new CustomEvent('auth-state-changed', {
+        detail: { user: null, isLoggedIn: false }
+      }));
+    }
+  }
+
+  // Logout handlers
+  async function handleLogout() {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (e) {
+      // Continue with redirect even if API fails
+    }
+    window.location.href = '/';
+  }
+
+  document.getElementById('nav-logout-btn')?.addEventListener('click', handleLogout);
+  document.getElementById('mobile-logout-btn')?.addEventListener('click', handleLogout);
+
+  // Run auth check
+  updateNavAuth();
+
+  // Mobile menu functionality
   const menuBtn = document.getElementById('mobile-menu-btn');
   const mobileMenu = document.getElementById('mobile-menu');
   const menuIcon = document.getElementById('menu-icon');
