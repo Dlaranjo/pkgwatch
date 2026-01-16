@@ -40,7 +40,9 @@
         <div class="text-zinc-500 mb-2"># Or install globally</div>
         <div class="text-white mb-3">npm install -g @pkgwatch/cli</div>
         <div class="text-zinc-500 mb-2"># Scan your project (CI-friendly)</div>
-        <div class="text-white">pkgwatch scan --fail-on HIGH</div>
+        <div class="text-white mb-3">pkgwatch scan --fail-on HIGH</div>
+        <div class="text-zinc-500 mb-2"># Scan entire monorepo</div>
+        <div class="text-white">pkgwatch scan --recursive</div>
       </div>
     </div>
 
@@ -67,7 +69,8 @@
   uses: Dlaranjo/pkgwatch@v1
   with:
     api-key: {'${{ secrets.PKGWATCH_API_KEY }}'}
-    fail-on: HIGH</code></pre>
+    fail-on: HIGH
+    scan-mode: recursive  # for monorepos</code></pre>
       </div>
     </div>
   </div>

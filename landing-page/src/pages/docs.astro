@@ -442,7 +442,10 @@ curl -H "X-API-Key: YOUR_KEY" \
 pkgwatch check express
 
 # Scan your package.json
-pkgwatch scan</code></pre>
+pkgwatch scan
+
+# Scan all manifests in a monorepo
+pkgwatch scan --recursive</code></pre>
           </div>
           <p class="text-zinc-500 text-sm">
             Configure your API key with <code class="bg-black/30 px-2 py-1 rounded">pkgwatch config --api-key YOUR_KEY</code>
@@ -472,7 +475,8 @@ jobs:
       - uses: Dlaranjo/pkgwatch@v1
         with:
           api-key: $&#123;&#123; secrets.PKGWATCH_API_KEY &#125;&#125;
-          fail-on: HIGH</code></pre>
+          fail-on: HIGH
+          scan-mode: recursive  # scans all manifests in repo</code></pre>
           </div>
         </div>
       </section>
