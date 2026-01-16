@@ -1,5 +1,7 @@
 import * as cdk from "aws-cdk-lib";
+import * as backup from "aws-cdk-lib/aws-backup";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as events from "aws-cdk-lib/aws-events";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
@@ -272,6 +274,37 @@ export class StorageStack extends cdk.Stack {
         principals: [new iam.AnyPrincipal()],
       })
     );
+
+    // ===========================================
+    // AWS Backup: DynamoDB Backup Plan
+    // ===========================================
+    // Daily backups with 35-day retention for disaster recovery
+    const backupVault = new backup.BackupVault(this, "BackupVault", {
+      backupVaultName: "pkgwatch-backup-vault",
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    const backupPlan = new backup.BackupPlan(this, "DynamoBackupPlan", {
+      backupPlanName: "pkgwatch-daily-backup",
+      backupPlanRules: [
+        new backup.BackupPlanRule({
+          ruleName: "DailyBackup",
+          scheduleExpression: events.Schedule.cron({ hour: "5", minute: "0" }),
+          startWindow: cdk.Duration.hours(1),
+          completionWindow: cdk.Duration.hours(2),
+          deleteAfter: cdk.Duration.days(35),
+          backupVault: backupVault,
+        }),
+      ],
+    });
+
+    backupPlan.addSelection("DynamoTables", {
+      resources: [
+        backup.BackupResource.fromDynamoDbTable(this.packagesTable),
+        backup.BackupResource.fromDynamoDbTable(this.apiKeysTable),
+        backup.BackupResource.fromDynamoDbTable(this.billingEventsTable),
+      ],
+    });
 
     // ===========================================
     // Outputs

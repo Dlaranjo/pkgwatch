@@ -484,7 +484,7 @@ export class PipelineStack extends cdk.Stack {
     });
 
     packagesTable.grantReadData(publishTopPackages);
-    publicDataBucket.grantWrite(publishTopPackages);
+    publicDataBucket.grantWrite(publishTopPackages, "data/*");
 
     // Monday 5:00 AM UTC (weekly)
     new events.Rule(this, "PublishTopPackagesSchedule", {

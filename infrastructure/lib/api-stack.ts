@@ -46,9 +46,9 @@ export class ApiStack extends cdk.Stack {
       ];
       const missingVars = requiredStripeVars.filter((v) => !process.env[v]);
       if (missingVars.length > 0) {
-        console.warn(
-          `WARNING: Missing Stripe price IDs for production: ${missingVars.join(", ")}. ` +
-          `Stripe webhook handler will not be able to map subscriptions to tiers.`
+        throw new Error(
+          `Missing required Stripe price IDs for production: ${missingVars.join(", ")}. ` +
+          `Set STRIPE_PRICE_STARTER, STRIPE_PRICE_PRO, STRIPE_PRICE_BUSINESS environment variables.`
         );
       }
     }
@@ -1400,11 +1400,90 @@ export class ApiStack extends cdk.Stack {
       apiLatencyAlarm.addOkAction(new cw_actions.SnsAction(alertTopic));
     }
 
-    // API Latency Dashboard
-    new cloudwatch.Dashboard(this, "ApiLatencyDashboard", {
-      dashboardName: "PkgWatch-API-Latency",
+    // Billing Events Table Throttling Alarm (CRITICAL - webhook failures)
+    const billingEventsThrottleAlarm = new cloudwatch.Alarm(this, "BillingEventsThrottleAlarm", {
+      alarmName: "pkgwatch-billing-events-throttling",
+      alarmDescription: "Billing events table throttling - Stripe webhooks may fail",
+      metric: billingEventsTable.metricThrottledRequestsForOperations({
+        operations: [
+          dynamodb.Operation.PUT_ITEM,
+          dynamodb.Operation.GET_ITEM,
+          dynamodb.Operation.QUERY,
+        ],
+        period: cdk.Duration.minutes(5),
+      }),
+      threshold: 1, // Any throttle is critical for billing
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    if (alertTopic) {
+      billingEventsThrottleAlarm.addAlarmAction(new cw_actions.SnsAction(alertTopic));
+      billingEventsThrottleAlarm.addOkAction(new cw_actions.SnsAction(alertTopic));
+    }
+
+    // SES Bounce Rate Alarm (CRITICAL - high bounce rate can suspend email)
+    const sesBounceAlarm = new cloudwatch.Alarm(this, "SesBounceAlarm", {
+      alarmName: "pkgwatch-ses-bounce-rate",
+      alarmDescription: "SES bounce rate high - email delivery at risk",
+      metric: new cloudwatch.Metric({
+        namespace: "AWS/SES",
+        metricName: "Reputation.BounceRate",
+        statistic: "Average",
+        period: cdk.Duration.hours(1),
+      }),
+      threshold: 0.05, // 5% bounce rate
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    if (alertTopic) {
+      sesBounceAlarm.addAlarmAction(new cw_actions.SnsAction(alertTopic));
+      sesBounceAlarm.addOkAction(new cw_actions.SnsAction(alertTopic));
+    }
+
+    // SES Complaint Rate Alarm
+    const sesComplaintAlarm = new cloudwatch.Alarm(this, "SesComplaintAlarm", {
+      alarmName: "pkgwatch-ses-complaint-rate",
+      alarmDescription: "SES complaint rate high - email delivery at risk",
+      metric: new cloudwatch.Metric({
+        namespace: "AWS/SES",
+        metricName: "Reputation.ComplaintRate",
+        statistic: "Average",
+        period: cdk.Duration.hours(1),
+      }),
+      threshold: 0.001, // 0.1% complaint rate (AWS recommends < 0.1%)
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    if (alertTopic) {
+      sesComplaintAlarm.addAlarmAction(new cw_actions.SnsAction(alertTopic));
+      sesComplaintAlarm.addOkAction(new cw_actions.SnsAction(alertTopic));
+    }
+
+    // Comprehensive API Dashboard
+    new cloudwatch.Dashboard(this, "ApiDashboard", {
+      dashboardName: "PkgWatch-API",
       widgets: [
+        // Row 1: Request metrics
         [
+          new cloudwatch.GraphWidget({
+            title: "API Request Count",
+            left: [this.api.metricCount()],
+            width: 8,
+          }),
+          new cloudwatch.GraphWidget({
+            title: "API Errors (4XX/5XX)",
+            left: [
+              this.api.metricClientError(),
+              this.api.metricServerError(),
+            ],
+            width: 8,
+          }),
           new cloudwatch.GraphWidget({
             title: "API Latency Percentiles",
             left: [
@@ -1412,7 +1491,54 @@ export class ApiStack extends cdk.Stack {
               this.api.metricLatency({ statistic: "p90" }),
               this.api.metricLatency({ statistic: "p99" }),
             ],
-            width: 24,
+            width: 8,
+          }),
+        ],
+        // Row 2: Lambda metrics for key endpoints
+        [
+          new cloudwatch.GraphWidget({
+            title: "GetPackage Lambda",
+            left: [
+              getPackageHandler.metricInvocations(),
+              getPackageHandler.metricErrors(),
+            ],
+            width: 8,
+          }),
+          new cloudwatch.GraphWidget({
+            title: "Scan Lambda",
+            left: [
+              scanHandler.metricInvocations(),
+              scanHandler.metricErrors(),
+            ],
+            width: 8,
+          }),
+          new cloudwatch.GraphWidget({
+            title: "Stripe Webhook Lambda",
+            left: [
+              stripeWebhookHandler.metricInvocations(),
+              stripeWebhookHandler.metricErrors(),
+            ],
+            width: 8,
+          }),
+        ],
+        // Row 3: Auth and billing metrics
+        [
+          new cloudwatch.GraphWidget({
+            title: "Auth Lambdas",
+            left: [
+              signupHandler.metricInvocations(),
+              magicLinkHandler.metricInvocations(),
+              authCallbackHandler.metricInvocations(),
+            ],
+            width: 12,
+          }),
+          new cloudwatch.GraphWidget({
+            title: "Billing Lambdas",
+            left: [
+              createCheckoutHandler.metricInvocations(),
+              upgradeConfirmHandler.metricInvocations(),
+            ],
+            width: 12,
           }),
         ],
       ],

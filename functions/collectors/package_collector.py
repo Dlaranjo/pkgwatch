@@ -38,9 +38,34 @@ from metrics import emit_metric, emit_batch_metrics
 from circuit_breaker import CircuitOpenError, GITHUB_CIRCUIT
 from rate_limit_utils import check_and_increment_external_rate_limit
 
-dynamodb = boto3.resource("dynamodb")
-s3 = boto3.client("s3")
-secretsmanager = boto3.client("secretsmanager")
+# Lazy initialization for boto3 clients (reduces cold start time)
+_dynamodb = None
+_s3 = None
+_secretsmanager = None
+
+
+def _get_dynamodb():
+    """Get DynamoDB resource with lazy initialization."""
+    global _dynamodb
+    if _dynamodb is None:
+        _dynamodb = boto3.resource("dynamodb")
+    return _dynamodb
+
+
+def _get_s3():
+    """Get S3 client with lazy initialization."""
+    global _s3
+    if _s3 is None:
+        _s3 = boto3.client("s3")
+    return _s3
+
+
+def _get_secretsmanager():
+    """Get Secrets Manager client with lazy initialization."""
+    global _secretsmanager
+    if _secretsmanager is None:
+        _secretsmanager = boto3.client("secretsmanager")
+    return _secretsmanager
 
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 RAW_DATA_BUCKET = os.environ.get("RAW_DATA_BUCKET", "pkgwatch-raw-data")
@@ -158,7 +183,7 @@ def get_github_token() -> Optional[str]:
         return None
 
     try:
-        response = secretsmanager.get_secret_value(SecretId=GITHUB_TOKEN_SECRET_ARN)
+        response = _get_secretsmanager().get_secret_value(SecretId=GITHUB_TOKEN_SECRET_ARN)
         secret_string = response["SecretString"]
 
         # Try to parse as JSON (e.g., {"token": "ghp_..."})
@@ -181,7 +206,7 @@ def _get_rate_limit_window_key() -> str:
 
 def _get_total_github_calls(window_key: str) -> int:
     """Sum calls across all shards for the window."""
-    table = dynamodb.Table(API_KEYS_TABLE)
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
     total = 0
 
     for shard_id in range(RATE_LIMIT_SHARDS):
@@ -208,7 +233,7 @@ def _check_and_increment_github_rate_limit() -> bool:
     Returns:
         True if request is allowed, False if rate limit exceeded.
     """
-    table = dynamodb.Table(API_KEYS_TABLE)
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
     now = datetime.now(timezone.utc)
     window_key = _get_rate_limit_window_key()
     shard_id = random.randint(0, RATE_LIMIT_SHARDS - 1)
@@ -257,7 +282,7 @@ def _check_and_increment_github_rate_limit() -> bool:
 
 async def _get_existing_package_data(ecosystem: str, name: str) -> Optional[dict]:
     """Get existing package data from DynamoDB."""
-    table = dynamodb.Table(PACKAGES_TABLE)
+    table = _get_dynamodb().Table(PACKAGES_TABLE)
     try:
         response = table.get_item(Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"})
         return response.get("Item")
@@ -576,7 +601,7 @@ def store_raw_data(ecosystem: str, name: str, data: dict):
     """Store raw collected data in S3 for debugging."""
     try:
         key = f"{ecosystem}/{name}/{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.json"
-        s3.put_object(
+        _get_s3().put_object(
             Bucket=RAW_DATA_BUCKET,
             Key=key,
             Body=json.dumps(data, indent=2, default=str),
@@ -642,7 +667,7 @@ def _calculate_next_retry_at(retry_count: int) -> str | None:
 
 def store_package_data(ecosystem: str, name: str, data: dict, tier: int):
     """Store processed package data in DynamoDB."""
-    table = dynamodb.Table(PACKAGES_TABLE)
+    table = _get_dynamodb().Table(PACKAGES_TABLE)
 
     now = datetime.now(timezone.utc).isoformat()
 
@@ -754,7 +779,7 @@ async def process_single_package(message: dict) -> tuple[bool, str, Optional[str
     # For incomplete data retries, increment retry_count BEFORE collection
     # This prevents infinite loops if the Lambda crashes before storing
     if is_retry and existing:
-        table = dynamodb.Table(PACKAGES_TABLE)
+        table = _get_dynamodb().Table(PACKAGES_TABLE)
         try:
             table.update_item(
                 Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"},
