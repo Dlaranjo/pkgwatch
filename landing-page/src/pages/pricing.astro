@@ -471,8 +471,14 @@ const tiers = [
       const data = await response.json();
 
       if (response.ok && data.checkout_url) {
-        // Redirect to Stripe Checkout (new subscription)
-        window.location.href = data.checkout_url;
+        // Validate and redirect to Stripe Checkout (defense-in-depth)
+        if (data.checkout_url.startsWith('https://checkout.stripe.com/')) {
+          window.location.href = data.checkout_url;
+        } else {
+          alert('Invalid checkout URL received. Please try again.');
+          button.disabled = false;
+          button.textContent = originalText;
+        }
       } else if (response.status === 401) {
         // Not logged in - redirect to login with return URL
         window.location.href = `/login?redirect=${encodeURIComponent('/pricing')}`;
@@ -496,11 +502,18 @@ const tiers = [
 
   // Initialize on page load
   async function init() {
+    // Disable all tier buttons during auth check
+    document.querySelectorAll<HTMLButtonElement>('[data-tier]').forEach((btn) => {
+      btn.disabled = true;
+      btn.textContent = 'Loading...';
+    });
+
     const user = await checkAuth();
     const currentTier = user?.tier || null;
 
     // Update buttons based on auth state and current tier
     document.querySelectorAll<HTMLButtonElement>('[data-tier]').forEach((button) => {
+      button.disabled = false;
       const tier = button.dataset.tier;
       if (!tier) return;
 
@@ -511,12 +524,14 @@ const tiers = [
         button.classList.remove('cursor-pointer');
       } else if (user && tierOrder(tier) < tierOrder(currentTier)) {
         // User is on a higher tier - show disabled downgrade
-        button.textContent = 'Current: ' + (currentTier?.charAt(0).toUpperCase() + currentTier?.slice(1));
+        const tierName = currentTier ? currentTier.charAt(0).toUpperCase() + currentTier.slice(1) : 'Plan';
+        button.textContent = 'Current: ' + tierName;
         button.disabled = true;
         button.classList.add('opacity-50', 'cursor-not-allowed');
         button.classList.remove('cursor-pointer');
       } else {
-        // Available for upgrade
+        // Available for upgrade - restore button text
+        button.textContent = 'Upgrade';
         button.addEventListener('click', () => startCheckout(tier, button));
       }
     });
@@ -537,7 +552,6 @@ const tiers = [
   const params = new URLSearchParams(window.location.search);
   if (params.get('cancelled') === 'true') {
     // Could show a toast/notification here if desired
-    console.log('Checkout was cancelled');
   }
 
   init();

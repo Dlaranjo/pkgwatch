@@ -199,6 +199,7 @@ const pypiPackages = ['requests', 'django', 'flask', 'numpy', 'pandas', 'fastapi
 
   // Track current ecosystem
   let currentEcosystem = 'npm';
+  let isCheckingPackage = false;
 
   const placeholders: Record<string, string> = {
     npm: 'Enter package name (e.g., express)',
@@ -343,22 +344,55 @@ const pypiPackages = ['requests', 'django', 'flask', 'numpy', 'pandas', 'fastapi
     });
   });
 
-  checkBtn?.addEventListener('click', () => checkPackage(input?.value || ''));
-  input?.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') checkPackage(input.value);
+  checkBtn?.addEventListener('click', async () => {
+    if (isCheckingPackage) return;
+    isCheckingPackage = true;
+    (checkBtn as HTMLButtonElement).disabled = true;
+
+    try {
+      await checkPackage(input?.value || '');
+    } finally {
+      isCheckingPackage = false;
+      (checkBtn as HTMLButtonElement).disabled = false;
+    }
+  });
+
+  input?.addEventListener('keypress', async (e) => {
+    if (e.key === 'Enter') {
+      if (isCheckingPackage) return;
+      isCheckingPackage = true;
+      (checkBtn as HTMLButtonElement).disabled = true;
+
+      try {
+        await checkPackage(input.value);
+      } finally {
+        isCheckingPackage = false;
+        (checkBtn as HTMLButtonElement).disabled = false;
+      }
+    }
   });
 
   quickPicks.forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
+      if (isCheckingPackage) return;
+
       const pkg = btn.getAttribute('data-package');
       const ecosystem = btn.getAttribute('data-ecosystem');
       if (pkg && input) {
-        // Switch to the package's ecosystem if different
-        if (ecosystem && ecosystem !== currentEcosystem) {
-          setEcosystem(ecosystem);
+        isCheckingPackage = true;
+        (checkBtn as HTMLButtonElement).disabled = true;
+
+        try {
+          // Switch to the package's ecosystem if different
+          if (ecosystem && ecosystem !== currentEcosystem) {
+            setEcosystem(ecosystem);
+          }
+          input.value = pkg;
+          await checkPackage(pkg, ecosystem || currentEcosystem);
+        } finally {
+          isCheckingPackage = false;
+          (checkBtn as HTMLButtonElement).disabled = false;
         }
-        input.value = pkg;
-        checkPackage(pkg, ecosystem || currentEcosystem);
       }
     });
   });

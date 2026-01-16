@@ -68,6 +68,13 @@ import Layout from '../layouts/Layout.astro';
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
           </button>
+          <!-- Sign Out Button -->
+          <button
+            id="logout-btn"
+            class="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded-lg transition"
+          >
+            Sign out
+          </button>
         </div>
       </section>
 
@@ -352,7 +359,16 @@ import Layout from '../layouts/Layout.astro';
   const keyTimer = document.getElementById('key-timer');
 
   // State
-  let apiKeys: any[] = [];
+  interface ApiKey {
+    key_id: string;
+    key_prefix: string;
+    tier: string;
+    requests_this_month: number;
+    created_at: string;
+    last_used: string | null;
+  }
+
+  let apiKeys: ApiKey[] = [];
   let keyToRevoke: string | null = null;
   let countdownInterval: number | null = null;
 
@@ -419,6 +435,13 @@ import Layout from '../layouts/Layout.astro';
 
     if (response.status === 401) {
       throw new Error('UNAUTHORIZED');
+    }
+
+    if (response.status === 429) {
+      const data = await response.json();
+      const match = data.error?.message?.match(/(\d+) seconds/);
+      const waitTime = match ? parseInt(match[1]) : 60;
+      throw new Error(`Rate limited. Please wait ${waitTime} seconds.`);
     }
 
     return response;
@@ -563,6 +586,9 @@ import Layout from '../layouts/Layout.astro';
 
   // UI Update Functions
   function showAuthError(): void {
+    // Close any open modals first
+    closeNewKeyModal();
+    closeRevokeModal();
     skeleton?.classList.add('hidden');
     content?.classList.add('hidden');
     authError?.classList.remove('hidden');
@@ -906,8 +932,12 @@ import Layout from '../layouts/Layout.astro';
 
     try {
       const portalUrl = await createBillingPortalSession();
-      // Redirect to Stripe Billing Portal
-      window.location.href = portalUrl;
+      // Validate and redirect to Stripe Billing Portal (defense-in-depth)
+      if (portalUrl?.startsWith('https://billing.stripe.com/')) {
+        window.location.href = portalUrl;
+      } else {
+        showInlineError('Invalid billing portal URL received. Please try again.');
+      }
     } catch (error: any) {
       if (error.message === 'UNAUTHORIZED') {
         showAuthError();
@@ -971,10 +1001,43 @@ import Layout from '../layouts/Layout.astro';
     }
   }
 
+  // Focus trap utility for accessibility
+  function trapFocus(modal: HTMLElement): void {
+    const focusable = modal.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    modal.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last?.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first?.focus();
+      }
+    });
+  }
+
+  // Set up focus traps for modals
+  if (newKeyModal) trapFocus(newKeyModal);
+  if (revokeModal) trapFocus(revokeModal);
+
   // Event Listeners
   createKeyBtn?.addEventListener('click', handleCreateKey);
   copyKeyBtn?.addEventListener('click', handleCopyKey);
   manageSubscriptionBtn?.addEventListener('click', handleManageSubscription);
+
+  // Logout button handler
+  document.getElementById('logout-btn')?.addEventListener('click', async () => {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
+    } finally {
+      window.location.href = '/';
+    }
+  });
 
   confirmSaved?.addEventListener('change', () => {
     if (closeModalBtn) closeModalBtn.disabled = !confirmSaved.checked;
