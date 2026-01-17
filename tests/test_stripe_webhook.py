@@ -475,10 +475,12 @@ class TestHandleSubscriptionUpdatedCancellation:
             "customer": "cus_cancelling",
             "status": "active",
             "cancel_at_period_end": True,
-            "current_period_end": 1707955200,  # Unix timestamp
             "items": {
                 "data": [
-                    {"price": {"id": "price_pro_123"}}
+                    {
+                        "price": {"id": "price_pro_123"},
+                        "current_period_end": 1707955200,  # Unix timestamp - on item, not subscription
+                    }
                 ]
             }
         }
@@ -526,7 +528,10 @@ class TestHandleSubscriptionUpdatedCancellation:
             "cancel_at_period_end": False,  # User resubscribed
             "items": {
                 "data": [
-                    {"price": {"id": "price_pro_123"}}
+                    {
+                        "price": {"id": "price_pro_123"},
+                        "current_period_end": 1709164800,  # Unix timestamp - on item
+                    }
                 ]
             }
         }

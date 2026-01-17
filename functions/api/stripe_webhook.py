@@ -393,12 +393,14 @@ def _handle_checkout_completed(session: dict):
     # Get subscription details to determine tier and billing cycle
     import stripe
     subscription = stripe.Subscription.retrieve(subscription_id)
-    price_id = subscription["items"]["data"][0]["price"]["id"]
+    subscription_item = subscription["items"]["data"][0]
+    price_id = subscription_item["price"]["id"]
     tier = PRICE_TO_TIER.get(price_id, "starter")
 
     # Extract billing cycle fields for per-user reset tracking
-    current_period_start = subscription.get("current_period_start")
-    current_period_end = subscription.get("current_period_end")
+    # Note: These are on the subscription item, not the subscription itself
+    current_period_start = subscription_item.get("current_period_start")
+    current_period_end = subscription_item.get("current_period_end")
 
     logger.info(
         f"Subscription tier from price {price_id}: {tier}, "
@@ -436,24 +438,28 @@ def _handle_subscription_updated(subscription: dict):
     customer_id = subscription.get("customer")
     status = subscription.get("status")
     cancel_at_period_end = subscription.get("cancel_at_period_end", False)
-    current_period_start = subscription.get("current_period_start")  # Unix timestamp
-    current_period_end = subscription.get("current_period_end")  # Unix timestamp
-
-    logger.info(
-        f"Subscription updated for customer {customer_id}: status={status}, "
-        f"cancel_at_period_end={cancel_at_period_end}, period={current_period_start}-{current_period_end}"
-    )
 
     # Handle both active and trialing subscriptions
     if status not in ["active", "trialing"]:
         return
 
-    # Get new tier from subscription items
+    # Get tier and billing cycle from subscription items
+    # Note: current_period_start/end are on the item, not the subscription
     items = subscription.get("items", {}).get("data", [])
     tier = None
+    current_period_start = None
+    current_period_end = None
     if items:
-        price_id = items[0].get("price", {}).get("id")
+        item = items[0]
+        price_id = item.get("price", {}).get("id")
         tier = PRICE_TO_TIER.get(price_id, "starter")
+        current_period_start = item.get("current_period_start")
+        current_period_end = item.get("current_period_end")
+
+    logger.info(
+        f"Subscription updated for customer {customer_id}: status={status}, "
+        f"cancel_at_period_end={cancel_at_period_end}, period={current_period_start}-{current_period_end}"
+    )
 
     # Update user with tier, cancellation state, and billing cycle
     _update_user_subscription_state(
@@ -514,8 +520,6 @@ def _handle_subscription_created(subscription: dict):
     """
     customer_id = subscription.get("customer")
     status = subscription.get("status")
-    current_period_start = subscription.get("current_period_start")
-    current_period_end = subscription.get("current_period_end")
 
     logger.info(f"Subscription created for customer {customer_id}: status={status}")
 
@@ -528,14 +532,18 @@ def _handle_subscription_created(subscription: dict):
         logger.warning("No customer ID in subscription.created event")
         return
 
-    # Get tier from subscription items
+    # Get tier and billing cycle from subscription items
+    # Note: current_period_start/end are on the item, not the subscription
     items = subscription.get("items", {}).get("data", [])
     if not items:
         logger.warning(f"No items in subscription for customer {customer_id}")
         return
 
-    price_id = items[0].get("price", {}).get("id")
+    item = items[0]
+    price_id = item.get("price", {}).get("id")
     tier = PRICE_TO_TIER.get(price_id, "starter")
+    current_period_start = item.get("current_period_start")
+    current_period_end = item.get("current_period_end")
 
     logger.info(f"Setting tier {tier} for customer {customer_id} from price {price_id}")
 

@@ -229,14 +229,17 @@ def _refresh_from_stripe(table, user_id: str, primary_key: dict, api_keys: list,
         # Extract relevant fields
         status = subscription.get("status")
         cancel_at_period_end = subscription.get("cancel_at_period_end", False)
-        current_period_end = subscription.get("current_period_end")
 
-        # Determine tier from price ID
+        # Determine tier and billing cycle from subscription items
+        # Note: current_period_start/end are on the item, not the subscription
         items = subscription.get("items", {}).get("data", [])
         tier = primary_key.get("tier", "free")  # Default to current tier
+        current_period_end = None
         if items:
-            price_id = items[0].get("price", {}).get("id")
+            item = items[0]
+            price_id = item.get("price", {}).get("id")
             tier = PRICE_TO_TIER.get(price_id, tier)
+            current_period_end = item.get("current_period_end")
 
         # Determine cancellation date
         cancellation_date = current_period_end if cancel_at_period_end else None
