@@ -141,9 +141,10 @@ class TestCreateBillingPortalHandler:
                     assert body["portal_url"] == "https://billing.stripe.com/session/test"
 
                     # Verify Stripe was called correctly
+                    # Return URL includes portal_return=1 so dashboard refreshes subscription data
                     mock_stripe.billing_portal.Session.create.assert_called_once_with(
                         customer="cus_existing123",
-                        return_url="https://pkgwatch.laranjo.dev/dashboard",
+                        return_url="https://pkgwatch.laranjo.dev/dashboard?portal_return=1",
                     )
 
     @mock_aws

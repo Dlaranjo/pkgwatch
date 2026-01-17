@@ -148,9 +148,10 @@ def handler(event, context):
 
     try:
         # Create Stripe Billing Portal session
+        # Include portal_return=1 param so dashboard knows to refresh subscription data
         portal_session = stripe.billing_portal.Session.create(
             customer=stripe_customer_id,
-            return_url=f"{BASE_URL}/dashboard",
+            return_url=f"{BASE_URL}/dashboard?portal_return=1",
         )
 
         logger.info(f"Created billing portal session for user {user_id}")

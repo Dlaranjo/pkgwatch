@@ -467,12 +467,36 @@ def _handle_subscription_updated(subscription: dict):
 
 
 def _handle_subscription_deleted(subscription: dict):
-    """Handle subscription cancellation - downgrade to free and clear cancellation state."""
-    customer_id = subscription.get("customer")
+    """Handle subscription cancellation - downgrade to free and clear cancellation state.
 
-    logger.info(f"Subscription deleted for customer {customer_id}")
+    This event fires when a subscription is actually deleted, which happens:
+    - At the end of the billing period if cancel_at_period_end was true
+    - Immediately if the subscription was cancelled without cancel_at_period_end
+
+    We trust Stripe as source of truth and always downgrade when this fires.
+    """
+    customer_id = subscription.get("customer")
+    canceled_at = subscription.get("canceled_at")
+    ended_at = subscription.get("ended_at")
+    current_period_end = subscription.get("current_period_end")
+
+    logger.info(
+        f"Subscription deleted for customer {customer_id}: "
+        f"canceled_at={canceled_at}, ended_at={ended_at}, period_end={current_period_end}"
+    )
+
+    # Safety check: Log warning if period end is in the future
+    # This could indicate out-of-order webhook delivery or immediate cancellation
+    now = int(datetime.now(timezone.utc).timestamp())
+    if current_period_end and current_period_end > now:
+        logger.warning(
+            f"Subscription deleted but period_end ({current_period_end}) is in future "
+            f"(now={now}). This may be an immediate cancellation or out-of-order webhook. "
+            f"Proceeding with downgrade per Stripe state."
+        )
 
     # Downgrade to free tier and clear cancellation pending state
+    # Stripe is the source of truth - if it says subscription is deleted, we downgrade
     _update_user_subscription_state(
         customer_id=customer_id,
         tier="free",
@@ -1153,3 +1177,44 @@ def _update_user_subscription_state(
         f"Updated {len(items)} records for customer {customer_id}: {action}, "
         f"cancellation_pending={cancellation_pending}"
     )
+
+    # Also update USER_META for consistency
+    # This ensures dashboard reads consistent billing/cancellation state
+    if items:
+        user_id = items[0]["pk"]
+        try:
+            meta_update_parts = [
+                "cancellation_pending = :cancel_pending",
+                "cancellation_date = :cancel_date",
+            ]
+            meta_values = {
+                ":cancel_pending": cancellation_pending,
+                ":cancel_date": cancellation_date,
+            }
+
+            # Add tier and monthly_limit if provided
+            if tier:
+                meta_update_parts.append("tier = :tier")
+                meta_update_parts.append("monthly_limit = :limit")
+                meta_values[":tier"] = tier
+                meta_values[":limit"] = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+
+            # Add billing cycle fields if provided
+            if current_period_end:
+                meta_update_parts.append("current_period_end = :period_end")
+                meta_values[":period_end"] = current_period_end
+
+            table.update_item(
+                Key={"pk": user_id, "sk": "USER_META"},
+                UpdateExpression="SET " + ", ".join(meta_update_parts),
+                ConditionExpression="attribute_exists(pk)",
+                ExpressionAttributeValues=meta_values,
+            )
+            logger.info(f"Updated USER_META for {user_id}: {action}")
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                # USER_META doesn't exist yet - this is OK for legacy accounts
+                logger.debug(f"USER_META not found for {user_id}, skipping sync")
+            else:
+                # Log error but don't fail - API key updates already succeeded
+                logger.error(f"Failed to update USER_META for {user_id}: {e}")

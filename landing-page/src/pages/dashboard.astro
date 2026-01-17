@@ -440,8 +440,13 @@ import Layout from '../layouts/Layout.astro';
     return response;
   }
 
-  async function loadUserData(): Promise<any> {
-    const response = await fetchWithAuth(`${API_BASE}/auth/me`);
+  async function loadUserData(refresh: boolean = false): Promise<any> {
+    // Add refresh=stripe param if returning from billing portal
+    const url = refresh
+      ? `${API_BASE}/auth/me?refresh=stripe`
+      : `${API_BASE}/auth/me`;
+
+    const response = await fetchWithAuth(url);
     if (!response.ok) {
       const data = await response.json();
       throw new Error(data.error?.message || 'Failed to load user data');
@@ -948,15 +953,29 @@ import Layout from '../layouts/Layout.astro';
   // Initialize
   async function init(): Promise<void> {
     try {
+      // Check for portal_return param (returning from Stripe billing portal)
+      const params = new URLSearchParams(window.location.search);
+      const portalReturn = params.has('portal_return');
+
       // Load user data and API keys in parallel
+      // If returning from billing portal, refresh subscription data from Stripe
       const [userData, keysData] = await Promise.all([
-        loadUserData(),
+        loadUserData(portalReturn),
         loadApiKeys(),
       ]);
 
       if (userData.error) {
         showAuthError();
         return;
+      }
+
+      // Clean up portal_return param from URL
+      if (portalReturn) {
+        params.delete('portal_return');
+        const newUrl = params.toString()
+          ? `/dashboard?${params.toString()}`
+          : '/dashboard';
+        window.history.replaceState({}, '', newUrl);
       }
 
       updateUserInfo(userData);
@@ -973,8 +992,7 @@ import Layout from '../layouts/Layout.astro';
         return;
       }
 
-      // Check if user just verified their email
-      const params = new URLSearchParams(window.location.search);
+      // Check if user just verified their email (params already defined above)
       if (params.has('verified')) {
         // Clean up URL immediately
         window.history.replaceState({}, '', '/dashboard');
