@@ -1,14 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 128 128">
-    <!-- PkgWatch Logo: Shield with Package Check -->
-    <!-- Shield outline -->
-    <path d="M64 8L16 28v36c0 28.8 20.8 55.2 48 64 27.2-8.8 48-35.2 48-64V28L64 8z" fill="#10b981"/>
-    <!-- Shield inner -->
-    <path d="M64 16L24 32v30c0 24 17.6 46.4 40 54 22.4-7.6 40-30 40-54V32L64 16z" fill="#047857"/>
-    <!-- Package box -->
-    <path d="M44 48h40v32H44z" fill="#022c22" opacity="0.3"/>
-    <path d="M44 48l20-12 20 12v32l-20 12-20-12V48z" fill="none" stroke="#d1fae5" stroke-width="4" stroke-linejoin="round"/>
-    <!-- Package center line -->
-    <path d="M64 36v44M44 48l20 12 20-12" fill="none" stroke="#d1fae5" stroke-width="4" stroke-linejoin="round"/>
-    <!-- Check mark -->
-    <path d="M52 66l8 8 16-16" fill="none" stroke="#10b981" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#a855f7"/>
+    </linearGradient>
+  </defs>
+  <!-- Eye icon only (shifted down for visual balance) -->
+  <ellipse cx="64" cy="76" rx="56" ry="32" fill="none" stroke="url(#grad)" stroke-width="10"/>
+  <circle cx="64" cy="76" r="16" fill="url(#grad)"/>
 </svg>
