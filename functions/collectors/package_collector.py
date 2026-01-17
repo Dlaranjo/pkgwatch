@@ -730,6 +730,16 @@ def store_package_data(ecosystem: str, name: str, data: dict, tier: int):
 
     # Calculate data completeness status for retry tracking
     data_status, missing_sources = _calculate_data_status(data, ecosystem)
+
+    # Upgrade minimal to abandoned_minimal if max retries reached
+    existing_retry = data.get("_existing_retry_count", 0)
+    if data_status == "minimal" and existing_retry >= MAX_RETRY_COUNT:
+        data_status = "abandoned_minimal"
+        logger.info(
+            f"Package {ecosystem}/{name} marked as abandoned_minimal "
+            f"after {existing_retry} retries"
+        )
+
     item["data_status"] = data_status
     item["missing_sources"] = missing_sources
 
@@ -738,9 +748,12 @@ def store_package_data(ecosystem: str, name: str, data: dict, tier: int):
         # Reset retry tracking on successful complete collection
         item["retry_count"] = 0
         # Don't set next_retry_at - will be removed by None filter below
+    elif data_status == "abandoned_minimal":
+        # Keep retry_count but don't schedule more retries
+        item["retry_count"] = existing_retry
+        # next_retry_at intentionally not set - package has exhausted retries
     else:
-        # Get existing retry_count (don't increment here - done in process_single_package for retries)
-        existing_retry = data.get("_existing_retry_count", 0)
+        # Partial or minimal status - schedule retry with exponential backoff
         item["retry_count"] = existing_retry
         item["next_retry_at"] = _calculate_next_retry_at(existing_retry)
 

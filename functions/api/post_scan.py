@@ -301,7 +301,7 @@ def handler(event, context):
     low_count = sum(1 for r in results if r["risk_level"] == "LOW")
 
     # Calculate data quality summary in single pass
-    quality_counts = {"verified": 0, "partial": 0, "unverified": 0}
+    quality_counts = {"verified": 0, "partial": 0, "unverified": 0, "unavailable": 0}
     verified_risk = 0
     unverified_risk = 0
 
@@ -315,6 +315,10 @@ def handler(event, context):
                 verified_risk += 1
         elif assessment == "PARTIAL":
             quality_counts["partial"] += 1
+            if risk in ("HIGH", "CRITICAL"):
+                unverified_risk += 1
+        elif assessment == "UNAVAILABLE":
+            quality_counts["unavailable"] += 1
             if risk in ("HIGH", "CRITICAL"):
                 unverified_risk += 1
         else:
@@ -352,6 +356,7 @@ def handler(event, context):
             "verified_count": quality_counts["verified"],
             "partial_count": quality_counts["partial"],
             "unverified_count": quality_counts["unverified"],
+            "unavailable_count": quality_counts["unavailable"],
         },
         "verified_risk_count": verified_risk,
         "unverified_risk_count": unverified_risk,

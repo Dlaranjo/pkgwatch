@@ -4,6 +4,7 @@ import * as cloudwatchActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
@@ -395,16 +396,21 @@ export class PipelineStack extends cdk.Stack {
       code: collectorsCode,
       timeout: cdk.Duration.minutes(2),
       description: "Dispatches retry jobs for packages with incomplete data",
+      environment: {
+        ...commonLambdaProps.environment,
+        // Configurable for gradual rollout (default 300, start with 150 for safety)
+        MAX_DISPATCH_PER_RUN: "300",
+      },
     });
 
     // Grant permissions
     packagesTable.grantReadWriteData(retryDispatcher); // Read for query, write for retry_dispatched_at
     packageQueue.grantSendMessages(retryDispatcher);
 
-    // Schedule retry dispatcher every 30 minutes
+    // Schedule retry dispatcher every 15 minutes (increased from 30 for faster backlog clearance)
     new events.Rule(this, "RetryDispatcherSchedule", {
       ruleName: "pkgwatch-retry-dispatcher",
-      schedule: events.Schedule.rate(cdk.Duration.minutes(30)),
+      schedule: events.Schedule.rate(cdk.Duration.minutes(15)),
       description: "Triggers retry dispatcher for incomplete packages",
       targets: [new targets.LambdaFunction(retryDispatcher)],
     });
@@ -517,6 +523,40 @@ export class PipelineStack extends cdk.Stack {
       schedule: events.Schedule.expression("cron(0 2 1 1,4,7,10 ? *)"),
       description: "Quarterly audit of package coverage against npms.io",
       targets: [new targets.LambdaFunction(npmsioAudit)],
+    });
+
+    // ===========================================
+    // Lambda: Data Status Metrics
+    // ===========================================
+    // Daily metrics emission for data completeness tracking
+    const dataStatusMetrics = new lambda.Function(this, "DataStatusMetrics", {
+      ...commonLambdaProps,
+      functionName: "pkgwatch-data-status-metrics",
+      handler: "data_status_metrics.handler",
+      code: adminCode,
+      timeout: cdk.Duration.minutes(2),
+      description: "Emits CloudWatch metrics for data status distribution",
+    });
+
+    packagesTable.grantReadData(dataStatusMetrics);
+
+    // Grant CloudWatch PutMetricData permission for emitting metrics
+    dataStatusMetrics.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudwatch:PutMetricData"],
+        resources: ["*"],
+        conditions: {
+          StringEquals: { "cloudwatch:namespace": "PkgWatch" },
+        },
+      })
+    );
+
+    // Daily schedule at 6:00 AM UTC
+    new events.Rule(this, "DataStatusMetricsSchedule", {
+      ruleName: "pkgwatch-data-status-metrics",
+      schedule: events.Schedule.cron({ hour: "6", minute: "0" }),
+      description: "Daily data status metrics emission",
+      targets: [new targets.LambdaFunction(dataStatusMetrics)],
     });
 
     // ===========================================
@@ -757,7 +797,27 @@ export class PipelineStack extends cdk.Stack {
     dispatcherNotRunningAlarm.addAlarmAction(new cloudwatchActions.SnsAction(this.alertTopic));
     dispatcherNotRunningAlarm.addOkAction(new cloudwatchActions.SnsAction(this.alertTopic));
 
-    // 6. Operations Dashboard
+    // 8. Minimal Packages Alarm (data quality)
+    // Alerts if too many packages remain with minimal data after backlog clearance
+    // Uses Maximum statistic since metric is emitted once daily (6 AM UTC)
+    const minimalPackagesAlarm = new cloudwatch.Alarm(this, "MinimalPackagesAlarm", {
+      alarmName: "pkgwatch-minimal-packages-high",
+      alarmDescription: "Too many packages with minimal data - backlog clearance may have stalled",
+      metric: new cloudwatch.Metric({
+        namespace: "PkgWatch",
+        metricName: "MinimalPackages",
+        statistic: "Maximum",
+        period: cdk.Duration.hours(24),
+      }),
+      threshold: 500,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    minimalPackagesAlarm.addAlarmAction(new cloudwatchActions.SnsAction(this.alertTopic));
+    minimalPackagesAlarm.addOkAction(new cloudwatchActions.SnsAction(this.alertTopic));
+
+    // 9. Operations Dashboard
     new cloudwatch.Dashboard(this, "OperationsDashboard", {
       dashboardName: "PkgWatch-Operations",
       widgets: [

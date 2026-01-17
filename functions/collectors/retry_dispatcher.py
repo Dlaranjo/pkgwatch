@@ -1,7 +1,7 @@
 """
 Retry Dispatcher - Finds incomplete packages due for retry.
 
-Triggered by EventBridge every 30 minutes.
+Triggered by EventBridge every 15 minutes.
 Uses GSI query (not scan) for efficient lookups.
 
 Dispatches packages with staggered delays to avoid overwhelming rate limits.
@@ -25,7 +25,8 @@ sqs = boto3.client("sqs")
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 PACKAGE_QUEUE_URL = os.environ.get("PACKAGE_QUEUE_URL")
 MAX_RETRY_COUNT = 5
-MAX_DISPATCH_PER_RUN = 100
+# Configurable via env var for gradual rollout (default: 300, was 100)
+MAX_DISPATCH_PER_RUN = int(os.environ.get("MAX_DISPATCH_PER_RUN", "300"))
 
 
 def handler(event, context):

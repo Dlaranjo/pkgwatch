@@ -94,10 +94,10 @@ export interface UsageAlert {
 }
 
 // Data quality types for completeness transparency
-export type AssessmentCategory = "VERIFIED" | "PARTIAL" | "UNVERIFIED";
+export type AssessmentCategory = "VERIFIED" | "PARTIAL" | "UNVERIFIED" | "UNAVAILABLE";
 
 export interface DataQuality {
-  status?: "complete" | "partial" | "minimal";
+  status?: "complete" | "partial" | "minimal" | "abandoned_minimal";
   assessment: AssessmentCategory;
   missing_sources?: string[];
   has_repository: boolean;
@@ -113,6 +113,7 @@ export interface DataQualitySummary {
   verified_count: number;
   partial_count: number;
   unverified_count: number;
+  unavailable_count?: number;
 }
 
 export interface DiscoveryInfo {

@@ -427,6 +427,8 @@ class TestRetryDispatcherHandler:
         """Should not dispatch more than MAX_DISPATCH_PER_RUN packages."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+        # Set explicit limit for this test (default is now 300)
+        os.environ["MAX_DISPATCH_PER_RUN"] = "100"
 
         # Add 150 packages (more than MAX_DISPATCH_PER_RUN=100)
         table = mock_dynamodb.Table("pkgwatch-packages")
@@ -460,5 +462,5 @@ class TestRetryDispatcherHandler:
 
                 assert result["statusCode"] == 200
                 body = json.loads(result["body"])
-                # Should be capped at MAX_DISPATCH_PER_RUN
+                # Should be capped at MAX_DISPATCH_PER_RUN (set to 100 for this test)
                 assert body["dispatched"] <= 100

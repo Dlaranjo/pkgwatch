@@ -41,6 +41,11 @@ class TestGetAssessmentCategory:
         assert get_assessment_category("unknown", True) == "UNVERIFIED"
         assert get_assessment_category("", False) == "UNVERIFIED"
 
+    def test_abandoned_minimal_returns_unavailable(self):
+        """Abandoned minimal status should return UNAVAILABLE."""
+        assert get_assessment_category("abandoned_minimal", True) == "UNAVAILABLE"
+        assert get_assessment_category("abandoned_minimal", False) == "UNAVAILABLE"
+
 
 class TestGetQualityExplanation:
     """Tests for human-readable quality explanations."""
@@ -93,6 +98,11 @@ class TestGetQualityExplanation:
         """Partial with empty missing_sources shows generic message."""
         result = get_quality_explanation("partial", [], True)
         assert result == "Some data sources unavailable"
+
+    def test_abandoned_minimal_explains_collection_exhausted(self):
+        """Abandoned minimal should explain retries exhausted."""
+        result = get_quality_explanation("abandoned_minimal", [], False)
+        assert "unavailable after multiple collection attempts" in result
 
 
 class TestBuildDataQualityFull:
@@ -182,6 +192,20 @@ class TestBuildDataQualityFull:
         assert result["missing_sources"] == []
         assert result["has_repository"] is False
 
+    def test_abandoned_minimal_returns_unavailable(self):
+        """Abandoned minimal package should return UNAVAILABLE assessment."""
+        item = {
+            "data_status": "abandoned_minimal",
+            "missing_sources": ["github", "depsdev"],
+            "repository_url": None,
+        }
+        result = build_data_quality_full(item)
+
+        assert result["status"] == "abandoned_minimal"
+        assert result["assessment"] == "UNAVAILABLE"
+        assert result["has_repository"] is False
+        assert "unavailable after multiple collection attempts" in result["explanation"]
+
 
 class TestBuildDataQualityCompact:
     """Tests for compact data quality object builder."""
@@ -241,3 +265,14 @@ class TestBuildDataQualityCompact:
 
         assert result["has_repository"] is False
         assert result["assessment"] == "UNVERIFIED"
+
+    def test_abandoned_minimal_returns_unavailable(self):
+        """Abandoned minimal package should have UNAVAILABLE assessment."""
+        item = {
+            "data_status": "abandoned_minimal",
+            "repository_url": None,
+        }
+        result = build_data_quality_compact(item)
+
+        assert result["assessment"] == "UNAVAILABLE"
+        assert result["has_repository"] is False

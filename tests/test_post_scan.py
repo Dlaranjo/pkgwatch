@@ -536,6 +536,55 @@ class TestDataQualityInScan:
         assert body["data_quality"]["verified_count"] == 1
         assert body["data_quality"]["partial_count"] == 1
         assert body["data_quality"]["unverified_count"] == 1
+        assert body["data_quality"]["unavailable_count"] == 0
+
+    @mock_aws
+    def test_scan_summary_includes_unavailable_count(
+        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
+    ):
+        """Should count abandoned_minimal packages as unavailable."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
+
+        # Package with abandoned_minimal status (exhausted retries)
+        packages_table.put_item(
+            Item={
+                "pk": "npm#abandoned-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "abandoned-pkg",
+                "health_score": 20,
+                "risk_level": "CRITICAL",
+                "data_status": "abandoned_minimal",
+                "missing_sources": ["github", "depsdev", "npm"],
+                "retry_count": 5,
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": {"abandoned-pkg": "^1.0.0"},
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["data_quality"]["unavailable_count"] == 1
+        assert body["data_quality"]["verified_count"] == 0
+        # UNAVAILABLE risk still counts toward unverified_risk
+        assert body["unverified_risk_count"] == 1
+        # Check per-package assessment
+        pkg = body["packages"][0]
+        assert pkg["data_quality"]["assessment"] == "UNAVAILABLE"
 
     @mock_aws
     def test_scan_counts_verified_vs_unverified_risk(

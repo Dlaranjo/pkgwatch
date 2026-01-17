@@ -2087,6 +2087,104 @@ class TestStorePackageData:
             assert "openssf_score" not in item
             assert "days_since_last_commit" not in item
 
+    @mock_aws
+    def test_store_package_data_upgrades_minimal_to_abandoned(self):
+        """Test that minimal packages with max retries become abandoned_minimal."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        # Pre-populate with a package that has exhausted retries
+        table = dynamodb.Table("pkgwatch-packages")
+        table.put_item(
+            Item={
+                "pk": "npm#abandoned-test",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "abandoned-test",
+                "data_status": "minimal",
+                "retry_count": 5,  # Max retries reached
+            }
+        )
+
+        with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
+            from importlib import reload
+
+            import package_collector
+
+            reload(package_collector)
+
+            # Data that would still result in minimal status (deps.dev failed)
+            data = {
+                "latest_version": "1.0.0",
+                "depsdev_error": "API unavailable",  # deps.dev failure = minimal
+                "_existing_retry_count": 5,  # Signal that we're at max retries
+            }
+
+            package_collector.store_package_data("npm", "abandoned-test", data, tier=3)
+
+            response = table.get_item(Key={"pk": "npm#abandoned-test", "sk": "LATEST"})
+
+            item = response["Item"]
+            # Should be upgraded to abandoned_minimal
+            assert item["data_status"] == "abandoned_minimal"
+            # Should preserve retry_count
+            assert item["retry_count"] == 5
+            # Should NOT have next_retry_at (no more retries)
+            assert "next_retry_at" not in item
+
+    @mock_aws
+    def test_store_package_data_does_not_upgrade_below_max_retries(self):
+        """Test that minimal packages below max retries stay minimal."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
+            from importlib import reload
+
+            import package_collector
+
+            reload(package_collector)
+
+            # Data that results in minimal status with retries remaining
+            data = {
+                "latest_version": "1.0.0",
+                "depsdev_error": "API unavailable",  # deps.dev failure = minimal
+                "_existing_retry_count": 3,  # Below max (5)
+            }
+
+            package_collector.store_package_data("npm", "retry-test", data, tier=3)
+
+            table = dynamodb.Table("pkgwatch-packages")
+            response = table.get_item(Key={"pk": "npm#retry-test", "sk": "LATEST"})
+
+            item = response["Item"]
+            # Should stay minimal (not abandoned)
+            assert item["data_status"] == "minimal"
+            # Should have next_retry_at for future retry
+            assert "next_retry_at" in item
+
 
 class TestHandler:
     """Tests for the Lambda handler function."""
