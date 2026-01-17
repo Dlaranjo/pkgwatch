@@ -7,9 +7,9 @@
   --color-bg-card-hover: #18181b;
   --color-border: #161618;
   --color-border-light: #1c1c1f;
-  --color-accent: #10b981;
-  --color-accent-light: #34d399;
-  --color-accent-glow: rgba(16, 185, 129, 0.15);
+  --color-accent: #3b82f6;
+  --color-accent-light: #60a5fa;
+  --color-accent-glow: rgba(59, 130, 246, 0.15);
   --color-green: #22c55e;
   --color-green-dim: #166534;
   --color-yellow: #eab308;
@@ -117,7 +117,7 @@ pre {
 
 /* Button gradient */
 .btn-gradient {
-  background: linear-gradient(135deg, var(--color-accent), #059669);
+  background: linear-gradient(135deg, var(--color-accent), #2563eb);
   transition: all 0.2s ease;
 }
 
