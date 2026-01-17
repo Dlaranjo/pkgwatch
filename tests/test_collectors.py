@@ -1568,6 +1568,240 @@ class TestGetBundleSize:
             assert result["error"] == "timeout"
 
 
+class TestBundlephobiaHelpers:
+    """Tests for bundlephobia helper functions."""
+
+    def test_estimate_download_time_zero_bytes(self):
+        """Should return 0 for empty files."""
+        from bundlephobia_collector import _estimate_download_time
+
+        assert _estimate_download_time(0, "4g") == 0
+        assert _estimate_download_time(0, "3g") == 0
+        assert _estimate_download_time(-1, "4g") == 0
+
+    def test_estimate_download_time_3g_network(self):
+        """Should calculate download time for 3G network."""
+        from bundlephobia_collector import _estimate_download_time
+
+        # 50 B/ms for 3G, so 5000 bytes = 100ms
+        result = _estimate_download_time(5000, "3g")
+        assert result == 100
+
+    def test_estimate_download_time_unknown_network(self):
+        """Should default to 4g speed for unknown network."""
+        from bundlephobia_collector import _estimate_download_time
+
+        result_unknown = _estimate_download_time(8750, "5g")
+        result_4g = _estimate_download_time(8750, "4g")
+        assert result_unknown == result_4g  # Both use 4g default
+
+    def test_categorize_size_tiny(self):
+        """Should categorize files under 5KB as tiny."""
+        from bundlephobia_collector import _categorize_size
+
+        assert _categorize_size(0) == "tiny"
+        assert _categorize_size(1024) == "tiny"
+        assert _categorize_size(5 * 1024 - 1) == "tiny"
+
+    def test_categorize_size_small(self):
+        """Should categorize files 5-20KB as small."""
+        from bundlephobia_collector import _categorize_size
+
+        assert _categorize_size(5 * 1024) == "small"
+        assert _categorize_size(10 * 1024) == "small"
+        assert _categorize_size(20 * 1024 - 1) == "small"
+
+    def test_categorize_size_medium(self):
+        """Should categorize files 20-100KB as medium."""
+        from bundlephobia_collector import _categorize_size
+
+        assert _categorize_size(20 * 1024) == "medium"
+        assert _categorize_size(50 * 1024) == "medium"
+        assert _categorize_size(100 * 1024 - 1) == "medium"
+
+    def test_categorize_size_large(self):
+        """Should categorize files 100-500KB as large."""
+        from bundlephobia_collector import _categorize_size
+
+        assert _categorize_size(100 * 1024) == "large"
+        assert _categorize_size(250 * 1024) == "large"
+        assert _categorize_size(500 * 1024 - 1) == "large"
+
+    def test_categorize_size_huge(self):
+        """Should categorize files over 500KB as huge."""
+        from bundlephobia_collector import _categorize_size
+
+        assert _categorize_size(500 * 1024) == "huge"
+        assert _categorize_size(1024 * 1024) == "huge"
+
+    def test_encode_package_spec_simple(self):
+        """Should encode simple package names."""
+        from bundlephobia_collector import encode_package_spec
+
+        assert encode_package_spec("lodash") == "lodash"
+        assert encode_package_spec("lodash", "4.17.21") == "lodash@4.17.21"
+
+    def test_encode_package_spec_scoped(self):
+        """Should properly encode scoped packages."""
+        from bundlephobia_collector import encode_package_spec
+
+        # @ becomes %40, / becomes %2F
+        result = encode_package_spec("@babel/core")
+        assert "%40" in result
+        assert "%2F" in result
+
+
+class TestBundlephobiaRetry:
+    """Tests for bundlephobia retry_with_backoff function."""
+
+    @pytest.mark.asyncio
+    async def test_retry_on_server_error(self):
+        """Should retry on 500 server errors."""
+        from bundlephobia_collector import retry_with_backoff
+
+        call_count = [0]
+
+        async def mock_func():
+            call_count[0] += 1
+            if call_count[0] < 3:
+                response = httpx.Response(500)
+                raise httpx.HTTPStatusError("Server error", request=MagicMock(), response=response)
+            return "success"
+
+        result = await retry_with_backoff(mock_func, max_retries=3, base_delay=0.01)
+        assert result == "success"
+        assert call_count[0] == 3
+
+    @pytest.mark.asyncio
+    async def test_no_retry_on_client_error(self):
+        """Should not retry on 4xx client errors (except 429)."""
+        from bundlephobia_collector import retry_with_backoff
+
+        call_count = [0]
+
+        async def mock_func():
+            call_count[0] += 1
+            response = httpx.Response(400)
+            raise httpx.HTTPStatusError("Bad request", request=MagicMock(), response=response)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await retry_with_backoff(mock_func, max_retries=3, base_delay=0.01)
+
+        # Should only be called once - no retry on 400
+        assert call_count[0] == 1
+
+    @pytest.mark.asyncio
+    async def test_retry_on_rate_limit(self):
+        """Should retry on 429 rate limit errors."""
+        from bundlephobia_collector import retry_with_backoff
+
+        call_count = [0]
+
+        async def mock_func():
+            call_count[0] += 1
+            if call_count[0] < 2:
+                response = httpx.Response(429)
+                raise httpx.HTTPStatusError("Rate limited", request=MagicMock(), response=response)
+            return "success"
+
+        result = await retry_with_backoff(mock_func, max_retries=3, base_delay=0.01)
+        assert result == "success"
+        assert call_count[0] == 2
+
+    @pytest.mark.asyncio
+    async def test_retry_on_network_error(self):
+        """Should retry on network errors."""
+        from bundlephobia_collector import retry_with_backoff
+
+        call_count = [0]
+
+        async def mock_func():
+            call_count[0] += 1
+            if call_count[0] < 2:
+                raise httpx.RequestError("Connection failed")
+            return "success"
+
+        result = await retry_with_backoff(mock_func, max_retries=3, base_delay=0.01)
+        assert result == "success"
+        assert call_count[0] == 2
+
+    @pytest.mark.asyncio
+    async def test_raises_after_max_retries(self):
+        """Should raise after exhausting all retries."""
+        from bundlephobia_collector import retry_with_backoff
+
+        call_count = [0]
+
+        async def mock_func():
+            call_count[0] += 1
+            response = httpx.Response(503)
+            raise httpx.HTTPStatusError("Service unavailable", request=MagicMock(), response=response)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await retry_with_backoff(mock_func, max_retries=3, base_delay=0.01)
+
+        assert call_count[0] == 3
+
+    @pytest.mark.asyncio
+    async def test_success_on_first_try(self):
+        """Should return immediately on success."""
+        from bundlephobia_collector import retry_with_backoff
+
+        call_count = [0]
+
+        async def mock_func():
+            call_count[0] += 1
+            return "immediate_success"
+
+        result = await retry_with_backoff(mock_func, max_retries=3, base_delay=0.01)
+        assert result == "immediate_success"
+        assert call_count[0] == 1
+
+
+class TestBundlephobiaBatch:
+    """Tests for bundlephobia batch function."""
+
+    @pytest.mark.asyncio
+    async def test_get_bundle_sizes_batch(self):
+        """Should fetch sizes for multiple packages."""
+        from bundlephobia_collector import get_bundle_sizes_batch
+
+        # Mock get_bundle_size to return quickly
+        with patch("bundlephobia_collector.get_bundle_size") as mock_get:
+            mock_get.return_value = {"size": 1000, "gzip": 500}
+
+            # Use patch to reduce sleep time
+            with patch("bundlephobia_collector.asyncio.sleep", return_value=None):
+                result = await get_bundle_sizes_batch(["pkg1", "pkg2"])
+
+            assert "pkg1" in result
+            assert "pkg2" in result
+            assert mock_get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_bundle_sizes_batch_empty(self):
+        """Should handle empty package list."""
+        from bundlephobia_collector import get_bundle_sizes_batch
+
+        result = await get_bundle_sizes_batch([])
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_get_bundle_sizes_batch_single(self):
+        """Should handle single package without delay."""
+        from bundlephobia_collector import get_bundle_sizes_batch
+
+        with patch("bundlephobia_collector.get_bundle_size") as mock_get:
+            mock_get.return_value = {"size": 1000}
+
+            with patch("bundlephobia_collector.asyncio.sleep") as mock_sleep:
+                result = await get_bundle_sizes_batch(["single-pkg"])
+
+                assert "single-pkg" in result
+                # No sleep needed for single package
+                mock_sleep.assert_not_called()
+
+
 # =============================================================================
 # PACKAGE COLLECTOR INTEGRATION TESTS
 # =============================================================================
