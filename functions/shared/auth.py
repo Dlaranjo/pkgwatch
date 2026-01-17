@@ -63,6 +63,8 @@ def generate_api_key(user_id: str, tier: str = "free", email: str = None) -> str
     # Generate secure random key with prefix
     api_key = f"pw_{secrets.token_urlsafe(32)}"
     key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+    # Store last 8 chars of actual key for display (hash suffix is different)
+    key_suffix = api_key[-8:]
 
     table = _get_dynamodb().Table(API_KEYS_TABLE)
 
@@ -72,6 +74,7 @@ def generate_api_key(user_id: str, tier: str = "free", email: str = None) -> str
         "pk": user_id,
         "sk": key_hash,
         "key_hash": key_hash,  # Duplicated for GSI
+        "key_suffix": key_suffix,  # Last 8 chars of actual key for display
         "tier": tier,
         "payment_failures": 0,  # Track failed payment attempts
         "requests_this_month": 0,

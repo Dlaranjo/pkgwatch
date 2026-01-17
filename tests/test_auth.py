@@ -109,6 +109,29 @@ class TestGenerateApiKey:
 
             assert result["tier"] == tier
 
+    @mock_aws
+    def test_key_suffix_stored_correctly(self, aws_credentials, mock_dynamodb):
+        """Key suffix should be stored for dashboard display."""
+        import boto3
+        from boto3.dynamodb.conditions import Key
+        from shared.auth import generate_api_key
+
+        api_key = generate_api_key("user_suffix_test", tier="free")
+        expected_suffix = api_key[-8:]
+
+        # Query DynamoDB directly to verify key_suffix is stored
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+        response = table.query(
+            KeyConditionExpression=Key("pk").eq("user_suffix_test"),
+        )
+
+        items = response.get("Items", [])
+        assert len(items) == 1
+
+        stored_suffix = items[0].get("key_suffix")
+        assert stored_suffix == expected_suffix, \
+            f"Stored key_suffix '{stored_suffix}' should match actual suffix '{expected_suffix}'"
+
 
 class TestIncrementUsage:
     """Tests for increment_usage function."""
