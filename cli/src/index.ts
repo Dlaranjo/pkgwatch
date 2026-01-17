@@ -1072,50 +1072,11 @@ program
 // ------------------------------------------------------------
 const configCmd = program
   .command("config")
-  .description("Manage CLI configuration")
-  .option("--api-key <key>", "Set API key directly (non-interactive)")
-  .action(async (options: { apiKey?: string }) => {
-    // Handle --api-key option for non-interactive setup
-    if (options.apiKey) {
-      const key = options.apiKey;
-
-      // Validate key format
-      if (!key.startsWith("pw_")) {
-        console.error(pc.red("Invalid API key format. Keys should start with 'pw_'"));
-        process.exit(EXIT_CLI_ERROR);
-      }
-
-      // Test the key
-      const spinner = createSpinner("Validating API key...");
-      try {
-        const client = new PkgWatchClient(key);
-        const data = await client.getUsage();
-        spinner?.succeed("API key validated");
-
-        setApiKey(key);
-        console.log(pc.green("\nAPI key saved successfully!"));
-        console.log(pc.dim(`Tier: ${data.tier}`));
-        console.log(pc.dim(`Monthly limit: ${data.usage.monthly_limit.toLocaleString()} requests`));
-        console.log(pc.dim(`Config file: ${getConfigPath()}`));
-      } catch (error) {
-        spinner?.fail("API key validation failed");
-        if (error instanceof ApiClientError && error.code === "unauthorized") {
-          console.error(pc.red("\nInvalid API key. Please check your key and try again."));
-          console.error(pc.dim("Get your API key at https://pkgwatch.laranjo.dev"));
-        } else if (error instanceof Error) {
-          console.error(pc.red(`\nError: ${error.message}`));
-        } else {
-          console.error(pc.red(`\nError: ${String(error)}`));
-        }
-        process.exit(EXIT_CLI_ERROR);
-      }
-      process.exit(EXIT_SUCCESS);
-    }
-  });
+  .description("Manage CLI configuration");
 
 configCmd
   .command("set")
-  .description("Set API key (interactive)")
+  .description("Set API key")
   .action(async () => {
     console.log("");
     console.log("Enter your PkgWatch API key.");
