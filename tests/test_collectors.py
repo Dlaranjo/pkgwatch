@@ -2831,14 +2831,32 @@ class TestMessageValidation:
         assert "too long" in error
 
     def test_validate_invalid_package_name_format(self):
-        """Invalid package name format should fail."""
+        """Invalid package name format should fail (structural issues, not case)."""
         from package_collector import validate_message
 
-        message = {"ecosystem": "npm", "name": "INVALID-NAME"}  # No uppercase allowed
+        # Packages starting with underscore should fail (per npm rules)
+        message = {"ecosystem": "npm", "name": "_private"}
         is_valid, error = validate_message(message)
-
         assert is_valid is False
         assert "Invalid npm package name format" in error
+
+        # Packages starting with dot should fail
+        message = {"ecosystem": "npm", "name": ".hidden"}
+        is_valid, error = validate_message(message)
+        assert is_valid is False
+        assert "Invalid npm package name format" in error
+
+    def test_validate_uppercase_package_normalized(self):
+        """Uppercase npm package should pass and be normalized."""
+        from package_collector import validate_message
+
+        message = {"ecosystem": "npm", "name": "JSONStream"}
+        is_valid, error = validate_message(message)
+
+        assert is_valid is True
+        assert error is None
+        assert message["name"] == "jsonstream"  # Normalized
+        assert message["_original_name"] == "JSONStream"  # Original preserved
 
     def test_validate_path_traversal_attempt(self):
         """Path traversal attempts should fail validation."""
@@ -2954,14 +2972,16 @@ class TestErrorClassification:
 
         assert result == "permanent"
 
-    def test_classify_permanent_error_invalid_package(self):
-        """'invalid package' errors should be classified as permanent."""
+    def test_classify_invalid_package_now_transient(self):
+        """'invalid package' errors are now unknown (transient) to allow retry after regex fix."""
         from dlq_processor import classify_error
 
         error_msg = "Invalid package name specified"
         result = classify_error(error_msg)
 
-        assert result == "permanent"
+        # Changed: These were previously permanent but are now unknown to allow
+        # packages with uppercase/underscore scopes to be retried after the regex fix
+        assert result == "unknown"
 
     def test_classify_permanent_error_forbidden(self):
         """'forbidden' errors should be classified as permanent."""
@@ -2972,11 +2992,40 @@ class TestErrorClassification:
 
         assert result == "permanent"
 
-    def test_classify_permanent_error_validation(self):
-        """Validation errors should be classified as permanent."""
+    def test_classify_validation_now_transient(self):
+        """Validation format errors are now unknown (transient) to allow retry."""
         from dlq_processor import classify_error
 
         error_msg = "validation_error: Invalid package name format"
+        result = classify_error(error_msg)
+
+        # Changed: These were previously permanent but are now unknown to allow
+        # retry after the regex fix accepts more package name formats
+        assert result == "unknown"
+
+    def test_classify_permanent_error_path_traversal(self):
+        """Path traversal errors should remain permanent (security)."""
+        from dlq_processor import classify_error
+
+        error_msg = "Invalid package name (path traversal detected)"
+        result = classify_error(error_msg)
+
+        assert result == "permanent"
+
+    def test_classify_permanent_error_too_long(self):
+        """Package name too long errors should remain permanent."""
+        from dlq_processor import classify_error
+
+        error_msg = "Package name too long: 250 > 214"
+        result = classify_error(error_msg)
+
+        assert result == "permanent"
+
+    def test_classify_permanent_error_empty(self):
+        """Empty package name errors should remain permanent."""
+        from dlq_processor import classify_error
+
+        error_msg = "Empty package name"
         result = classify_error(error_msg)
 
         assert result == "permanent"

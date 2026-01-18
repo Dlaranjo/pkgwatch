@@ -24,9 +24,12 @@ _sqs = None
 PACKAGE_QUEUE_URL = os.environ.get("PACKAGE_QUEUE_URL")
 MAX_QUEUE_PER_SCAN = 50  # Prevent abuse - max packages to queue per scan
 
-# Valid package name patterns
-NPM_PACKAGE_PATTERN = re.compile(r'^(@[a-z0-9-~][a-z0-9-._~]*/)?[a-z0-9-~][a-z0-9-._~]*$')
-PYPI_PACKAGE_PATTERN = re.compile(r'^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$')
+# NOTE: Package validation moved to shared/package_validation.py
+from shared.package_validation import (
+    validate_npm_package_name,
+    validate_pypi_package_name,
+    normalize_npm_name,
+)
 
 
 def _get_sqs():
@@ -37,18 +40,23 @@ def _get_sqs():
     return _sqs
 
 
-def _is_valid_package_name(name: str, ecosystem: str) -> bool:
-    """Validate package name format before queueing."""
+def _is_valid_package_name(name: str, ecosystem: str) -> tuple[bool, str]:
+    """
+    Validate and normalize package name.
+
+    Returns: (is_valid, normalized_name)
+    """
     if not name or not isinstance(name, str):
-        return False
-    # Defense-in-depth: check for path traversal
-    if ".." in name or name.startswith("/"):
-        return False
+        return False, ""
+
     if ecosystem == "npm":
-        return bool(NPM_PACKAGE_PATTERN.match(name)) and len(name) <= 214
+        is_valid, _, normalized = validate_npm_package_name(name)
     elif ecosystem == "pypi":
-        return bool(PYPI_PACKAGE_PATTERN.match(name)) and len(name) <= 128  # Match collector
-    return False
+        is_valid, _, normalized = validate_pypi_package_name(name)
+    else:
+        return False, ""
+
+    return is_valid, normalized
 
 
 def _queue_packages_for_collection(packages: list[str], ecosystem: str) -> int:
@@ -60,8 +68,13 @@ def _queue_packages_for_collection(packages: list[str], ecosystem: str) -> int:
     if not PACKAGE_QUEUE_URL or not packages:
         return 0
 
-    # Validate and limit
-    valid_packages = [p for p in packages if _is_valid_package_name(p, ecosystem)]
+    # Validate, normalize, and limit
+    valid_packages = []
+    for p in packages:
+        is_valid, normalized = _is_valid_package_name(p, ecosystem)
+        if is_valid:
+            valid_packages.append(normalized)
+
     to_queue = valid_packages[:MAX_QUEUE_PER_SCAN]
 
     if not to_queue:
@@ -78,7 +91,7 @@ def _queue_packages_for_collection(packages: list[str], ecosystem: str) -> int:
                 "Id": str(j),
                 "MessageBody": json.dumps({
                     "ecosystem": ecosystem,
-                    "name": name,
+                    "name": name,  # Already normalized
                     "tier": 3,  # Low priority for discovered packages
                     "reason": "scan_discovery",
                 }),
@@ -229,12 +242,17 @@ def handler(event, context):
     dep_list = list(dependencies)
     for i in range(0, len(dep_list), 25):
         batch = dep_list[i:i + 25]
-        batch_set = set(batch)  # Track which packages we've processed
+        # Normalize names for DB lookup (npm is case-insensitive, DB stores lowercase)
+        if ecosystem == "npm":
+            normalized_batch = [normalize_npm_name(name) for name in batch]
+        else:
+            normalized_batch = batch
+        batch_set = set(normalized_batch)  # Track using normalized names
 
         try:
             request_items = {
                 PACKAGES_TABLE: {
-                    "Keys": [{"pk": f"{ecosystem}#{name}", "sk": "LATEST"} for name in batch]
+                    "Keys": [{"pk": f"{ecosystem}#{name}", "sk": "LATEST"} for name in normalized_batch]
                 }
             }
 

@@ -20,6 +20,7 @@ from shared.auth import validate_api_key, check_and_increment_usage
 from shared.response_utils import decimal_default, error_response
 from shared.rate_limit_utils import check_usage_alerts, get_reset_timestamp
 from shared.data_quality import build_data_quality_full
+from shared.package_validation import normalize_npm_name
 
 # Demo mode settings
 DEMO_REQUESTS_PER_HOUR = 20
@@ -236,6 +237,10 @@ def handler(event, context):
     # Handle URL-encoded package names (e.g., %40babel%2Fcore -> @babel/core)
     from urllib.parse import unquote
     name = unquote(name)
+
+    # Normalize npm package names to lowercase (npm is case-insensitive)
+    if ecosystem == "npm":
+        name = normalize_npm_name(name)
 
     # Validate ecosystem
     if ecosystem not in ["npm", "pypi"]:

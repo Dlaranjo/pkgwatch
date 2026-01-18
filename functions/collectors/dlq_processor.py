@@ -51,12 +51,15 @@ PERMANENT_ERRORS = [
     "404",
     "not found",
     "does not exist",
-    "invalid package",
     "malformed",
     "forbidden",
     "unauthorized",
-    "validation_error",
-    "Invalid package name",
+    # Keep security/structural errors permanent:
+    "path traversal",  # Security violation - never retry
+    "Package name too long",  # Structural error - never retry
+    "Empty package name",  # Structural error - never retry
+    # REMOVED: "validation_error", "Invalid package name", "invalid package"
+    # These are now transient because the regex fix will accept previously-rejected names
 ]
 
 

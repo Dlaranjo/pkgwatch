@@ -37,6 +37,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
 from metrics import emit_metric, emit_batch_metrics
 from circuit_breaker import CircuitOpenError, GITHUB_CIRCUIT
 from rate_limit_utils import check_and_increment_external_rate_limit
+from package_validation import validate_npm_package_name, validate_pypi_package_name
 
 # Lazy initialization for boto3 clients (reduces cold start time)
 _dynamodb = None
@@ -86,18 +87,7 @@ GITHUB_SEMAPHORE = asyncio.Semaphore(5)
 RATE_LIMIT_SHARDS = 10
 GITHUB_HOURLY_LIMIT = 4000  # Leave buffer from 5000/hour limit
 
-# Valid npm package name pattern
-# Scoped: @scope/package-name
-# Unscoped: package-name
-NPM_PACKAGE_PATTERN = re.compile(
-    r'^(@[a-z0-9-~][a-z0-9-._~]*/)?[a-z0-9-~][a-z0-9-._~]*$'
-)
-
-# Maximum package name length per npm
-MAX_PACKAGE_NAME_LENGTH = 214
-
-# Maximum package name length for PyPI
-MAX_PYPI_PACKAGE_NAME_LENGTH = 128
+# NOTE: npm/PyPI package validation moved to shared/package_validation.py
 
 # Patterns to redact from error messages (security)
 _SENSITIVE_PATTERNS = [
@@ -134,13 +124,17 @@ def validate_message(body: dict) -> Tuple[bool, Optional[str]]:
     """
     Validate SQS message body.
 
+    Uses shared validation from package_validation module which:
+    - Accepts uppercase npm names (legacy packages like Server, JSONStream)
+    - Accepts underscores in npm scopes (e.g., @_ndk/motion)
+    - Normalizes npm names to lowercase (npm is case-insensitive)
+
     Args:
         body: Parsed message body
 
     Returns:
         Tuple of (is_valid, error_message)
     """
-    # Check required fields
     ecosystem = body.get("ecosystem")
     name = body.get("name")
 
@@ -150,28 +144,21 @@ def validate_message(body: dict) -> Tuple[bool, Optional[str]]:
     if not name:
         return False, "Missing 'name' field"
 
-    # Validate ecosystem
     if ecosystem not in ["npm", "pypi"]:
         return False, f"Unsupported ecosystem: {ecosystem}"
 
-    # Check for path traversal attempts first (security check)
-    if ".." in name or name.startswith("/"):
-        return False, "Invalid package name (path traversal detected)"
-
-    # Ecosystem-specific validation
+    # Validate and normalize using shared validation
     if ecosystem == "npm":
-        if len(name) > MAX_PACKAGE_NAME_LENGTH:
-            return False, f"Package name too long: {len(name)} > {MAX_PACKAGE_NAME_LENGTH}"
-        if not NPM_PACKAGE_PATTERN.match(name):
-            return False, "Invalid npm package name format"
-    elif ecosystem == "pypi":
-        if len(name) > MAX_PYPI_PACKAGE_NAME_LENGTH:
-            return False, f"Package name too long: {len(name)} > {MAX_PYPI_PACKAGE_NAME_LENGTH}"
-        # Normalize and validate PyPI package name
-        from pypi_collector import normalize_package_name
-        normalized = normalize_package_name(name)
-        if not PYPI_NAME_PATTERN.match(normalized):
-            return False, "Invalid PyPI package name format"
+        is_valid, error, normalized = validate_npm_package_name(name)
+    else:
+        is_valid, error, normalized = validate_pypi_package_name(name)
+
+    if not is_valid:
+        return False, error
+
+    # Update message with normalized name
+    body["name"] = normalized
+    body["_original_name"] = name  # Preserve for logging
 
     return True, None
 

@@ -53,6 +53,7 @@ RATE_LIMIT_PER_DAY = 10
 def handler(event, context):
     """Handle package request from user."""
     from shared.response_utils import error_response, success_response
+    from shared.package_validation import normalize_npm_name
 
     # Parse request body (use `or "{}"` to handle explicit None)
     try:
@@ -69,6 +70,10 @@ def handler(event, context):
 
     if ecosystem not in ["npm", "pypi"]:
         return error_response(400, "invalid_ecosystem", "Ecosystem must be 'npm' or 'pypi'")
+
+    # Normalize npm package names to lowercase (npm is case-insensitive)
+    if ecosystem == "npm":
+        name = normalize_npm_name(name)
 
     # Check rate limit
     client_ip = get_client_ip(event)
