@@ -293,8 +293,9 @@ def handler(event, context):
         else:
             amount_due_formatted = f"{amount_due / 100:.2f} {currency.upper()}"
 
-        # Get current period end
-        current_period_end = subscription.get("current_period_end")
+        # Get current period end from subscription item (not subscription object)
+        subscription_item = subscription["items"]["data"][0]
+        current_period_end = subscription_item.get("current_period_end")
         period_end_str = datetime.fromtimestamp(
             current_period_end, tz=timezone.utc
         ).strftime("%Y-%m-%d") if current_period_end else None
