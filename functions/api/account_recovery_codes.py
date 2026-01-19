@@ -27,7 +27,7 @@ dynamodb = boto3.resource("dynamodb")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
 # Maximum number of recovery codes
-MAX_RECOVERY_CODES = 8
+MAX_RECOVERY_CODES = 4
 
 
 def _get_origin(event: dict) -> str | None:

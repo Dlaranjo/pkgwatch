@@ -171,7 +171,7 @@ class TestRecoveryVerifyCode:
 
         # Generate and store recovery codes
         from shared.recovery_utils import generate_recovery_codes
-        plaintext_codes, hashed_codes = generate_recovery_codes(count=8)
+        plaintext_codes, hashed_codes = generate_recovery_codes(count=4)
 
         # Store in USER_META
         table.put_item(
@@ -179,7 +179,7 @@ class TestRecoveryVerifyCode:
                 "pk": "user_test123",
                 "sk": "USER_META",
                 "recovery_codes_hash": hashed_codes,
-                "recovery_codes_count": 8,
+                "recovery_codes_count": 4,
             }
         )
 
@@ -213,11 +213,11 @@ class TestRecoveryVerifyCode:
         assert response["statusCode"] == 200
         body = json.loads(response["body"])
         assert "recovery_token" in body
-        assert body["codes_remaining"] == 7  # One code consumed
+        assert body["codes_remaining"] == 3  # One code consumed
 
         # Verify code was removed from USER_META
         meta = table.get_item(Key={"pk": "user_test123", "sk": "USER_META"})["Item"]
-        assert len(meta["recovery_codes_hash"]) == 7
+        assert len(meta["recovery_codes_hash"]) == 3
 
     @mock_aws
     def test_verify_invalid_recovery_code(self, mock_dynamodb, seeded_api_keys_table):
@@ -226,7 +226,7 @@ class TestRecoveryVerifyCode:
 
         # Generate and store recovery codes
         from shared.recovery_utils import generate_recovery_codes
-        _, hashed_codes = generate_recovery_codes(count=8)
+        _, hashed_codes = generate_recovery_codes(count=4)
 
         # Store in USER_META
         table.put_item(
@@ -423,7 +423,7 @@ class TestRecoveryVerifyCodeRaceCondition:
 
         # Generate and store recovery codes
         from shared.recovery_utils import generate_recovery_codes
-        plaintext_codes, hashed_codes = generate_recovery_codes(count=8)
+        plaintext_codes, hashed_codes = generate_recovery_codes(count=4)
 
         # Store in USER_META
         table.put_item(
@@ -431,7 +431,7 @@ class TestRecoveryVerifyCodeRaceCondition:
                 "pk": "user_test123",
                 "sk": "USER_META",
                 "recovery_codes_hash": hashed_codes,
-                "recovery_codes_count": 8,
+                "recovery_codes_count": 4,
             }
         )
 
@@ -491,9 +491,9 @@ class TestRecoveryVerifyCodeRaceCondition:
             response2 = handler(event2, None)
         assert response2["statusCode"] == 400
 
-        # Verify only 7 codes remain (code was consumed once, not twice)
+        # Verify only 3 codes remain (code was consumed once, not twice)
         meta = table.get_item(Key={"pk": "user_test123", "sk": "USER_META"})["Item"]
-        assert len(meta["recovery_codes_hash"]) == 7
+        assert len(meta["recovery_codes_hash"]) == 3
 
 
 class TestRecoveryConfirmEmail:
@@ -767,7 +767,7 @@ class TestRecoveryVerifyCodeErrors:
 
         # Generate and store recovery codes
         from shared.recovery_utils import generate_recovery_codes
-        plaintext_codes, hashed_codes = generate_recovery_codes(count=8)
+        plaintext_codes, hashed_codes = generate_recovery_codes(count=4)
 
         # Store in USER_META
         table.put_item(
@@ -775,7 +775,7 @@ class TestRecoveryVerifyCodeErrors:
                 "pk": "user_test123",
                 "sk": "USER_META",
                 "recovery_codes_hash": hashed_codes,
-                "recovery_codes_count": 8,
+                "recovery_codes_count": 4,
             }
         )
 

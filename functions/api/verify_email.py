@@ -163,7 +163,7 @@ def handler(event, context):
     # Generate recovery codes for account security
     # These are generated during email verification so users have them from the start
     try:
-        plaintext_codes, hashed_codes = generate_recovery_codes(count=8)
+        plaintext_codes, hashed_codes = generate_recovery_codes(count=4)
 
         # Create USER_META with recovery codes (and initial counters)
         table.put_item(
@@ -171,7 +171,7 @@ def handler(event, context):
                 "pk": user_id,
                 "sk": "USER_META",
                 "recovery_codes_hash": hashed_codes,
-                "recovery_codes_count": 8,
+                "recovery_codes_count": 4,
                 "recovery_codes_generated_at": now.isoformat(),
                 "recovery_codes_shown": False,  # Track if user has seen codes
                 "key_count": 1,

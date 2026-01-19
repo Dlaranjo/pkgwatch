@@ -13,7 +13,7 @@ interface Props {
 
 const {
   title,
-  description = 'Predict which npm and Python dependencies are at risk of abandonment. Get health scores and risk assessments for your packages.',
+  description = 'Free dependency health checker for npm & Python. Get health scores (0-100), predict package abandonment, and protect your builds. CLI + GitHub Action included.',
   image = 'https://pkgwatch.laranjo.dev/og-image.svg',
   canonical = Astro.url.href,
   mainClass = 'pt-24',
@@ -70,6 +70,9 @@ const {
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 
     <!-- Structured Data -->
     <script type="application/ld+json">

@@ -41,7 +41,7 @@ class TestGenerateRecoveryCodes:
 
     @mock_aws
     def test_generate_codes_first_time(self, mock_dynamodb, seeded_api_keys_table):
-        """Should generate 8 recovery codes for first-time setup."""
+        """Should generate 4 recovery codes for first-time setup."""
         table, test_key = seeded_api_keys_table
 
         from api.account_recovery_codes import handler
@@ -64,8 +64,8 @@ class TestGenerateRecoveryCodes:
         body = json.loads(response["body"])
 
         assert "codes" in body
-        assert len(body["codes"]) == 8
-        assert body["codes_count"] == 8
+        assert len(body["codes"]) == 4
+        assert body["codes_count"] == 4
 
         # Verify codes are in correct format (XXXX-XXXX-XXXX-XXXX)
         for code in body["codes"]:
@@ -75,8 +75,8 @@ class TestGenerateRecoveryCodes:
 
         # Verify hashes are stored in DynamoDB
         meta = table.get_item(Key={"pk": "user_test123", "sk": "USER_META"})["Item"]
-        assert len(meta["recovery_codes_hash"]) == 8
-        assert meta["recovery_codes_count"] == 8
+        assert len(meta["recovery_codes_hash"]) == 4
+        assert meta["recovery_codes_count"] == 4
 
     @mock_aws
     def test_regenerate_codes_replaces_existing(self, mock_dynamodb, seeded_api_keys_table):
@@ -85,14 +85,14 @@ class TestGenerateRecoveryCodes:
 
         # First, set up existing codes
         from shared.recovery_utils import generate_recovery_codes
-        old_codes, old_hashes = generate_recovery_codes(count=8)
+        old_codes, old_hashes = generate_recovery_codes(count=4)
 
         table.put_item(
             Item={
                 "pk": "user_test123",
                 "sk": "USER_META",
                 "recovery_codes_hash": old_hashes,
-                "recovery_codes_count": 8,
+                "recovery_codes_count": 4,
             }
         )
 
@@ -150,14 +150,14 @@ class TestDeleteRecoveryCodes:
 
         # Set up existing codes
         from shared.recovery_utils import generate_recovery_codes
-        _, hashes = generate_recovery_codes(count=8)
+        _, hashes = generate_recovery_codes(count=4)
 
         table.put_item(
             Item={
                 "pk": "user_test123",
                 "sk": "USER_META",
                 "recovery_codes_hash": hashes,
-                "recovery_codes_count": 8,
+                "recovery_codes_count": 4,
             }
         )
 
@@ -213,10 +213,10 @@ class TestRecoveryCodesStatus:
         """Should return correct status when codes exist."""
         table, test_key = seeded_api_keys_table
 
-        # Set up existing codes (5 remaining)
+        # Set up existing codes (3 remaining)
         from shared.recovery_utils import generate_recovery_codes
-        _, hashes = generate_recovery_codes(count=8)
-        remaining_hashes = hashes[:5]  # Simulate 3 codes used
+        _, hashes = generate_recovery_codes(count=4)
+        remaining_hashes = hashes[:3]  # Simulate 1 code used
 
         now = datetime.now(timezone.utc).isoformat()
         table.put_item(
@@ -224,7 +224,7 @@ class TestRecoveryCodesStatus:
                 "pk": "user_test123",
                 "sk": "USER_META",
                 "recovery_codes_hash": remaining_hashes,
-                "recovery_codes_count": 8,
+                "recovery_codes_count": 4,
                 "recovery_codes_generated_at": now,
             }
         )
@@ -248,8 +248,8 @@ class TestRecoveryCodesStatus:
         body = json.loads(response["body"])
 
         assert body["has_codes"] is True
-        assert body["codes_remaining"] == 5
-        assert body["original_count"] == 8
+        assert body["codes_remaining"] == 3
+        assert body["original_count"] == 4
         assert body["generated_at"] is not None
 
     @mock_aws
@@ -286,10 +286,10 @@ class TestRecoveryUtils:
         """Should generate valid recovery codes."""
         from shared.recovery_utils import generate_recovery_codes
 
-        codes, hashes = generate_recovery_codes(count=8)
+        codes, hashes = generate_recovery_codes(count=4)
 
-        assert len(codes) == 8
-        assert len(hashes) == 8
+        assert len(codes) == 4
+        assert len(hashes) == 4
 
         # Verify format
         for code in codes:
@@ -301,7 +301,7 @@ class TestRecoveryUtils:
         """Should verify valid recovery code."""
         from shared.recovery_utils import generate_recovery_codes, verify_recovery_code
 
-        codes, hashes = generate_recovery_codes(count=8)
+        codes, hashes = generate_recovery_codes(count=4)
 
         # Verify each code
         for i, code in enumerate(codes):
@@ -313,7 +313,7 @@ class TestRecoveryUtils:
         """Should reject invalid recovery code."""
         from shared.recovery_utils import generate_recovery_codes, verify_recovery_code
 
-        codes, hashes = generate_recovery_codes(count=8)
+        codes, hashes = generate_recovery_codes(count=4)
 
         # Try invalid code
         is_valid, index = verify_recovery_code("AAAA-BBBB-CCCC-DDDD", hashes)
