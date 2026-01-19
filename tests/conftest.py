@@ -75,149 +75,160 @@ def _reset_circuits():
         pass  # Circuit breakers not imported yet
 
 
+def create_dynamodb_tables(dynamodb):
+    """Create all DynamoDB tables with their GSIs.
+
+    This is a shared helper used by both unit test fixtures (mock_dynamodb)
+    and integration test fixtures (mock_aws_services) to ensure consistent
+    table definitions and avoid duplication.
+
+    Args:
+        dynamodb: boto3 DynamoDB resource
+    """
+    # API keys table with GSIs
+    dynamodb.create_table(
+        TableName="pkgwatch-api-keys",
+        KeySchema=[
+            {"AttributeName": "pk", "KeyType": "HASH"},
+            {"AttributeName": "sk", "KeyType": "RANGE"},
+        ],
+        AttributeDefinitions=[
+            {"AttributeName": "pk", "AttributeType": "S"},
+            {"AttributeName": "sk", "AttributeType": "S"},
+            {"AttributeName": "key_hash", "AttributeType": "S"},
+            {"AttributeName": "email", "AttributeType": "S"},
+            {"AttributeName": "stripe_customer_id", "AttributeType": "S"},
+            {"AttributeName": "verification_token", "AttributeType": "S"},
+            {"AttributeName": "magic_token", "AttributeType": "S"},
+        ],
+        GlobalSecondaryIndexes=[
+            {
+                "IndexName": "key-hash-index",
+                "KeySchema": [{"AttributeName": "key_hash", "KeyType": "HASH"}],
+                "Projection": {"ProjectionType": "ALL"},
+            },
+            {
+                "IndexName": "email-index",
+                "KeySchema": [{"AttributeName": "email", "KeyType": "HASH"}],
+                "Projection": {"ProjectionType": "ALL"},
+            },
+            {
+                "IndexName": "stripe-customer-index",
+                "KeySchema": [{"AttributeName": "stripe_customer_id", "KeyType": "HASH"}],
+                "Projection": {"ProjectionType": "ALL"},
+            },
+            {
+                "IndexName": "verification-token-index",
+                "KeySchema": [{"AttributeName": "verification_token", "KeyType": "HASH"}],
+                "Projection": {"ProjectionType": "KEYS_ONLY"},
+            },
+            {
+                "IndexName": "magic-token-index",
+                "KeySchema": [{"AttributeName": "magic_token", "KeyType": "HASH"}],
+                "Projection": {"ProjectionType": "KEYS_ONLY"},
+            },
+        ],
+        BillingMode="PAY_PER_REQUEST",
+    )
+
+    # Packages table with GSIs
+    dynamodb.create_table(
+        TableName="pkgwatch-packages",
+        KeySchema=[
+            {"AttributeName": "pk", "KeyType": "HASH"},
+            {"AttributeName": "sk", "KeyType": "RANGE"},
+        ],
+        AttributeDefinitions=[
+            {"AttributeName": "pk", "AttributeType": "S"},
+            {"AttributeName": "sk", "AttributeType": "S"},
+            {"AttributeName": "tier", "AttributeType": "N"},
+            {"AttributeName": "risk_level", "AttributeType": "S"},
+            {"AttributeName": "last_updated", "AttributeType": "S"},
+            {"AttributeName": "data_status", "AttributeType": "S"},
+            {"AttributeName": "next_retry_at", "AttributeType": "S"},
+            {"AttributeName": "ecosystem", "AttributeType": "S"},
+            {"AttributeName": "weekly_downloads", "AttributeType": "N"},
+            {"AttributeName": "source", "AttributeType": "S"},
+            {"AttributeName": "created_at", "AttributeType": "S"},
+        ],
+        GlobalSecondaryIndexes=[
+            {
+                "IndexName": "tier-index",
+                "KeySchema": [
+                    {"AttributeName": "tier", "KeyType": "HASH"},
+                    {"AttributeName": "last_updated", "KeyType": "RANGE"},
+                ],
+                "Projection": {"ProjectionType": "KEYS_ONLY"},
+            },
+            {
+                "IndexName": "risk-level-index",
+                "KeySchema": [
+                    {"AttributeName": "risk_level", "KeyType": "HASH"},
+                    {"AttributeName": "last_updated", "KeyType": "RANGE"},
+                ],
+                "Projection": {"ProjectionType": "ALL"},
+            },
+            {
+                "IndexName": "data-status-index",
+                "KeySchema": [
+                    {"AttributeName": "data_status", "KeyType": "HASH"},
+                    {"AttributeName": "next_retry_at", "KeyType": "RANGE"},
+                ],
+                "Projection": {"ProjectionType": "ALL"},
+            },
+            {
+                "IndexName": "downloads-index",
+                "KeySchema": [
+                    {"AttributeName": "ecosystem", "KeyType": "HASH"},
+                    {"AttributeName": "weekly_downloads", "KeyType": "RANGE"},
+                ],
+                "Projection": {"ProjectionType": "INCLUDE", "NonKeyAttributes": ["name", "health_score", "risk_level"]},
+            },
+            {
+                "IndexName": "source-index",
+                "KeySchema": [
+                    {"AttributeName": "source", "KeyType": "HASH"},
+                    {"AttributeName": "created_at", "KeyType": "RANGE"},
+                ],
+                "Projection": {"ProjectionType": "KEYS_ONLY"},
+            },
+        ],
+        BillingMode="PAY_PER_REQUEST",
+    )
+
+    # Billing events table for webhook audit trail
+    dynamodb.create_table(
+        TableName="pkgwatch-billing-events",
+        KeySchema=[
+            {"AttributeName": "pk", "KeyType": "HASH"},   # event_id
+            {"AttributeName": "sk", "KeyType": "RANGE"},  # event_type
+        ],
+        AttributeDefinitions=[
+            {"AttributeName": "pk", "AttributeType": "S"},
+            {"AttributeName": "sk", "AttributeType": "S"},
+            {"AttributeName": "customer_id", "AttributeType": "S"},
+            {"AttributeName": "processed_at", "AttributeType": "S"},
+        ],
+        GlobalSecondaryIndexes=[
+            {
+                "IndexName": "customer-index",
+                "KeySchema": [
+                    {"AttributeName": "customer_id", "KeyType": "HASH"},
+                    {"AttributeName": "processed_at", "KeyType": "RANGE"},
+                ],
+                "Projection": {"ProjectionType": "ALL"},
+            },
+        ],
+        BillingMode="PAY_PER_REQUEST",
+    )
+
+
 @pytest.fixture
 def mock_dynamodb():
     """Provide mocked DynamoDB with tables."""
     with mock_aws():
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
-
-        # API keys table with GSIs
-        dynamodb.create_table(
-            TableName="pkgwatch-api-keys",
-            KeySchema=[
-                {"AttributeName": "pk", "KeyType": "HASH"},
-                {"AttributeName": "sk", "KeyType": "RANGE"},
-            ],
-            AttributeDefinitions=[
-                {"AttributeName": "pk", "AttributeType": "S"},
-                {"AttributeName": "sk", "AttributeType": "S"},
-                {"AttributeName": "key_hash", "AttributeType": "S"},
-                {"AttributeName": "email", "AttributeType": "S"},
-                {"AttributeName": "stripe_customer_id", "AttributeType": "S"},
-                {"AttributeName": "verification_token", "AttributeType": "S"},
-                {"AttributeName": "magic_token", "AttributeType": "S"},
-            ],
-            GlobalSecondaryIndexes=[
-                {
-                    "IndexName": "key-hash-index",
-                    "KeySchema": [{"AttributeName": "key_hash", "KeyType": "HASH"}],
-                    "Projection": {"ProjectionType": "ALL"},
-                },
-                {
-                    "IndexName": "email-index",
-                    "KeySchema": [{"AttributeName": "email", "KeyType": "HASH"}],
-                    "Projection": {"ProjectionType": "ALL"},
-                },
-                {
-                    "IndexName": "stripe-customer-index",
-                    "KeySchema": [{"AttributeName": "stripe_customer_id", "KeyType": "HASH"}],
-                    "Projection": {"ProjectionType": "ALL"},
-                },
-                {
-                    "IndexName": "verification-token-index",
-                    "KeySchema": [{"AttributeName": "verification_token", "KeyType": "HASH"}],
-                    "Projection": {"ProjectionType": "KEYS_ONLY"},
-                },
-                {
-                    "IndexName": "magic-token-index",
-                    "KeySchema": [{"AttributeName": "magic_token", "KeyType": "HASH"}],
-                    "Projection": {"ProjectionType": "KEYS_ONLY"},
-                },
-            ],
-            BillingMode="PAY_PER_REQUEST",
-        )
-
-        # Packages table with GSIs
-        dynamodb.create_table(
-            TableName="pkgwatch-packages",
-            KeySchema=[
-                {"AttributeName": "pk", "KeyType": "HASH"},
-                {"AttributeName": "sk", "KeyType": "RANGE"},
-            ],
-            AttributeDefinitions=[
-                {"AttributeName": "pk", "AttributeType": "S"},
-                {"AttributeName": "sk", "AttributeType": "S"},
-                {"AttributeName": "tier", "AttributeType": "N"},
-                {"AttributeName": "risk_level", "AttributeType": "S"},
-                {"AttributeName": "last_updated", "AttributeType": "S"},
-                {"AttributeName": "data_status", "AttributeType": "S"},
-                {"AttributeName": "next_retry_at", "AttributeType": "S"},
-                {"AttributeName": "ecosystem", "AttributeType": "S"},
-                {"AttributeName": "weekly_downloads", "AttributeType": "N"},
-                {"AttributeName": "source", "AttributeType": "S"},
-                {"AttributeName": "created_at", "AttributeType": "S"},
-            ],
-            GlobalSecondaryIndexes=[
-                {
-                    "IndexName": "tier-index",
-                    "KeySchema": [
-                        {"AttributeName": "tier", "KeyType": "HASH"},
-                        {"AttributeName": "last_updated", "KeyType": "RANGE"},
-                    ],
-                    "Projection": {"ProjectionType": "KEYS_ONLY"},
-                },
-                {
-                    "IndexName": "risk-level-index",
-                    "KeySchema": [
-                        {"AttributeName": "risk_level", "KeyType": "HASH"},
-                        {"AttributeName": "last_updated", "KeyType": "RANGE"},
-                    ],
-                    "Projection": {"ProjectionType": "ALL"},
-                },
-                {
-                    "IndexName": "data-status-index",
-                    "KeySchema": [
-                        {"AttributeName": "data_status", "KeyType": "HASH"},
-                        {"AttributeName": "next_retry_at", "KeyType": "RANGE"},
-                    ],
-                    "Projection": {"ProjectionType": "ALL"},
-                },
-                {
-                    "IndexName": "downloads-index",
-                    "KeySchema": [
-                        {"AttributeName": "ecosystem", "KeyType": "HASH"},
-                        {"AttributeName": "weekly_downloads", "KeyType": "RANGE"},
-                    ],
-                    "Projection": {"ProjectionType": "INCLUDE", "NonKeyAttributes": ["name", "health_score", "risk_level"]},
-                },
-                {
-                    "IndexName": "source-index",
-                    "KeySchema": [
-                        {"AttributeName": "source", "KeyType": "HASH"},
-                        {"AttributeName": "created_at", "KeyType": "RANGE"},
-                    ],
-                    "Projection": {"ProjectionType": "KEYS_ONLY"},
-                },
-            ],
-            BillingMode="PAY_PER_REQUEST",
-        )
-
-        # Billing events table for webhook audit trail
-        dynamodb.create_table(
-            TableName="pkgwatch-billing-events",
-            KeySchema=[
-                {"AttributeName": "pk", "KeyType": "HASH"},   # event_id
-                {"AttributeName": "sk", "KeyType": "RANGE"},  # event_type
-            ],
-            AttributeDefinitions=[
-                {"AttributeName": "pk", "AttributeType": "S"},
-                {"AttributeName": "sk", "AttributeType": "S"},
-                {"AttributeName": "customer_id", "AttributeType": "S"},
-                {"AttributeName": "processed_at", "AttributeType": "S"},
-            ],
-            GlobalSecondaryIndexes=[
-                {
-                    "IndexName": "customer-index",
-                    "KeySchema": [
-                        {"AttributeName": "customer_id", "KeyType": "HASH"},
-                        {"AttributeName": "processed_at", "KeyType": "RANGE"},
-                    ],
-                    "Projection": {"ProjectionType": "ALL"},
-                },
-            ],
-            BillingMode="PAY_PER_REQUEST",
-        )
-
+        create_dynamodb_tables(dynamodb)
         yield dynamodb
 
 

@@ -14,6 +14,7 @@ import json
 import os
 import secrets
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
@@ -24,6 +25,10 @@ from moto import mock_aws
 
 # Add functions directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "functions"))
+
+# Import shared table creation helper from conftest
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from conftest import create_dynamodb_tables
 
 
 # =============================================================================
@@ -40,66 +45,63 @@ def aws_credentials():
     os.environ["AWS_REGION"] = "us-east-1"
 
 
+@pytest.fixture(autouse=True)
+def reset_module_caches():
+    """Reset module-level caches before and after each test.
+
+    This prevents cache leakage between tests for modules that cache
+    secrets or other configuration at module level.
+    """
+    # Reset BEFORE test to ensure fresh state
+    _reset_caches()
+
+    yield
+
+    # Reset AFTER test to clean up
+    _reset_caches()
+
+
+def _reset_caches():
+    """Helper to reset all module-level caches."""
+    # Reset auth_callback session secret cache
+    try:
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+    except (ImportError, AttributeError):
+        pass
+
+    # Reset stripe_webhook secrets cache, boto3 clients, and env-based constants
+    try:
+        import api.stripe_webhook as webhook_module
+        webhook_module._stripe_secrets_cache = (None, None)
+        webhook_module._stripe_secrets_cache_time = 0.0
+        webhook_module._secretsmanager = None
+        webhook_module._dynamodb = None
+        # Re-read env vars that were captured at import time
+        webhook_module.STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
+        webhook_module.STRIPE_WEBHOOK_SECRET_ARN = os.environ.get("STRIPE_WEBHOOK_SECRET_ARN")
+    except (ImportError, AttributeError):
+        pass
+
+    # Reset auth module's DynamoDB resource
+    try:
+        import shared.auth as auth_module
+        auth_module._dynamodb = None
+    except (ImportError, AttributeError):
+        pass
+
+
 @pytest.fixture
 def mock_aws_services():
-    """Provide all mocked AWS services needed for integration tests."""
+    """Provide all mocked AWS services needed for integration tests.
+
+    Uses create_dynamodb_tables() from conftest.py to ensure table definitions
+    stay in sync between unit and integration tests.
+    """
     with mock_aws():
-        # Create DynamoDB tables
+        # Create DynamoDB tables using shared helper
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
-
-        # API keys table with all GSIs
-        dynamodb.create_table(
-            TableName="pkgwatch-api-keys",
-            KeySchema=[
-                {"AttributeName": "pk", "KeyType": "HASH"},
-                {"AttributeName": "sk", "KeyType": "RANGE"},
-            ],
-            AttributeDefinitions=[
-                {"AttributeName": "pk", "AttributeType": "S"},
-                {"AttributeName": "sk", "AttributeType": "S"},
-                {"AttributeName": "key_hash", "AttributeType": "S"},
-                {"AttributeName": "email", "AttributeType": "S"},
-                {"AttributeName": "stripe_customer_id", "AttributeType": "S"},
-                {"AttributeName": "verification_token", "AttributeType": "S"},
-            ],
-            GlobalSecondaryIndexes=[
-                {
-                    "IndexName": "key-hash-index",
-                    "KeySchema": [{"AttributeName": "key_hash", "KeyType": "HASH"}],
-                    "Projection": {"ProjectionType": "ALL"},
-                },
-                {
-                    "IndexName": "email-index",
-                    "KeySchema": [{"AttributeName": "email", "KeyType": "HASH"}],
-                    "Projection": {"ProjectionType": "ALL"},
-                },
-                {
-                    "IndexName": "stripe-customer-index",
-                    "KeySchema": [{"AttributeName": "stripe_customer_id", "KeyType": "HASH"}],
-                    "Projection": {"ProjectionType": "ALL"},
-                },
-                {
-                    "IndexName": "verification-token-index",
-                    "KeySchema": [{"AttributeName": "verification_token", "KeyType": "HASH"}],
-                    "Projection": {"ProjectionType": "KEYS_ONLY"},
-                },
-            ],
-            BillingMode="PAY_PER_REQUEST",
-        )
-
-        # Packages table
-        dynamodb.create_table(
-            TableName="pkgwatch-packages",
-            KeySchema=[
-                {"AttributeName": "pk", "KeyType": "HASH"},
-                {"AttributeName": "sk", "KeyType": "RANGE"},
-            ],
-            AttributeDefinitions=[
-                {"AttributeName": "pk", "AttributeType": "S"},
-                {"AttributeName": "sk", "AttributeType": "S"},
-            ],
-            BillingMode="PAY_PER_REQUEST",
-        )
+        create_dynamodb_tables(dynamodb)
 
         # Set up SES for email sending
         ses = boto3.client("ses", region_name="us-east-1")
@@ -115,6 +117,7 @@ def mock_aws_services():
         # Set environment variables
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
         os.environ["BASE_URL"] = "https://test.pkgwatch.example.com"
         os.environ["SESSION_SECRET_ARN"] = "test-session-secret"
 
@@ -280,10 +283,6 @@ class TestNewUserSignupFlow:
 
     def test_complete_signup_flow(self, mock_aws_services, api_gateway_event):
         """Test the complete signup flow from email to API key."""
-        # Clear the session secret cache to ensure fresh state
-        import api.auth_callback
-        api.auth_callback._session_secret_cache = None
-
         # Step 1: POST /signup with email
         from api.signup import handler as signup_handler
 
@@ -794,6 +793,9 @@ class TestBillingUpgradeFlow:
         os.environ["STRIPE_SECRET_ARN"] = "test-stripe-api-key"
         os.environ["STRIPE_PRICE_PRO"] = "price_pro_test"
 
+        # Force the stripe_webhook module to re-read env vars
+        _reset_caches()
+
         # Create the webhook payload
         checkout_session = {
             "id": "cs_test_123",
@@ -810,14 +812,27 @@ class TestBillingUpgradeFlow:
         }
 
         # Mock Stripe's Webhook.construct_event and Subscription.retrieve
+        # Use readable timestamps for subscription period
+        period_start = int(time.time())  # Now
+        period_end = period_start + (30 * 24 * 60 * 60)  # 30 days later
+
         with patch("stripe.Webhook.construct_event") as mock_construct, \
              patch("stripe.Subscription.retrieve") as mock_sub_retrieve:
 
             mock_construct.return_value = stripe_event
             mock_sub_retrieve.return_value = {
                 "id": "sub_test_123",
+                "customer": "cus_test_123",
+                "status": "active",
+                "cancel_at_period_end": False,
+                "current_period_start": period_start,
+                "current_period_end": period_end,
                 "items": {
-                    "data": [{"price": {"id": "price_pro_test"}}]
+                    "data": [{
+                        "price": {"id": "price_pro_test"},
+                        "current_period_start": period_start,
+                        "current_period_end": period_end,
+                    }]
                 }
             }
 
@@ -900,6 +915,9 @@ class TestBillingUpgradeFlow:
         os.environ["STRIPE_WEBHOOK_SECRET_ARN"] = "test-stripe-webhook-secret-2"
         os.environ["STRIPE_SECRET_ARN"] = "test-stripe-api-key-2"
 
+        # Force the stripe_webhook module to re-read env vars
+        _reset_caches()
+
         # Create subscription deleted event
         subscription_deleted = {
             "id": "sub_downgrade_123",
@@ -954,10 +972,6 @@ class TestApiKeyLifecycle:
         self, mock_aws_services, packages_table_with_data, api_gateway_event
     ):
         """Test the complete API key lifecycle."""
-        # Clear session cache
-        import api.auth_callback
-        api.auth_callback._session_secret_cache = None
-
         table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
         user_id = "user_lifecycle_test"
         email = "lifecycle@example.com"
@@ -1070,10 +1084,6 @@ class TestApiKeyLifecycle:
 
     def test_cannot_revoke_last_key(self, mock_aws_services, api_gateway_event):
         """Test that the last API key cannot be revoked."""
-        # Clear session cache
-        import api.auth_callback
-        api.auth_callback._session_secret_cache = None
-
         table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
         user_id = "user_last_key_test"
         email = "lastkey@example.com"
@@ -1113,10 +1123,6 @@ class TestApiKeyLifecycle:
 
     def test_max_keys_limit(self, mock_aws_services, api_gateway_event):
         """Test that users cannot exceed max key limit."""
-        # Clear session cache
-        import api.auth_callback
-        api.auth_callback._session_secret_cache = None
-
         table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
         user_id = "user_max_keys_test"
         email = "maxkeys@example.com"
@@ -1355,36 +1361,38 @@ class TestMonthlyResetFlow:
 class TestEdgeCases:
     """Additional edge case tests for comprehensive coverage."""
 
-    def test_invalid_api_key_format_rejected(
+    def test_invalid_api_key_falls_back_to_demo_mode(
         self, mock_aws_services, packages_table_with_data, api_gateway_event
     ):
-        """Test that invalid API key formats are rejected."""
+        """Test that invalid API key formats fall back to demo mode.
+
+        Security: Invalid API keys should not cause errors, but rather fall back
+        to demo mode which has its own IP-based rate limiting.
+        """
         from api.get_package import handler as get_package_handler
 
-        # Test various invalid formats
+        # Test various invalid formats - use unique IPs to avoid demo rate limit
         invalid_keys = [
-            "",
-            "invalid_key",
-            "wrong_prefix_abc123",
-            "pw_",  # Too short
-            None,
+            ("", "10.0.0.1"),
+            ("invalid_key", "10.0.0.2"),
+            ("wrong_prefix_abc123", "10.0.0.3"),
+            ("pw_", "10.0.0.4"),  # Too short
+            (None, "10.0.0.5"),
         ]
 
-        for invalid_key in invalid_keys:
+        for invalid_key, source_ip in invalid_keys:
             api_gateway_event["headers"] = {"x-api-key": invalid_key}
             api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+            api_gateway_event["requestContext"]["identity"]["sourceIp"] = source_ip
 
-            # Without a valid key, should fall back to demo mode (or fail)
-            # Demo mode is IP-limited
             result = get_package_handler(api_gateway_event, {})
-            # Will get 200 in demo mode or 429 if demo limit exceeded
-            assert result["statusCode"] in [200, 429]
+            # Should succeed in demo mode
+            assert result["statusCode"] == 200, f"Key '{invalid_key}' failed"
+            # Verify demo mode is being used
+            assert result["headers"].get("X-Demo-Mode") == "true"
 
     def test_session_expiry(self, mock_aws_services, api_gateway_event):
         """Test that expired sessions are rejected."""
-        import api.auth_callback
-        api.auth_callback._session_secret_cache = None
-
         # Create an expired session token
         session_secret = "test-secret-key-for-signing-sessions-1234567890"
         expired_time = datetime.now(timezone.utc) - timedelta(days=10)
@@ -1412,46 +1420,243 @@ class TestEdgeCases:
         body = json.loads(result["body"])
         assert body["error"]["code"] == "session_expired"
 
-    def test_concurrent_usage_tracking(self, mock_aws_services, packages_table_with_data):
-        """Test that concurrent requests are tracked atomically."""
+    def test_usage_tracking_enforces_limit_atomically(self, mock_aws_services, packages_table_with_data):
+        """Test that usage tracking correctly enforces limits at boundary.
+
+        Note: True concurrency testing is limited by moto's thread-safety.
+        This test validates atomic conditional check behavior instead.
+        """
         from shared.auth import generate_api_key, check_and_increment_usage
 
         table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
         api_key = generate_api_key(
-            user_id="user_concurrent_test",
+            user_id="user_atomic_test",
             tier="free",
-            email="concurrent@example.com"
+            email="atomic@example.com"
         )
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
-        # Simulate 100 concurrent increments
-        for _ in range(100):
-            allowed, count = check_and_increment_usage(
-                "user_concurrent_test", key_hash, 5000
-            )
-            assert allowed is True
-
-        # Verify final count is exactly 100
-        response = table.get_item(
-            Key={"pk": "user_concurrent_test", "sk": key_hash}
+        # Initialize USER_META at limit - 1
+        limit = 5000
+        table.put_item(
+            Item={
+                "pk": "user_atomic_test",
+                "sk": "USER_META",
+                "key_count": 1,
+                "requests_this_month": limit - 1,
+            }
         )
-        assert response["Item"]["requests_this_month"] == 100
+
+        # First call should succeed (at limit - 1, goes to limit)
+        allowed1, count1 = check_and_increment_usage("user_atomic_test", key_hash, limit)
+        assert allowed1 is True
+        assert count1 == limit
+
+        # Second call should fail (at limit)
+        allowed2, count2 = check_and_increment_usage("user_atomic_test", key_hash, limit)
+        assert allowed2 is False
+
+        # Verify USER_META counter is exactly at limit
+        response = table.get_item(Key={"pk": "user_atomic_test", "sk": "USER_META"})
+        assert response["Item"]["requests_this_month"] == limit
 
     def test_demo_mode_rate_limiting(self, mock_aws_services, packages_table_with_data, api_gateway_event):
-        """Test demo mode IP-based rate limiting."""
+        """Test demo mode IP-based rate limiting exhausts limit and blocks excess."""
         from api.get_package import handler as get_package_handler
+        from shared.constants import DEMO_REQUESTS_PER_HOUR
 
-        # Request without API key (demo mode)
         api_gateway_event["headers"] = {}
         api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
         api_gateway_event["requestContext"]["identity"]["sourceIp"] = "192.168.1.100"
 
-        # First few requests should succeed
-        for i in range(5):
+        # Make all allowed demo requests
+        for i in range(DEMO_REQUESTS_PER_HOUR):
             result = get_package_handler(api_gateway_event, {})
-            assert result["statusCode"] == 200
+            assert result["statusCode"] == 200, f"Request {i+1} failed"
             assert result["headers"].get("X-Demo-Mode") == "true"
 
-        # Verify rate limit headers are present
-        assert "X-RateLimit-Remaining" in result["headers"]
+        # Next request should be rate limited
+        result = get_package_handler(api_gateway_event, {})
+        assert result["statusCode"] == 429
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "demo_rate_limit_exceeded"
+
+
+# =============================================================================
+# Security Tests
+# =============================================================================
+
+
+class TestSessionSecurity:
+    """Security tests for session handling and isolation."""
+
+    def test_session_isolation_between_users(self, mock_aws_services, api_gateway_event):
+        """Test that each session only returns that user's API keys.
+
+        Security: Ensures user_id in session token is enforced and users
+        cannot access other users' API keys.
+        """
+        from shared.auth import generate_api_key
+
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
+
+        # Create two users with different tiers
+        user1_key = generate_api_key(
+            user_id="user_isolation_1",
+            tier="free",
+            email="isolation1@example.com"
+        )
+        user2_key = generate_api_key(
+            user_id="user_isolation_2",
+            tier="pro",
+            email="isolation2@example.com"
+        )
+
+        # Mark both as verified
+        for user_id, key in [("user_isolation_1", user1_key), ("user_isolation_2", user2_key)]:
+            key_hash = hashlib.sha256(key.encode()).hexdigest()
+            table.update_item(
+                Key={"pk": user_id, "sk": key_hash},
+                UpdateExpression="SET email_verified = :v",
+                ExpressionAttributeValues={":v": True},
+            )
+
+        # Create session tokens for each user
+        session1 = create_session_token("user_isolation_1", "isolation1@example.com", "free")
+        session2 = create_session_token("user_isolation_2", "isolation2@example.com", "pro")
+
+        from api.get_api_keys import handler as get_keys_handler
+
+        # User 1's session should only return User 1's keys
+        api_gateway_event["headers"] = {"cookie": f"session={session1}"}
+        result1 = get_keys_handler(api_gateway_event, {})
+        assert result1["statusCode"] == 200
+        body1 = json.loads(result1["body"])
+        assert len(body1["api_keys"]) == 1
+        assert body1["api_keys"][0]["tier"] == "free"
+
+        # User 2's session should only return User 2's keys
+        api_gateway_event["headers"] = {"cookie": f"session={session2}"}
+        result2 = get_keys_handler(api_gateway_event, {})
+        assert result2["statusCode"] == 200
+        body2 = json.loads(result2["body"])
+        assert len(body2["api_keys"]) == 1
+        assert body2["api_keys"][0]["tier"] == "pro"
+
+
+class TestWebhookSecurity:
+    """Security tests for Stripe webhook handling."""
+
+    def test_webhook_idempotency(self, mock_aws_services, api_gateway_event):
+        """Test that duplicate webhook events are handled idempotently.
+
+        Security: Ensures the billing_events table deduplication works to
+        prevent duplicate processing of webhook events.
+        """
+        pytest.importorskip("stripe")
+
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
+
+        # Create a free tier user
+        from shared.auth import generate_api_key
+
+        api_key = generate_api_key(
+            user_id="user_idempotent_test",
+            tier="free",
+            email="idempotent@example.com"
+        )
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+
+        # Set up Stripe secrets
+        webhook_secret = "whsec_idempotent_test"
+        secretsmanager = mock_aws_services["secretsmanager"]
+        try:
+            secretsmanager.create_secret(
+                Name="test-stripe-webhook-idempotent",
+                SecretString=json.dumps({"secret": webhook_secret})
+            )
+        except Exception:
+            pass  # Secret may already exist
+
+        try:
+            secretsmanager.create_secret(
+                Name="test-stripe-api-key-idempotent",
+                SecretString=json.dumps({"key": "sk_test_idempotent"})
+            )
+        except Exception:
+            pass
+
+        os.environ["STRIPE_WEBHOOK_SECRET_ARN"] = "test-stripe-webhook-idempotent"
+        os.environ["STRIPE_SECRET_ARN"] = "test-stripe-api-key-idempotent"
+        os.environ["STRIPE_PRICE_PRO"] = "price_pro_idempotent"
+
+        # Force the stripe_webhook module to re-read env vars
+        _reset_caches()
+
+        # Create checkout completed event
+        checkout_session = {
+            "id": "cs_idempotent_123",
+            "object": "checkout.session",
+            "customer_email": "idempotent@example.com",
+            "customer": "cus_idempotent_123",
+            "subscription": "sub_idempotent_123",
+        }
+
+        stripe_event = {
+            "id": "evt_idempotent_123",  # Same event ID for both requests
+            "type": "checkout.session.completed",
+            "data": {"object": checkout_session},
+        }
+
+        # Use readable timestamps for subscription period
+        period_start = int(time.time())
+        period_end = period_start + (30 * 24 * 60 * 60)
+
+        with patch("stripe.Webhook.construct_event") as mock_construct, \
+             patch("stripe.Subscription.retrieve") as mock_sub_retrieve:
+
+            mock_construct.return_value = stripe_event
+            mock_sub_retrieve.return_value = {
+                "id": "sub_idempotent_123",
+                "customer": "cus_idempotent_123",
+                "status": "active",
+                "cancel_at_period_end": False,
+                "current_period_start": period_start,
+                "current_period_end": period_end,
+                "items": {
+                    "data": [{
+                        "price": {"id": "price_pro_idempotent"},
+                        "current_period_start": period_start,
+                        "current_period_end": period_end,
+                    }]
+                }
+            }
+
+            from api.stripe_webhook import handler as webhook_handler
+
+            webhook_event = {
+                "httpMethod": "POST",
+                "headers": {"stripe-signature": "valid_signature"},
+                "body": json.dumps(stripe_event),
+                "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+            }
+
+            # First request - should process successfully
+            result1 = webhook_handler(webhook_event, {})
+            assert result1["statusCode"] == 200
+            body1 = json.loads(result1["body"])
+            assert body1.get("received") is True
+
+            # Second request with same event ID - should detect duplicate
+            result2 = webhook_handler(webhook_event, {})
+            assert result2["statusCode"] == 200
+            body2 = json.loads(result2["body"])
+            assert body2.get("duplicate") is True
+
+            # Verify billing event was recorded only once
+            billing_table = mock_aws_services["dynamodb"].Table("pkgwatch-billing-events")
+            response = billing_table.get_item(
+                Key={"pk": "evt_idempotent_123", "sk": "checkout.session.completed"}
+            )
+            assert "Item" in response

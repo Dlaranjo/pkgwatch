@@ -31,7 +31,7 @@ jobs:
           pip install -r tests/requirements.txt
 
       - name: Run tests with coverage
-        run: pytest tests/ -v --tb=short --cov=functions --cov-report=xml --cov-report=term-missing --cov-fail-under=80 --ignore=tests/integration
+        run: pytest tests/ -v --tb=short --cov=functions --cov-report=xml --cov-report=term-missing --cov-fail-under=80
         env:
           PYTHONPATH: ${{ github.workspace }}/functions:${{ github.workspace }}
 
@@ -47,21 +47,13 @@ jobs:
           cache: 'npm'
           cache-dependency-path: infrastructure/package-lock.json
 
-      - name: CDK Synth
+      - name: CDK Synth (validation only)
         working-directory: infrastructure
         run: |
           npm ci
           npm run synth
         env:
-          CDK_ENV: ci  # Skip ALERT_EMAIL requirement for synth-only validation
-
-      - name: Upload CDK output
-        uses: actions/upload-artifact@v4
-        with:
-          name: cdk-out
-          path: infrastructure/cdk.out
-          retention-days: 1
-          if-no-files-found: error
+          CDK_ENV: ci  # Skip Stripe price IDs requirement for PR validation
 
   typescript-build:
     runs-on: ubuntu-latest
@@ -154,17 +146,13 @@ jobs:
           cache: 'npm'
           cache-dependency-path: infrastructure/package-lock.json
 
-      - name: Download CDK output
-        uses: actions/download-artifact@v4
-        with:
-          name: cdk-out
-          path: infrastructure/cdk.out
-
       - name: CDK Deploy
         working-directory: infrastructure
         run: |
           npm ci
-          npx cdk deploy --all --require-approval never --concurrency=2 --app cdk.out
+          # Synths fresh here (not reusing cdk-synth artifact) because Stripe
+          # price IDs are baked into Lambda env vars at synth time
+          npx cdk deploy --all --require-approval never --concurrency=2
         env:
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
           STRIPE_PRICE_STARTER: ${{ secrets.STRIPE_PRICE_STARTER }}
