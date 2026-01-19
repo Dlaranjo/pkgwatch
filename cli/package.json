@@ -1,6 +1,6 @@
 {
   "name": "@pkgwatch/cli",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Monitor npm and Python package health from the command line",
   "author": "PkgWatch",
   "license": "MIT",
@@ -40,18 +40,28 @@
     "vitest": "^4.0.16"
   },
   "keywords": [
-    "dependency",
-    "health",
-    "npm",
-    "pypi",
-    "python",
+    "pkgwatch",
+    "dependency-health",
+    "package-health",
+    "npm-audit",
+    "abandonment-risk",
     "security",
     "cli",
-    "devtools"
+    "devtools",
+    "npm",
+    "python",
+    "pypi",
+    "health-score",
+    "supply-chain",
+    "dependency",
+    "vulnerability"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/pkgwatch/cli"
+    "url": "https://github.com/Dlaranjo/pkgwatch"
+  },
+  "bugs": {
+    "url": "https://github.com/Dlaranjo/pkgwatch/issues"
   },
   "homepage": "https://pkgwatch.laranjo.dev"
 }

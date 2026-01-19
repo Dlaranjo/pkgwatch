@@ -1,6 +1,6 @@
 {
   "name": "@pkgwatch/api-client",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Shared API client for PkgWatch services",
   "type": "module",
   "main": "./dist/index.js",
@@ -50,10 +50,24 @@
   },
   "keywords": [
     "pkgwatch",
-    "api",
-    "client",
-    "dependency",
-    "health"
+    "api-client",
+    "dependency-health",
+    "package-health",
+    "npm",
+    "python",
+    "pypi",
+    "health-score",
+    "abandonment-risk"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Dlaranjo/pkgwatch",
+    "directory": "packages/api-client"
+  },
+  "bugs": {
+    "url": "https://github.com/Dlaranjo/pkgwatch/issues"
+  },
+  "homepage": "https://pkgwatch.laranjo.dev/docs",
+  "author": "PkgWatch",
   "license": "MIT"
 }

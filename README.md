@@ -1,12 +1,26 @@
 # PkgWatch - Dependency Health Intelligence
 
-Predict which npm and Python packages are at risk of abandonment, maintenance decline, or security issues — BEFORE problems occur.
+[![Website](https://img.shields.io/badge/Website-pkgwatch.laranjo.dev-blue?style=flat-square)](https://pkgwatch.laranjo.dev)
+[![npm](https://img.shields.io/npm/v/@pkgwatch/cli?style=flat-square&label=CLI)](https://www.npmjs.com/package/@pkgwatch/cli)
+[![Documentation](https://img.shields.io/badge/Docs-API%20Reference-green?style=flat-square)](https://pkgwatch.laranjo.dev/docs)
+[![License](https://img.shields.io/badge/License-Proprietary-red?style=flat-square)](LICENSE)
 
-**Live:**
-- API: https://api.pkgwatch.laranjo.dev/v1/
-- Website: https://pkgwatch.laranjo.dev
-- Docs: https://pkgwatch.laranjo.dev/docs
-- Methodology: https://pkgwatch.laranjo.dev/methodology
+> **Predict which npm and Python packages are at risk of abandonment, maintenance decline, or security issues — BEFORE problems occur.**
+
+<p align="center">
+  <a href="https://pkgwatch.laranjo.dev"><strong>Website</strong></a> ·
+  <a href="https://pkgwatch.laranjo.dev/docs"><strong>Documentation</strong></a> ·
+  <a href="https://pkgwatch.laranjo.dev/methodology"><strong>Methodology</strong></a> ·
+  <a href="https://pkgwatch.laranjo.dev/pricing"><strong>Pricing</strong></a>
+</p>
+
+---
+
+**Links:**
+- 🌐 **Website:** https://pkgwatch.laranjo.dev
+- 📖 **Docs:** https://pkgwatch.laranjo.dev/docs
+- 🔬 **Methodology:** https://pkgwatch.laranjo.dev/methodology
+- 🚀 **API:** https://api.pkgwatch.laranjo.dev/v1/
 
 ## Features
 
