@@ -1,0 +1,597 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Account Recovery | PkgWatch" mainClass="max-w-md mx-auto px-4 py-24 pt-24">
+  <div id="recovery-content" class="opacity-0 transition-opacity duration-150">
+    <div class="text-center mb-8">
+      <h1 class="text-3xl font-bold text-white mb-4">Account Recovery</h1>
+      <p id="step-description" class="text-zinc-400">
+        Enter your email to start the recovery process
+      </p>
+    </div>
+
+    <!-- Step 1: Enter Email -->
+    <div id="step-email" class="space-y-6">
+      <form id="email-form">
+        <div class="mb-6">
+          <label for="email" class="block text-sm font-medium text-zinc-300 mb-2">
+            Email Address
+          </label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            required
+            autocomplete="email"
+            class="w-full px-4 py-3 bg-[#0d0d10] border border-zinc-800 rounded-lg
+                   text-white placeholder-zinc-500 focus:border-blue-500
+                   focus:ring-1 focus:ring-blue-500 outline-none transition"
+            placeholder="you@company.com"
+          />
+        </div>
+
+        <button
+          type="submit"
+          id="email-submit"
+          class="w-full btn-gradient px-6 py-3 rounded-lg font-semibold
+                 text-white transition hover:opacity-90 disabled:opacity-50"
+        >
+          <span id="email-btn-text">Continue</span>
+          <span id="email-btn-loading" class="hidden">Processing...</span>
+        </button>
+      </form>
+
+      <p class="text-center">
+        <a href="/start" class="text-blue-400 hover:text-blue-300 text-sm">
+          Back to sign in
+        </a>
+      </p>
+    </div>
+
+    <!-- Step 2: Choose Method -->
+    <div id="step-method" class="hidden space-y-6">
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4 mb-6">
+        <p class="text-sm text-zinc-400">
+          Recovering account for: <span id="masked-email" class="text-white font-medium">j***@example.com</span>
+        </p>
+      </div>
+
+      <p class="text-zinc-400 text-sm mb-4">Choose how to verify your identity:</p>
+
+      <button
+        id="choose-api-key"
+        class="w-full p-4 bg-zinc-900/50 border border-zinc-800 rounded-lg hover:border-zinc-700 transition text-left group"
+      >
+        <div class="flex items-start gap-3">
+          <svg class="w-6 h-6 text-blue-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+          </svg>
+          <div>
+            <h3 class="font-medium text-white group-hover:text-blue-400 transition">Use API Key</h3>
+            <p class="text-sm text-zinc-500 mt-1">
+              We'll send a sign-in link to your existing email address.
+              Use this if you're locked out of your email client but still have the account.
+            </p>
+          </div>
+        </div>
+      </button>
+
+      <button
+        id="choose-recovery-code"
+        class="w-full p-4 bg-zinc-900/50 border border-zinc-800 rounded-lg hover:border-zinc-700 transition text-left group disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <div class="flex items-start gap-3">
+          <svg class="w-6 h-6 text-emerald-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+          </svg>
+          <div>
+            <h3 class="font-medium text-white group-hover:text-emerald-400 transition">Use Recovery Code</h3>
+            <p class="text-sm text-zinc-500 mt-1">
+              Enter one of your 8 recovery codes to change your email address.
+              Use this if you've lost access to your email entirely.
+            </p>
+            <p id="no-codes-warning" class="hidden text-sm text-amber-400 mt-2">
+              No recovery codes set up for this account.
+            </p>
+          </div>
+        </div>
+      </button>
+
+      <button
+        id="back-to-email"
+        type="button"
+        class="w-full text-zinc-400 hover:text-white text-sm py-2 transition"
+      >
+        Use a different email
+      </button>
+    </div>
+
+    <!-- Step 3a: Enter API Key -->
+    <div id="step-api-key" class="hidden space-y-6">
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4 mb-6">
+        <p class="text-sm text-zinc-400">
+          Recovering: <span id="masked-email-api" class="text-white font-medium">j***@example.com</span>
+        </p>
+      </div>
+
+      <form id="api-key-form">
+        <div class="mb-6">
+          <label for="api-key" class="block text-sm font-medium text-zinc-300 mb-2">
+            API Key
+          </label>
+          <input
+            type="text"
+            id="api-key"
+            name="api-key"
+            required
+            autocomplete="off"
+            class="w-full px-4 py-3 bg-[#0d0d10] border border-zinc-800 rounded-lg
+                   text-white placeholder-zinc-500 focus:border-blue-500
+                   focus:ring-1 focus:ring-blue-500 outline-none transition font-mono text-sm"
+            placeholder="pw_..."
+          />
+          <p class="text-xs text-zinc-500 mt-2">
+            Enter any active API key associated with your account.
+          </p>
+        </div>
+
+        <button
+          type="submit"
+          id="api-key-submit"
+          class="w-full btn-gradient px-6 py-3 rounded-lg font-semibold
+                 text-white transition hover:opacity-90 disabled:opacity-50"
+        >
+          <span id="api-key-btn-text">Send Sign-In Link</span>
+          <span id="api-key-btn-loading" class="hidden">Verifying...</span>
+        </button>
+      </form>
+
+      <button
+        id="back-to-method-1"
+        type="button"
+        class="w-full text-zinc-400 hover:text-white text-sm py-2 transition"
+      >
+        Choose a different method
+      </button>
+    </div>
+
+    <!-- Step 3b: Enter Recovery Code -->
+    <div id="step-recovery-code" class="hidden space-y-6">
+      <div class="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4 mb-6">
+        <p class="text-sm text-zinc-400">
+          Recovering: <span id="masked-email-code" class="text-white font-medium">j***@example.com</span>
+        </p>
+      </div>
+
+      <form id="recovery-code-form">
+        <div class="mb-6">
+          <label for="recovery-code" class="block text-sm font-medium text-zinc-300 mb-2">
+            Recovery Code
+          </label>
+          <input
+            type="text"
+            id="recovery-code"
+            name="recovery-code"
+            required
+            autocomplete="off"
+            class="w-full px-4 py-3 bg-[#0d0d10] border border-zinc-800 rounded-lg
+                   text-white placeholder-zinc-500 focus:border-blue-500
+                   focus:ring-1 focus:ring-blue-500 outline-none transition font-mono text-sm uppercase"
+            placeholder="XXXX-XXXX-XXXX-XXXX"
+          />
+          <p class="text-xs text-zinc-500 mt-2">
+            Enter one of your 8 recovery codes. This code will be consumed.
+          </p>
+        </div>
+
+        <button
+          type="submit"
+          id="recovery-code-submit"
+          class="w-full btn-gradient px-6 py-3 rounded-lg font-semibold
+                 text-white transition hover:opacity-90 disabled:opacity-50"
+        >
+          <span id="recovery-code-btn-text">Verify Code</span>
+          <span id="recovery-code-btn-loading" class="hidden">Verifying...</span>
+        </button>
+      </form>
+
+      <button
+        id="back-to-method-2"
+        type="button"
+        class="w-full text-zinc-400 hover:text-white text-sm py-2 transition"
+      >
+        Choose a different method
+      </button>
+    </div>
+
+    <!-- Step 4: Enter New Email -->
+    <div id="step-new-email" class="hidden space-y-6">
+      <div class="bg-emerald-900/20 border border-emerald-500/30 rounded-lg p-4 mb-6">
+        <p class="text-sm text-emerald-400 flex items-center gap-2">
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+          </svg>
+          <span>Recovery code verified! <span id="codes-remaining" class="font-medium">7</span> codes remaining.</span>
+        </p>
+      </div>
+
+      <form id="new-email-form">
+        <div class="mb-6">
+          <label for="new-email" class="block text-sm font-medium text-zinc-300 mb-2">
+            New Email Address
+          </label>
+          <input
+            type="email"
+            id="new-email"
+            name="new-email"
+            required
+            autocomplete="email"
+            class="w-full px-4 py-3 bg-[#0d0d10] border border-zinc-800 rounded-lg
+                   text-white placeholder-zinc-500 focus:border-blue-500
+                   focus:ring-1 focus:ring-blue-500 outline-none transition"
+            placeholder="new@company.com"
+          />
+          <p class="text-xs text-zinc-500 mt-2">
+            A verification link will be sent to this address.
+          </p>
+        </div>
+
+        <button
+          type="submit"
+          id="new-email-submit"
+          class="w-full btn-gradient px-6 py-3 rounded-lg font-semibold
+                 text-white transition hover:opacity-90 disabled:opacity-50"
+        >
+          <span id="new-email-btn-text">Send Verification</span>
+          <span id="new-email-btn-loading" class="hidden">Sending...</span>
+        </button>
+      </form>
+    </div>
+
+    <!-- Success: Magic Link Sent -->
+    <div id="step-success-magic" class="hidden text-center space-y-6">
+      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-900/30 flex items-center justify-center">
+        <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+        </svg>
+      </div>
+      <h2 class="text-2xl font-bold text-white">Check Your Email</h2>
+      <p class="text-zinc-400">
+        We've sent a sign-in link to your email address.
+        Check your inbox (and spam folder) to continue.
+      </p>
+      <a href="/start" class="inline-block px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-medium rounded-lg transition">
+        Back to Sign In
+      </a>
+    </div>
+
+    <!-- Success: Email Change Verification Sent -->
+    <div id="step-success-email" class="hidden text-center space-y-6">
+      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-900/30 flex items-center justify-center">
+        <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+      </div>
+      <h2 class="text-2xl font-bold text-white">Verify Your New Email</h2>
+      <p class="text-zinc-400">
+        We've sent a verification link to <span id="new-email-display" class="text-white font-medium">your new address</span>.
+        Click the link in the email to complete the change.
+      </p>
+      <p class="text-sm text-zinc-500">
+        Your old email will receive a notification about this change.
+      </p>
+    </div>
+
+    <!-- Error Message -->
+    <p id="error-message" class="text-red-400 text-sm mt-4 hidden" role="alert" aria-live="polite"></p>
+  </div>
+</Layout>
+
+<script>
+  const API_BASE = 'https://api.pkgwatch.laranjo.dev';
+
+  // State
+  let recoverySessionId: string | null = null;
+  let recoveryToken: string | null = null;
+  let maskedEmail: string = '';
+  let hasRecoveryCodes: boolean = false;
+
+  // DOM Elements
+  const content = document.getElementById('recovery-content');
+  const stepDescription = document.getElementById('step-description');
+  const errorMsg = document.getElementById('error-message');
+
+  // Steps
+  const stepEmail = document.getElementById('step-email');
+  const stepMethod = document.getElementById('step-method');
+  const stepApiKey = document.getElementById('step-api-key');
+  const stepRecoveryCode = document.getElementById('step-recovery-code');
+  const stepNewEmail = document.getElementById('step-new-email');
+  const stepSuccessMagic = document.getElementById('step-success-magic');
+  const stepSuccessEmail = document.getElementById('step-success-email');
+
+  // Forms
+  const emailForm = document.getElementById('email-form');
+  const apiKeyForm = document.getElementById('api-key-form');
+  const recoveryCodeForm = document.getElementById('recovery-code-form');
+  const newEmailForm = document.getElementById('new-email-form');
+
+  // Buttons
+  const chooseApiKey = document.getElementById('choose-api-key');
+  const chooseRecoveryCode = document.getElementById('choose-recovery-code') as HTMLButtonElement;
+  const backToEmail = document.getElementById('back-to-email');
+  const backToMethod1 = document.getElementById('back-to-method-1');
+  const backToMethod2 = document.getElementById('back-to-method-2');
+
+  // Display elements
+  const maskedEmailEl = document.getElementById('masked-email');
+  const maskedEmailApiEl = document.getElementById('masked-email-api');
+  const maskedEmailCodeEl = document.getElementById('masked-email-code');
+  const noCodesWarning = document.getElementById('no-codes-warning');
+  const codesRemaining = document.getElementById('codes-remaining');
+  const newEmailDisplay = document.getElementById('new-email-display');
+
+  // Error messages (predefined to prevent URL-based attacks)
+  const ERROR_MESSAGES: Record<string, string> = {
+    'invalid_token': 'Invalid or expired link. Please start over.',
+    'token_expired': 'Your link has expired. Please start over.',
+    'missing_token': 'Verification token is required.',
+    'internal_error': 'Something went wrong. Please try again.',
+  };
+
+  // Check for error params from redirects
+  function handleErrorParams(): void {
+    const params = new URLSearchParams(window.location.search);
+    const errorCode = params.get('error');
+
+    if (errorCode && errorMsg) {
+      const message = ERROR_MESSAGES[errorCode] || 'An error occurred. Please try again.';
+      showError(message);
+      // Clean up URL
+      window.history.replaceState({}, '', '/recover');
+    }
+  }
+
+  // Utility functions
+  function showStep(step: HTMLElement | null, focusSelector?: string): void {
+    [stepEmail, stepMethod, stepApiKey, stepRecoveryCode, stepNewEmail, stepSuccessMagic, stepSuccessEmail].forEach(s => {
+      s?.classList.add('hidden');
+    });
+    step?.classList.remove('hidden');
+    hideError();
+
+    // Focus management for accessibility
+    // Wait for DOM update then focus appropriate element
+    setTimeout(() => {
+      if (focusSelector) {
+        const focusTarget = step?.querySelector(focusSelector) as HTMLElement;
+        focusTarget?.focus();
+      } else {
+        // Default: focus first focusable element in the step
+        const focusable = step?.querySelector<HTMLElement>(
+          'input:not([type="hidden"]), button:not([disabled]), a'
+        );
+        focusable?.focus();
+      }
+    }, 50);
+  }
+
+  function showError(message: string): void {
+    if (errorMsg) {
+      errorMsg.textContent = message;
+      errorMsg.classList.remove('hidden');
+    }
+  }
+
+  function hideError(): void {
+    errorMsg?.classList.add('hidden');
+  }
+
+  function setButtonLoading(button: HTMLElement | null, loading: boolean): void {
+    if (!button) return;
+    const textEl = button.querySelector('[id$="-btn-text"]') as HTMLElement;
+    const loadingEl = button.querySelector('[id$="-btn-loading"]') as HTMLElement;
+    const btn = button as HTMLButtonElement;
+
+    btn.disabled = loading;
+    textEl?.classList.toggle('hidden', loading);
+    loadingEl?.classList.toggle('hidden', !loading);
+  }
+
+  // Step 1: Email submission
+  emailForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const emailInput = document.getElementById('email') as HTMLInputElement;
+    const email = emailInput?.value?.trim().toLowerCase() || '';
+    const submitBtn = document.getElementById('email-submit');
+
+    if (!email) return;
+
+    setButtonLoading(submitBtn, true);
+    hideError();
+
+    try {
+      const response = await fetch(`${API_BASE}/recovery/initiate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        recoverySessionId = data.recovery_session_id;
+        maskedEmail = data.masked_email || email;
+        hasRecoveryCodes = data.has_recovery_codes || false;
+
+        // Update UI
+        if (maskedEmailEl) maskedEmailEl.textContent = maskedEmail;
+        if (maskedEmailApiEl) maskedEmailApiEl.textContent = maskedEmail;
+        if (maskedEmailCodeEl) maskedEmailCodeEl.textContent = maskedEmail;
+
+        // Enable/disable recovery code option
+        if (!hasRecoveryCodes) {
+          chooseRecoveryCode?.setAttribute('disabled', 'true');
+          noCodesWarning?.classList.remove('hidden');
+        } else {
+          chooseRecoveryCode?.removeAttribute('disabled');
+          noCodesWarning?.classList.add('hidden');
+        }
+
+        if (stepDescription) stepDescription.textContent = 'Choose how to verify your identity';
+        showStep(stepMethod, '#choose-api-key');
+      } else {
+        showError(data.error?.message || 'Failed to initiate recovery. Please try again.');
+      }
+    } catch (error) {
+      showError('Network error. Please try again.');
+    } finally {
+      setButtonLoading(submitBtn, false);
+    }
+  });
+
+  // Step 2: Method selection
+  chooseApiKey?.addEventListener('click', () => {
+    if (stepDescription) stepDescription.textContent = 'Enter your API key';
+    showStep(stepApiKey, '#api-key');
+  });
+
+  chooseRecoveryCode?.addEventListener('click', () => {
+    if (chooseRecoveryCode.disabled) return;
+    if (stepDescription) stepDescription.textContent = 'Enter your recovery code';
+    showStep(stepRecoveryCode, '#recovery-code');
+  });
+
+  backToEmail?.addEventListener('click', () => {
+    recoverySessionId = null;
+    if (stepDescription) stepDescription.textContent = 'Enter your email to start the recovery process';
+    showStep(stepEmail, '#email');
+  });
+
+  backToMethod1?.addEventListener('click', () => {
+    if (stepDescription) stepDescription.textContent = 'Choose how to verify your identity';
+    showStep(stepMethod, '#choose-api-key');
+  });
+
+  backToMethod2?.addEventListener('click', () => {
+    if (stepDescription) stepDescription.textContent = 'Choose how to verify your identity';
+    showStep(stepMethod, '#choose-api-key');
+  });
+
+  // Step 3a: API Key verification
+  apiKeyForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const apiKeyInput = document.getElementById('api-key') as HTMLInputElement;
+    const apiKey = apiKeyInput?.value?.trim() || '';
+    const submitBtn = document.getElementById('api-key-submit');
+
+    if (!apiKey || !recoverySessionId) return;
+
+    setButtonLoading(submitBtn, true);
+    hideError();
+
+    try {
+      const response = await fetch(`${API_BASE}/recovery/verify-api-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recovery_session_id: recoverySessionId,
+          api_key: apiKey,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        showStep(stepSuccessMagic, 'a');  // Focus the "Back to Sign In" link
+      } else {
+        showError(data.error?.message || 'Invalid API key. Please try again.');
+      }
+    } catch (error) {
+      showError('Network error. Please try again.');
+    } finally {
+      setButtonLoading(submitBtn, false);
+    }
+  });
+
+  // Step 3b: Recovery code verification
+  recoveryCodeForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const codeInput = document.getElementById('recovery-code') as HTMLInputElement;
+    const code = codeInput?.value?.trim().toUpperCase() || '';
+    const submitBtn = document.getElementById('recovery-code-submit');
+
+    if (!code || !recoverySessionId) return;
+
+    setButtonLoading(submitBtn, true);
+    hideError();
+
+    try {
+      const response = await fetch(`${API_BASE}/recovery/verify-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recovery_session_id: recoverySessionId,
+          recovery_code: code,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        recoveryToken = data.recovery_token;
+        if (codesRemaining) codesRemaining.textContent = String(data.codes_remaining || 0);
+        if (stepDescription) stepDescription.textContent = 'Enter your new email address';
+        showStep(stepNewEmail, '#new-email');
+      } else {
+        showError(data.error?.message || 'Invalid recovery code. Please try again.');
+      }
+    } catch (error) {
+      showError('Network error. Please try again.');
+    } finally {
+      setButtonLoading(submitBtn, false);
+    }
+  });
+
+  // Step 4: New email submission
+  newEmailForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const emailInput = document.getElementById('new-email') as HTMLInputElement;
+    const newEmail = emailInput?.value?.trim().toLowerCase() || '';
+    const submitBtn = document.getElementById('new-email-submit');
+
+    if (!newEmail || !recoveryToken) return;
+
+    setButtonLoading(submitBtn, true);
+    hideError();
+
+    try {
+      const response = await fetch(`${API_BASE}/recovery/update-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recovery_token: recoveryToken,
+          new_email: newEmail,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        if (newEmailDisplay) newEmailDisplay.textContent = data.masked_new_email || newEmail;
+        showStep(stepSuccessEmail, 'h2');  // Focus the heading for success announcement
+      } else {
+        showError(data.error?.message || 'Failed to update email. Please try again.');
+      }
+    } catch (error) {
+      showError('Network error. Please try again.');
+    } finally {
+      setButtonLoading(submitBtn, false);
+    }
+  });
+
+  // Initialize
+  handleErrorParams();
+  content?.classList.remove('opacity-0');
+</script>

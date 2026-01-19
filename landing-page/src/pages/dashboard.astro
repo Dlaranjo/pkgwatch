@@ -166,6 +166,58 @@ import Layout from '../layouts/Layout.astro';
         </div>
       </section>
 
+      <!-- Account Security Section -->
+      <section aria-labelledby="security-heading" id="security-section" class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="flex items-center justify-between mb-4 flex-wrap gap-4">
+          <h2 id="security-heading" class="text-lg font-semibold text-white">Account Security</h2>
+        </div>
+
+        <!-- Recovery Codes Status -->
+        <div id="recovery-codes-card" class="p-4 bg-black/30 border border-zinc-800 rounded-lg">
+          <div class="flex items-center justify-between flex-wrap gap-4">
+            <div class="flex items-center gap-3">
+              <div id="recovery-icon-container" class="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center">
+                <svg id="recovery-icon-shield" class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                </svg>
+                <svg id="recovery-icon-warning" class="hidden w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
+              </div>
+              <div>
+                <h3 class="font-medium text-white">Recovery Codes</h3>
+                <p id="recovery-status-text" class="text-sm text-zinc-500">Loading...</p>
+              </div>
+            </div>
+            <button
+              id="generate-codes-btn"
+              class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition flex items-center gap-2"
+            >
+              <span id="generate-codes-text">Generate Codes</span>
+              <svg id="generate-codes-loading" class="hidden w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Low codes warning -->
+          <div id="low-codes-warning" class="hidden mt-4 p-3 bg-amber-900/20 border border-amber-500/30 rounded-lg">
+            <p class="text-sm text-amber-400 flex items-center gap-2">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+              </svg>
+              <span>Only <span id="warning-codes-count">2</span> recovery codes remaining. Consider generating new codes.</span>
+            </p>
+          </div>
+        </div>
+
+        <p class="text-xs text-zinc-500 mt-4">
+          Recovery codes let you regain access to your account if you lose your email.
+          Store them securely offline.
+        </p>
+      </section>
+
       <!-- Quick Links -->
       <section class="grid sm:grid-cols-3 gap-4">
         <a href="/docs" class="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl hover:border-zinc-700 transition group">
@@ -300,6 +352,116 @@ import Layout from '../layouts/Layout.astro';
           >
             <span id="revoke-text">Revoke Key</span>
             <svg aria-hidden="true" id="revoke-loading" class="hidden w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recovery Codes Modal -->
+  <div id="recovery-codes-modal" class="hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="recovery-modal-title">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" id="recovery-modal-backdrop"></div>
+
+    <!-- Modal content -->
+    <div class="relative min-h-screen flex items-center justify-center p-4">
+      <div class="bg-[#111113] border border-zinc-800 rounded-xl max-w-lg w-full shadow-2xl" role="document">
+        <!-- Warning header -->
+        <div class="p-4 bg-yellow-900/20 border-b border-yellow-500/30 rounded-t-xl">
+          <p class="text-sm text-yellow-400 flex items-center gap-2">
+            <svg aria-hidden="true" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+            <span><strong>Important:</strong> Store these codes securely. They will not be shown again!</span>
+          </p>
+        </div>
+
+        <!-- Modal body -->
+        <div class="p-6">
+          <h2 id="recovery-modal-title" class="text-xl font-bold text-white mb-4">Your Recovery Codes</h2>
+          <p class="text-sm text-zinc-400 mb-4">
+            Use these codes to recover your account if you lose access to your email.
+            Each code can only be used once.
+          </p>
+
+          <!-- Codes grid -->
+          <div id="recovery-codes-grid" class="grid grid-cols-2 gap-2 mb-6 font-mono text-sm">
+            <!-- Populated by JavaScript -->
+          </div>
+
+          <button
+            id="copy-all-codes-btn"
+            class="w-full px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium rounded-lg transition flex items-center justify-center gap-2 mb-4"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
+            </svg>
+            <span id="copy-all-text">Copy All Codes</span>
+          </button>
+
+          <div class="mt-4">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" id="confirm-codes-saved" class="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0">
+              <span class="text-sm text-zinc-400">I have saved these recovery codes in a secure location</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Modal footer -->
+        <div class="p-4 border-t border-zinc-800 flex justify-end">
+          <button
+            id="close-recovery-modal-btn"
+            disabled
+            class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Regenerate Warning Modal -->
+  <div id="regenerate-warning-modal" class="hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="regenerate-title">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" id="regenerate-modal-backdrop"></div>
+
+    <!-- Modal content -->
+    <div class="relative min-h-screen flex items-center justify-center p-4">
+      <div class="bg-[#111113] border border-zinc-800 rounded-xl max-w-md w-full shadow-2xl" role="document">
+        <div class="p-6">
+          <h2 id="regenerate-title" class="text-xl font-bold text-white mb-2">Regenerate Recovery Codes?</h2>
+          <p class="text-zinc-400 mb-4">
+            This will invalidate all your existing recovery codes.
+            Make sure you no longer have access to the old codes before proceeding.
+          </p>
+
+          <div class="p-3 bg-red-900/20 border border-red-500/30 rounded-lg">
+            <p class="text-sm text-red-400 flex items-center gap-2">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+              </svg>
+              This action cannot be undone.
+            </p>
+          </div>
+        </div>
+
+        <div class="p-4 border-t border-zinc-800 flex gap-3 justify-end">
+          <button
+            id="cancel-regenerate-btn"
+            class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium rounded-lg transition"
+          >
+            Cancel
+          </button>
+          <button
+            id="confirm-regenerate-btn"
+            class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition flex items-center gap-2"
+          >
+            <span id="regenerate-text">Regenerate Codes</span>
+            <svg id="regenerate-loading" class="hidden w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
@@ -1073,9 +1235,266 @@ import Layout from '../layouts/Layout.astro';
       if (!revokeModal?.classList.contains('hidden')) {
         closeRevokeModal();
       }
+      if (!recoveryCodesModal?.classList.contains('hidden')) {
+        if (confirmCodesSaved?.checked) {
+          closeRecoveryCodesModal();
+        }
+      }
+      if (!regenerateWarningModal?.classList.contains('hidden')) {
+        closeRegenerateWarningModal();
+      }
+    }
+  });
+
+  // ===========================================
+  // Recovery Codes Functionality
+  // ===========================================
+
+  // Recovery codes modal elements
+  const recoveryCodesModal = document.getElementById('recovery-codes-modal');
+  const recoveryCodesGrid = document.getElementById('recovery-codes-grid');
+  const copyAllCodesBtn = document.getElementById('copy-all-codes-btn');
+  const confirmCodesSaved = document.getElementById('confirm-codes-saved') as HTMLInputElement;
+  const closeRecoveryModalBtn = document.getElementById('close-recovery-modal-btn') as HTMLButtonElement;
+
+  // Regenerate warning modal elements
+  const regenerateWarningModal = document.getElementById('regenerate-warning-modal');
+  const cancelRegenerateBtn = document.getElementById('cancel-regenerate-btn');
+  const confirmRegenerateBtn = document.getElementById('confirm-regenerate-btn') as HTMLButtonElement;
+
+  // Security section elements
+  const generateCodesBtn = document.getElementById('generate-codes-btn');
+  const recoveryStatusText = document.getElementById('recovery-status-text');
+  const recoveryIconShield = document.getElementById('recovery-icon-shield');
+  const recoveryIconWarning = document.getElementById('recovery-icon-warning');
+  const lowCodesWarning = document.getElementById('low-codes-warning');
+  const warningCodesCount = document.getElementById('warning-codes-count');
+  const generateCodesText = document.getElementById('generate-codes-text');
+  const generateCodesLoading = document.getElementById('generate-codes-loading');
+
+  // State
+  let recoveryCodesStatus: { has_codes: boolean; codes_remaining: number; generated_at: string | null } = {
+    has_codes: false,
+    codes_remaining: 0,
+    generated_at: null,
+  };
+  let currentRecoveryCodes: string[] = [];
+
+  async function loadRecoveryCodesStatus(): Promise<void> {
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/account/recovery-codes`);
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error?.message || 'Failed to load recovery codes status');
+      }
+      const data = await response.json();
+      recoveryCodesStatus = {
+        has_codes: data.has_codes,
+        codes_remaining: data.codes_remaining || 0,
+        generated_at: data.generated_at,
+      };
+      updateRecoveryCodesUI();
+    } catch (error: any) {
+      if (error.message === 'UNAUTHORIZED') {
+        throw error;
+      }
+      console.error('Failed to load recovery codes status:', error);
+      // Show as not set up on error
+      recoveryCodesStatus = { has_codes: false, codes_remaining: 0, generated_at: null };
+      updateRecoveryCodesUI();
+    }
+  }
+
+  function updateRecoveryCodesUI(): void {
+    if (!recoveryCodesStatus.has_codes) {
+      // No codes set up
+      if (recoveryStatusText) recoveryStatusText.textContent = 'Not set up';
+      if (generateCodesText) generateCodesText.textContent = 'Generate Codes';
+      recoveryIconShield?.classList.add('hidden');
+      recoveryIconWarning?.classList.remove('hidden');
+      lowCodesWarning?.classList.add('hidden');
+    } else if (recoveryCodesStatus.codes_remaining <= 3) {
+      // Low codes warning
+      const count = recoveryCodesStatus.codes_remaining;
+      if (recoveryStatusText) recoveryStatusText.textContent = `${count} of 8 codes remaining`;
+      if (generateCodesText) generateCodesText.textContent = 'Regenerate Codes';
+      recoveryIconShield?.classList.add('hidden');
+      recoveryIconWarning?.classList.remove('hidden');
+      lowCodesWarning?.classList.remove('hidden');
+      if (warningCodesCount) warningCodesCount.textContent = String(count);
+    } else {
+      // Healthy state
+      const count = recoveryCodesStatus.codes_remaining;
+      if (recoveryStatusText) recoveryStatusText.textContent = `${count} of 8 codes remaining`;
+      if (generateCodesText) generateCodesText.textContent = 'Regenerate Codes';
+      recoveryIconShield?.classList.remove('hidden');
+      recoveryIconWarning?.classList.add('hidden');
+      lowCodesWarning?.classList.add('hidden');
+    }
+  }
+
+  async function generateRecoveryCodes(): Promise<string[] | null> {
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/account/recovery-codes`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error?.message || 'Failed to generate recovery codes');
+      }
+      const data = await response.json();
+      return data.codes || null;
+    } catch (error: any) {
+      if (error.message === 'UNAUTHORIZED') {
+        showAuthError();
+      } else {
+        showInlineError(error.message || 'Failed to generate recovery codes');
+      }
+      return null;
+    }
+  }
+
+  function openRecoveryCodesModal(codes: string[]): void {
+    if (!recoveryCodesModal || !recoveryCodesGrid) return;
+
+    currentRecoveryCodes = codes;
+
+    // Populate codes grid
+    recoveryCodesGrid.innerHTML = codes.map((code, i) =>
+      `<div class="p-2 bg-zinc-900 border border-zinc-800 rounded text-center text-emerald-400">${escapeHtml(code)}</div>`
+    ).join('');
+
+    // Reset checkbox and button
+    if (confirmCodesSaved) confirmCodesSaved.checked = false;
+    if (closeRecoveryModalBtn) closeRecoveryModalBtn.disabled = true;
+
+    // Reset copy button
+    const copyAllText = document.getElementById('copy-all-text');
+    if (copyAllText) copyAllText.textContent = 'Copy All Codes';
+
+    recoveryCodesModal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeRecoveryCodesModal(): void {
+    recoveryCodesModal?.classList.add('hidden');
+    document.body.style.overflow = '';
+    currentRecoveryCodes = [];
+    generateCodesBtn?.focus();
+  }
+
+  function openRegenerateWarningModal(): void {
+    regenerateWarningModal?.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    cancelRegenerateBtn?.focus();
+  }
+
+  function closeRegenerateWarningModal(): void {
+    regenerateWarningModal?.classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+
+  async function handleGenerateCodes(): Promise<void> {
+    // If codes already exist, show warning first
+    if (recoveryCodesStatus.has_codes) {
+      openRegenerateWarningModal();
+      return;
+    }
+
+    await doGenerateCodes();
+  }
+
+  async function doGenerateCodes(): Promise<void> {
+    if (generateCodesBtn) (generateCodesBtn as HTMLButtonElement).disabled = true;
+    generateCodesText?.classList.add('hidden');
+    generateCodesLoading?.classList.remove('hidden');
+
+    closeRegenerateWarningModal();
+
+    const codes = await generateRecoveryCodes();
+
+    if (codes) {
+      // Refresh status
+      recoveryCodesStatus = {
+        has_codes: true,
+        codes_remaining: codes.length,
+        generated_at: new Date().toISOString(),
+      };
+      updateRecoveryCodesUI();
+
+      // Show modal with codes
+      openRecoveryCodesModal(codes);
+    }
+
+    if (generateCodesBtn) (generateCodesBtn as HTMLButtonElement).disabled = false;
+    generateCodesText?.classList.remove('hidden');
+    generateCodesLoading?.classList.add('hidden');
+  }
+
+  async function handleCopyAllCodes(): Promise<void> {
+    if (currentRecoveryCodes.length === 0) return;
+
+    const codesText = `PkgWatch Recovery Codes\n${'='.repeat(30)}\n\n${currentRecoveryCodes.map((c, i) => `${i + 1}. ${c}`).join('\n')}\n\nStore these codes securely. Each code can only be used once.`;
+
+    const success = await copyToClipboard(codesText);
+
+    if (success) {
+      const copyAllText = document.getElementById('copy-all-text');
+      if (copyAllText) {
+        copyAllText.textContent = 'Copied!';
+        setTimeout(() => {
+          copyAllText.textContent = 'Copy All Codes';
+        }, 2000);
+      }
+    }
+  }
+
+  // Set up focus traps for recovery modals
+  if (recoveryCodesModal) trapFocus(recoveryCodesModal);
+  if (regenerateWarningModal) trapFocus(regenerateWarningModal);
+
+  // Event listeners for recovery codes
+  generateCodesBtn?.addEventListener('click', handleGenerateCodes);
+  copyAllCodesBtn?.addEventListener('click', handleCopyAllCodes);
+
+  confirmCodesSaved?.addEventListener('change', () => {
+    if (closeRecoveryModalBtn) closeRecoveryModalBtn.disabled = !confirmCodesSaved.checked;
+  });
+
+  closeRecoveryModalBtn?.addEventListener('click', () => {
+    if (confirmCodesSaved?.checked) {
+      closeRecoveryCodesModal();
+    }
+  });
+
+  cancelRegenerateBtn?.addEventListener('click', closeRegenerateWarningModal);
+  confirmRegenerateBtn?.addEventListener('click', doGenerateCodes);
+
+  // Close modals on backdrop click
+  document.getElementById('recovery-modal-backdrop')?.addEventListener('click', () => {
+    if (confirmCodesSaved?.checked) {
+      closeRecoveryCodesModal();
+    }
+  });
+  document.getElementById('regenerate-modal-backdrop')?.addEventListener('click', closeRegenerateWarningModal);
+
+  // Clean up intervals on page unload to prevent memory leaks
+  window.addEventListener('beforeunload', () => {
+    stopCountdown();
+  });
+
+  // Also clean up on page visibility change (e.g., user switches tabs and doesn't return)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && countdownInterval) {
+      // If user hides the page while countdown is running, the modal will close
+      // when they return if time expired
     }
   });
 
   // Start loading
   init();
+
+  // Load recovery codes status after init
+  loadRecoveryCodesStatus().catch(console.error);
 </script>

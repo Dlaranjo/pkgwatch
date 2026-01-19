@@ -920,6 +920,100 @@ export class ApiStack extends cdk.Stack {
       },
     });
 
+    // Model for /recovery/initiate endpoint
+    const recoveryInitiateModel = new apigateway.Model(this, "RecoveryInitiateModel", {
+      restApi: this.api,
+      contentType: "application/json",
+      modelName: "RecoveryInitiateRequest",
+      schema: {
+        type: apigateway.JsonSchemaType.OBJECT,
+        required: ["email"],
+        properties: {
+          email: {
+            type: apigateway.JsonSchemaType.STRING,
+            format: "email",
+            minLength: 5,
+            maxLength: 254,
+          },
+        },
+        additionalProperties: false,
+      },
+    });
+
+    // Model for /recovery/verify-api-key endpoint
+    const recoveryVerifyApiKeyModel = new apigateway.Model(this, "RecoveryVerifyApiKeyModel", {
+      restApi: this.api,
+      contentType: "application/json",
+      modelName: "RecoveryVerifyApiKeyRequest",
+      schema: {
+        type: apigateway.JsonSchemaType.OBJECT,
+        required: ["recovery_session_id", "api_key"],
+        properties: {
+          recovery_session_id: {
+            type: apigateway.JsonSchemaType.STRING,
+            minLength: 1,
+            maxLength: 100,
+          },
+          api_key: {
+            type: apigateway.JsonSchemaType.STRING,
+            minLength: 1,
+            maxLength: 100,
+          },
+        },
+        additionalProperties: false,
+      },
+    });
+
+    // Model for /recovery/verify-code endpoint
+    const recoveryVerifyCodeModel = new apigateway.Model(this, "RecoveryVerifyCodeModel", {
+      restApi: this.api,
+      contentType: "application/json",
+      modelName: "RecoveryVerifyCodeRequest",
+      schema: {
+        type: apigateway.JsonSchemaType.OBJECT,
+        required: ["recovery_session_id", "recovery_code"],
+        properties: {
+          recovery_session_id: {
+            type: apigateway.JsonSchemaType.STRING,
+            minLength: 1,
+            maxLength: 100,
+          },
+          recovery_code: {
+            type: apigateway.JsonSchemaType.STRING,
+            minLength: 1,
+            maxLength: 50,
+            description: "Recovery code in format XXXX-XXXX-XXXX-XXXX",
+          },
+        },
+        additionalProperties: false,
+      },
+    });
+
+    // Model for /recovery/update-email endpoint
+    const recoveryUpdateEmailModel = new apigateway.Model(this, "RecoveryUpdateEmailModel", {
+      restApi: this.api,
+      contentType: "application/json",
+      modelName: "RecoveryUpdateEmailRequest",
+      schema: {
+        type: apigateway.JsonSchemaType.OBJECT,
+        required: ["recovery_token", "new_email"],
+        properties: {
+          recovery_token: {
+            type: apigateway.JsonSchemaType.STRING,
+            minLength: 1,
+            maxLength: 100,
+          },
+          new_email: {
+            type: apigateway.JsonSchemaType.STRING,
+            format: "email",
+            minLength: 5,
+            maxLength: 254,
+          },
+        },
+        additionalProperties: false,
+      },
+    });
+
     // ===========================================
     // API Routes
     // ===========================================
@@ -1161,6 +1255,165 @@ export class ApiStack extends cdk.Stack {
     );
 
     // ===========================================
+    // Account Recovery Handlers
+    // ===========================================
+
+    // Account recovery codes handler (authenticated)
+    const accountRecoveryCodesHandler = new lambda.Function(this, "AccountRecoveryCodesHandler", {
+      ...authLambdaProps,
+      functionName: "pkgwatch-api-account-recovery-codes",
+      handler: "api.account_recovery_codes.handler",
+      code: apiCodeWithShared,
+      description: "Manage recovery codes for account recovery",
+    });
+
+    apiKeysTable.grantReadWriteData(accountRecoveryCodesHandler);
+    accountRecoveryCodesHandler.addToRolePolicy(sessionSecretPolicy);
+
+    // Recovery initiate handler (unauthenticated)
+    const recoveryInitiateHandler = new lambda.Function(this, "RecoveryInitiateHandler", {
+      ...authLambdaProps,
+      functionName: "pkgwatch-api-recovery-initiate",
+      handler: "api.recovery_initiate.handler",
+      code: apiCodeWithShared,
+      description: "Start account recovery flow",
+    });
+
+    apiKeysTable.grantReadWriteData(recoveryInitiateHandler);
+
+    // Recovery verify API key handler (unauthenticated)
+    const recoveryVerifyApiKeyHandler = new lambda.Function(this, "RecoveryVerifyApiKeyHandler", {
+      ...authLambdaProps,
+      functionName: "pkgwatch-api-recovery-verify-api-key",
+      handler: "api.recovery_verify_api_key.handler",
+      code: apiCodeWithShared,
+      description: "Verify recovery via API key (sends magic link)",
+    });
+
+    apiKeysTable.grantReadWriteData(recoveryVerifyApiKeyHandler);
+    recoveryVerifyApiKeyHandler.addToRolePolicy(sesPolicy);
+
+    // Recovery verify code handler (unauthenticated)
+    const recoveryVerifyCodeHandler = new lambda.Function(this, "RecoveryVerifyCodeHandler", {
+      ...authLambdaProps,
+      functionName: "pkgwatch-api-recovery-verify-code",
+      handler: "api.recovery_verify_code.handler",
+      code: apiCodeWithShared,
+      description: "Verify recovery via recovery code",
+    });
+
+    apiKeysTable.grantReadWriteData(recoveryVerifyCodeHandler);
+
+    // Recovery update email handler (unauthenticated, requires recovery token)
+    const recoveryUpdateEmailHandler = new lambda.Function(this, "RecoveryUpdateEmailHandler", {
+      ...authLambdaProps,
+      functionName: "pkgwatch-api-recovery-update-email",
+      handler: "api.recovery_update_email.handler",
+      code: apiCodeWithShared,
+      description: "Update email address after recovery code verification",
+    });
+
+    apiKeysTable.grantReadWriteData(recoveryUpdateEmailHandler);
+    recoveryUpdateEmailHandler.addToRolePolicy(sesPolicy);
+
+    // Recovery confirm email handler (GET callback)
+    const recoveryConfirmEmailHandler = new lambda.Function(this, "RecoveryConfirmEmailHandler", {
+      ...authLambdaProps,
+      functionName: "pkgwatch-api-recovery-confirm-email",
+      handler: "api.recovery_confirm_email.handler",
+      code: apiCodeWithShared,
+      description: "Confirm email change and complete recovery",
+    });
+
+    apiKeysTable.grantReadWriteData(recoveryConfirmEmailHandler);
+    recoveryConfirmEmailHandler.addToRolePolicy(sessionSecretPolicy);
+    recoveryConfirmEmailHandler.addToRolePolicy(sesPolicy);
+
+    // ===========================================
+    // Account Recovery Routes
+    // ===========================================
+
+    // /account routes
+    const accountResource = this.api.root.addResource("account");
+
+    // /account/recovery-codes - GET/POST/DELETE
+    const recoveryCodesResource = accountResource.addResource("recovery-codes");
+    recoveryCodesResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(accountRecoveryCodesHandler)
+    );
+    recoveryCodesResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(accountRecoveryCodesHandler)
+    );
+    recoveryCodesResource.addMethod(
+      "DELETE",
+      new apigateway.LambdaIntegration(accountRecoveryCodesHandler)
+    );
+
+    // /recovery routes (unauthenticated)
+    const recoveryResource = this.api.root.addResource("recovery");
+
+    // POST /recovery/initiate (with request validation)
+    const recoveryInitiateResource = recoveryResource.addResource("initiate");
+    recoveryInitiateResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(recoveryInitiateHandler),
+      {
+        requestValidator: bodyValidator,
+        requestModels: {
+          "application/json": recoveryInitiateModel,
+        },
+      }
+    );
+
+    // POST /recovery/verify-api-key (with request validation)
+    const recoveryVerifyApiKeyResource = recoveryResource.addResource("verify-api-key");
+    recoveryVerifyApiKeyResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(recoveryVerifyApiKeyHandler),
+      {
+        requestValidator: bodyValidator,
+        requestModels: {
+          "application/json": recoveryVerifyApiKeyModel,
+        },
+      }
+    );
+
+    // POST /recovery/verify-code (with request validation)
+    const recoveryVerifyCodeResource = recoveryResource.addResource("verify-code");
+    recoveryVerifyCodeResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(recoveryVerifyCodeHandler),
+      {
+        requestValidator: bodyValidator,
+        requestModels: {
+          "application/json": recoveryVerifyCodeModel,
+        },
+      }
+    );
+
+    // POST /recovery/update-email (with request validation)
+    const recoveryUpdateEmailResource = recoveryResource.addResource("update-email");
+    recoveryUpdateEmailResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(recoveryUpdateEmailHandler),
+      {
+        requestValidator: bodyValidator,
+        requestModels: {
+          "application/json": recoveryUpdateEmailModel,
+        },
+      }
+    );
+
+    // GET /recovery/confirm-email?token=xxx
+    const recoveryConfirmEmailResource = recoveryResource.addResource("confirm-email");
+    recoveryConfirmEmailResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(recoveryConfirmEmailHandler)
+    );
+
+    // ===========================================
     // WAF: Web Application Firewall
     // ===========================================
     const webAcl = new wafv2.CfnWebACL(this, "ApiWaf", {
@@ -1365,6 +1618,14 @@ export class ApiStack extends cdk.Stack {
     createLambdaAlarms(createApiKeyHandler, "CreateApiKey");
     createLambdaAlarms(revokeApiKeyHandler, "RevokeApiKey");
     createLambdaAlarms(requestPackageHandler, "RequestPackage");
+
+    // Account recovery Lambda alarms
+    createLambdaAlarms(accountRecoveryCodesHandler, "AccountRecoveryCodes");
+    createLambdaAlarms(recoveryInitiateHandler, "RecoveryInitiate");
+    createLambdaAlarms(recoveryVerifyApiKeyHandler, "RecoveryVerifyApiKey");
+    createLambdaAlarms(recoveryVerifyCodeHandler, "RecoveryVerifyCode");
+    createLambdaAlarms(recoveryUpdateEmailHandler, "RecoveryUpdateEmail");
+    createLambdaAlarms(recoveryConfirmEmailHandler, "RecoveryConfirmEmail");
 
     // API Gateway 5XX alarm
     const api5xxAlarm = new cloudwatch.Alarm(this, "Api5xxAlarm", {
