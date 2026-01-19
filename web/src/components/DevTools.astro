@@ -41,8 +41,10 @@
         <div class="text-white mb-3">npm install -g @pkgwatch/cli</div>
         <div class="text-zinc-500 mb-2"># Configure your API key</div>
         <div class="text-white mb-3">pkgwatch config set</div>
-        <div class="text-zinc-500 mb-2"># Scan your project (CI-friendly)</div>
+        <div class="text-zinc-500 mb-2"># Scan npm project (CI-friendly)</div>
         <div class="text-white mb-3">pkgwatch scan --fail-on HIGH</div>
+        <div class="text-zinc-500 mb-2"># Scan Python project</div>
+        <div class="text-white mb-3">pkgwatch scan -e pypi --fail-on HIGH</div>
         <div class="text-zinc-500 mb-2"># Scan entire monorepo</div>
         <div class="text-white">pkgwatch scan --recursive --max-manifests 200</div>
       </div>

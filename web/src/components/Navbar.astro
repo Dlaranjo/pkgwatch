@@ -1,5 +1,12 @@
 ---
+// Normalize path by removing trailing slash (except for root)
+const currentPath = Astro.url.pathname.replace(/\/$/, '') || '/';
 
+// Helper to check if a path is active
+const isActive = (path: string, exact = true) => {
+  if (exact) return currentPath === path;
+  return currentPath === path || currentPath.startsWith(path + '/');
+};
 ---
 
 <nav aria-label="Main navigation" class="fixed top-0 left-0 right-0 z-50 bg-[#09090b]/80 backdrop-blur-lg border-b border-zinc-800/50">
@@ -20,13 +27,28 @@
 
     <!-- Desktop Navigation -->
     <div class="hidden md:flex items-center gap-6">
-      <a href="/docs" class="text-sm text-zinc-400 hover:text-white transition-colors">
+      <a
+        href="/docs"
+        aria-current={isActive('/docs', false) ? 'page' : undefined}
+        class={`text-sm transition-colors ${isActive('/docs', false) ? 'text-white font-medium' : 'text-zinc-400 hover:text-white'}`}
+      >
         Docs
       </a>
-      <a href="/methodology" class="text-sm text-zinc-400 hover:text-white transition-colors">
+      <a href="/#demo" class="text-sm text-zinc-400 hover:text-white transition-colors">
+        Demo
+      </a>
+      <a
+        href="/methodology"
+        aria-current={isActive('/methodology') ? 'page' : undefined}
+        class={`text-sm transition-colors ${isActive('/methodology') ? 'text-white font-medium' : 'text-zinc-400 hover:text-white'}`}
+      >
         Methodology
       </a>
-      <a href="/pricing" class="text-sm text-zinc-400 hover:text-white transition-colors">
+      <a
+        href="/pricing"
+        aria-current={isActive('/pricing') ? 'page' : undefined}
+        class={`text-sm transition-colors ${isActive('/pricing') ? 'text-white font-medium' : 'text-zinc-400 hover:text-white'}`}
+      >
         Pricing
       </a>
 
@@ -84,13 +106,28 @@
     class="hidden md:hidden border-t border-zinc-800/50 bg-[#09090b]"
   >
     <div class="px-4 py-4 space-y-1">
-      <a href="/docs" class="block py-3 text-zinc-400 hover:text-white transition-colors">
+      <a
+        href="/docs"
+        aria-current={isActive('/docs', false) ? 'page' : undefined}
+        class={`block py-3 transition-colors ${isActive('/docs', false) ? 'text-white font-medium' : 'text-zinc-400 hover:text-white'}`}
+      >
         Docs
       </a>
-      <a href="/methodology" class="block py-3 text-zinc-400 hover:text-white transition-colors">
+      <a href="/#demo" class="mobile-nav-link block py-3 text-zinc-400 hover:text-white transition-colors">
+        Demo
+      </a>
+      <a
+        href="/methodology"
+        aria-current={isActive('/methodology') ? 'page' : undefined}
+        class={`block py-3 transition-colors ${isActive('/methodology') ? 'text-white font-medium' : 'text-zinc-400 hover:text-white'}`}
+      >
         Methodology
       </a>
-      <a href="/pricing" class="block py-3 text-zinc-400 hover:text-white transition-colors">
+      <a
+        href="/pricing"
+        aria-current={isActive('/pricing') ? 'page' : undefined}
+        class={`block py-3 transition-colors ${isActive('/pricing') ? 'text-white font-medium' : 'text-zinc-400 hover:text-white'}`}
+      >
         Pricing
       </a>
 
@@ -304,5 +341,12 @@
     if (e.key === 'Escape' && !mobileMenu?.classList.contains('hidden')) {
       closeMenu();
     }
+  });
+
+  // Close menu when clicking same-page anchor links (like Demo)
+  mobileMenu?.querySelectorAll('a[href^="/#"]').forEach(link => {
+    link.addEventListener('click', () => {
+      closeMenu();
+    });
   });
 </script>
