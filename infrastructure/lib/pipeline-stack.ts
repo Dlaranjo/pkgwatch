@@ -244,8 +244,10 @@ export class PipelineStack extends cdk.Stack {
     packagesTable.grantReadWriteData(scoreCalculator);
 
     // DLQ for DynamoDB Streams failures
+    // Visibility timeout must be >= Lambda timeout for SQS event source
     const streamsDlq = new sqs.Queue(this, "StreamsDLQ", {
       queueName: "pkgwatch-streams-dlq",
+      visibilityTimeout: cdk.Duration.minutes(6), // 3x Lambda timeout (2 min) per AWS best practices
       retentionPeriod: cdk.Duration.days(14),
       encryption: sqs.QueueEncryption.SQS_MANAGED, // Enable encryption at rest
     });
