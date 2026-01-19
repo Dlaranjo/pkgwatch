@@ -166,6 +166,26 @@ import Layout from '../layouts/Layout.astro';
         </div>
       </section>
 
+      <!-- Recovery Codes Setup Banner (shown for returning users without codes) -->
+      <div id="setup-recovery-banner" class="hidden bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
+        <div class="flex items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <svg class="w-5 h-5 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            <p class="text-amber-400 text-sm">
+              <strong>Secure your account:</strong> Set up recovery codes in case you lose access to your email.
+              <button id="setup-recovery-link" class="underline hover:no-underline ml-1">Set up now</button>
+            </p>
+          </div>
+          <button id="dismiss-recovery-banner" class="text-amber-400/60 hover:text-amber-400 flex-shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
       <!-- Account Security Section -->
       <section aria-labelledby="security-heading" id="security-section" class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
         <div class="flex items-center justify-between mb-4 flex-wrap gap-4">
@@ -392,15 +412,26 @@ import Layout from '../layouts/Layout.astro';
             <!-- Populated by JavaScript -->
           </div>
 
-          <button
-            id="copy-all-codes-btn"
-            class="w-full px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium rounded-lg transition flex items-center justify-center gap-2 mb-4"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
-            </svg>
-            <span id="copy-all-text">Copy All Codes</span>
-          </button>
+          <div class="flex gap-2 mb-4">
+            <button
+              id="copy-all-codes-btn"
+              class="flex-1 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium rounded-lg transition flex items-center justify-center gap-2"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
+              </svg>
+              <span id="copy-all-text">Copy All</span>
+            </button>
+            <button
+              id="download-codes-btn"
+              class="flex-1 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium rounded-lg transition flex items-center justify-center gap-2"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+              </svg>
+              <span id="download-codes-text">Download .txt</span>
+            </button>
+          </div>
 
           <div class="mt-4">
             <label class="flex items-center gap-3 cursor-pointer">
@@ -470,6 +501,18 @@ import Layout from '../layouts/Layout.astro';
       </div>
     </div>
   </div>
+
+  <!-- Transitional Toast for Onboarding Flow -->
+  <div id="transitional-toast" class="hidden fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-fade-in-up">
+    <div class="bg-zinc-800 border border-zinc-700 rounded-lg px-6 py-4 shadow-lg flex items-center gap-3">
+      <svg class="w-5 h-5 text-blue-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+      </svg>
+      <span id="transitional-toast-message" class="text-white text-sm font-medium">
+        Almost done! One more step...
+      </span>
+    </div>
+  </div>
 </Layout>
 
 <script>
@@ -526,6 +569,7 @@ import Layout from '../layouts/Layout.astro';
   let apiKeys: ApiKey[] = [];
   let keyToRevoke: string | null = null;
   let countdownInterval: number | null = null;
+  let isInVerificationFlow = false; // Track if we're in the post-verification onboarding flow
 
   // Utility functions
   function formatNumber(num: number): string {
@@ -671,6 +715,27 @@ import Layout from '../layouts/Layout.astro';
     }
   }
 
+  async function getPendingRecoveryCodes(): Promise<{codes: string[]} | null> {
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/auth/pending-recovery-codes`);
+      if (response.status === 404) {
+        // No pending recovery codes (already retrieved or expired)
+        return null;
+      }
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error?.message || 'Failed to get pending recovery codes');
+      }
+      return response.json();
+    } catch (error: any) {
+      if (error.message === 'UNAUTHORIZED') {
+        throw error;
+      }
+      console.error('Failed to get pending recovery codes:', error);
+      return null;
+    }
+  }
+
   async function createBillingPortalSession(): Promise<string> {
     const response = await fetchWithAuth(`${API_BASE}/billing-portal/create`, {
       method: 'POST',
@@ -771,6 +836,19 @@ import Layout from '../layouts/Layout.astro';
 
   function hideInlineError(): void {
     keysError?.classList.add('hidden');
+  }
+
+  // Transitional toast for onboarding flow
+  const transitionalToast = document.getElementById('transitional-toast');
+  const transitionalToastMessage = document.getElementById('transitional-toast-message');
+
+  function showTransitionalToast(message: string): void {
+    if (transitionalToastMessage) transitionalToastMessage.textContent = message;
+    transitionalToast?.classList.remove('hidden');
+  }
+
+  function hideTransitionalToast(): void {
+    transitionalToast?.classList.add('hidden');
   }
 
   function formatUnixTimestamp(timestamp: number): string {
@@ -952,6 +1030,12 @@ import Layout from '../layouts/Layout.astro';
     document.body.style.overflow = '';
     stopCountdown();
     createKeyBtn?.focus();
+
+    // If we're in the verification flow, dispatch event to trigger recovery codes modal
+    if (isInVerificationFlow) {
+      isInVerificationFlow = false;
+      document.dispatchEvent(new CustomEvent('apikey-modal-closed'));
+    }
   }
 
   function openRevokeModal(btn: HTMLElement): void {
@@ -1162,9 +1246,45 @@ import Layout from '../layouts/Layout.astro';
         // Fetch the pending key
         const pendingKeyData = await getPendingKey();
         if (pendingKeyData?.api_key) {
+          // Mark that we're in the verification flow (for sequential modals)
+          isInVerificationFlow = true;
+
+          // Set up listener for when API key modal closes
+          document.addEventListener('apikey-modal-closed', async function onApiKeyModalClosed() {
+            // Remove listener (one-time use)
+            document.removeEventListener('apikey-modal-closed', onApiKeyModalClosed);
+
+            // Show transitional toast
+            showTransitionalToast('Almost done! One more step to secure your account...');
+
+            // Small delay for better UX (2 seconds)
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Hide toast
+            hideTransitionalToast();
+
+            // Fetch pending recovery codes
+            const pendingCodesData = await getPendingRecoveryCodes();
+            if (pendingCodesData?.codes) {
+              // Refresh recovery codes status first
+              await loadRecoveryCodesStatus();
+              // Show the recovery codes modal
+              openRecoveryCodesModal(pendingCodesData.codes);
+            } else {
+              // Recovery codes not available (expired or already retrieved)
+              // Show info message and prompt user to generate from settings
+              showInlineError('Recovery codes have expired. You can generate new codes in the Account Security section below.');
+              document.getElementById('security-section')?.scrollIntoView({ behavior: 'smooth' });
+            }
+          });
+
           // Show the key in modal with countdown timer
           openNewKeyModal(pendingKeyData.api_key);
           startCountdown(300); // 5 minutes
+        } else {
+          // Pending key not available (expired or already retrieved)
+          // This can happen if user refreshes the page or opens in multiple tabs
+          showInlineError('Your API key was already displayed. You can view your keys in the table above (only the prefix is shown for security). Recovery codes can be generated in the Account Security section below.');
         }
       }
 
@@ -1254,6 +1374,8 @@ import Layout from '../layouts/Layout.astro';
   const recoveryCodesModal = document.getElementById('recovery-codes-modal');
   const recoveryCodesGrid = document.getElementById('recovery-codes-grid');
   const copyAllCodesBtn = document.getElementById('copy-all-codes-btn');
+  const downloadCodesBtn = document.getElementById('download-codes-btn');
+  const downloadCodesText = document.getElementById('download-codes-text');
   const confirmCodesSaved = document.getElementById('confirm-codes-saved') as HTMLInputElement;
   const closeRecoveryModalBtn = document.getElementById('close-recovery-modal-btn') as HTMLButtonElement;
 
@@ -1271,6 +1393,11 @@ import Layout from '../layouts/Layout.astro';
   const warningCodesCount = document.getElementById('warning-codes-count');
   const generateCodesText = document.getElementById('generate-codes-text');
   const generateCodesLoading = document.getElementById('generate-codes-loading');
+
+  // Recovery banner elements
+  const setupRecoveryBanner = document.getElementById('setup-recovery-banner');
+  const setupRecoveryLink = document.getElementById('setup-recovery-link');
+  const dismissRecoveryBanner = document.getElementById('dismiss-recovery-banner');
 
   // State
   let recoveryCodesStatus: { has_codes: boolean; codes_remaining: number; generated_at: string | null } = {
@@ -1331,6 +1458,70 @@ import Layout from '../layouts/Layout.astro';
       recoveryIconWarning?.classList.add('hidden');
       lowCodesWarning?.classList.add('hidden');
     }
+  }
+
+  // Recovery banner logic with escalating persistence
+  // - 1st dismiss: Returns next session
+  // - 2nd dismiss: Returns after 24 hours
+  // - 3rd dismiss: Banner becomes non-dismissible
+  function maybeShowRecoveryBanner(): void {
+    // Don't show if user has recovery codes
+    if (recoveryCodesStatus.has_codes) {
+      setupRecoveryBanner?.classList.add('hidden');
+      // Reset dismissal count when user generates codes (so if they use all codes later, fresh start)
+      localStorage.removeItem('pkgwatch_recovery_banner_dismissed');
+      sessionStorage.removeItem('pkgwatch_banner_dismissed_this_session');
+      return;
+    }
+
+    // Check localStorage for dismissal history
+    const dismissalData = JSON.parse(localStorage.getItem('pkgwatch_recovery_banner_dismissed') || '{"count": 0, "lastDismissed": 0}');
+    const dismissCount = dismissalData.count || 0;
+    const lastDismissed = dismissalData.lastDismissed || 0;
+    const now = Date.now();
+
+    // Check if banner was already dismissed in this session
+    const dismissedThisSession = sessionStorage.getItem('pkgwatch_banner_dismissed_this_session') === 'true';
+
+    // Escalating persistence:
+    if (dismissCount === 0) {
+      // Never dismissed - show banner with dismiss button
+      setupRecoveryBanner?.classList.remove('hidden');
+    } else if (dismissCount === 1) {
+      // Dismissed once - show again on next session only
+      if (!dismissedThisSession) {
+        setupRecoveryBanner?.classList.remove('hidden');
+      }
+    } else if (dismissCount === 2) {
+      // Dismissed twice - only show after 24 hours
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+      if (now - lastDismissed > twentyFourHours && !dismissedThisSession) {
+        setupRecoveryBanner?.classList.remove('hidden');
+      }
+    } else {
+      // Dismissed 3+ times - make banner non-dismissible
+      setupRecoveryBanner?.classList.remove('hidden');
+      dismissRecoveryBanner?.classList.add('hidden'); // Hide dismiss button
+    }
+  }
+
+  function handleDismissRecoveryBanner(): void {
+    setupRecoveryBanner?.classList.add('hidden');
+
+    // Mark as dismissed in current session (prevents re-showing on page refresh)
+    sessionStorage.setItem('pkgwatch_banner_dismissed_this_session', 'true');
+
+    // Update dismissal count in localStorage
+    const dismissalData = JSON.parse(localStorage.getItem('pkgwatch_recovery_banner_dismissed') || '{"count": 0, "lastDismissed": 0}');
+    dismissalData.count = (dismissalData.count || 0) + 1;
+    dismissalData.lastDismissed = Date.now();
+    localStorage.setItem('pkgwatch_recovery_banner_dismissed', JSON.stringify(dismissalData));
+  }
+
+  function handleSetupRecoveryFromBanner(): void {
+    // Scroll to security section and trigger code generation
+    document.getElementById('security-section')?.scrollIntoView({ behavior: 'smooth' });
+    setTimeout(() => handleGenerateCodes(), 500);
   }
 
   async function generateRecoveryCodes(): Promise<string[] | null> {
@@ -1444,9 +1635,45 @@ import Layout from '../layouts/Layout.astro';
       if (copyAllText) {
         copyAllText.textContent = 'Copied!';
         setTimeout(() => {
-          copyAllText.textContent = 'Copy All Codes';
+          copyAllText.textContent = 'Copy All';
         }, 2000);
       }
+    }
+  }
+
+  function handleDownloadCodes(): void {
+    if (currentRecoveryCodes.length === 0) return;
+
+    const codesText = `PkgWatch Recovery Codes
+${'='.repeat(30)}
+Generated: ${new Date().toISOString()}
+
+${currentRecoveryCodes.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+
+IMPORTANT:
+- Store these codes in a secure location
+- Each code can only be used once
+- Use these codes to recover your account if you lose email access
+
+https://pkgwatch.laranjo.dev`;
+
+    // Create and trigger download
+    const blob = new Blob([codesText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'pkgwatch-recovery-codes.txt';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    // Update button text
+    if (downloadCodesText) {
+      downloadCodesText.textContent = 'Downloaded!';
+      setTimeout(() => {
+        downloadCodesText.textContent = 'Download .txt';
+      }, 2000);
     }
   }
 
@@ -1457,6 +1684,7 @@ import Layout from '../layouts/Layout.astro';
   // Event listeners for recovery codes
   generateCodesBtn?.addEventListener('click', handleGenerateCodes);
   copyAllCodesBtn?.addEventListener('click', handleCopyAllCodes);
+  downloadCodesBtn?.addEventListener('click', handleDownloadCodes);
 
   confirmCodesSaved?.addEventListener('change', () => {
     if (closeRecoveryModalBtn) closeRecoveryModalBtn.disabled = !confirmCodesSaved.checked;
@@ -1479,6 +1707,10 @@ import Layout from '../layouts/Layout.astro';
   });
   document.getElementById('regenerate-modal-backdrop')?.addEventListener('click', closeRegenerateWarningModal);
 
+  // Recovery banner event listeners
+  dismissRecoveryBanner?.addEventListener('click', handleDismissRecoveryBanner);
+  setupRecoveryLink?.addEventListener('click', handleSetupRecoveryFromBanner);
+
   // Clean up intervals on page unload to prevent memory leaks
   window.addEventListener('beforeunload', () => {
     stopCountdown();
@@ -1496,5 +1728,8 @@ import Layout from '../layouts/Layout.astro';
   init();
 
   // Load recovery codes status after init
-  loadRecoveryCodesStatus().catch(console.error);
+  // Load recovery codes status and show banner for users without codes
+  loadRecoveryCodesStatus()
+    .then(() => maybeShowRecoveryBanner())
+    .catch(console.error);
 </script>

@@ -20,6 +20,7 @@ logger.setLevel(logging.INFO)
 
 # Import API key generation from shared module
 from shared.auth import generate_api_key
+from shared.recovery_utils import generate_recovery_codes
 
 # Import session creation from auth_callback
 from api.auth_callback import _create_session_token, _get_session_secret, SESSION_TTL_DAYS
@@ -158,6 +159,42 @@ def handler(event, context):
     except Exception as e:
         logger.error(f"Failed to store pending key display: {e}")
         # Continue anyway - user can still see key in dashboard list
+
+    # Generate recovery codes for account security
+    # These are generated during email verification so users have them from the start
+    try:
+        plaintext_codes, hashed_codes = generate_recovery_codes(count=8)
+
+        # Create USER_META with recovery codes (and initial counters)
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "recovery_codes_hash": hashed_codes,
+                "recovery_codes_count": 8,
+                "recovery_codes_generated_at": now.isoformat(),
+                "recovery_codes_shown": False,  # Track if user has seen codes
+                "key_count": 1,
+                "requests_this_month": 0,
+            }
+        )
+
+        # Store plaintext codes for one-time retrieval (like PENDING_DISPLAY)
+        # User will see these after dismissing the API key modal
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "PENDING_RECOVERY_CODES",
+                "codes": plaintext_codes,
+                "created_at": now.isoformat(),
+                "ttl": ttl_timestamp,  # Same 5-min TTL as API key
+            }
+        )
+
+        logger.info(f"Recovery codes generated for {email_prefix}***@{email_domain}")
+    except Exception as e:
+        logger.error(f"Failed to generate recovery codes: {e}")
+        # Continue anyway - user can generate codes later from dashboard
 
     # Create session so user can access dashboard and retrieve their API key
     session_secret = _get_session_secret()

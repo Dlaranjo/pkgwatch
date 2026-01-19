@@ -524,6 +524,18 @@ export class ApiStack extends cdk.Stack {
     apiKeysTable.grantReadWriteData(getPendingKeyHandler);
     getPendingKeyHandler.addToRolePolicy(sessionSecretPolicy);
 
+    // GET /auth/pending-recovery-codes - Get newly generated recovery codes for one-time display
+    const getPendingRecoveryCodesHandler = new lambda.Function(this, "GetPendingRecoveryCodesHandler", {
+      ...authLambdaProps,
+      functionName: "pkgwatch-api-get-pending-recovery-codes",
+      handler: "api.auth_pending_recovery_codes.handler",
+      code: apiCodeWithShared,
+      description: "Get pending recovery codes for one-time display after verification",
+    });
+
+    apiKeysTable.grantReadWriteData(getPendingRecoveryCodesHandler);
+    getPendingRecoveryCodesHandler.addToRolePolicy(sessionSecretPolicy);
+
     // POST /auth/resend-verification - Resend verification email with cooldown
     const resendVerificationHandler = new lambda.Function(this, "ResendVerificationHandler", {
       ...authLambdaProps,
@@ -1213,6 +1225,13 @@ export class ApiStack extends cdk.Stack {
       new apigateway.LambdaIntegration(getPendingKeyHandler)
     );
 
+    // GET /auth/pending-recovery-codes
+    const pendingRecoveryCodesResource = authResource.addResource("pending-recovery-codes");
+    pendingRecoveryCodesResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(getPendingRecoveryCodesHandler)
+    );
+
     // POST /auth/resend-verification
     const resendVerificationResource = authResource.addResource("resend-verification");
     resendVerificationResource.addMethod(
@@ -1613,6 +1632,7 @@ export class ApiStack extends cdk.Stack {
     createLambdaAlarms(authCallbackHandler, "AuthCallback");
     createLambdaAlarms(authMeHandler, "AuthMe");
     createLambdaAlarms(getPendingKeyHandler, "GetPendingKey");
+    createLambdaAlarms(getPendingRecoveryCodesHandler, "GetPendingRecoveryCodes");
     createLambdaAlarms(resendVerificationHandler, "ResendVerification");
     createLambdaAlarms(getApiKeysHandler, "GetApiKeys");
     createLambdaAlarms(createApiKeyHandler, "CreateApiKey");
