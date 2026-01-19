@@ -56,6 +56,13 @@ export class ApiStack extends cdk.Stack {
     }
 
     // ===========================================
+    // Build Identifier for Lambda Versioning
+    // ===========================================
+    // Use GITHUB_SHA or timestamp to ensure unique version hashes on each deployment.
+    // This prevents "version already exists" errors after rollbacks.
+    const buildId = process.env.GITHUB_SHA?.substring(0, 8) || Date.now().toString();
+
+    // ===========================================
     // Secrets Manager: Stripe Secrets
     // ===========================================
     // Reference existing secrets (created manually before deployment)
@@ -144,7 +151,7 @@ export class ApiStack extends cdk.Stack {
       functionName: "pkgwatch-api-get-package",
       handler: "api.get_package.handler",
       code: apiCodeWithShared,
-      description: "Get package health score",
+      description: `Get package health score [${buildId}]`,
       // Note: Removed reservedConcurrentExecutions to avoid account limit issues
     });
 
@@ -165,7 +172,7 @@ export class ApiStack extends cdk.Stack {
       code: apiCodeWithShared,
       timeout: cdk.Duration.seconds(90), // Increased from 60s for batch operations
       memorySize: 1024, // Increased from 512 - heavy batch operations need more resources
-      description: "Scan package.json for health scores",
+      description: `Scan package.json for health scores [${buildId}]`,
       // Note: Removed reservedConcurrentExecutions to avoid account limit issues
       environment: {
         ...commonLambdaProps.environment,
@@ -205,7 +212,7 @@ export class ApiStack extends cdk.Stack {
         functionName: "pkgwatch-api-stripe-webhook",
         handler: "api.stripe_webhook.handler",
         code: apiCodeWithShared,
-        description: "Handle Stripe webhook events",
+        description: `Handle Stripe webhook events [${buildId}]`,
         environment: {
           ...commonLambdaProps.environment,
           // Stripe Price IDs for tier mapping - MUST be set to real Stripe price IDs
