@@ -40,7 +40,7 @@ pkgwatch scan --fail-on HIGH
 ### GitHub Action
 
 ```yaml
-- uses: pkgwatch/action@v1
+- uses: Dlaranjo/pkgwatch/action@v1
   with:
     api-key: ${{ secrets.PKGWATCH_API_KEY }}
     fail-on: HIGH
@@ -103,9 +103,9 @@ See [/methodology](https://pkgwatch.laranjo.dev/methodology) for full details.
 | Tier | Price | Requests/Month |
 |------|-------|----------------|
 | Free | $0 | 5,000 |
-| Starter | $29 | 25,000 |
-| Pro | $99 | 100,000 |
-| Business | $299 | 500,000 |
+| Starter | $9/mo | 25,000 |
+| Pro | $29/mo | 100,000 |
+| Business | $99/mo | 500,000 |
 
 ## Project Structure
 
@@ -113,20 +113,24 @@ See [/methodology](https://pkgwatch.laranjo.dev/methodology) for full details.
 pkgwatch/
 ├── functions/               # Python Lambda functions
 │   ├── api/                 # API endpoint handlers
+│   ├── admin/               # Admin functions (data status, seeding)
 │   ├── collectors/          # Data collection (deps.dev, npm, GitHub)
+│   ├── discovery/           # Package discovery (graph expander, npms.io)
 │   ├── scoring/             # Health scoring algorithms
 │   └── shared/              # Auth, DynamoDB helpers
 ├── cli/                     # @pkgwatch/cli - Command line tool
 ├── action/                  # @pkgwatch/action - GitHub Action
 ├── packages/
 │   └── api-client/          # @pkgwatch/api-client - Shared TypeScript client
+├── docs/                    # API documentation (OpenAPI spec)
 ├── landing-page/            # Astro website
 │   └── terraform/           # S3 + CloudFront infrastructure
 ├── infrastructure/          # AWS CDK (API infrastructure)
 │   └── lib/
 │       ├── storage-stack.ts     # DynamoDB + S3
 │       ├── api-stack.ts         # API Gateway + Lambda + WAF
-│       └── pipeline-stack.ts    # EventBridge + SQS + Collectors
+│       ├── pipeline-stack.ts    # EventBridge + SQS + Collectors
+│       └── budget-stack.ts      # AWS Budget alerts
 ├── scripts/                 # Utility scripts
 └── tests/                   # Python tests (pytest)
 ```
@@ -151,10 +155,9 @@ pkgwatch/
 ### Run Tests
 
 ```bash
-# Python tests
-cd functions
-pip install -r ../tests/requirements.txt
-python -m pytest ../tests/ -v
+# Python tests (from repo root)
+pip install -r tests/requirements.txt
+PYTHONPATH=functions:. pytest tests/ -v --cov=functions
 
 # CLI tests
 cd cli

@@ -472,7 +472,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Dlaranjo/pkgwatch@v1
+      - uses: Dlaranjo/pkgwatch/action@v1
         with:
           api-key: $&#123;&#123; secrets.PKGWATCH_API_KEY &#125;&#125;
           fail-on: HIGH

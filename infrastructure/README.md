@@ -31,13 +31,14 @@ AWS CDK infrastructure for the PkgWatch platform.
 
 | Stack | Purpose | Key Resources |
 |-------|---------|---------------|
-| `StorageStack` | Data storage | DynamoDB tables, S3 bucket |
+| `StorageStack` | Data storage | DynamoDB tables, S3 buckets |
 | `ApiStack` | API layer | API Gateway, Lambda functions, WAF |
 | `PipelineStack` | Data collection | SQS queues, EventBridge rules, Collector Lambdas |
+| `BudgetStack` | Cost monitoring | AWS Budget alerts |
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 20+
 - AWS CLI configured with appropriate credentials
 - AWS CDK CLI (`npm install -g aws-cdk`)
 
@@ -105,9 +106,30 @@ npx cdk deploy PkgWatchApiStack
 - `email-index` (email)
 - `verification-token-index` (verification_token)
 - `stripe-customer-index` (stripe_customer_id)
+- `magic-token-index` (magic_token)
+- `data-status-index` (data_status)
+
+### pkgwatch-billing-events
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `pk` | String | Event ID (e.g., `evt_xxx`) |
+| `sk` | String | Timestamp |
+| `event_type` | String | Stripe event type |
+| `customer_id` | String | Stripe customer ID |
+| `processed_at` | String | ISO timestamp |
+
+## S3 Buckets
+
+| Bucket | Purpose |
+|--------|---------|
+| `pkgwatch-raw-data` | Raw API responses from collectors |
+| `pkgwatch-artifacts` | Build artifacts and deployments |
+| `pkgwatch-logs` | Access logs and audit trails |
 
 ## Lambda Functions
 
+### API Handlers
 | Function | Trigger | Purpose |
 |----------|---------|---------|
 | GetPackageHandler | API Gateway | GET /packages/{ecosystem}/{name} |
@@ -116,11 +138,41 @@ npx cdk deploy PkgWatchApiStack
 | VerifyEmailHandler | API Gateway | GET /verify |
 | MagicLinkHandler | API Gateway | POST /auth/magic-link |
 | AuthCallbackHandler | API Gateway | GET /auth/callback |
+| LogoutHandler | API Gateway | POST /auth/logout |
+| AuthMeHandler | API Gateway | GET /auth/me |
+| GetApiKeysHandler | API Gateway | GET /api-keys |
+| CreateApiKeyHandler | API Gateway | POST /api-keys |
+| RevokeApiKeyHandler | API Gateway | DELETE /api-keys/{id} |
+| GetPendingKeyHandler | API Gateway | GET /api-keys/pending |
+| GetUsageHandler | API Gateway | GET /usage |
+| RequestPackageHandler | API Gateway | POST /packages/request |
+| CreateCheckoutHandler | API Gateway | POST /checkout/create |
+| CreateBillingPortalHandler | API Gateway | POST /billing-portal/create |
+| UpgradePreviewHandler | API Gateway | GET /upgrade/preview |
+| UpgradeConfirmHandler | API Gateway | POST /upgrade/confirm |
+| StripeWebhookHandler | API Gateway | POST /webhooks/stripe |
+| HealthHandler | API Gateway | GET /health |
+
+### Background Functions
+| Function | Trigger | Purpose |
+|----------|---------|---------|
 | ResetUsageHandler | EventBridge | Monthly usage counter reset |
 | RefreshDispatcher | EventBridge | Triggers package refresh |
+| RetryDispatcher | EventBridge | Retries failed collections |
 | PackageCollector | SQS | Collects package data |
 | ScoreCalculator | DynamoDB Streams | Calculates health scores |
+| StreamsDLQProcessor | DynamoDB Streams | Handles streams DLQ |
 | DLQProcessor | EventBridge | Handles failed collections |
+| DataStatusMetrics | EventBridge | Reports data completeness |
+| PipelineHealth | EventBridge | Monitors pipeline health |
+
+### Discovery Functions
+| Function | Trigger | Purpose |
+|----------|---------|---------|
+| GraphExpanderDispatcher | EventBridge | Dispatches dependency graph expansion |
+| GraphExpanderWorker | SQS | Expands dependency graphs |
+| NpmsioAudit | EventBridge | Audits packages via npms.io |
+| PublishTopPackages | EventBridge | Publishes top packages list |
 
 ## Secrets
 
@@ -131,6 +183,7 @@ Stored in AWS Secrets Manager:
 | `pkgwatch/session-secret` | Session token signing |
 | `pkgwatch/stripe-secret` | Stripe API access |
 | `pkgwatch/stripe-webhook` | Stripe webhook verification |
+| `pkgwatch/github-token` | GitHub API authentication |
 
 ## Useful Commands
 
@@ -163,4 +216,4 @@ aws logs tail /aws/lambda/pkgwatch-GetPackageHandler --follow
 
 ## License
 
-MIT
+Proprietary - All rights reserved

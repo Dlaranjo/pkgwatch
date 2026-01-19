@@ -128,7 +128,7 @@ const pypiPackages = ['requests', 'django', 'flask', 'numpy', 'pandas', 'fastapi
         <!-- Components -->
         <div class="p-6 border-t border-[#1a1a1f]">
           <h4 class="text-sm font-semibold text-zinc-400 mb-4">Health Components</h4>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div>
               <div class="flex justify-between text-xs mb-1">
                 <span class="text-zinc-500">Maintainer</span>
@@ -163,6 +163,15 @@ const pypiPackages = ['requests', 'django', 'flask', 'numpy', 'pandas', 'fastapi
               </div>
               <div class="h-2 bg-[#1a1a1f] rounded-full overflow-hidden">
                 <div id="bar-user" class="h-full bg-orange-500 rounded-full transition-all" style="width: 0%"></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-zinc-500">Security</span>
+                <span id="comp-security">--</span>
+              </div>
+              <div class="h-2 bg-[#1a1a1f] rounded-full overflow-hidden">
+                <div id="bar-security" class="h-full bg-red-500 rounded-full transition-all" style="width: 0%"></div>
               </div>
             </div>
           </div>
@@ -326,6 +335,7 @@ const pypiPackages = ['requests', 'django', 'flask', 'numpy', 'pandas', 'fastapi
       updateBar('evolution', components.evolution_health);
       updateBar('community', components.community_health);
       updateBar('user', components.user_centric);
+      updateBar('security', components.security_health);
 
     } catch (e) {
       loading?.classList.add('hidden');

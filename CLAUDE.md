@@ -62,12 +62,14 @@ npm run build     # Production build
 - **action/** - @pkgwatch/action GitHub Action
 - **infrastructure/** - AWS CDK stacks (TypeScript)
 - **landing-page/** - Astro + Tailwind static site
+- **docs/** - API documentation (OpenAPI spec)
 - **tests/** - Python pytest tests (moto for AWS mocking)
 
-### AWS Infrastructure (3 CDK Stacks)
-1. **storage-stack.ts** - DynamoDB tables (packages, api-keys, users), S3 bucket
+### AWS Infrastructure (4 CDK Stacks)
+1. **storage-stack.ts** - DynamoDB tables (packages, api-keys, billing-events), S3 buckets
 2. **api-stack.ts** - API Gateway, Lambda functions, WAF, custom domain
 3. **pipeline-stack.ts** - EventBridge schedules, SQS queues, data collectors
+4. **budget-stack.ts** - AWS Budget alerts for cost monitoring
 
 ### Data Flow
 1. **Collectors** (EventBridge scheduled) fetch from deps.dev, npm registry, PyPI registry, GitHub API
@@ -76,8 +78,10 @@ npm run build     # Production build
 4. **API Gateway** serves scored data to clients
 
 ### Lambda Function Organization
-- `functions/api/` - API endpoint handlers (get_package, post_scan, auth, etc.)
+- `functions/api/` - API endpoint handlers (get_package, post_scan, auth, billing, etc.)
+- `functions/admin/` - Admin functions (data_status_metrics, seed_packages)
 - `functions/collectors/` - Data collection pipeline (npm, PyPI, deps.dev, GitHub)
+- `functions/discovery/` - Package discovery (graph_expander, npmsio_audit, publish_top_packages)
 - `functions/scoring/` - Health score and abandonment risk algorithms
 - `functions/shared/` - Auth, DynamoDB helpers, response utilities, error classes
 

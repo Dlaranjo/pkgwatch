@@ -1,7 +1,7 @@
 # @pkgwatch/cli
 
 [![npm version](https://img.shields.io/npm/v/@pkgwatch/cli.svg)](https://www.npmjs.com/package/@pkgwatch/cli)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 
 Keep watch over your npm and Python dependencies. Monitor package health and detect risks before they become problems.
@@ -37,9 +37,13 @@ pkgwatch check lodash
 pkgwatch c lodash               # Using alias
 pkgwatch check @babel/core
 pkgwatch check lodash --json    # JSON output
+
+# Python packages (PyPI)
+pkgwatch check requests -e pypi
+pkgwatch check django --ecosystem pypi
 ```
 
-### Scan package.json
+### Scan dependencies
 
 ```bash
 pkgwatch scan                      # Scan ./package.json
@@ -50,7 +54,20 @@ pkgwatch scan --fail-on CRITICAL   # Exit 1 only on CRITICAL
 pkgwatch scan -o json              # JSON output
 pkgwatch scan -o sarif             # SARIF format (security tooling)
 pkgwatch scan --json               # JSON output (deprecated)
+pkgwatch scan --no-dev             # Exclude devDependencies
+
+# Recursive mode (monorepos)
+pkgwatch scan -r                         # Scan all manifests in current dir
+pkgwatch scan --recursive ./monorepo     # Scan specific directory
+pkgwatch scan -r --exclude node_modules  # Exclude directories
+pkgwatch scan -r --max-manifests 200     # Limit files scanned
+pkgwatch scan -r --no-confirm            # Skip confirmation prompt
 ```
+
+**Supported dependency files:**
+- `package.json` (npm)
+- `requirements.txt` (PyPI)
+- `pyproject.toml` (PyPI)
 
 **Output formats:**
 - `table` (default): Human-readable table output
@@ -100,6 +117,14 @@ pkgwatch config show   # Show configuration
 pkgwatch config clear  # Clear configuration
 ```
 
+### Submit Feedback
+
+```bash
+pkgwatch feedback bug          # Report a bug
+pkgwatch feedback idea         # Suggest a feature
+pkgwatch feedback feature      # Alias for idea
+```
+
 ## Global Flags
 
 These flags work with any command:
@@ -108,6 +133,7 @@ These flags work with any command:
 |------|-------------|
 | `-q, --quiet` | Suppress progress output (spinner, status messages) |
 | `-v, --verbose` | Show detailed debug output |
+| `--no-color` | Disable colored output |
 | `-V, --version` | Show CLI version |
 | `-h, --help` | Show help |
 
@@ -126,6 +152,7 @@ All main commands have short aliases for faster typing:
 | `check` | `c` |
 | `scan` | `s` |
 | `usage` | `u` |
+| `feedback` | `fb` |
 
 ## CI/CD Integration
 
@@ -177,14 +204,16 @@ express@5.2.1
   + 37.9M+ weekly downloads
   + 5 maintainers
   + 11 active contributors (90d)
+  + Bus Factor: 4 contributors (HIGH confidence)
 
   Components:
     Maintainer:  100/100
     Evolution:   87/100
     Community:   74/100
     User Impact: 69/100
+    Security:    72/100
 ```
 
 ## License
 
-MIT
+Proprietary - All rights reserved

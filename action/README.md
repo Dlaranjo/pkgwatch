@@ -1,7 +1,7 @@
 # PkgWatch GitHub Action
 
 [![GitHub Action](https://img.shields.io/badge/GitHub-Action-blue.svg)](https://github.com/features/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 
 Scan your npm and Python dependencies for health risks and security issues in CI/CD.
 
@@ -9,7 +9,7 @@ Scan your npm and Python dependencies for health risks and security issues in CI
 
 ```yaml
 - name: Scan dependencies
-  uses: pkgwatch/action@v1
+  uses: Dlaranjo/pkgwatch/action@v1
   with:
     api-key: ${{ secrets.PKGWATCH_API_KEY }}
 ```
@@ -21,10 +21,13 @@ Get your API key at [pkgwatch.laranjo.dev](https://pkgwatch.laranjo.dev).
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `api-key` | Yes | - | PkgWatch API key |
-| `working-directory` | No | `.` | Directory containing package.json |
+| `working-directory` | No | `.` | Directory containing package.json, requirements.txt, or pyproject.toml |
 | `fail-on` | No | - | Fail if risk level reached: `HIGH` or `CRITICAL` |
 | `include-dev` | No | `true` | Include devDependencies in scan |
 | `soft-fail` | No | `false` | Set outputs but don't fail workflow even if threshold exceeded |
+| `scan-mode` | No | `single` | Scan mode: `single` (one file) or `recursive` (all manifests) |
+| `exclude-patterns` | No | `node_modules,.git` | Comma-separated patterns to exclude in recursive mode |
+| `max-manifests` | No | `100` | Maximum manifest files to scan in recursive mode |
 
 ## Outputs
 
@@ -35,10 +38,15 @@ Get your API key at [pkgwatch.laranjo.dev](https://pkgwatch.laranjo.dev).
 | `high` | Count of HIGH risk packages |
 | `medium` | Count of MEDIUM risk packages |
 | `low` | Count of LOW risk packages |
+| `not-found-count` | Count of packages not found in database |
 | `has-issues` | `true` if any CRITICAL or HIGH risk packages found |
 | `highest-risk` | Highest risk level found (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, `NONE`) |
 | `failed` | `true` if fail-on threshold was exceeded |
 | `results` | Full scan results as JSON string |
+| `manifests-scanned` | Number of manifest files scanned (recursive mode) |
+| `manifests-failed` | Number of manifest files that failed to scan |
+| `per-manifest-results` | Per-file results as JSON string (recursive mode) |
+| `truncated` | `true` if results were truncated due to size limits |
 
 ## Examples
 
@@ -60,7 +68,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Scan dependencies
-        uses: pkgwatch/action@v1
+        uses: Dlaranjo/pkgwatch/action@v1
         with:
           api-key: ${{ secrets.PKGWATCH_API_KEY }}
 ```
@@ -70,7 +78,7 @@ jobs:
 ```yaml
 - name: Scan dependencies
   id: pkgwatch
-  uses: pkgwatch/action@v1
+  uses: Dlaranjo/pkgwatch/action@v1
   with:
     api-key: ${{ secrets.PKGWATCH_API_KEY }}
     fail-on: HIGH
@@ -93,7 +101,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Scan ${{ matrix.package }}
-        uses: pkgwatch/action@v1
+        uses: Dlaranjo/pkgwatch/action@v1
         with:
           api-key: ${{ secrets.PKGWATCH_API_KEY }}
           working-directory: packages/${{ matrix.package }}
@@ -116,10 +124,21 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Scan dependencies
-        uses: pkgwatch/action@v1
+        uses: Dlaranjo/pkgwatch/action@v1
         with:
           api-key: ${{ secrets.PKGWATCH_API_KEY }}
           fail-on: HIGH
+```
+
+### Python Project
+
+```yaml
+- name: Scan Python dependencies
+  uses: Dlaranjo/pkgwatch/action@v1
+  with:
+    api-key: ${{ secrets.PKGWATCH_API_KEY }}
+    working-directory: ./backend  # Contains requirements.txt or pyproject.toml
+    fail-on: HIGH
 ```
 
 ### Use Output in Conditional Steps
@@ -127,7 +146,7 @@ jobs:
 ```yaml
 - name: Scan dependencies
   id: pkgwatch
-  uses: pkgwatch/action@v1
+  uses: Dlaranjo/pkgwatch/action@v1
   with:
     api-key: ${{ secrets.PKGWATCH_API_KEY }}
 
@@ -148,7 +167,7 @@ Use `soft-fail: true` to set outputs and warnings without failing the workflow:
 
 ```yaml
 - name: Scan dependencies (informational)
-  uses: pkgwatch/action@v1
+  uses: Dlaranjo/pkgwatch/action@v1
   with:
     api-key: ${{ secrets.PKGWATCH_API_KEY }}
     fail-on: HIGH
@@ -203,4 +222,4 @@ The action automatically creates GitHub annotations for all CRITICAL and HIGH ri
 
 ## License
 
-MIT
+Proprietary - All rights reserved

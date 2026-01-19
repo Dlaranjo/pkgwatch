@@ -1,63 +1,71 @@
 # Shared Utilities
 
-This directory contains shared utility modules for error handling, resilience, and observability.
+This directory contains shared utility modules for authentication, error handling, resilience, and observability.
 
-## Status: Available But Not Yet Integrated
+## Core Utilities
 
-These utilities have been implemented and tested, but are **not currently integrated** into the collectors to avoid nested retry logic and thread safety concerns. They are available for future proper integration.
+### auth.py
+Authentication and authorization utilities.
 
-## Available Utilities
+**Functions**: `validate_api_key()`, `validate_session()`, `get_user_from_session()`
+**Status**: ✅ Production ready, integrated in all API handlers
 
-### 🔴 circuit_breaker.py
+### errors.py
+Custom exception classes for consistent error handling.
+
+**Classes**: `PkgWatchError`, `AuthenticationError`, `NotFoundError`, `RateLimitError`, `ValidationError`
+**Status**: ✅ Production ready, integrated throughout
+
+### response_utils.py
+HTTP response formatting utilities.
+
+**Functions**: `success_response()`, `error_response()`, `cors_headers()`
+**Status**: ✅ Production ready, integrated in all API handlers
+
+### dynamo.py
+DynamoDB utility functions.
+
+**Functions**: `get_item()`, `put_item()`, `query()`, `update_item()`
+**Status**: ✅ Production ready, integrated throughout
+
+### types.py
+Type definitions and data classes.
+
+**Status**: ✅ Production ready
+
+## Resilience Utilities
+
+### circuit_breaker.py
 Circuit breaker pattern implementation with CLOSED/OPEN/HALF_OPEN states.
 
-**Status**: ⚠️ Requires async locking before production use
-**Note**: Currently not thread-safe for concurrent async operations. Add `asyncio.Lock` protection before integrating.
+**Status**: ✅ Production ready with DynamoDB-based distributed state
+**Usage**: Protects external API calls (GitHub, npm, PyPI, deps.dev)
 
-### ✅ retry.py
+### retry.py
 Centralized retry logic with exponential backoff and jitter.
 
 **Status**: ✅ Production ready
 **Usage**: Apply to functions that don't already have internal retry logic.
 
-### ✅ metrics.py
+### metrics.py
 CloudWatch metrics utilities for error tracking.
 
 **Status**: ✅ Production ready
 **Functions**: `emit_error_metric()`, `emit_circuit_breaker_metric()`, `emit_dlq_metric()`
 
-### ✅ logging_utils.py
+### logging_utils.py
 Structured JSON logging for CloudWatch Logs Insights.
 
-**Status**: ✅ Production ready, partially integrated
-**Integrated In**: `health.py` endpoint
+**Status**: ✅ Production ready
 **Usage**: Call `configure_structured_logging()` at handler start, use `set_request_id()` for correlation.
-
-## Integration Plan
-
-### Why Not Integrated Yet?
-
-1. **Nested Retries**: Collectors already have internal retry logic. Adding decorators creates double retry layers (up to 9 attempts).
-2. **Thread Safety**: Circuit breaker needs `asyncio.Lock` for concurrent operations with `asyncio.gather()`.
-3. **Import Issues**: `sys.path.insert()` pattern needs to be replaced with proper relative imports.
-
-### Recommended Integration Approach
-
-**Option A** (Safest): Keep existing manual retry logic, don't use decorators yet.
-
-**Option B** (Future): Properly integrate after:
-1. Adding `asyncio.Lock` to circuit breaker
-2. Removing internal retry logic from collectors
-3. Configuring `retryable_exceptions` to exclude `CircuitOpenError` and non-transient errors
-4. Using relative imports instead of `sys.path.insert()`
 
 ## Testing
 
 Tests are available in:
-- `/home/user/pkgwatch/tests/test_circuit_breaker.py` (10 tests)
-- `/home/user/pkgwatch/tests/test_retry.py` (12 tests)
+- `tests/test_circuit_breaker.py`
+- `tests/test_retry.py`
 
-**Note**: Tests require AWS region environment variable to be set.
+Run with: `PYTHONPATH=functions:. pytest tests/ -v`
 
 ## DLQ Error Classification
 

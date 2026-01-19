@@ -20,7 +20,7 @@ info:
   contact:
     email: hello@laranjo.dev
   license:
-    name: MIT
+    name: Proprietary
 
 servers:
   - url: https://api.pkgwatch.laranjo.dev/v1
@@ -60,7 +60,7 @@ paths:
           description: Package ecosystem
           schema:
             type: string
-            enum: [npm]
+            enum: [npm, pypi]
           example: npm
         - name: name
           in: path
@@ -362,16 +362,8 @@ paths:
             type: string
           example: key_abc123
       responses:
-        '200':
+        '204':
           description: API key revoked successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: API key revoked successfully
         '400':
           description: Bad request (e.g., cannot revoke last key)
           content:
@@ -473,20 +465,39 @@ components:
           type: object
           description: Breakdown of score components
           properties:
-            maintenance:
+            maintainer_health:
               type: number
+              description: Maintainer activity score
               example: 90
-            popularity:
+            evolution_health:
               type: number
+              description: Release and development activity score
+              example: 85
+            community_health:
+              type: number
+              description: Community engagement score
+              example: 75
+            user_centric:
+              type: number
+              description: Usage and adoption score
               example: 95
-            security:
+            security_health:
               type: number
+              description: Security posture score
               example: 80
         confidence:
-          type: string
-          enum: [HIGH, MEDIUM, LOW]
+          type: object
           description: Confidence in the health score calculation
-          example: HIGH
+          properties:
+            score:
+              type: number
+              description: Confidence score (0-100)
+              example: 87.5
+            level:
+              type: string
+              enum: [HIGH, MEDIUM, LOW]
+              description: Confidence level
+              example: HIGH
         signals:
           $ref: '#/components/schemas/PackageSignals'
         openssf_checks:
@@ -636,6 +647,11 @@ components:
     ScanRequestDependencies:
       type: object
       properties:
+        ecosystem:
+          type: string
+          enum: [npm, pypi]
+          description: Package ecosystem (default npm)
+          example: npm
         dependencies:
           type: object
           additionalProperties:

@@ -12,13 +12,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Agent prompts for parallel development
 - OpenAPI 3.0 specification documenting all API endpoints
 - Comprehensive documentation (READMEs, CONTRIBUTING.md, .env.example)
+- Customer feedback mechanisms across all touchpoints (CLI, Action, dashboard)
+- Data quality transparency indicators in API responses
+- User reset procedures for testing in CLAUDE.md
 
 ### Changed
+- Unified signup and login into single `/start` page
 - Increased timing normalization from 0.5s to 1.5s for better enumeration protection
 - Added TTL to PENDING signup records
+- Updated favicon to eye icon matching PkgWatch branding
+- Changed CLI progress bar color from emerald to blue
+- Disabled API Gateway cache to reduce costs
+- Bumped @pkgwatch/cli to v1.3.0
 
 ### Fixed
+- Billing cycle date display in upgrade preview popup
+- npm validation regex and centralized package validation
+- CI health check URLs - removed /v1 prefix
+- CLI documentation link anchor
+- Stripe API billing period extraction
+- Missing key_suffix in signup flow
+- Subscription cancellation flow and billing cycle display
 - Moto compatibility issue with DynamoDB conditional expressions
+- Critical issues from SaaS evaluation
+
+### Security
+- Implemented data completeness backlog clearance
 
 ## [1.0.0] - 2026-01-07
 

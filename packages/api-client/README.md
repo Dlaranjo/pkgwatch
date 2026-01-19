@@ -181,4 +181,4 @@ formatBytes(1048576);      // '1 MB'
 
 ## License
 
-MIT
+Proprietary - All rights reserved

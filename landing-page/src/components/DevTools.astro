@@ -59,7 +59,7 @@
           </div>
           <div>
             <h3 class="font-semibold">GitHub Action</h3>
-            <p class="text-xs text-zinc-500">Dlaranjo/pkgwatch</p>
+            <p class="text-xs text-zinc-500">Dlaranjo/pkgwatch/action</p>
           </div>
         </div>
         <p class="text-sm text-zinc-400">
@@ -68,7 +68,7 @@
       </div>
       <div class="p-4 bg-black/30 font-mono text-xs overflow-x-auto max-w-full">
         <pre class="text-zinc-300"><code>- name: Scan dependencies
-  uses: Dlaranjo/pkgwatch@v1
+  uses: Dlaranjo/pkgwatch/action@v1
   with:
     api-key: {'${{ secrets.PKGWATCH_API_KEY }}'}
     fail-on: HIGH

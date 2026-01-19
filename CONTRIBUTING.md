@@ -6,7 +6,7 @@ Thank you for your interest in contributing to PkgWatch!
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+
 - Python 3.12+
 - AWS CLI configured (for integration tests)
 - Git
@@ -22,19 +22,16 @@ cd pkgwatch
 npm install
 
 # Install Python dependencies
-cd functions
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
+pip install -r tests/requirements.txt
 ```
 
 ### Running Tests
 
 ```bash
-# Python tests
-cd functions
-pytest tests/ -v
+# Python tests (from repo root)
+PYTHONPATH=functions:. pytest tests/ -v
 
 # CLI tests
 cd cli
@@ -176,4 +173,4 @@ Reviewers will check:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the project's proprietary license.
