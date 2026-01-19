@@ -143,6 +143,15 @@ def handler(event, context):
 
     user_id = user_item["pk"]
 
+    # Fetch USER_META separately (not returned by email-index GSI since it lacks email field)
+    if not user_meta:
+        try:
+            meta_response = table.get_item(Key={"pk": user_id, "sk": "USER_META"})
+            user_meta = meta_response.get("Item")
+        except ClientError as e:
+            logger.warning(f"Error fetching USER_META for {user_id}: {e}")
+            # Continue without user_meta - recovery codes check will fail gracefully
+
     # Check per-user rate limiting
     now = datetime.now(timezone.utc)
     today_key = now.strftime("%Y-%m-%d")
