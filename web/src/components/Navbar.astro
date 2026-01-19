@@ -34,16 +34,6 @@ const isActive = (path: string, exact = true) => {
       >
         Docs
       </a>
-      <a href="/#demo" class="text-sm text-zinc-400 hover:text-white transition-colors">
-        Demo
-      </a>
-      <a
-        href="/what-is-pkgwatch"
-        aria-current={isActive('/what-is-pkgwatch') ? 'page' : undefined}
-        class={`text-sm transition-colors ${isActive('/what-is-pkgwatch') ? 'text-white font-medium' : 'text-zinc-400 hover:text-white'}`}
-      >
-        About
-      </a>
       <a
         href="/methodology"
         aria-current={isActive('/methodology') ? 'page' : undefined}
@@ -57,6 +47,13 @@ const isActive = (path: string, exact = true) => {
         class={`text-sm transition-colors ${isActive('/pricing') ? 'text-white font-medium' : 'text-zinc-400 hover:text-white'}`}
       >
         Pricing
+      </a>
+      <a
+        href="/what-is-pkgwatch"
+        aria-current={isActive('/what-is-pkgwatch') ? 'page' : undefined}
+        class={`text-sm transition-colors ${isActive('/what-is-pkgwatch') ? 'text-white font-medium' : 'text-zinc-400 hover:text-white'}`}
+      >
+        About
       </a>
 
       <!-- Logged-out state (default, visible) -->
@@ -120,16 +117,6 @@ const isActive = (path: string, exact = true) => {
       >
         Docs
       </a>
-      <a href="/#demo" class="mobile-nav-link block py-3 text-zinc-400 hover:text-white transition-colors">
-        Demo
-      </a>
-      <a
-        href="/what-is-pkgwatch"
-        aria-current={isActive('/what-is-pkgwatch') ? 'page' : undefined}
-        class={`block py-3 transition-colors ${isActive('/what-is-pkgwatch') ? 'text-white font-medium' : 'text-zinc-400 hover:text-white'}`}
-      >
-        About
-      </a>
       <a
         href="/methodology"
         aria-current={isActive('/methodology') ? 'page' : undefined}
@@ -143,6 +130,13 @@ const isActive = (path: string, exact = true) => {
         class={`block py-3 transition-colors ${isActive('/pricing') ? 'text-white font-medium' : 'text-zinc-400 hover:text-white'}`}
       >
         Pricing
+      </a>
+      <a
+        href="/what-is-pkgwatch"
+        aria-current={isActive('/what-is-pkgwatch') ? 'page' : undefined}
+        class={`block py-3 transition-colors ${isActive('/what-is-pkgwatch') ? 'text-white font-medium' : 'text-zinc-400 hover:text-white'}`}
+      >
+        About
       </a>
 
       <!-- Logged-out state (default, visible) -->
@@ -357,10 +351,4 @@ const isActive = (path: string, exact = true) => {
     }
   });
 
-  // Close menu when clicking same-page anchor links (like Demo)
-  mobileMenu?.querySelectorAll('a[href^="/#"]').forEach(link => {
-    link.addEventListener('click', () => {
-      closeMenu();
-    });
-  });
 </script>
