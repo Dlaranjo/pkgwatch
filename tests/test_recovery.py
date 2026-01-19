@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 from moto import mock_aws
 
 # Set environment variables before importing handlers
@@ -621,3 +622,869 @@ class TestRecoveryConfirmEmail:
 
         assert response2["statusCode"] == 302
         assert "error=invalid_token" in response2["headers"]["Location"]
+
+
+class TestRecoveryVerifyCodeErrors:
+    """Error path tests for POST /recovery/verify-code endpoint."""
+
+    @mock_aws
+    def test_verify_code_json_decode_error(self, mock_dynamodb):
+        """Should reject invalid JSON body."""
+        from api.recovery_verify_code import handler
+
+        event = {
+            "body": "invalid json{",
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 400
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "invalid_json"
+
+    @mock_aws
+    def test_verify_code_session_expired(self, mock_dynamodb, seeded_api_keys_table):
+        """Should reject expired recovery session."""
+        table, test_key = seeded_api_keys_table
+
+        # Create an expired recovery session
+        session_id = "expired-session-123"
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": f"RECOVERY_{session_id}",
+                "email": "test@example.com",
+                "recovery_session_id": session_id,
+                "verified": False,
+                "ttl": int((now - timedelta(hours=1)).timestamp()),  # Expired
+            }
+        )
+
+        from api.recovery_verify_code import handler
+
+        event = {
+            "body": json.dumps({
+                "recovery_session_id": session_id,
+                "recovery_code": "AAAA-BBBB-CCCC-DDDD",
+            }),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        with patch("time.sleep"):
+            response = handler(event, None)
+
+        assert response["statusCode"] == 400
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "session_expired"
+
+    @mock_aws
+    def test_verify_code_dynamo_scan_error(self, mock_dynamodb, seeded_api_keys_table):
+        """Should handle DynamoDB scan error gracefully."""
+        from api.recovery_verify_code import handler
+
+        event = {
+            "body": json.dumps({
+                "recovery_session_id": "test-session-123",
+                "recovery_code": "AAAA-BBBB-CCCC-DDDD",
+            }),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        # Mock the table scan to raise an error
+        with patch("time.sleep"), \
+             patch("api.recovery_verify_code.dynamodb") as mock_ddb:
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            mock_table.scan.side_effect = ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
+                "Scan"
+            )
+            response = handler(event, None)
+
+        assert response["statusCode"] == 500
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "internal_error"
+
+    @mock_aws
+    def test_verify_code_dynamo_meta_error(self, mock_dynamodb, seeded_api_keys_table):
+        """Should handle DynamoDB get_item error for USER_META."""
+        table, test_key = seeded_api_keys_table
+
+        # Create a recovery session
+        session_id = "test-session-meta-error"
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": f"RECOVERY_{session_id}",
+                "email": "test@example.com",
+                "recovery_session_id": session_id,
+                "verified": False,
+                "ttl": int((now + timedelta(hours=1)).timestamp()),
+            }
+        )
+
+        from api.recovery_verify_code import handler
+
+        event = {
+            "body": json.dumps({
+                "recovery_session_id": session_id,
+                "recovery_code": "AAAA-BBBB-CCCC-DDDD",
+            }),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        # Mock scan to work but get_item to fail
+        with patch("time.sleep"), \
+             patch("api.recovery_verify_code.dynamodb") as mock_ddb:
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            mock_table.scan.return_value = {
+                "Items": [{
+                    "pk": "user_test123",
+                    "sk": f"RECOVERY_{session_id}",
+                    "email": "test@example.com",
+                    "ttl": int((now + timedelta(hours=1)).timestamp()),
+                    "verified": False,
+                }]
+            }
+            mock_table.get_item.side_effect = ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
+                "GetItem"
+            )
+            response = handler(event, None)
+
+        assert response["statusCode"] == 500
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "internal_error"
+
+    @mock_aws
+    def test_verify_code_race_condition(self, mock_dynamodb, seeded_api_keys_table):
+        """Should handle race condition when consuming recovery code."""
+        table, test_key = seeded_api_keys_table
+
+        # Generate and store recovery codes
+        from shared.recovery_utils import generate_recovery_codes
+        plaintext_codes, hashed_codes = generate_recovery_codes(count=8)
+
+        # Store in USER_META
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": "USER_META",
+                "recovery_codes_hash": hashed_codes,
+                "recovery_codes_count": 8,
+            }
+        )
+
+        # Create a recovery session
+        session_id = "test-session-race-condition"
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": f"RECOVERY_{session_id}",
+                "email": "test@example.com",
+                "recovery_session_id": session_id,
+                "verified": False,
+                "ttl": int((now + timedelta(hours=1)).timestamp()),
+            }
+        )
+
+        from api.recovery_verify_code import handler
+
+        event = {
+            "body": json.dumps({
+                "recovery_session_id": session_id,
+                "recovery_code": plaintext_codes[0],
+            }),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        # Mock update_item to raise ConditionalCheckFailedException
+        with patch("time.sleep"), \
+             patch("api.recovery_verify_code.dynamodb") as mock_ddb:
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            mock_table.scan.return_value = {
+                "Items": [{
+                    "pk": "user_test123",
+                    "sk": f"RECOVERY_{session_id}",
+                    "email": "test@example.com",
+                    "ttl": int((now + timedelta(hours=1)).timestamp()),
+                    "verified": False,
+                }]
+            }
+            mock_table.get_item.return_value = {
+                "Item": {
+                    "pk": "user_test123",
+                    "sk": "USER_META",
+                    "recovery_codes_hash": hashed_codes,
+                }
+            }
+            mock_table.update_item.side_effect = ClientError(
+                {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Condition failed"}},
+                "UpdateItem"
+            )
+            response = handler(event, None)
+
+        assert response["statusCode"] == 409
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "concurrent_modification"
+
+
+class TestRecoveryUpdateEmailErrors:
+    """Error path tests for POST /recovery/update-email endpoint."""
+
+    @mock_aws
+    def test_update_email_json_decode_error(self, mock_dynamodb):
+        """Should reject invalid JSON body."""
+        from api.recovery_update_email import handler
+
+        event = {
+            "body": "not valid json",
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 400
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "invalid_json"
+
+    @mock_aws
+    def test_update_email_session_expired(self, mock_dynamodb, seeded_api_keys_table):
+        """Should reject expired recovery session."""
+        table, test_key = seeded_api_keys_table
+
+        # Create an expired recovery session with token
+        session_id = "test-session-expired"
+        recovery_token = "expired-token-123"
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": f"RECOVERY_{session_id}",
+                "email": "test@example.com",
+                "recovery_session_id": session_id,
+                "recovery_token": recovery_token,
+                "recovery_method": "recovery_code",
+                "verified": True,
+                "ttl": int((now - timedelta(hours=1)).timestamp()),  # Expired
+            }
+        )
+
+        from api.recovery_update_email import handler
+
+        event = {
+            "body": json.dumps({
+                "recovery_token": recovery_token,
+                "new_email": "new@example.com",
+            }),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        with patch("time.sleep"):
+            response = handler(event, None)
+
+        assert response["statusCode"] == 400
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "session_expired"
+
+    @mock_aws
+    def test_update_email_session_not_verified(self, mock_dynamodb, seeded_api_keys_table):
+        """Should reject unverified recovery session."""
+        table, test_key = seeded_api_keys_table
+
+        # Create an unverified recovery session with token
+        session_id = "test-session-unverified"
+        recovery_token = "unverified-token-123"
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": f"RECOVERY_{session_id}",
+                "email": "test@example.com",
+                "recovery_session_id": session_id,
+                "recovery_token": recovery_token,
+                "recovery_method": "recovery_code",
+                "verified": False,  # Not verified
+                "ttl": int((now + timedelta(hours=1)).timestamp()),
+            }
+        )
+
+        from api.recovery_update_email import handler
+
+        event = {
+            "body": json.dumps({
+                "recovery_token": recovery_token,
+                "new_email": "new@example.com",
+            }),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        with patch("time.sleep"):
+            response = handler(event, None)
+
+        assert response["statusCode"] == 400
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "session_not_verified"
+
+    @mock_aws
+    def test_update_email_already_in_use(self, mock_dynamodb, seeded_api_keys_table):
+        """Should reject email that's already in use by another user."""
+        table, test_key = seeded_api_keys_table
+
+        # Create another user with the target email
+        import hashlib
+        other_key = "pw_other_user_key_1234"
+        other_key_hash = hashlib.sha256(other_key.encode()).hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_other456",
+                "sk": other_key_hash,
+                "key_hash": other_key_hash,
+                "email": "taken@example.com",
+                "tier": "free",
+            }
+        )
+
+        # Create a verified recovery session
+        session_id = "test-session-email-in-use"
+        recovery_token = "in-use-token-123"
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": f"RECOVERY_{session_id}",
+                "email": "test@example.com",
+                "recovery_session_id": session_id,
+                "recovery_token": recovery_token,
+                "recovery_method": "recovery_code",
+                "verified": True,
+                "ttl": int((now + timedelta(hours=1)).timestamp()),
+            }
+        )
+
+        from api.recovery_update_email import handler
+
+        event = {
+            "body": json.dumps({
+                "recovery_token": recovery_token,
+                "new_email": "taken@example.com",  # Already in use
+            }),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        with patch("time.sleep"):
+            response = handler(event, None)
+
+        assert response["statusCode"] == 400
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "email_in_use"
+
+    @mock_aws
+    def test_update_email_dynamo_scan_error(self, mock_dynamodb):
+        """Should handle DynamoDB scan error gracefully."""
+        from api.recovery_update_email import handler
+
+        event = {
+            "body": json.dumps({
+                "recovery_token": "test-token-123",
+                "new_email": "new@example.com",
+            }),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        with patch("time.sleep"), \
+             patch("api.recovery_update_email.dynamodb") as mock_ddb:
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            mock_table.scan.side_effect = ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
+                "Scan"
+            )
+            response = handler(event, None)
+
+        assert response["statusCode"] == 500
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "internal_error"
+
+    @mock_aws
+    def test_update_email_verification_email_failure(self, mock_dynamodb, seeded_api_keys_table):
+        """Should continue even if verification email fails."""
+        table, test_key = seeded_api_keys_table
+
+        # Create a verified recovery session
+        session_id = "test-session-email-fail"
+        recovery_token = "email-fail-token-123"
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": f"RECOVERY_{session_id}",
+                "email": "test@example.com",
+                "recovery_session_id": session_id,
+                "recovery_token": recovery_token,
+                "recovery_method": "recovery_code",
+                "verified": True,
+                "ttl": int((now + timedelta(hours=1)).timestamp()),
+            }
+        )
+
+        from api.recovery_update_email import handler
+
+        event = {
+            "body": json.dumps({
+                "recovery_token": recovery_token,
+                "new_email": "new@example.com",
+            }),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        # SES fails but operation should still succeed
+        with patch("time.sleep"), \
+             patch("api.recovery_update_email.ses") as mock_ses:
+            mock_ses.send_email.side_effect = Exception("SES failure")
+            response = handler(event, None)
+
+        # Should still return 200 since the record is created
+        assert response["statusCode"] == 200
+
+
+class TestRecoveryVerifyApiKeyErrors:
+    """Error path tests for POST /recovery/verify-api-key endpoint."""
+
+    @mock_aws
+    def test_verify_api_key_json_decode_error(self, mock_dynamodb):
+        """Should reject invalid JSON body."""
+        from api.recovery_verify_api_key import handler
+
+        event = {
+            "body": "not valid json",
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 400
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "invalid_json"
+
+    @mock_aws
+    def test_verify_api_key_session_expired(self, mock_dynamodb, seeded_api_keys_table):
+        """Should reject expired recovery session."""
+        table, test_key = seeded_api_keys_table
+
+        # Create an expired recovery session
+        session_id = "expired-api-key-session"
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": f"RECOVERY_{session_id}",
+                "email": "test@example.com",
+                "recovery_session_id": session_id,
+                "verified": False,
+                "ttl": int((now - timedelta(hours=1)).timestamp()),  # Expired
+            }
+        )
+
+        from api.recovery_verify_api_key import handler
+
+        event = {
+            "body": json.dumps({
+                "recovery_session_id": session_id,
+                "api_key": test_key,
+            }),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        with patch("time.sleep"):
+            response = handler(event, None)
+
+        assert response["statusCode"] == 400
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "session_expired"
+
+    @mock_aws
+    def test_verify_api_key_dynamo_query_error(self, mock_dynamodb):
+        """Should handle DynamoDB query error gracefully."""
+        from api.recovery_verify_api_key import handler
+
+        event = {
+            "body": json.dumps({
+                "recovery_session_id": "test-session-123",
+                "api_key": "pw_test_key_12345",
+            }),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        with patch("time.sleep"), \
+             patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            mock_table.query.side_effect = ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
+                "Query"
+            )
+            response = handler(event, None)
+
+        assert response["statusCode"] == 500
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "internal_error"
+
+    @mock_aws
+    def test_verify_api_key_session_get_error(self, mock_dynamodb, seeded_api_keys_table):
+        """Should handle DynamoDB get_item error for session."""
+        table, test_key = seeded_api_keys_table
+
+        from api.recovery_verify_api_key import handler
+        import hashlib
+
+        key_hash = hashlib.sha256(test_key.encode()).hexdigest()
+
+        event = {
+            "body": json.dumps({
+                "recovery_session_id": "test-session-123",
+                "api_key": test_key,
+            }),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        now = datetime.now(timezone.utc)
+        with patch("time.sleep"), \
+             patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            # First query succeeds (API key lookup)
+            mock_table.query.return_value = {
+                "Items": [{
+                    "pk": "user_test123",
+                    "sk": key_hash,
+                    "key_hash": key_hash,
+                    "email": "test@example.com",
+                }]
+            }
+            # get_item fails
+            mock_table.get_item.side_effect = ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
+                "GetItem"
+            )
+            response = handler(event, None)
+
+        assert response["statusCode"] == 500
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "internal_error"
+
+    @mock_aws
+    def test_verify_api_key_email_mismatch(self, mock_dynamodb, seeded_api_keys_table):
+        """Should reject API key for different email than recovery session."""
+        table, test_key = seeded_api_keys_table
+
+        # Create a recovery session with a different email
+        session_id = "test-session-mismatch"
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": f"RECOVERY_{session_id}",
+                "email": "different@example.com",  # Different from API key's email
+                "recovery_session_id": session_id,
+                "verified": False,
+                "ttl": int((now + timedelta(hours=1)).timestamp()),
+            }
+        )
+
+        from api.recovery_verify_api_key import handler
+
+        event = {
+            "body": json.dumps({
+                "recovery_session_id": session_id,
+                "api_key": test_key,
+            }),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        with patch("time.sleep"):
+            response = handler(event, None)
+
+        assert response["statusCode"] == 400
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "invalid_credentials"
+
+    @mock_aws
+    def test_verify_api_key_update_error(self, mock_dynamodb, seeded_api_keys_table):
+        """Should handle DynamoDB update_item error gracefully."""
+        table, test_key = seeded_api_keys_table
+
+        # Create a valid recovery session
+        session_id = "test-session-update-error"
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": f"RECOVERY_{session_id}",
+                "email": "test@example.com",
+                "recovery_session_id": session_id,
+                "verified": False,
+                "ttl": int((now + timedelta(hours=1)).timestamp()),
+            }
+        )
+
+        from api.recovery_verify_api_key import handler
+        import hashlib
+        key_hash = hashlib.sha256(test_key.encode()).hexdigest()
+
+        event = {
+            "body": json.dumps({
+                "recovery_session_id": session_id,
+                "api_key": test_key,
+            }),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        with patch("time.sleep"), \
+             patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            mock_table.query.return_value = {
+                "Items": [{
+                    "pk": "user_test123",
+                    "sk": key_hash,
+                    "key_hash": key_hash,
+                    "email": "test@example.com",
+                }]
+            }
+            mock_table.get_item.return_value = {
+                "Item": {
+                    "pk": "user_test123",
+                    "sk": f"RECOVERY_{session_id}",
+                    "email": "test@example.com",
+                    "ttl": int((now + timedelta(hours=1)).timestamp()),
+                }
+            }
+            mock_table.update_item.side_effect = ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
+                "UpdateItem"
+            )
+            response = handler(event, None)
+
+        assert response["statusCode"] == 500
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "internal_error"
+
+
+class TestRecoveryConfirmEmailErrors:
+    """Error path tests for GET /recovery/confirm-email endpoint."""
+
+    @mock_aws
+    def test_confirm_email_dynamo_scan_error(self, mock_dynamodb):
+        """Should handle DynamoDB scan error gracefully."""
+        from api.recovery_confirm_email import handler
+
+        event = {
+            "queryStringParameters": {"token": "test-token-123"},
+        }
+
+        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
+             patch("api.recovery_confirm_email.dynamodb") as mock_ddb:
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            mock_table.scan.side_effect = ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
+                "Scan"
+            )
+            response = handler(event, None)
+
+        assert response["statusCode"] == 302
+        assert "error=internal_error" in response["headers"]["Location"]
+
+    @mock_aws
+    def test_confirm_email_user_query_error(self, mock_dynamodb, seeded_api_keys_table):
+        """Should handle DynamoDB query error for user records."""
+        table, test_key = seeded_api_keys_table
+
+        # Create an EMAIL_CHANGE record
+        change_token = "change-token-query-error"
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": f"EMAIL_CHANGE_{change_token}",
+                "old_email": "test@example.com",
+                "new_email": "new@example.com",
+                "change_token": change_token,
+                "ttl": int((now + timedelta(hours=24)).timestamp()),
+            }
+        )
+
+        from api.recovery_confirm_email import handler
+
+        event = {
+            "queryStringParameters": {"token": change_token},
+        }
+
+        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
+             patch("api.recovery_confirm_email.dynamodb") as mock_ddb:
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            mock_table.scan.return_value = {
+                "Items": [{
+                    "pk": "user_test123",
+                    "sk": f"EMAIL_CHANGE_{change_token}",
+                    "old_email": "test@example.com",
+                    "new_email": "new@example.com",
+                    "change_token": change_token,
+                    "ttl": int((now + timedelta(hours=24)).timestamp()),
+                }]
+            }
+            mock_table.query.side_effect = ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
+                "Query"
+            )
+            response = handler(event, None)
+
+        assert response["statusCode"] == 302
+        assert "error=internal_error" in response["headers"]["Location"]
+
+    @mock_aws
+    def test_confirm_email_token_consumed_race(self, mock_dynamodb, seeded_api_keys_table):
+        """Should handle race condition when token is consumed concurrently."""
+        table, test_key = seeded_api_keys_table
+        import hashlib
+
+        key_hash = hashlib.sha256(test_key.encode()).hexdigest()
+
+        # Create an EMAIL_CHANGE record
+        change_token = "change-token-race"
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": f"EMAIL_CHANGE_{change_token}",
+                "old_email": "test@example.com",
+                "new_email": "new@example.com",
+                "change_token": change_token,
+                "ttl": int((now + timedelta(hours=24)).timestamp()),
+            }
+        )
+
+        from api.recovery_confirm_email import handler
+
+        event = {
+            "queryStringParameters": {"token": change_token},
+        }
+
+        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
+             patch("api.recovery_confirm_email.dynamodb") as mock_ddb:
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            mock_table.scan.return_value = {
+                "Items": [{
+                    "pk": "user_test123",
+                    "sk": f"EMAIL_CHANGE_{change_token}",
+                    "old_email": "test@example.com",
+                    "new_email": "new@example.com",
+                    "change_token": change_token,
+                    "ttl": int((now + timedelta(hours=24)).timestamp()),
+                }]
+            }
+            mock_table.query.return_value = {
+                "Items": [{
+                    "pk": "user_test123",
+                    "sk": key_hash,
+                    "key_hash": key_hash,
+                    "email": "test@example.com",
+                }]
+            }
+            mock_table.delete_item.side_effect = ClientError(
+                {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Already deleted"}},
+                "DeleteItem"
+            )
+            response = handler(event, None)
+
+        assert response["statusCode"] == 302
+        assert "error=invalid_token" in response["headers"]["Location"]
+
+
+class TestRecoveryInitiateErrors:
+    """Error path tests for POST /recovery/initiate endpoint."""
+
+    @mock_aws
+    def test_initiate_json_decode_error(self, mock_dynamodb):
+        """Should reject invalid JSON body."""
+        from api.recovery_initiate import handler
+
+        event = {
+            "body": "not valid json",
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 400
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "invalid_json"
+
+    @mock_aws
+    def test_initiate_dynamo_query_error(self, mock_dynamodb):
+        """Should handle DynamoDB query error gracefully."""
+        from api.recovery_initiate import handler
+
+        event = {
+            "body": json.dumps({"email": "test@example.com"}),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        with patch("time.sleep"), \
+             patch("api.recovery_initiate.dynamodb") as mock_ddb:
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            mock_table.query.side_effect = ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
+                "Query"
+            )
+            response = handler(event, None)
+
+        assert response["statusCode"] == 500
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "internal_error"
+
+    @mock_aws
+    def test_initiate_session_creation_error(self, mock_dynamodb, seeded_api_keys_table):
+        """Should handle DynamoDB put_item error when creating session."""
+        table, test_key = seeded_api_keys_table
+
+        from api.recovery_initiate import handler
+        import hashlib
+        key_hash = hashlib.sha256(test_key.encode()).hexdigest()
+
+        event = {
+            "body": json.dumps({"email": "test@example.com"}),
+            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+        }
+
+        with patch("time.sleep"), \
+             patch("api.recovery_initiate.dynamodb") as mock_ddb:
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            mock_table.query.return_value = {
+                "Items": [{
+                    "pk": "user_test123",
+                    "sk": key_hash,
+                    "email": "test@example.com",
+                    "email_verified": True,
+                }]
+            }
+            mock_table.put_item.side_effect = ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
+                "PutItem"
+            )
+            response = handler(event, None)
+
+        assert response["statusCode"] == 500
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "internal_error"
