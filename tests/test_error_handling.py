@@ -255,12 +255,20 @@ class TestDepsDevFailures:
         import asyncio
         from collectors.depsdev_collector import get_package_info
 
-        async def run_test():
-            with patch("collectors.depsdev_collector.httpx.AsyncClient") as mock_client:
-                mock_async_client = AsyncMock()
-                mock_client.return_value.__aenter__.return_value = mock_async_client
-                mock_async_client.get.side_effect = httpx.TimeoutException("Timeout")
+        def create_timeout_transport():
+            """Create transport that always times out."""
+            async def handler(request: httpx.Request) -> httpx.Response:
+                raise httpx.TimeoutException("Timeout")
+            return httpx.MockTransport(handler)
 
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_timeout_transport()
+            original_init(self, *args, **kwargs)
+
+        async def run_test():
+            with patch.object(httpx.AsyncClient, "__init__", patched_init):
                 with pytest.raises(httpx.TimeoutException):
                     await get_package_info("lodash", "npm")
 
@@ -271,15 +279,20 @@ class TestDepsDevFailures:
         import asyncio
         from collectors.depsdev_collector import get_package_info
 
+        def create_404_transport():
+            """Create transport that returns 404."""
+            async def handler(request: httpx.Request) -> httpx.Response:
+                return httpx.Response(404)
+            return httpx.MockTransport(handler)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_404_transport()
+            original_init(self, *args, **kwargs)
+
         async def run_test():
-            with patch("collectors.depsdev_collector.httpx.AsyncClient") as mock_client:
-                mock_async_client = AsyncMock()
-                mock_client.return_value.__aenter__.return_value = mock_async_client
-
-                mock_response = MagicMock()
-                mock_response.status_code = 404
-                mock_async_client.get.return_value = mock_response
-
+            with patch.object(httpx.AsyncClient, "__init__", patched_init):
                 result = await get_package_info("nonexistent-pkg", "npm")
                 return result
 
@@ -321,20 +334,20 @@ class TestNpmCollectorFailures:
         import asyncio
         from collectors.npm_collector import get_npm_metadata
 
+        def create_404_transport():
+            """Create transport that returns 404."""
+            async def handler(request: httpx.Request) -> httpx.Response:
+                return httpx.Response(404)
+            return httpx.MockTransport(handler)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_404_transport()
+            original_init(self, *args, **kwargs)
+
         async def run_test():
-            with patch("collectors.npm_collector.httpx.AsyncClient") as mock_client:
-                mock_async_client = AsyncMock()
-                mock_client.return_value.__aenter__.return_value = mock_async_client
-
-                mock_response = MagicMock()
-                mock_response.status_code = 404
-                mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-                    "Not found",
-                    request=MagicMock(),
-                    response=mock_response
-                )
-                mock_async_client.get.return_value = mock_response
-
+            with patch.object(httpx.AsyncClient, "__init__", patched_init):
                 return await get_npm_metadata("nonexistent-pkg")
 
         result = asyncio.run(run_test())
@@ -345,32 +358,36 @@ class TestNpmCollectorFailures:
         import asyncio
         from collectors.npm_collector import get_npm_metadata
 
+        call_count = 0
+
+        def create_mixed_transport():
+            """Create transport that succeeds on registry, fails on downloads."""
+            async def handler(request: httpx.Request) -> httpx.Response:
+                nonlocal call_count
+                call_count += 1
+                url = str(request.url)
+                if "registry.npmjs.org" in url:
+                    # Registry call succeeds
+                    return httpx.Response(200, json={
+                        "name": "test-pkg",
+                        "dist-tags": {"latest": "1.0.0"},
+                        "time": {"created": "2020-01-01"},
+                        "maintainers": [],
+                    })
+                elif "api.npmjs.org/downloads" in url:
+                    # Downloads call fails
+                    return httpx.Response(500)
+                return httpx.Response(404)
+            return httpx.MockTransport(handler)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mixed_transport()
+            original_init(self, *args, **kwargs)
+
         async def run_test():
-            with patch("collectors.npm_collector.httpx.AsyncClient") as mock_client:
-                mock_async_client = AsyncMock()
-                mock_client.return_value.__aenter__.return_value = mock_async_client
-
-                # First call (registry) succeeds
-                registry_response = MagicMock()
-                registry_response.status_code = 200
-                registry_response.json.return_value = {
-                    "name": "test-pkg",
-                    "dist-tags": {"latest": "1.0.0"},
-                    "time": {"created": "2020-01-01"},
-                    "maintainers": [],
-                }
-
-                # Second call (downloads) fails
-                downloads_response = MagicMock()
-                downloads_response.status_code = 500
-                downloads_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-                    "Server error",
-                    request=MagicMock(),
-                    response=downloads_response
-                )
-
-                mock_async_client.get.side_effect = [registry_response, downloads_response]
-
+            with patch.object(httpx.AsyncClient, "__init__", patched_init):
                 return await get_npm_metadata("test-pkg")
 
         result = asyncio.run(run_test())
@@ -386,22 +403,29 @@ class TestGitHubCollectorFailures:
         import asyncio
         from collectors.github_collector import GitHubCollector
 
+        reset_time = str(int(datetime.now(timezone.utc).timestamp()) + 10)
+
+        def create_rate_limit_transport():
+            """Create transport that returns rate limit response."""
+            async def handler(request: httpx.Request) -> httpx.Response:
+                return httpx.Response(
+                    403,
+                    headers={
+                        "X-RateLimit-Remaining": "0",
+                        "X-RateLimit-Reset": reset_time
+                    }
+                )
+            return httpx.MockTransport(handler)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_rate_limit_transport()
+            original_init(self, *args, **kwargs)
+
         async def run_test():
             collector = GitHubCollector(token="test_token")
-
-            with patch("collectors.github_collector.httpx.AsyncClient") as mock_client:
-                mock_async_client = AsyncMock()
-                mock_client.return_value.__aenter__.return_value = mock_async_client
-
-                # Simulate rate limit response
-                mock_response = MagicMock()
-                mock_response.status_code = 403
-                mock_response.headers = {
-                    "X-RateLimit-Remaining": "0",
-                    "X-RateLimit-Reset": str(int(datetime.now(timezone.utc).timestamp()) + 10)
-                }
-                mock_async_client.get.return_value = mock_response
-
+            with patch.object(httpx.AsyncClient, "__init__", patched_init):
                 with patch("asyncio.sleep", new_callable=AsyncMock):
                     return await collector.get_repo_metrics("owner", "repo")
 
@@ -414,18 +438,21 @@ class TestGitHubCollectorFailures:
         import asyncio
         from collectors.github_collector import GitHubCollector
 
+        def create_404_transport():
+            """Create transport that returns 404."""
+            async def handler(request: httpx.Request) -> httpx.Response:
+                return httpx.Response(404, headers={})
+            return httpx.MockTransport(handler)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_404_transport()
+            original_init(self, *args, **kwargs)
+
         async def run_test():
             collector = GitHubCollector(token="test_token")
-
-            with patch("collectors.github_collector.httpx.AsyncClient") as mock_client:
-                mock_async_client = AsyncMock()
-                mock_client.return_value.__aenter__.return_value = mock_async_client
-
-                mock_response = MagicMock()
-                mock_response.status_code = 404
-                mock_response.headers = {}
-                mock_async_client.get.return_value = mock_response
-
+            with patch.object(httpx.AsyncClient, "__init__", patched_init):
                 return await collector.get_repo_metrics("owner", "nonexistent-repo")
 
         result = asyncio.run(run_test())
@@ -436,19 +463,24 @@ class TestGitHubCollectorFailures:
         import asyncio
         from collectors.github_collector import GitHubCollector
 
+        def create_403_transport():
+            """Create transport that returns 403 without rate limit."""
+            async def handler(request: httpx.Request) -> httpx.Response:
+                return httpx.Response(
+                    403,
+                    headers={"X-RateLimit-Remaining": "1000"}
+                )
+            return httpx.MockTransport(handler)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_403_transport()
+            original_init(self, *args, **kwargs)
+
         async def run_test():
             collector = GitHubCollector(token="test_token")
-
-            with patch("collectors.github_collector.httpx.AsyncClient") as mock_client:
-                mock_async_client = AsyncMock()
-                mock_client.return_value.__aenter__.return_value = mock_async_client
-
-                # 403 without rate limit headers (blocked repo)
-                mock_response = MagicMock()
-                mock_response.status_code = 403
-                mock_response.headers = {"X-RateLimit-Remaining": "1000"}
-                mock_async_client.get.return_value = mock_response
-
+            with patch.object(httpx.AsyncClient, "__init__", patched_init):
                 return await collector.get_repo_metrics("owner", "blocked-repo")
 
         result = asyncio.run(run_test())

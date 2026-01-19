@@ -250,8 +250,468 @@ def circuit_breaker(breaker: InMemoryCircuitBreaker):
     return decorator
 
 
+import os
+
+# DynamoDB table for distributed circuit breaker state
+API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
+
+
+class DynamoDBCircuitBreaker:
+    """
+    Distributed circuit breaker using DynamoDB for state coordination.
+
+    State is shared across all Lambda instances, preventing issues where
+    10 instances × 5 failure threshold = 50 failures before all circuits open.
+
+    Schema:
+        pk: "circuit#{service_name}"
+        sk: "STATE"
+        state: "closed" | "open" | "half_open"
+        failure_count: N
+        success_count: N (for half-open)
+        last_failure_at: ISO timestamp
+        opened_at: ISO timestamp
+        version: N (optimistic locking)
+        ttl: epoch (auto-cleanup)
+
+    Design decisions:
+    - Optimistic locking via version field prevents race conditions
+    - Fail-open strategy when DynamoDB unavailable (allow requests through)
+    - 1-second local cache reduces DynamoDB reads
+    - Atomic state transitions using conditional updates
+    """
+
+    def __init__(self, name: str, config: Optional[CircuitBreakerConfig] = None):
+        self.name = name
+        self.config = config or CircuitBreakerConfig()
+        self._local_cache: Optional[dict] = None
+        self._cache_time: float = 0
+        self._cache_ttl_seconds: float = 1.0  # Local cache TTL
+        self._pk = f"circuit#{name}"
+        self._sk = "STATE"
+
+    def _get_dynamodb_table(self):
+        """Get DynamoDB table with lazy initialization."""
+        return boto3.resource("dynamodb").Table(API_KEYS_TABLE)
+
+    def _get_state(self) -> dict:
+        """
+        Get current circuit state from DynamoDB with local caching.
+
+        Returns default closed state if DynamoDB unavailable (fail-open).
+        """
+        now = time.time()
+
+        # Return cached state if fresh
+        if self._local_cache and (now - self._cache_time) < self._cache_ttl_seconds:
+            return self._local_cache
+
+        try:
+            table = self._get_dynamodb_table()
+            response = table.get_item(
+                Key={"pk": self._pk, "sk": self._sk},
+                ConsistentRead=False,  # Eventually consistent is fine
+            )
+            item = response.get("Item")
+
+            if item:
+                self._local_cache = item
+                self._cache_time = now
+                return item
+
+            # No state exists - create initial closed state
+            initial_state = self._create_initial_state()
+            self._local_cache = initial_state
+            self._cache_time = now
+            return initial_state
+
+        except ClientError as e:
+            logger.warning(f"DynamoDB error reading circuit state for {self.name}: {e}")
+            # Fail-open: return closed state to allow requests
+            return self._get_default_state()
+
+    def _get_default_state(self) -> dict:
+        """Get default closed state for fail-open behavior."""
+        return {
+            "state": CircuitState.CLOSED.value,
+            "failure_count": 0,
+            "success_count": 0,
+            "version": 0,
+        }
+
+    def _create_initial_state(self) -> dict:
+        """Create initial circuit state in DynamoDB."""
+        now = datetime.now(timezone.utc)
+        ttl = int(now.timestamp()) + 86400  # 24 hour TTL
+
+        initial = {
+            "pk": self._pk,
+            "sk": self._sk,
+            "state": CircuitState.CLOSED.value,
+            "failure_count": 0,
+            "success_count": 0,
+            "version": 1,
+            "created_at": now.isoformat(),
+            "ttl": ttl,
+        }
+
+        try:
+            table = self._get_dynamodb_table()
+            table.put_item(
+                Item=initial,
+                ConditionExpression="attribute_not_exists(pk)",
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] != "ConditionalCheckFailedException":
+                logger.warning(f"Failed to create initial circuit state: {e}")
+            # If condition failed, state already exists - that's fine
+
+        return initial
+
+    def _should_attempt_reset(self, state: dict) -> bool:
+        """Check if enough time has passed to attempt reset from OPEN."""
+        opened_at = state.get("opened_at")
+        if not opened_at:
+            return True
+
+        try:
+            opened_dt = datetime.fromisoformat(opened_at.replace("Z", "+00:00"))
+            elapsed = (datetime.now(timezone.utc) - opened_dt).total_seconds()
+            return elapsed >= self.config.timeout_seconds
+        except (ValueError, TypeError):
+            return True
+
+    def _transition_to_half_open(self, state: dict) -> bool:
+        """Attempt atomic transition from OPEN to HALF_OPEN."""
+        try:
+            table = self._get_dynamodb_table()
+            now = datetime.now(timezone.utc)
+            version = state.get("version", 0)
+
+            table.update_item(
+                Key={"pk": self._pk, "sk": self._sk},
+                UpdateExpression=(
+                    "SET #state = :half_open, "
+                    "success_count = :zero, "
+                    "half_open_at = :now, "
+                    "version = version + :one, "
+                    "#ttl = :ttl"
+                ),
+                ExpressionAttributeNames={
+                    "#state": "state",
+                    "#ttl": "ttl",
+                },
+                ExpressionAttributeValues={
+                    ":half_open": CircuitState.HALF_OPEN.value,
+                    ":zero": 0,
+                    ":now": now.isoformat(),
+                    ":one": 1,
+                    ":ttl": int(now.timestamp()) + 86400,
+                    ":version": version,
+                    ":open": CircuitState.OPEN.value,
+                },
+                ConditionExpression="version = :version AND #state = :open",
+            )
+
+            # Invalidate cache
+            self._local_cache = None
+            logger.info(f"Circuit {self.name}: OPEN -> HALF_OPEN")
+            return True
+
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                # Race condition - another instance transitioned first
+                self._local_cache = None
+                return self.can_execute()  # Re-check state
+            logger.warning(f"Failed to transition to half-open: {e}")
+            return True  # Fail-open
+
+    def can_execute(self) -> bool:
+        """
+        Check if a request should be allowed.
+
+        Thread-safe through DynamoDB conditional updates.
+        Returns True on DynamoDB errors (fail-open strategy).
+        """
+        state = self._get_state()
+        current_state = state.get("state", CircuitState.CLOSED.value)
+
+        if current_state == CircuitState.CLOSED.value:
+            return True
+
+        if current_state == CircuitState.OPEN.value:
+            if self._should_attempt_reset(state):
+                return self._transition_to_half_open(state)
+            return False
+
+        # HALF_OPEN: Allow limited requests
+        half_open_calls = state.get("half_open_calls", 0)
+        if half_open_calls < self.config.half_open_max_calls:
+            # Atomically increment half_open_calls
+            self._increment_half_open_calls(state)
+            return True
+
+        return False
+
+    async def can_execute_async(self) -> bool:
+        """
+        Async version of can_execute.
+
+        Uses asyncio.to_thread() to run sync boto3 calls without blocking
+        the event loop.
+        """
+        return await asyncio.to_thread(self.can_execute)
+
+    def _increment_half_open_calls(self, state: dict) -> None:
+        """Atomically increment half_open_calls counter."""
+        try:
+            table = self._get_dynamodb_table()
+            version = state.get("version", 0)
+
+            table.update_item(
+                Key={"pk": self._pk, "sk": self._sk},
+                UpdateExpression="SET half_open_calls = if_not_exists(half_open_calls, :zero) + :one",
+                ExpressionAttributeValues={
+                    ":zero": 0,
+                    ":one": 1,
+                    ":version": version,
+                },
+                ConditionExpression="version = :version",
+            )
+            self._local_cache = None
+        except ClientError:
+            pass  # Ignore - we already allowed the request
+
+    def record_success(self) -> None:
+        """Record a successful request."""
+        state = self._get_state()
+        current_state = state.get("state", CircuitState.CLOSED.value)
+
+        if current_state == CircuitState.HALF_OPEN.value:
+            self._record_half_open_success(state)
+        elif current_state == CircuitState.CLOSED.value:
+            self._reset_failure_count(state)
+
+    async def record_success_async(self) -> None:
+        """
+        Async version of record_success.
+
+        Uses asyncio.to_thread() to run sync boto3 calls without blocking
+        the event loop.
+        """
+        await asyncio.to_thread(self.record_success)
+
+    def _record_half_open_success(self, state: dict) -> None:
+        """
+        Record success in half-open state, potentially closing circuit.
+
+        Uses atomic increment with ReturnValues to get actual new count,
+        avoiding race conditions from stale cached state.
+        """
+        try:
+            table = self._get_dynamodb_table()
+            now = datetime.now(timezone.utc)
+
+            # Atomically increment success_count and get the new value
+            # This avoids race condition where multiple instances read stale state
+            response = table.update_item(
+                Key={"pk": self._pk, "sk": self._sk},
+                UpdateExpression=(
+                    "SET success_count = if_not_exists(success_count, :zero) + :one"
+                ),
+                ExpressionAttributeValues={
+                    ":zero": 0,
+                    ":one": 1,
+                },
+                ReturnValues="UPDATED_NEW",
+            )
+
+            # Get actual new success count from DynamoDB response
+            new_success_count = response.get("Attributes", {}).get("success_count", 1)
+
+            if new_success_count >= self.config.success_threshold:
+                # Transition to CLOSED - use conditional to ensure only one instance does this
+                try:
+                    table.update_item(
+                        Key={"pk": self._pk, "sk": self._sk},
+                        UpdateExpression=(
+                            "SET #state = :closed, "
+                            "failure_count = :zero, "
+                            "success_count = :zero, "
+                            "half_open_calls = :zero, "
+                            "closed_at = :now, "
+                            "version = version + :one, "
+                            "#ttl = :ttl"
+                        ),
+                        ExpressionAttributeNames={
+                            "#state": "state",
+                            "#ttl": "ttl",
+                        },
+                        ExpressionAttributeValues={
+                            ":closed": CircuitState.CLOSED.value,
+                            ":zero": 0,
+                            ":now": now.isoformat(),
+                            ":one": 1,
+                            ":ttl": int(now.timestamp()) + 86400,
+                            ":half_open": CircuitState.HALF_OPEN.value,
+                        },
+                        # Only transition if still in half_open state
+                        ConditionExpression="#state = :half_open",
+                    )
+                    logger.info(f"Circuit {self.name}: HALF_OPEN -> CLOSED (recovered)")
+                except ClientError as e:
+                    if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                        # Another instance already transitioned - that's fine
+                        pass
+                    else:
+                        raise
+
+            self._local_cache = None
+
+        except ClientError as e:
+            logger.warning(f"Failed to record success: {e}")
+
+    def _reset_failure_count(self, state: dict) -> None:
+        """Reset failure count on success in closed state."""
+        if state.get("failure_count", 0) > 0:
+            try:
+                table = self._get_dynamodb_table()
+                table.update_item(
+                    Key={"pk": self._pk, "sk": self._sk},
+                    UpdateExpression="SET failure_count = :zero",
+                    ExpressionAttributeValues={":zero": 0},
+                )
+                self._local_cache = None
+            except ClientError:
+                pass  # Non-critical
+
+    def record_failure(self, error: Optional[Exception] = None) -> None:
+        """Record a failed request."""
+        state = self._get_state()
+        current_state = state.get("state", CircuitState.CLOSED.value)
+
+        if current_state == CircuitState.HALF_OPEN.value:
+            self._transition_to_open_from_half_open(state)
+        elif current_state == CircuitState.CLOSED.value:
+            self._record_closed_failure(state)
+
+    async def record_failure_async(self, error: Optional[Exception] = None) -> None:
+        """
+        Async version of record_failure.
+
+        Uses asyncio.to_thread() to run sync boto3 calls without blocking
+        the event loop.
+        """
+        await asyncio.to_thread(self.record_failure, error)
+
+    def _transition_to_open_from_half_open(self, state: dict) -> None:
+        """Transition from HALF_OPEN back to OPEN on failure."""
+        try:
+            table = self._get_dynamodb_table()
+            now = datetime.now(timezone.utc)
+            version = state.get("version", 0)
+
+            table.update_item(
+                Key={"pk": self._pk, "sk": self._sk},
+                UpdateExpression=(
+                    "SET #state = :open, "
+                    "opened_at = :now, "
+                    "last_failure_at = :now, "
+                    "version = version + :one, "
+                    "#ttl = :ttl"
+                ),
+                ExpressionAttributeNames={
+                    "#state": "state",
+                    "#ttl": "ttl",
+                },
+                ExpressionAttributeValues={
+                    ":open": CircuitState.OPEN.value,
+                    ":now": now.isoformat(),
+                    ":one": 1,
+                    ":ttl": int(now.timestamp()) + 86400,
+                    ":version": version,
+                },
+                ConditionExpression="version = :version",
+            )
+            logger.warning(f"Circuit {self.name}: HALF_OPEN -> OPEN (still failing)")
+            self._local_cache = None
+
+        except ClientError as e:
+            logger.warning(f"Failed to transition to open: {e}")
+
+    def _record_closed_failure(self, state: dict) -> None:
+        """Record failure in closed state, potentially opening circuit."""
+        try:
+            table = self._get_dynamodb_table()
+            now = datetime.now(timezone.utc)
+            version = state.get("version", 0)
+            new_failure_count = state.get("failure_count", 0) + 1
+
+            if new_failure_count >= self.config.failure_threshold:
+                # Transition to OPEN
+                table.update_item(
+                    Key={"pk": self._pk, "sk": self._sk},
+                    UpdateExpression=(
+                        "SET #state = :open, "
+                        "failure_count = :count, "
+                        "opened_at = :now, "
+                        "last_failure_at = :now, "
+                        "version = version + :one, "
+                        "#ttl = :ttl"
+                    ),
+                    ExpressionAttributeNames={
+                        "#state": "state",
+                        "#ttl": "ttl",
+                    },
+                    ExpressionAttributeValues={
+                        ":open": CircuitState.OPEN.value,
+                        ":count": new_failure_count,
+                        ":now": now.isoformat(),
+                        ":one": 1,
+                        ":ttl": int(now.timestamp()) + 86400,
+                        ":version": version,
+                    },
+                    ConditionExpression="version = :version",
+                )
+                logger.warning(
+                    f"Circuit {self.name}: CLOSED -> OPEN "
+                    f"({new_failure_count} failures)"
+                )
+            else:
+                # Just increment failure count
+                table.update_item(
+                    Key={"pk": self._pk, "sk": self._sk},
+                    UpdateExpression=(
+                        "SET failure_count = failure_count + :one, "
+                        "last_failure_at = :now"
+                    ),
+                    ExpressionAttributeValues={
+                        ":one": 1,
+                        ":now": now.isoformat(),
+                    },
+                )
+
+            self._local_cache = None
+
+        except ClientError as e:
+            logger.warning(f"Failed to record failure: {e}")
+
+
+# Flag to enable distributed circuit breaker (set via environment variable)
+USE_DISTRIBUTED_CIRCUIT_BREAKER = os.environ.get(
+    "USE_DISTRIBUTED_CIRCUIT_BREAKER", "false"
+).lower() == "true"
+
+
+def _create_circuit_breaker(name: str, config: CircuitBreakerConfig):
+    """Factory to create circuit breaker based on configuration."""
+    if USE_DISTRIBUTED_CIRCUIT_BREAKER:
+        return DynamoDBCircuitBreaker(name, config)
+    return InMemoryCircuitBreaker(name, config)
+
+
 # Pre-configured circuit breakers for external services
-GITHUB_CIRCUIT = InMemoryCircuitBreaker(
+GITHUB_CIRCUIT = _create_circuit_breaker(
     "github",
     CircuitBreakerConfig(
         failure_threshold=5,
@@ -260,7 +720,7 @@ GITHUB_CIRCUIT = InMemoryCircuitBreaker(
     )
 )
 
-DEPSDEV_CIRCUIT = InMemoryCircuitBreaker(
+DEPSDEV_CIRCUIT = _create_circuit_breaker(
     "deps.dev",
     CircuitBreakerConfig(
         failure_threshold=10,
@@ -269,7 +729,7 @@ DEPSDEV_CIRCUIT = InMemoryCircuitBreaker(
     )
 )
 
-NPM_CIRCUIT = InMemoryCircuitBreaker(
+NPM_CIRCUIT = _create_circuit_breaker(
     "npm",
     CircuitBreakerConfig(
         failure_threshold=10,
@@ -278,7 +738,7 @@ NPM_CIRCUIT = InMemoryCircuitBreaker(
     )
 )
 
-BUNDLEPHOBIA_CIRCUIT = InMemoryCircuitBreaker(
+BUNDLEPHOBIA_CIRCUIT = _create_circuit_breaker(
     "bundlephobia",
     CircuitBreakerConfig(
         failure_threshold=5,
@@ -287,7 +747,7 @@ BUNDLEPHOBIA_CIRCUIT = InMemoryCircuitBreaker(
     )
 )
 
-PYPI_CIRCUIT = InMemoryCircuitBreaker(
+PYPI_CIRCUIT = _create_circuit_breaker(
     "pypi",
     CircuitBreakerConfig(
         failure_threshold=10,
@@ -300,6 +760,7 @@ PYPI_CIRCUIT = InMemoryCircuitBreaker(
 # Wired to auth.py functions (validate_api_key, check_and_increment_usage, etc.)
 # to prevent cascade failures during throttling events or capacity issues.
 # Uses fail-open strategy for usage tracking to avoid total service outage.
+# Note: Always use in-memory for DynamoDB circuit to avoid recursive dependency
 DYNAMODB_CIRCUIT = InMemoryCircuitBreaker(
     "dynamodb",
     CircuitBreakerConfig(

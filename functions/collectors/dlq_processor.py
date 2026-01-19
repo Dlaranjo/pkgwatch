@@ -24,71 +24,12 @@ dynamodb = boto3.resource("dynamodb")
 # Import shared utilities
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
 from metrics import emit_metric, emit_batch_metrics, emit_dlq_metric
+from error_classification import classify_error
 
 DLQ_URL = os.environ.get("DLQ_URL")
 MAIN_QUEUE_URL = os.environ.get("MAIN_QUEUE_URL")
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 MAX_DLQ_RETRIES = int(os.environ.get("MAX_DLQ_RETRIES", "5"))
-
-# Error classification patterns (merged from multiple sources)
-TRANSIENT_ERRORS = [
-    "timeout",
-    "timed out",
-    "503",
-    "502",
-    "504",
-    "rate limit",
-    "too many requests",
-    "connection",
-    "connection reset",
-    "connection refused",
-    "unavailable",
-    "temporarily",
-    "temporarily unavailable",
-    "service unavailable",
-]
-PERMANENT_ERRORS = [
-    "404",
-    "not found",
-    "does not exist",
-    "malformed",
-    "forbidden",
-    "unauthorized",
-    # Keep security/structural errors permanent:
-    "path traversal",  # Security violation - never retry
-    "Package name too long",  # Structural error - never retry
-    "Empty package name",  # Structural error - never retry
-    # REMOVED: "validation_error", "Invalid package name", "invalid package"
-    # These are now transient because the regex fix will accept previously-rejected names
-]
-
-
-def classify_error(error_message: str) -> str:
-    """
-    Classify error as transient or permanent.
-
-    Args:
-        error_message: The error message to classify
-
-    Returns:
-        "permanent", "transient", or "unknown"
-    """
-    if not error_message:
-        return "unknown"
-
-    error_lower = error_message.lower()
-
-    # Check for permanent errors first (don't retry these)
-    for pattern in PERMANENT_ERRORS:
-        if pattern.lower() in error_lower:
-            return "permanent"
-
-    # Check for transient errors (worth retrying)
-    for pattern in TRANSIENT_ERRORS:
-        if pattern.lower() in error_lower:
-            return "transient"
-
-    return "unknown"
 
 
 def should_retry(body: dict) -> bool:
@@ -190,6 +131,28 @@ def handler(event, context):
     }
 
 
+def _get_package_error_info(ecosystem: str, name: str) -> tuple[str, str]:
+    """
+    Fetch error info from package record stored by package_collector.
+
+    Returns:
+        Tuple of (error_message, error_class)
+    """
+    table = dynamodb.Table(PACKAGES_TABLE)
+    try:
+        response = table.get_item(
+            Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"},
+            ProjectionExpression="collection_error, collection_error_class",
+        )
+        item = response.get("Item", {})
+        error_msg = item.get("collection_error", "unknown")
+        error_class = item.get("collection_error_class", "unknown")
+        return error_msg, error_class
+    except Exception as e:
+        logger.warning(f"Failed to fetch error info for {ecosystem}/{name}: {e}")
+        return "unknown", "unknown"
+
+
 def _process_dlq_message(message: dict) -> str:
     """
     Process a single DLQ message with error classification.
@@ -211,7 +174,24 @@ def _process_dlq_message(message: dict) -> str:
         return "skipped"
 
     retry_count = int(body.get("_retry_count", 0))
-    last_error = body.get("_last_error", "unknown")
+
+    # Try to get error info from message first, then from package record
+    last_error = body.get("_last_error", "")
+    if not last_error or last_error == "unknown":
+        # Fetch error info from package record (stored by package_collector)
+        ecosystem = body.get("ecosystem", "")
+        name = body.get("name", "")
+        if ecosystem and name:
+            last_error, stored_error_class = _get_package_error_info(ecosystem, name)
+            # Use stored error class if available
+            if stored_error_class and stored_error_class != "unknown":
+                body["_error_class"] = stored_error_class
+    else:
+        stored_error_class = None
+
+    # If we still don't have an error message, use "unknown"
+    if not last_error:
+        last_error = "unknown"
 
     # Classify the error to determine if we should retry
     error_type = classify_error(last_error)

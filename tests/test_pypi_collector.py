@@ -339,31 +339,32 @@ class TestGetPyPIMetadata:
                 return httpx.Response(200, json=self._create_pypistats_response())
             return httpx.Response(404)
 
-        async def run_test():
-            async with httpx.AsyncClient(transport=create_mock_transport(mock_handler)) as client:
-                with patch("pypi_collector.httpx.AsyncClient") as mock:
-                    mock.return_value.__aenter__.return_value = client
-                    result = await get_pypi_metadata("requests")
+        original_init = httpx.AsyncClient.__init__
 
-                    # Verify core fields
-                    assert result["name"] == "requests"
-                    assert result["latest_version"] == "2.31.0"
-                    assert result["maintainer_count"] == 1
-                    assert result["is_deprecated"] is False
-                    assert result["weekly_downloads"] == 7000000
-                    assert result["repository_url"] == "https://github.com/psf/requests"
-                    assert result["requires_python"] == ">=3.7"
-                    assert result["source"] == "pypi"
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
 
-                    # Verify timestamps exist
-                    assert result["created_at"] is not None
-                    assert result["last_published"] is not None
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("requests"))
 
-                    # Verify classifiers parsed correctly
-                    assert result["development_status"] == "5 - Production/Stable"
-                    assert "3.10" in result["python_versions"]
+            # Verify core fields
+            assert result["name"] == "requests"
+            assert result["latest_version"] == "2.31.0"
+            assert result["maintainer_count"] == 1
+            assert result["is_deprecated"] is False
+            assert result["weekly_downloads"] == 7000000
+            assert result["repository_url"] == "https://github.com/psf/requests"
+            assert result["requires_python"] == ">=3.7"
+            assert result["source"] == "pypi"
 
-        run_async(run_test())
+            # Verify timestamps exist
+            assert result["created_at"] is not None
+            assert result["last_published"] is not None
+
+            # Verify classifiers parsed correctly
+            assert result["development_status"] == "5 - Production/Stable"
+            assert "3.10" in result["python_versions"]
 
     def test_pypistats_failure_graceful_degradation(self):
         """Test that pypistats.org failure doesn't fail the whole request."""
@@ -377,18 +378,19 @@ class TestGetPyPIMetadata:
                 return httpx.Response(500)  # pypistats fails
             return httpx.Response(404)
 
-        async def run_test():
-            async with httpx.AsyncClient(transport=create_mock_transport(mock_handler)) as client:
-                with patch("pypi_collector.httpx.AsyncClient") as mock:
-                    mock.return_value.__aenter__.return_value = client
-                    result = await get_pypi_metadata("requests")
+        original_init = httpx.AsyncClient.__init__
 
-                    # Should succeed with 0 downloads
-                    assert "error" not in result
-                    assert result["weekly_downloads"] == 0
-                    assert result["name"] == "requests"
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
 
-        run_async(run_test())
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("requests"))
+
+            # Should succeed with 0 downloads
+            assert "error" not in result
+            assert result["weekly_downloads"] == 0
+            assert result["name"] == "requests"
 
     def test_non_github_repo_url_cleared(self):
         """Test that non-GitHub/GitLab/Bitbucket URLs are cleared."""
@@ -407,16 +409,17 @@ class TestGetPyPIMetadata:
                 return httpx.Response(200, json=self._create_pypistats_response())
             return httpx.Response(404)
 
-        async def run_test():
-            async with httpx.AsyncClient(transport=create_mock_transport(mock_handler)) as client:
-                with patch("pypi_collector.httpx.AsyncClient") as mock:
-                    mock.return_value.__aenter__.return_value = client
-                    result = await get_pypi_metadata("mypackage")
+        original_init = httpx.AsyncClient.__init__
 
-                    # Non-GitHub URLs should be cleared
-                    assert result["repository_url"] is None
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
 
-        run_async(run_test())
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("mypackage"))
+
+            # Non-GitHub URLs should be cleared
+            assert result["repository_url"] is None
 
     def test_package_not_found(self):
         """Test 404 handling for non-existent package."""
@@ -425,16 +428,16 @@ class TestGetPyPIMetadata:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(404)
 
-        async def run_test():
-            async with httpx.AsyncClient(transport=create_mock_transport(mock_handler)) as client:
-                with patch("pypi_collector.httpx.AsyncClient") as mock:
-                    mock.return_value.__aenter__.return_value = client
-                    result = await get_pypi_metadata("nonexistent-package-xyz")
-                    assert "error" in result
-                    assert result["error"] == "package_not_found"
+        original_init = httpx.AsyncClient.__init__
 
-        # Run the test
-        run_async(run_test())
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("nonexistent-package-xyz"))
+            assert "error" in result
+            assert result["error"] == "package_not_found"
 
     def test_deprecated_package_detection(self):
         """Test detection of deprecated package via classifier."""
@@ -453,14 +456,15 @@ class TestGetPyPIMetadata:
                 return httpx.Response(200, json=self._create_pypistats_response())
             return httpx.Response(404)
 
-        async def run_test():
-            async with httpx.AsyncClient(transport=create_mock_transport(mock_handler)) as client:
-                with patch("pypi_collector.httpx.AsyncClient") as mock:
-                    mock.return_value.__aenter__.return_value = client
-                    result = await get_pypi_metadata("deprecated-package")
-                    assert result.get("is_deprecated") is True
+        original_init = httpx.AsyncClient.__init__
 
-        run_async(run_test())
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("deprecated-package"))
+            assert result.get("is_deprecated") is True
 
 
 # =============================================================================

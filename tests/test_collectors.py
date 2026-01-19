@@ -2306,14 +2306,20 @@ class TestHandler:
 
             reload(package_collector)
 
-            event = {"Records": [{"body": "not valid json"}]}
+            event = {"Records": [{"messageId": "msg-1", "body": "not valid json"}]}
 
             result = package_collector.handler(event, None)
 
-            # Should not crash, just report 0 processed
+            # Should not crash - with partial batch failure handling, invalid JSON
+            # is counted as a failure and included in batchItemFailures for retry
             assert result["statusCode"] == 200
             body = json.loads(result["body"])
-            assert body["processed"] == 0
+            assert body["processed"] == 1  # 1 attempted (0 success + 1 failure)
+            assert body["successes"] == 0
+            assert body["failures"] == 1
+            # Should include the failed message ID for SQS retry
+            assert "batchItemFailures" in result
+            assert result["batchItemFailures"] == [{"itemIdentifier": "msg-1"}]
 
     def test_handler_empty_records(self):
         """Test handler with no records."""

@@ -220,6 +220,7 @@ export class PipelineStack extends cdk.Stack {
         batchSize: 10, // Increased from 5
         maxConcurrency: 10, // Increased from 2 (conservative to avoid GitHub rate limits)
         maxBatchingWindow: cdk.Duration.seconds(30), // Allow batching for efficiency
+        reportBatchItemFailures: true, // Enable partial batch failure handling
       })
     );
 
@@ -276,6 +277,28 @@ export class PipelineStack extends cdk.Stack {
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
     // Note: Alarm action added after alertTopic is defined (see CloudWatch section)
+
+    // ===========================================
+    // Lambda: Streams DLQ Processor
+    // ===========================================
+    // Processes failed score calculation messages and triggers rescore
+    const streamsDlqProcessor = new lambda.Function(this, "StreamsDLQProcessor", {
+      ...commonLambdaProps,
+      functionName: "pkgwatch-streams-dlq-processor",
+      handler: "streams_dlq_processor.handler",
+      code: scoringCode,
+      description: "Processes failed score calculations from streams DLQ",
+    });
+
+    packagesTable.grantReadWriteData(streamsDlqProcessor);
+
+    // Connect to streams DLQ - process messages as they arrive
+    streamsDlqProcessor.addEventSource(
+      new lambdaEventSources.SqsEventSource(streamsDlq, {
+        batchSize: 10,
+        maxBatchingWindow: cdk.Duration.seconds(30),
+      })
+    );
 
     // ===========================================
     // Lambda: Seed Packages (Admin)

@@ -38,6 +38,7 @@ from metrics import emit_metric, emit_batch_metrics
 from circuit_breaker import CircuitOpenError, GITHUB_CIRCUIT
 from rate_limit_utils import check_and_increment_external_rate_limit
 from package_validation import validate_npm_package_name, validate_pypi_package_name
+from error_classification import classify_error as _classify_error
 
 # Lazy initialization for boto3 clients (reduces cold start time)
 _dynamodb = None
@@ -278,6 +279,39 @@ async def _get_existing_package_data(ecosystem: str, name: str) -> Optional[dict
         return None
 
 
+def _store_collection_error(ecosystem: str, name: str, error_msg: str) -> None:
+    """
+    Store collection error in package record for DLQ processor.
+
+    This allows the DLQ processor to classify errors and make intelligent
+    retry decisions. The error is stored with a timestamp so we can track
+    when failures occurred.
+    """
+    table = _get_dynamodb().Table(PACKAGES_TABLE)
+    now = datetime.now(timezone.utc).isoformat()
+
+    error_class = _classify_error(error_msg)
+
+    try:
+        table.update_item(
+            Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"},
+            UpdateExpression=(
+                "SET collection_error = :error, "
+                "collection_error_class = :error_class, "
+                "collection_error_at = :now"
+            ),
+            ExpressionAttributeValues={
+                ":error": error_msg,
+                ":error_class": error_class,
+                ":now": now,
+            },
+        )
+        logger.debug(f"Stored collection error for {ecosystem}/{name}: {error_class}")
+    except Exception as e:
+        # Don't fail the whole operation if we can't store the error
+        logger.warning(f"Failed to store collection error for {ecosystem}/{name}: {e}")
+
+
 def _is_data_acceptable(data: dict, max_age_days: int) -> bool:
     """Check if existing data is fresh enough to use as fallback."""
     if not data:
@@ -308,6 +342,59 @@ def _extract_cached_fields(existing: dict) -> dict:
         "dependents_count": existing.get("dependents_count", 0),
         "repository_url": existing.get("repository_url"),
     }
+
+
+def _extract_cached_github_fields(existing: dict) -> dict:
+    """Extract cached GitHub fields from existing data for stale data fallback."""
+    return {
+        "stars": existing.get("stars"),
+        "forks": existing.get("forks"),
+        "open_issues": existing.get("open_issues"),
+        "days_since_last_commit": existing.get("days_since_last_commit"),
+        "commits_90d": existing.get("commits_90d"),
+        "active_contributors_90d": existing.get("active_contributors_90d"),
+        "total_contributors": existing.get("total_contributors"),
+        "true_bus_factor": existing.get("true_bus_factor"),
+        "bus_factor_confidence": existing.get("bus_factor_confidence"),
+        "contribution_distribution": existing.get("contribution_distribution", []),
+        "archived": existing.get("archived"),
+    }
+
+
+def _has_github_data(data: dict) -> bool:
+    """Check if data has valid GitHub fields (not just zeros)."""
+    return (
+        data.get("stars") is not None or
+        data.get("days_since_last_commit") is not None or
+        data.get("commits_90d") is not None
+    )
+
+
+async def _try_github_stale_fallback(
+    combined_data: dict,
+    ecosystem: str,
+    name: str,
+    error_reason: str
+) -> None:
+    """
+    Try to use stale GitHub data as fallback when GitHub collection fails.
+
+    Modifies combined_data in place to add cached GitHub fields if available.
+    """
+    existing = await _get_existing_package_data(ecosystem, name)
+    if existing and _has_github_data(existing):
+        # Check if data is less than 7 days old
+        if _is_data_acceptable(existing, max_age_days=STALE_DATA_MAX_AGE_DAYS):
+            logger.info(f"Using stale GitHub data for {ecosystem}/{name}")
+            cached_fields = _extract_cached_github_fields(existing)
+            # Only add non-None fields
+            for key, value in cached_fields.items():
+                if value is not None:
+                    combined_data[key] = value
+            combined_data["github_freshness"] = "stale"
+            combined_data["github_stale_reason"] = error_reason
+            if "github" not in combined_data.get("sources", []):
+                combined_data.setdefault("sources", []).append("github_stale")
 
 
 async def collect_package_data(ecosystem: str, name: str) -> dict:
@@ -506,12 +593,16 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
         parsed = parse_github_url(repo_url)
         if parsed:
             owner, repo = parsed
+            github_failed = False
+            github_error_reason = ""
 
             # Check circuit breaker FIRST (before rate limiting check)
             # Use async method to prevent race conditions
             if not await GITHUB_CIRCUIT.can_execute_async():
                 logger.warning(f"GitHub circuit open, skipping for {ecosystem}/{name}")
                 combined_data["github_error"] = "circuit_open"
+                github_failed = True
+                github_error_reason = "circuit_open"
             else:
                 try:
                     # Use semaphore to limit concurrent GitHub API calls per Lambda instance
@@ -523,6 +614,8 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
                                 f"Skipping GitHub for {ecosystem}/{name} - global rate limit"
                             )
                             combined_data["github_error"] = "rate_limit_exceeded"
+                            github_failed = True
+                            github_error_reason = "rate_limit_exceeded"
                         else:
                             github_token = get_github_token()
                             github_collector = GitHubCollector(token=github_token)
@@ -572,12 +665,22 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
                                 # Record failure for circuit breaker (API returned error, thread-safe)
                                 await GITHUB_CIRCUIT.record_failure_async()
                                 combined_data["github_error"] = github_data["error"]
+                                github_failed = True
+                                github_error_reason = github_data["error"]
 
                 except Exception as e:
                     # Record failure for circuit breaker (thread-safe)
                     await GITHUB_CIRCUIT.record_failure_async(e)
                     logger.error(f"Failed to fetch GitHub data for {owner}/{repo}: {e}")
                     combined_data["github_error"] = _sanitize_error(str(e))
+                    github_failed = True
+                    github_error_reason = _sanitize_error(str(e))
+
+            # Try stale data fallback if GitHub collection failed
+            if github_failed:
+                await _try_github_stale_fallback(
+                    combined_data, ecosystem, name, github_error_reason
+                )
 
     # Note: Bundlephobia is now fetched in parallel with npm data in section 2
 
@@ -829,43 +932,52 @@ async def process_single_package(message: dict) -> tuple[bool, str, Optional[str
     except Exception as e:
         logger.error(f"Failed to process {ecosystem}/{name}: {e}")
         error_type = type(e).__name__
+        error_msg = _sanitize_error(str(e))
+
+        # Store error in package record for DLQ processor to read
+        _store_collection_error(ecosystem, name, error_msg)
+
         return (False, f"{ecosystem}/{name}", error_type)
 
 
-async def process_batch(records: list) -> tuple[int, int]:
+async def process_batch(records: list) -> tuple[int, list[str]]:
     """Process a batch of SQS records in parallel with metrics.
 
     Returns:
-        Tuple of (successes, failures)
+        Tuple of (success_count, list_of_failed_message_ids)
     """
     start_time = time.time()
     tasks = []
-    messages = []
+    # Track record info: (message, messageId)
+    record_info = []
+    # Track messageIds for records that failed to parse
+    failed_message_ids = []
 
     for record in records:
+        message_id = record.get("messageId", "")
         try:
             message = json.loads(record["body"])
-            messages.append(message)
+            record_info.append((message, message_id))
             tasks.append(process_single_package(message))
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse message: {e}")
+            logger.error(f"Failed to parse message {message_id}: {e}")
             emit_metric("MessageParseError")
+            failed_message_ids.append(message_id)
 
     # Process all packages in parallel with return_exceptions=True
     # to prevent one failure from canceling others
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     successes = 0
-    failures = 0
     failure_reasons = {}
 
     for i, result in enumerate(results):
-        message = messages[i] if i < len(messages) else {}
+        message, message_id = record_info[i] if i < len(record_info) else ({}, "")
         ecosystem = message.get("ecosystem", "unknown")
 
         if isinstance(result, Exception):
-            logger.error(f"Task failed with exception: {result}")
-            failures += 1
+            logger.error(f"Task {message_id} failed with exception: {result}")
+            failed_message_ids.append(message_id)
             error_type = type(result).__name__
             failure_reasons[error_type] = failure_reasons.get(error_type, 0) + 1
 
@@ -885,7 +997,7 @@ async def process_batch(records: list) -> tuple[int, int]:
                     dimensions={"Ecosystem": ecosystem}
                 )
             else:
-                failures += 1
+                failed_message_ids.append(message_id)
                 reason = error_reason or "unknown"
                 failure_reasons[reason] = failure_reasons.get(reason, 0) + 1
                 emit_metric(
@@ -896,7 +1008,7 @@ async def process_batch(records: list) -> tuple[int, int]:
                     }
                 )
         else:
-            failures += 1
+            failed_message_ids.append(message_id)
             failure_reasons["unknown"] = failure_reasons.get("unknown", 0) + 1
 
     # Emit batch metrics
@@ -905,10 +1017,10 @@ async def process_batch(records: list) -> tuple[int, int]:
         {"metric_name": "BatchProcessingTime", "value": batch_duration, "unit": "Seconds"},
         {"metric_name": "BatchSize", "value": len(records)},
         {"metric_name": "BatchSuccesses", "value": successes},
-        {"metric_name": "BatchFailures", "value": failures},
+        {"metric_name": "BatchFailures", "value": len(failed_message_ids)},
     ])
 
-    return successes, failures
+    return successes, failed_message_ids
 
 
 def handler(event, context):
@@ -924,6 +1036,8 @@ def handler(event, context):
     }
 
     Uses asyncio.gather for parallel processing of batch messages.
+    Returns batchItemFailures for partial batch failure handling - only failed
+    messages will be retried, successful ones won't be reprocessed.
     """
     records = event.get("Records", [])
     logger.info(f"Processing {len(records)} messages")
@@ -931,13 +1045,16 @@ def handler(event, context):
     # Create event loop and process batch
     loop = asyncio.new_event_loop()
     try:
-        successes, failures = loop.run_until_complete(process_batch(records))
+        successes, failed_message_ids = loop.run_until_complete(process_batch(records))
     finally:
         loop.close()
 
+    failures = len(failed_message_ids)
     logger.info(f"Completed: {successes} successes, {failures} failures")
 
-    return {
+    # Build response with batchItemFailures for partial batch failure handling
+    # SQS will only retry the failed messages, not the entire batch
+    response = {
         "statusCode": 200,
         "body": json.dumps({
             "processed": successes + failures,
@@ -945,3 +1062,12 @@ def handler(event, context):
             "failures": failures,
         }),
     }
+
+    # Add batchItemFailures if any messages failed
+    # This tells SQS which specific messages to retry
+    if failed_message_ids:
+        response["batchItemFailures"] = [
+            {"itemIdentifier": msg_id} for msg_id in failed_message_ids if msg_id
+        ]
+
+    return response

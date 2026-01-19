@@ -20,8 +20,10 @@ import httpx
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.dirname(__file__))  # Add collectors directory
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))  # Add functions directory
 from shared.circuit_breaker import circuit_breaker, DEPSDEV_CIRCUIT
+from http_client import get_http_client
 
 # HTTP status codes that are safe to retry
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
@@ -116,144 +118,144 @@ async def get_package_info(name: str, ecosystem: str = "npm") -> Optional[dict]:
     """
     encoded_name = encode_package_name(name)
 
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-        # 1. Get package versions
-        pkg_url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}"
-        try:
-            pkg_resp = await retry_with_backoff(client.get, pkg_url)
-            # Handle 404 gracefully - package not found is not an error
-            if pkg_resp.status_code == 404:
-                logger.info(f"Package {name} not found in deps.dev")
-                return None
-            pkg_resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                logger.info(f"Package {name} not found in deps.dev")
-                return None
-            raise
-        pkg_data = pkg_resp.json()
+    client = get_http_client()
+    # 1. Get package versions
+    pkg_url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}"
+    try:
+        pkg_resp = await retry_with_backoff(client.get, pkg_url)
+        # Handle 404 gracefully - package not found is not an error
+        if pkg_resp.status_code == 404:
+            logger.info(f"Package {name} not found in deps.dev")
+            return None
+        pkg_resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            logger.info(f"Package {name} not found in deps.dev")
+            return None
+        raise
+    pkg_data = pkg_resp.json()
 
-        # 2. Get default (stable) version - used for dependents count
-        # The defaultVersion field is often null, so we look for isDefault: true
-        latest_version = pkg_data.get("defaultVersion", "")
-        if not latest_version:
-            versions = pkg_data.get("versions", [])
-            # First, try to find the version marked as default (stable release)
-            for v in versions:
-                if v.get("isDefault"):
-                    latest_version = v.get("versionKey", {}).get("version", "")
-                    break
-            # Fallback to last version if no default found
-            if not latest_version and versions:
-                latest_version = versions[-1].get("versionKey", {}).get("version", "")
-
-        version_data = {}
-        if latest_version:
-            encoded_version = quote(latest_version, safe="")
-            version_url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}/versions/{encoded_version}"
-            try:
-                version_resp = await retry_with_backoff(client.get, version_url)
-                version_resp.raise_for_status()
-                version_data = version_resp.json()
-            except httpx.HTTPStatusError as e:
-                logger.warning(f"Could not fetch version data for {name}@{latest_version}: {e}")
-
-        # 3. Get project info (includes OpenSSF score)
-        project_data = {}
-        links = version_data.get("links", [])
-        repo_url = None
-
-        # Find repository link
-        for link in links:
-            if link.get("label") == "SOURCE_REPO":
-                repo_url = link.get("url") or None
+    # 2. Get default (stable) version - used for dependents count
+    # The defaultVersion field is often null, so we look for isDefault: true
+    latest_version = pkg_data.get("defaultVersion", "")
+    if not latest_version:
+        versions = pkg_data.get("versions", [])
+        # First, try to find the version marked as default (stable release)
+        for v in versions:
+            if v.get("isDefault"):
+                latest_version = v.get("versionKey", {}).get("version", "")
                 break
+        # Fallback to last version if no default found
+        if not latest_version and versions:
+            latest_version = versions[-1].get("versionKey", {}).get("version", "")
 
-        if repo_url:
-            # Clean up URL for deps.dev project endpoint
-            # e.g., "https://github.com/lodash/lodash" -> "github.com/lodash/lodash"
-            clean_url = repo_url.replace("https://", "").replace("http://", "")
-            if clean_url.endswith(".git"):
-                clean_url = clean_url[:-4]
+    version_data = {}
+    if latest_version:
+        encoded_version = quote(latest_version, safe="")
+        version_url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}/versions/{encoded_version}"
+        try:
+            version_resp = await retry_with_backoff(client.get, version_url)
+            version_resp.raise_for_status()
+            version_data = version_resp.json()
+        except httpx.HTTPStatusError as e:
+            logger.warning(f"Could not fetch version data for {name}@{latest_version}: {e}")
 
-            encoded_project = encode_repo_url(clean_url)
-            project_url = f"{DEPSDEV_API}/projects/{encoded_project}"
+    # 3. Get project info (includes OpenSSF score)
+    project_data = {}
+    links = version_data.get("links", [])
+    repo_url = None
 
-            try:
-                project_resp = await retry_with_backoff(client.get, project_url)
-                project_resp.raise_for_status()
-                project_data = project_resp.json()
-            except httpx.HTTPStatusError:
-                logger.debug(f"Project not found for {name}: {clean_url}")
+    # Find repository link
+    for link in links:
+        if link.get("label") == "SOURCE_REPO":
+            repo_url = link.get("url") or None
+            break
 
-        # 4. Get dependents count (requires version in the endpoint)
-        dependents_count = 0
-        if latest_version:
-            try:
-                encoded_version = quote(latest_version, safe="")
-                dependents_url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}/versions/{encoded_version}:dependents"
-                dependents_resp = await retry_with_backoff(client.get, dependents_url)
-                dependents_resp.raise_for_status()
-                dependents_data = dependents_resp.json()
-                # deps.dev returns dependentCount as an integer
-                dependent_count_value = dependents_data.get("dependentCount")
-                if isinstance(dependent_count_value, int):
-                    dependents_count = dependent_count_value
-                elif isinstance(dependent_count_value, list):
-                    dependents_count = len(dependent_count_value)
-            except httpx.HTTPStatusError:
-                logger.debug(f"Could not fetch dependents for {name}")
+    if repo_url:
+        # Clean up URL for deps.dev project endpoint
+        # e.g., "https://github.com/lodash/lodash" -> "github.com/lodash/lodash"
+        clean_url = repo_url.replace("https://", "").replace("http://", "")
+        if clean_url.endswith(".git"):
+            clean_url = clean_url[:-4]
 
-        # Extract OpenSSF scorecard
-        scorecard = project_data.get("scorecardV2", {})
-        openssf_score = scorecard.get("score")
-        openssf_checks = scorecard.get("check", [])
+        encoded_project = encode_repo_url(clean_url)
+        project_url = f"{DEPSDEV_API}/projects/{encoded_project}"
 
-        return {
-            "name": name,
-            "ecosystem": ecosystem,
-            "latest_version": latest_version,
-            "published_at": version_data.get("publishedAt"),
-            "licenses": version_data.get("licenses", []),
-            "dependencies_direct": len(version_data.get("relations", {}).get("dependencies", [])),
-            "advisories": version_data.get("advisories", []),
-            "repository_url": repo_url,
-            "openssf_score": openssf_score,
-            "openssf_checks": openssf_checks,
-            "stars": project_data.get("starsCount"),
-            "forks": project_data.get("forksCount"),
-            "dependents_count": dependents_count,
-            "source": "deps.dev",
-        }
+        try:
+            project_resp = await retry_with_backoff(client.get, project_url)
+            project_resp.raise_for_status()
+            project_data = project_resp.json()
+        except httpx.HTTPStatusError:
+            logger.debug(f"Project not found for {name}: {clean_url}")
+
+    # 4. Get dependents count (requires version in the endpoint)
+    dependents_count = 0
+    if latest_version:
+        try:
+            encoded_version = quote(latest_version, safe="")
+            dependents_url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}/versions/{encoded_version}:dependents"
+            dependents_resp = await retry_with_backoff(client.get, dependents_url)
+            dependents_resp.raise_for_status()
+            dependents_data = dependents_resp.json()
+            # deps.dev returns dependentCount as an integer
+            dependent_count_value = dependents_data.get("dependentCount")
+            if isinstance(dependent_count_value, int):
+                dependents_count = dependent_count_value
+            elif isinstance(dependent_count_value, list):
+                dependents_count = len(dependent_count_value)
+        except httpx.HTTPStatusError:
+            logger.debug(f"Could not fetch dependents for {name}")
+
+    # Extract OpenSSF scorecard
+    scorecard = project_data.get("scorecardV2", {})
+    openssf_score = scorecard.get("score")
+    openssf_checks = scorecard.get("check", [])
+
+    return {
+        "name": name,
+        "ecosystem": ecosystem,
+        "latest_version": latest_version,
+        "published_at": version_data.get("publishedAt"),
+        "licenses": version_data.get("licenses", []),
+        "dependencies_direct": len(version_data.get("relations", {}).get("dependencies", [])),
+        "advisories": version_data.get("advisories", []),
+        "repository_url": repo_url,
+        "openssf_score": openssf_score,
+        "openssf_checks": openssf_checks,
+        "stars": project_data.get("starsCount"),
+        "forks": project_data.get("forksCount"),
+        "dependents_count": dependents_count,
+        "source": "deps.dev",
+    }
 
 
 async def get_dependents_count(name: str, ecosystem: str = "npm") -> int:
     """Get count of packages that depend on this one."""
     encoded_name = encode_package_name(name)
 
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-        url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}:dependents"
-        resp = await retry_with_backoff(client.get, url)
-        resp.raise_for_status()
-        data = resp.json()
+    client = get_http_client()
+    url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}:dependents"
+    resp = await retry_with_backoff(client.get, url)
+    resp.raise_for_status()
+    data = resp.json()
 
-        # deps.dev returns dependentCount as an integer
-        return data.get("dependentCount", 0)
+    # deps.dev returns dependentCount as an integer
+    return data.get("dependentCount", 0)
 
 
 async def get_advisories(name: str, ecosystem: str = "npm") -> list:
     """Get security advisories for a package."""
     encoded_name = encode_package_name(name)
 
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-        url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}:advisories"
-        try:
-            resp = await retry_with_backoff(client.get, url)
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("advisories", [])
-        except httpx.HTTPStatusError:
-            return []
+    client = get_http_client()
+    url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}:advisories"
+    try:
+        resp = await retry_with_backoff(client.get, url)
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("advisories", [])
+    except httpx.HTTPStatusError:
+        return []
 
 
 @circuit_breaker(DEPSDEV_CIRCUIT)
@@ -269,61 +271,61 @@ async def get_dependencies(name: str, ecosystem: str = "npm") -> list[str]:
     """
     encoded_name = encode_package_name(name)
 
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-        # 1. Get package to find latest version
-        pkg_url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}"
-        try:
-            pkg_resp = await retry_with_backoff(client.get, pkg_url)
-            if pkg_resp.status_code == 404:
-                return []
-            pkg_resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return []
-            raise
-
-        pkg_data = pkg_resp.json()
-
-        # 2. Find latest/default version
-        latest_version = pkg_data.get("defaultVersion", "")
-        if not latest_version:
-            versions = pkg_data.get("versions", [])
-            for v in versions:
-                if v.get("isDefault"):
-                    latest_version = v.get("versionKey", {}).get("version", "")
-                    break
-            if not latest_version and versions:
-                latest_version = versions[-1].get("versionKey", {}).get("version", "")
-
-        if not latest_version:
+    client = get_http_client()
+    # 1. Get package to find latest version
+    pkg_url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}"
+    try:
+        pkg_resp = await retry_with_backoff(client.get, pkg_url)
+        if pkg_resp.status_code == 404:
             return []
-
-        # 3. Get dependencies for this version
-        encoded_version = quote(latest_version, safe="")
-        deps_url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}/versions/{encoded_version}:dependencies"
-
-        try:
-            deps_resp = await retry_with_backoff(client.get, deps_url)
-            deps_resp.raise_for_status()
-        except httpx.HTTPStatusError:
-            logger.debug(f"Could not fetch dependencies for {name}@{latest_version}")
+        pkg_resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
             return []
+        raise
 
-        deps_data = deps_resp.json()
-        nodes = deps_data.get("nodes", [])
+    pkg_data = pkg_resp.json()
 
-        # 4. Extract direct dependencies only
-        # The first node is the package itself, remaining are dependencies
-        # Filter by relation == "DIRECT" to get only direct deps
-        direct_deps = []
-        for node in nodes:
-            relation = node.get("relation")
-            if relation == "DIRECT":
-                version_key = node.get("versionKey", {})
-                dep_name = version_key.get("name")
-                dep_ecosystem = version_key.get("system", "").lower()
-                # Only include deps from same ecosystem
-                if dep_name and dep_name != name and dep_ecosystem == ecosystem:
-                    direct_deps.append(dep_name)
+    # 2. Find latest/default version
+    latest_version = pkg_data.get("defaultVersion", "")
+    if not latest_version:
+        versions = pkg_data.get("versions", [])
+        for v in versions:
+            if v.get("isDefault"):
+                latest_version = v.get("versionKey", {}).get("version", "")
+                break
+        if not latest_version and versions:
+            latest_version = versions[-1].get("versionKey", {}).get("version", "")
 
-        return direct_deps
+    if not latest_version:
+        return []
+
+    # 3. Get dependencies for this version
+    encoded_version = quote(latest_version, safe="")
+    deps_url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}/versions/{encoded_version}:dependencies"
+
+    try:
+        deps_resp = await retry_with_backoff(client.get, deps_url)
+        deps_resp.raise_for_status()
+    except httpx.HTTPStatusError:
+        logger.debug(f"Could not fetch dependencies for {name}@{latest_version}")
+        return []
+
+    deps_data = deps_resp.json()
+    nodes = deps_data.get("nodes", [])
+
+    # 4. Extract direct dependencies only
+    # The first node is the package itself, remaining are dependencies
+    # Filter by relation == "DIRECT" to get only direct deps
+    direct_deps = []
+    for node in nodes:
+        relation = node.get("relation")
+        if relation == "DIRECT":
+            version_key = node.get("versionKey", {})
+            dep_name = version_key.get("name")
+            dep_ecosystem = version_key.get("system", "").lower()
+            # Only include deps from same ecosystem
+            if dep_name and dep_name != name and dep_ecosystem == ecosystem:
+                direct_deps.append(dep_name)
+
+    return direct_deps

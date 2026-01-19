@@ -25,6 +25,13 @@ def pytest_configure(config):
     os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
     os.environ.setdefault("AWS_REGION", "us-east-1")
 
+    # Disable HTTP client connection pooling in tests to allow proper mocking
+    # Each test creates fresh clients, allowing httpx.MockTransport to work
+    os.environ["USE_CONNECTION_POOLING"] = "false"
+
+    # Disable distributed circuit breaker in tests to use in-memory version
+    os.environ.setdefault("USE_DISTRIBUTED_CIRCUIT_BREAKER", "false")
+
 
 @pytest.fixture(autouse=True)
 def aws_credentials():
@@ -158,7 +165,7 @@ def mock_dynamodb():
                     "Projection": {"ProjectionType": "ALL"},
                 },
                 {
-                    "IndexName": "data-status-index-v2",
+                    "IndexName": "data-status-index",
                     "KeySchema": [
                         {"AttributeName": "data_status", "KeyType": "HASH"},
                         {"AttributeName": "next_retry_at", "KeyType": "RANGE"},

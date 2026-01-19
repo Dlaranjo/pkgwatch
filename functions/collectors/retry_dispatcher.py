@@ -58,7 +58,7 @@ def handler(event, context):
     for status in ["partial", "minimal"]:
         try:
             response = table.query(
-                IndexName="data-status-index-v2",
+                IndexName="data-status-index",
                 KeyConditionExpression=(
                     Key("data_status").eq(status)
                     & Key("next_retry_at").lte(now.isoformat())
