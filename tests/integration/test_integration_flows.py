@@ -80,6 +80,12 @@ def _reset_caches():
         # Re-read env vars that were captured at import time
         webhook_module.STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
         webhook_module.STRIPE_WEBHOOK_SECRET_ARN = os.environ.get("STRIPE_WEBHOOK_SECRET_ARN")
+        # Rebuild PRICE_TO_TIER from current env vars
+        webhook_module.PRICE_TO_TIER = {
+            (os.environ.get("STRIPE_PRICE_STARTER") or "price_starter"): "starter",
+            (os.environ.get("STRIPE_PRICE_PRO") or "price_pro"): "pro",
+            (os.environ.get("STRIPE_PRICE_BUSINESS") or "price_business"): "business",
+        }
     except (ImportError, AttributeError):
         pass
 
