@@ -64,11 +64,14 @@ def handler(event, context):
         )
         items = response.get("Items", [])
 
-        # Filter out pending signups, user metadata, pending display records, and format response
+        # Filter out pending signups, user metadata, pending display records,
+        # recovery codes, and recovery sessions - only keep actual API key records
         api_keys = []
         for item in items:
-            sk = item.get("sk")
-            if sk in ("PENDING", "USER_META", "PENDING_DISPLAY"):
+            sk = item.get("sk", "")
+            if sk in ("PENDING", "USER_META", "PENDING_DISPLAY", "PENDING_RECOVERY_CODES"):
+                continue
+            if sk.startswith("RECOVERY_"):
                 continue
 
             key_hash = sk or ""

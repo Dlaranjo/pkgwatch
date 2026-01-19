@@ -1440,10 +1440,10 @@ import Layout from '../layouts/Layout.astro';
       recoveryIconShield?.classList.add('hidden');
       recoveryIconWarning?.classList.remove('hidden');
       lowCodesWarning?.classList.add('hidden');
-    } else if (recoveryCodesStatus.codes_remaining <= 3) {
-      // Low codes warning
+    } else if (recoveryCodesStatus.codes_remaining <= 1) {
+      // Low codes warning (1 or fewer remaining)
       const count = recoveryCodesStatus.codes_remaining;
-      if (recoveryStatusText) recoveryStatusText.textContent = `${count} of 8 codes remaining`;
+      if (recoveryStatusText) recoveryStatusText.textContent = `${count} of 4 codes remaining`;
       if (generateCodesText) generateCodesText.textContent = 'Regenerate Codes';
       recoveryIconShield?.classList.add('hidden');
       recoveryIconWarning?.classList.remove('hidden');
@@ -1452,7 +1452,7 @@ import Layout from '../layouts/Layout.astro';
     } else {
       // Healthy state
       const count = recoveryCodesStatus.codes_remaining;
-      if (recoveryStatusText) recoveryStatusText.textContent = `${count} of 8 codes remaining`;
+      if (recoveryStatusText) recoveryStatusText.textContent = `${count} of 4 codes remaining`;
       if (generateCodesText) generateCodesText.textContent = 'Regenerate Codes';
       recoveryIconShield?.classList.remove('hidden');
       recoveryIconWarning?.classList.add('hidden');
