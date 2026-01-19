@@ -1995,6 +1995,96 @@ class TestConfidenceIntervals:
         assert "data_quality" in result["confidence"]
         assert result["confidence"]["data_quality"] in ["high", "medium", "low"]
 
+    def test_github_error_widens_confidence_interval(self):
+        """GitHub error should widen confidence interval margin."""
+        base_data = {
+            "days_since_last_commit": 30,
+            "weekly_downloads": 100000,
+            "active_contributors_90d": 5,
+            "last_published": "2025-11-01T00:00:00Z",
+            "created_at": "2020-01-01T00:00:00Z",
+            "avg_issue_response_hours": 24,
+            "prs_merged_90d": 50,
+            "prs_opened_90d": 100,
+        }
+
+        data_with_github_error = {
+            **base_data,
+            "github_error": "circuit_open",
+            "repository_url": "https://github.com/test/repo",
+        }
+
+        result_normal = calculate_health_score(base_data)
+        result_with_error = calculate_health_score(data_with_github_error)
+
+        # GitHub error should result in wider confidence interval
+        normal_margin = result_normal["confidence"]["interval_margin"]
+        error_margin = result_with_error["confidence"]["interval_margin"]
+
+        assert error_margin >= 15, "GitHub error should have at least 15 point margin"
+        assert error_margin >= normal_margin, "Error margin should be >= normal margin"
+
+    def test_github_error_with_repo_url_widens_further(self):
+        """GitHub error with repository_url should widen margin to 20."""
+        data = {
+            "days_since_last_commit": 30,
+            "weekly_downloads": 100000,
+            "active_contributors_90d": 5,
+            "last_published": "2025-11-01T00:00:00Z",
+            "created_at": "2020-01-01T00:00:00Z",
+            "github_error": "circuit_open",
+            "repository_url": "https://github.com/expressjs/express",
+        }
+
+        result = calculate_health_score(data)
+
+        # GitHub error with repo_url should have 20 point margin
+        assert result["confidence"]["interval_margin"] >= 20
+
+    def test_collection_errors_reduce_confidence_score(self):
+        """Multiple collection errors should reduce confidence score."""
+        base_data = {
+            "days_since_last_commit": 30,
+            "weekly_downloads": 100000,
+            "active_contributors_90d": 5,
+            "last_published": "2025-11-01T00:00:00Z",
+            "created_at": "2020-01-01T00:00:00Z",
+            "avg_issue_response_hours": 24,
+            "prs_merged_90d": 50,
+            "prs_opened_90d": 100,
+        }
+
+        data_with_errors = {
+            **base_data,
+            "github_error": "circuit_open",
+            "npm_error": "timeout",
+        }
+
+        result_normal = calculate_health_score(base_data)
+        result_with_errors = calculate_health_score(data_with_errors)
+
+        # Confidence score should be lower with collection errors
+        assert result_with_errors["confidence"]["score"] < result_normal["confidence"]["score"]
+
+    def test_collection_errors_set_low_data_quality(self):
+        """Collection errors should result in low data quality."""
+        data = {
+            "days_since_last_commit": 30,
+            "weekly_downloads": 100000,
+            "active_contributors_90d": 5,
+            "last_published": "2025-11-01T00:00:00Z",
+            "created_at": "2020-01-01T00:00:00Z",
+            "avg_issue_response_hours": 24,
+            "prs_merged_90d": 50,
+            "prs_opened_90d": 100,
+            "github_error": "circuit_open",
+        }
+
+        result = calculate_health_score(data)
+
+        # Should be "low" data quality due to collection error
+        assert result["confidence"]["data_quality"] == "low"
+
 
 class TestEnhancedScoringIntegration:
     """Integration tests for all new scoring enhancements."""

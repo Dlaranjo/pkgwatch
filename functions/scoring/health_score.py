@@ -496,6 +496,22 @@ def _calculate_confidence(data: dict) -> dict:
     # Calculate overall confidence
     confidence_score = completeness * 0.5 + age_score * 0.3 + freshness_score * 0.2
 
+    # Check for collection errors - these indicate incomplete data
+    # that may cause artificially low scores
+    collection_error_fields = ["github_error", "npm_error", "pypi_error", "depsdev_error"]
+    error_count = sum(1 for e in collection_error_fields if data.get(e))
+    has_github_error = bool(data.get("github_error"))
+
+    # Apply penalty for collection errors
+    # Each error reduces confidence by 10% (affects multiple components)
+    if error_count > 0:
+        error_penalty = error_count * 0.1
+        confidence_score = max(0.2, confidence_score - error_penalty)
+        logger.debug(
+            f"Collection errors detected ({error_count}), "
+            f"reduced confidence from {confidence_score + error_penalty:.2f} to {confidence_score:.2f}"
+        )
+
     if confidence_score >= 0.8:
         level = "HIGH"
     elif confidence_score >= 0.5:
@@ -505,15 +521,27 @@ def _calculate_confidence(data: dict) -> dict:
 
     # Determine data quality and confidence interval margin
     # Based on data completeness ratio
-    if completeness >= 0.8:
+    if completeness >= 0.8 and error_count == 0:
         data_quality = "high"
         margin = 5
-    elif completeness >= 0.5:
+    elif completeness >= 0.5 and error_count == 0:
         data_quality = "medium"
         margin = 10
     else:
         data_quality = "low"
         margin = 15
+
+    # Widen margin significantly for GitHub errors since they affect
+    # multiple components (stars, commits, contributors, bus factor)
+    if has_github_error:
+        margin = max(margin, 15)
+        # Further widen for packages where GitHub data is particularly important
+        # (packages with repository_url but no GitHub data)
+        if data.get("repository_url"):
+            margin = max(margin, 20)
+            logger.debug(
+                f"GitHub error with repository_url present, widened margin to {margin}"
+            )
 
     return {
         "score": round(confidence_score * 100, 1),

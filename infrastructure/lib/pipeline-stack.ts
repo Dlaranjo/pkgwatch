@@ -204,6 +204,12 @@ export class PipelineStack extends cdk.Stack {
       code: collectorsCode,
       timeout: cdk.Duration.minutes(5),
       description: "Collects data from deps.dev, npm, and GitHub",
+      environment: {
+        ...commonLambdaProps.environment,
+        // Enable distributed circuit breaker to share state across Lambda instances
+        // Without this, each instance has its own circuit (5 failures each = 50 total before all open)
+        USE_DISTRIBUTED_CIRCUIT_BREAKER: "true",
+      },
     });
 
     packagesTable.grantReadWriteData(packageCollector);

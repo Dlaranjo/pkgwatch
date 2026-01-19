@@ -78,6 +78,15 @@ API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 STALE_DATA_MAX_AGE_DAYS = int(os.environ.get("STALE_DATA_MAX_AGE_DAYS", "7"))
 DEDUP_WINDOW_MINUTES = int(os.environ.get("DEDUP_WINDOW_MINUTES", "30"))
 
+# Reason-based stale data thresholds
+# Circuit breaker errors indicate service outages that may take longer to recover
+# Rate limit errors typically resolve within an hour
+STALE_DATA_THRESHOLDS = {
+    "circuit_open": 14,       # Circuit breaker - service likely recovering, accept 2-week old data
+    "rate_limit_exceeded": 7, # Rate limit - will resolve within the hour
+    "default": 7,             # Other errors - be conservative
+}
+
 # Semaphore to limit concurrent GitHub API calls per Lambda instance
 # With maxConcurrency=10 Lambdas * 5 = max 50 concurrent GitHub calls
 # GitHub allows 5000/hour = ~83/minute, so this keeps us well under the limit
@@ -370,6 +379,23 @@ def _has_github_data(data: dict) -> bool:
     )
 
 
+def _get_stale_threshold_days(error_reason: str) -> int:
+    """
+    Get appropriate stale data threshold based on error type.
+
+    Circuit breaker errors indicate service outages that may take longer to recover,
+    so we accept older cached data. Rate limit errors typically resolve within an hour.
+    """
+    if not error_reason:
+        return STALE_DATA_THRESHOLDS["default"]
+    error_lower = error_reason.lower()
+    if "circuit" in error_lower:
+        return STALE_DATA_THRESHOLDS["circuit_open"]
+    if "rate_limit" in error_lower:
+        return STALE_DATA_THRESHOLDS["rate_limit_exceeded"]
+    return STALE_DATA_THRESHOLDS["default"]
+
+
 async def _try_github_stale_fallback(
     combined_data: dict,
     ecosystem: str,
@@ -379,13 +405,20 @@ async def _try_github_stale_fallback(
     """
     Try to use stale GitHub data as fallback when GitHub collection fails.
 
+    Uses reason-based thresholds: circuit breaker errors allow older data (14 days)
+    since service outages may take longer to recover.
+
     Modifies combined_data in place to add cached GitHub fields if available.
     """
     existing = await _get_existing_package_data(ecosystem, name)
     if existing and _has_github_data(existing):
-        # Check if data is less than 7 days old
-        if _is_data_acceptable(existing, max_age_days=STALE_DATA_MAX_AGE_DAYS):
-            logger.info(f"Using stale GitHub data for {ecosystem}/{name}")
+        # Use reason-based threshold instead of fixed STALE_DATA_MAX_AGE_DAYS
+        max_age = _get_stale_threshold_days(error_reason)
+        if _is_data_acceptable(existing, max_age_days=max_age):
+            logger.info(
+                f"Using stale GitHub data for {ecosystem}/{name} "
+                f"(max_age={max_age} days, reason={error_reason})"
+            )
             cached_fields = _extract_cached_github_fields(existing)
             # Only add non-None fields
             for key, value in cached_fields.items():
