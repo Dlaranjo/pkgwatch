@@ -2,13 +2,18 @@
 const currentYear = new Date().getFullYear();
 ---
 
-<footer class="border-t border-zinc-800/50 bg-[#09090b]">
+<footer class="border-t border-zinc-800/50 bg-[var(--color-bg-darker)]">
   <div class="max-w-5xl mx-auto px-4 py-12">
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-8 mb-8">
       <!-- Product -->
       <div>
         <h3 class="text-sm font-semibold text-white mb-4">Product</h3>
         <ul class="space-y-2">
+          <li>
+            <a href="/what-is-pkgwatch" class="text-sm text-zinc-400 hover:text-white transition">
+              What is PkgWatch?
+            </a>
+          </li>
           <li>
             <a href="/docs" class="text-sm text-zinc-400 hover:text-white transition">
               API Documentation

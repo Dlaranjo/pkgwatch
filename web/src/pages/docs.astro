@@ -181,7 +181,7 @@ const riskLevels = [
           Quick Start
         </h2>
 
-        <div class="bg-[#111113] border border-[#1a1a1f] rounded-xl p-6">
+        <div class="bg-[var(--color-bg-card)] border border-[var(--color-border-card)] rounded-xl p-6">
           <p class="text-zinc-400 mb-4">Get your API key and start checking packages:</p>
           <div class="bg-black/30 rounded-lg p-4 font-mono text-sm overflow-x-auto">
             <pre class="text-zinc-300"><code># Check a package
@@ -198,7 +198,7 @@ curl -H "X-API-Key: YOUR_KEY" \
           Authentication
         </h2>
 
-        <div class="bg-[#111113] border border-[#1a1a1f] rounded-xl p-6">
+        <div class="bg-[var(--color-bg-card)] border border-[var(--color-border-card)] rounded-xl p-6">
           <p class="text-zinc-400 mb-4">
             Include your API key in the <code class="bg-black/30 px-2 py-1 rounded">X-API-Key</code> header:
           </p>
@@ -218,7 +218,7 @@ curl -H "X-API-Key: YOUR_KEY" \
           Base URL
         </h2>
 
-        <div class="bg-[#111113] border border-[#1a1a1f] rounded-xl p-6">
+        <div class="bg-[var(--color-bg-card)] border border-[var(--color-border-card)] rounded-xl p-6">
           <div class="bg-black/30 rounded-lg p-4 font-mono text-sm">
             <code class="text-green-400">https://api.pkgwatch.laranjo.dev</code>
           </div>
@@ -234,9 +234,9 @@ curl -H "X-API-Key: YOUR_KEY" \
 
         <div class="space-y-6">
           {endpoints.map((endpoint) => (
-            <div class="bg-[#111113] border border-[#1a1a1f] rounded-xl overflow-hidden">
+            <div class="bg-[var(--color-bg-card)] border border-[var(--color-border-card)] rounded-xl overflow-hidden">
               <!-- Header -->
-              <div class="p-6 border-b border-[#1a1a1f]">
+              <div class="p-6 border-b border-[var(--color-border-card)]">
                 <div class="flex items-center gap-3 mb-3">
                   <span class={`px-3 py-1 text-sm font-semibold rounded ${
                     endpoint.method === 'GET' ? 'bg-green-900/50 text-green-400' : 'bg-blue-900/50 text-blue-400'
@@ -253,7 +253,7 @@ curl -H "X-API-Key: YOUR_KEY" \
 
               <!-- Parameters -->
               {endpoint.params && (
-                <div class="p-6 border-b border-[#1a1a1f]">
+                <div class="p-6 border-b border-[var(--color-border-card)]">
                   <h3 class="text-sm font-semibold text-zinc-400 mb-3">Parameters</h3>
                   <div class="space-y-2">
                     {endpoint.params.map((param) => (
@@ -269,7 +269,7 @@ curl -H "X-API-Key: YOUR_KEY" \
 
               <!-- Body -->
               {endpoint.body && (
-                <div class="p-6 border-b border-[#1a1a1f]">
+                <div class="p-6 border-b border-[var(--color-border-card)]">
                   <h3 class="text-sm font-semibold text-zinc-400 mb-3">Request Body</h3>
                   <div class="bg-black/30 rounded-lg p-4 font-mono text-xs overflow-x-auto">
                     <pre class="text-zinc-300"><code>{endpoint.body}</code></pre>
@@ -307,7 +307,7 @@ curl -H "X-API-Key: YOUR_KEY" \
           Risk Levels
         </h2>
 
-        <div class="bg-[#111113] border border-[#1a1a1f] rounded-xl overflow-hidden">
+        <div class="bg-[var(--color-bg-card)] border border-[var(--color-border-card)] rounded-xl overflow-hidden">
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4 p-6">
             {riskLevels.map((risk) => (
               <div class="text-center">
@@ -334,7 +334,7 @@ curl -H "X-API-Key: YOUR_KEY" \
           Rate Limits
         </h2>
 
-        <div class="bg-[#111113] border border-[#1a1a1f] rounded-xl p-6">
+        <div class="bg-[var(--color-bg-card)] border border-[var(--color-border-card)] rounded-xl p-6">
           <table class="w-full text-sm">
             <thead>
               <tr class="text-left text-zinc-400">
@@ -344,22 +344,22 @@ curl -H "X-API-Key: YOUR_KEY" \
               </tr>
             </thead>
             <tbody class="text-zinc-300">
-              <tr class="border-t border-[#1a1a1f]">
+              <tr class="border-t border-[var(--color-border-card)]">
                 <td class="py-4">Free</td>
                 <td class="py-4">5,000</td>
                 <td class="py-4">$0</td>
               </tr>
-              <tr class="border-t border-[#1a1a1f]">
+              <tr class="border-t border-[var(--color-border-card)]">
                 <td class="py-4">Starter</td>
                 <td class="py-4">25,000</td>
                 <td class="py-4">$9/mo</td>
               </tr>
-              <tr class="border-t border-[#1a1a1f]">
+              <tr class="border-t border-[var(--color-border-card)]">
                 <td class="py-4">Pro</td>
                 <td class="py-4">100,000</td>
                 <td class="py-4">$29/mo</td>
               </tr>
-              <tr class="border-t border-[#1a1a1f]">
+              <tr class="border-t border-[var(--color-border-card)]">
                 <td class="py-4">Business</td>
                 <td class="py-4">500,000</td>
                 <td class="py-4">$99/mo</td>
@@ -386,7 +386,7 @@ curl -H "X-API-Key: YOUR_KEY" \
           Error Handling
         </h2>
 
-        <div class="bg-[#111113] border border-[#1a1a1f] rounded-xl p-6">
+        <div class="bg-[var(--color-bg-card)] border border-[var(--color-border-card)] rounded-xl p-6">
           <p class="text-zinc-400 mb-4">All errors follow a consistent format:</p>
           <div class="bg-black/30 rounded-lg p-4 font-mono text-sm mb-6">
             <pre class="text-red-300"><code>{`{
@@ -406,17 +406,17 @@ curl -H "X-API-Key: YOUR_KEY" \
               </tr>
             </thead>
             <tbody class="text-zinc-300">
-              <tr class="border-t border-[#1a1a1f]">
+              <tr class="border-t border-[var(--color-border-card)]">
                 <td class="py-3">401</td>
                 <td class="py-3 font-mono text-xs">invalid_api_key</td>
                 <td class="py-3 text-zinc-400">Missing or invalid API key</td>
               </tr>
-              <tr class="border-t border-[#1a1a1f]">
+              <tr class="border-t border-[var(--color-border-card)]">
                 <td class="py-3">404</td>
                 <td class="py-3 font-mono text-xs">package_not_found</td>
                 <td class="py-3 text-zinc-400">Package not in our database</td>
               </tr>
-              <tr class="border-t border-[#1a1a1f]">
+              <tr class="border-t border-[var(--color-border-card)]">
                 <td class="py-3">429</td>
                 <td class="py-3 font-mono text-xs">rate_limit_exceeded</td>
                 <td class="py-3 text-zinc-400">Monthly limit reached</td>
@@ -433,7 +433,7 @@ curl -H "X-API-Key: YOUR_KEY" \
           CLI Tool
         </h2>
 
-        <div class="bg-[#111113] border border-[#1a1a1f] rounded-xl p-6">
+        <div class="bg-[var(--color-bg-card)] border border-[var(--color-border-card)] rounded-xl p-6">
           <p class="text-zinc-400 mb-4">Install the CLI to check packages from your terminal:</p>
           <div class="bg-black/30 rounded-lg p-4 font-mono text-sm overflow-x-auto mb-4">
             <pre class="text-zinc-300"><code>npm install -g @pkgwatch/cli
@@ -460,7 +460,7 @@ pkgwatch scan --recursive --max-manifests 200</code></pre>
           GitHub Action
         </h2>
 
-        <div class="bg-[#111113] border border-[#1a1a1f] rounded-xl p-6">
+        <div class="bg-[var(--color-bg-card)] border border-[var(--color-border-card)] rounded-xl p-6">
           <p class="text-zinc-400 mb-4">Add package health checks to your CI/CD pipeline:</p>
           <div class="bg-black/30 rounded-lg p-4 font-mono text-sm overflow-x-auto">
             <pre class="text-zinc-300"><code># .github/workflows/pkgwatch.yml

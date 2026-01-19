@@ -1,0 +1,357 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const pageSchema = {
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "What is PkgWatch?",
+  "description": "Learn about PkgWatch, the dependency health intelligence platform for npm and Python packages.",
+  "url": "https://pkgwatch.laranjo.dev/what-is-pkgwatch",
+  "mainEntity": {
+    "@type": "SoftwareApplication",
+    "@id": "https://pkgwatch.laranjo.dev/#software"
+  }
+};
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is PkgWatch free?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, PkgWatch offers a free tier with 5,000 requests per month. Paid plans start at $9/month for higher limits."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What package registries does PkgWatch support?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "PkgWatch supports npm (Node.js/JavaScript) and PyPI (Python) package registries."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is PkgWatch different from npm audit?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "npm audit checks for known security vulnerabilities. PkgWatch predicts abandonment risk and maintenance decline before they become security issues - it's predictive rather than reactive."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use PkgWatch in my CI/CD pipeline?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, PkgWatch provides both a CLI tool (@pkgwatch/cli) and a GitHub Action for seamless CI/CD integration."
+      }
+    }
+  ]
+};
+
+const integrations = [
+  {
+    name: 'REST API',
+    description: 'Query package health scores programmatically. Get detailed risk assessments, maintenance metrics, and historical data for any npm or PyPI package.',
+    icon: `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>`,
+    link: '/docs'
+  },
+  {
+    name: 'CLI Tool',
+    description: 'Check package health from your terminal. Scan your package.json or requirements.txt and get instant feedback on dependency risks.',
+    icon: `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7"></path></svg>`,
+    link: '/docs#cli'
+  },
+  {
+    name: 'GitHub Action',
+    description: 'Automatically scan dependencies on every pull request. Block merges when high-risk packages are detected. Configurable thresholds.',
+    icon: `<svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"></path></svg>`,
+    link: '/docs#github-action'
+  }
+];
+---
+
+<Layout
+  title="What is PkgWatch? | Dependency Health Intelligence Platform"
+  description="PkgWatch is a dependency health intelligence platform that predicts npm and Python package abandonment. Get health scores (0-100), risk assessments, and integrate with your CI/CD pipeline."
+>
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify(pageSchema)} />
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify(faqSchema)} />
+
+  <article class="max-w-3xl mx-auto px-4 py-16 pt-32">
+    <h1 class="text-4xl md:text-5xl font-bold text-white mb-6">What is PkgWatch?</h1>
+
+    <p class="text-xl text-zinc-300 mb-8 leading-relaxed">
+      <strong class="text-white">PkgWatch</strong> is a dependency health intelligence platform that helps developers
+      predict which npm and Python packages are at risk of abandonment, maintenance decline, or
+      security issues—before they break your build.
+    </p>
+
+    <p class="text-zinc-400 mb-12 leading-relaxed">
+      Unlike traditional security scanners that only detect known vulnerabilities, PkgWatch uses predictive
+      analytics to identify packages showing early warning signs of trouble. By analyzing maintenance patterns,
+      contributor activity, and community signals, PkgWatch gives you a health score (0-100) for every package
+      in your dependency tree.
+    </p>
+
+    <!-- The Problem Section -->
+    <section class="mb-12">
+      <h2 class="text-2xl md:text-3xl font-bold text-white mb-4">The Problem PkgWatch Solves</h2>
+      <p class="text-zinc-400 mb-6 leading-relaxed">
+        Modern applications depend on hundreds—sometimes thousands—of third-party packages. When a critical
+        dependency gets abandoned, compromised, or sabotaged, the impact can be catastrophic. And by the time
+        traditional security tools detect a problem, it's often too late.
+      </p>
+
+      <div class="space-y-4 mb-6">
+        <div class="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
+          <div class="flex items-center gap-3 mb-2">
+            <span class="text-2xl">💥</span>
+            <span class="font-semibold text-white">colors + faker (January 2022)</span>
+          </div>
+          <p class="text-zinc-400 text-sm">
+            Maintainer intentionally corrupted packages with infinite loops, breaking thousands of projects overnight.
+            Over 25 million weekly downloads affected.
+          </p>
+        </div>
+
+        <div class="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
+          <div class="flex items-center gap-3 mb-2">
+            <span class="text-2xl">🎯</span>
+            <span class="font-semibold text-white">event-stream (November 2018)</span>
+          </div>
+          <p class="text-zinc-400 text-sm">
+            Maintainer handed off project to an attacker who injected cryptocurrency-stealing malware.
+            Over 2 million downloads contained the malicious code.
+          </p>
+        </div>
+
+        <div class="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
+          <div class="flex items-center gap-3 mb-2">
+            <span class="text-2xl">🕳️</span>
+            <span class="font-semibold text-white">left-pad (March 2016)</span>
+          </div>
+          <p class="text-zinc-400 text-sm">
+            An 11-line package was unpublished, breaking React, Babel, and thousands of builds worldwide.
+            Caused a global npm outage.
+          </p>
+        </div>
+      </div>
+
+      <p class="text-zinc-500 text-sm">
+        These weren't security vulnerabilities in the traditional sense. They were <em>maintainer problems</em>—a
+        blind spot in traditional security tooling that PkgWatch is designed to address.
+      </p>
+    </section>
+
+    <!-- What PkgWatch Does Section -->
+    <section class="mb-12">
+      <h2 class="text-2xl md:text-3xl font-bold text-white mb-4">What PkgWatch Does</h2>
+      <p class="text-zinc-400 mb-6 leading-relaxed">
+        PkgWatch continuously monitors packages across npm and PyPI registries, analyzing signals that indicate
+        package health and maintainer engagement. Here's what you get:
+      </p>
+
+      <ul class="space-y-4 text-zinc-400">
+        <li class="flex gap-3">
+          <span class="text-emerald-400 mt-1">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </span>
+          <div>
+            <strong class="text-white">Health Scores (0-100)</strong>
+            <p class="text-sm mt-1">Quantified package health based on maintenance signals, update frequency, issue responsiveness, and community engagement.</p>
+          </div>
+        </li>
+        <li class="flex gap-3">
+          <span class="text-emerald-400 mt-1">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </span>
+          <div>
+            <strong class="text-white">Abandonment Risk Prediction</strong>
+            <p class="text-sm mt-1">Early warning system that identifies packages showing signs of declining maintenance before they become unmaintained.</p>
+          </div>
+        </li>
+        <li class="flex gap-3">
+          <span class="text-emerald-400 mt-1">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </span>
+          <div>
+            <strong class="text-white">Maintenance Decline Detection</strong>
+            <p class="text-sm mt-1">Track changes in maintainer activity over time. Know when a package transitions from actively maintained to stale.</p>
+          </div>
+        </li>
+        <li class="flex gap-3">
+          <span class="text-emerald-400 mt-1">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </span>
+          <div>
+            <strong class="text-white">Security Risk Assessment</strong>
+            <p class="text-sm mt-1">Identify packages vulnerable to supply chain attacks due to single-maintainer risk, lack of 2FA, or suspicious ownership changes.</p>
+          </div>
+        </li>
+      </ul>
+    </section>
+
+    <!-- How It Works Section -->
+    <section class="mb-12">
+      <h2 class="text-2xl md:text-3xl font-bold text-white mb-4">How PkgWatch Works</h2>
+      <p class="text-zinc-400 mb-4 leading-relaxed">
+        PkgWatch collects data from multiple sources to build a comprehensive picture of package health:
+      </p>
+
+      <ul class="list-disc list-inside text-zinc-400 space-y-2 mb-6">
+        <li><strong class="text-white">npm Registry</strong> — Download counts, version history, maintainer information</li>
+        <li><strong class="text-white">PyPI Registry</strong> — Release patterns, metadata, maintainer activity</li>
+        <li><strong class="text-white">GitHub</strong> — Commit frequency, issue response times, PR merge rates, contributor count</li>
+        <li><strong class="text-white">deps.dev</strong> — Dependency graphs, security advisories, license information</li>
+      </ul>
+
+      <p class="text-zinc-400 leading-relaxed">
+        Our scoring algorithms analyze these signals to produce a health score and risk assessment for each package.
+        The methodology is transparent and documented—you can learn more on our
+        <a href="/methodology" class="text-blue-400 hover:underline">methodology page</a>.
+      </p>
+    </section>
+
+    <!-- Ways to Use PkgWatch Section -->
+    <section class="mb-12">
+      <h2 class="text-2xl md:text-3xl font-bold text-white mb-4">Ways to Use PkgWatch</h2>
+      <p class="text-zinc-400 mb-6 leading-relaxed">
+        PkgWatch integrates into your workflow however you prefer:
+      </p>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        {integrations.map((integration) => (
+          <a href={integration.link} class="bg-zinc-900/50 border border-zinc-800 rounded-lg p-5 hover:border-blue-500/50 transition-colors">
+            <div class="text-blue-400 mb-3" set:html={integration.icon} />
+            <h3 class="font-semibold text-white mb-2">{integration.name}</h3>
+            <p class="text-zinc-400 text-sm">{integration.description}</p>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <!-- PkgWatch vs Other Tools Section -->
+    <section class="mb-12">
+      <h2 class="text-2xl md:text-3xl font-bold text-white mb-4">PkgWatch vs Other Tools</h2>
+      <p class="text-zinc-400 mb-6 leading-relaxed">
+        Traditional tools like <code class="text-zinc-300 bg-zinc-800 px-1.5 py-0.5 rounded text-sm">npm audit</code>,
+        Snyk, and Dependabot focus on <em>known vulnerabilities</em>—CVEs that have already been discovered and reported.
+        These tools are essential, but they're inherently <strong class="text-white">reactive</strong>.
+      </p>
+
+      <p class="text-zinc-400 mb-6 leading-relaxed">
+        PkgWatch takes a different approach: <strong class="text-white">predictive intelligence</strong>. Instead of
+        waiting for a vulnerability to be disclosed, PkgWatch identifies packages that are <em>likely to become
+        problematic</em> based on maintenance patterns and community health signals.
+      </p>
+
+      <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-zinc-800">
+              <th class="text-left py-3 pr-4 text-zinc-400 font-medium"></th>
+              <th class="text-left py-3 px-4 text-zinc-400 font-medium">npm audit / Snyk</th>
+              <th class="text-left py-3 pl-4 text-white font-medium">PkgWatch</th>
+            </tr>
+          </thead>
+          <tbody class="text-zinc-400">
+            <tr class="border-b border-zinc-800">
+              <td class="py-3 pr-4 font-medium text-zinc-300">Approach</td>
+              <td class="py-3 px-4">Reactive (known CVEs)</td>
+              <td class="py-3 pl-4 text-emerald-400">Predictive (early warning)</td>
+            </tr>
+            <tr class="border-b border-zinc-800">
+              <td class="py-3 pr-4 font-medium text-zinc-300">Detects abandonment</td>
+              <td class="py-3 px-4">No</td>
+              <td class="py-3 pl-4 text-emerald-400">Yes</td>
+            </tr>
+            <tr class="border-b border-zinc-800">
+              <td class="py-3 pr-4 font-medium text-zinc-300">Maintenance health</td>
+              <td class="py-3 px-4">No</td>
+              <td class="py-3 pl-4 text-emerald-400">Yes</td>
+            </tr>
+            <tr>
+              <td class="py-3 pr-4 font-medium text-zinc-300">Supply chain risk</td>
+              <td class="py-3 px-4">Limited</td>
+              <td class="py-3 pl-4 text-emerald-400">Comprehensive</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="text-zinc-500 text-sm">
+        We recommend using PkgWatch <em>alongside</em> traditional security tools for comprehensive coverage.
+      </p>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="mb-12">
+      <h2 class="text-2xl md:text-3xl font-bold text-white mb-6">Frequently Asked Questions</h2>
+
+      <div class="space-y-6">
+        <div>
+          <h3 class="font-semibold text-white mb-2">Is PkgWatch free?</h3>
+          <p class="text-zinc-400">
+            Yes, PkgWatch offers a free tier with 5,000 requests per month—enough for most individual developers
+            and small projects. Paid plans start at $9/month for higher limits.
+            <a href="/pricing" class="text-blue-400 hover:underline">View pricing</a>.
+          </p>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-white mb-2">What package registries does PkgWatch support?</h3>
+          <p class="text-zinc-400">
+            PkgWatch currently supports npm (Node.js/JavaScript) and PyPI (Python) package registries.
+            Support for additional registries is on our roadmap.
+          </p>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-white mb-2">How is PkgWatch different from npm audit?</h3>
+          <p class="text-zinc-400">
+            <code class="text-zinc-300 bg-zinc-800 px-1.5 py-0.5 rounded text-sm">npm audit</code> checks for
+            known security vulnerabilities (CVEs). PkgWatch predicts abandonment risk and maintenance decline
+            <em>before</em> they become security issues—it's predictive rather than reactive.
+          </p>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-white mb-2">Can I use PkgWatch in my CI/CD pipeline?</h3>
+          <p class="text-zinc-400">
+            Yes. PkgWatch provides both a CLI tool (<code class="text-zinc-300 bg-zinc-800 px-1.5 py-0.5 rounded text-sm">@pkgwatch/cli</code>)
+            and a GitHub Action for seamless CI/CD integration. You can configure thresholds to block merges
+            when high-risk packages are detected.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="text-center py-10 border-t border-zinc-800">
+      <h2 class="text-2xl md:text-3xl font-bold text-white mb-4">Ready to try PkgWatch?</h2>
+      <p class="text-zinc-400 mb-6">
+        Start monitoring your dependencies for free. No credit card required.
+      </p>
+      <div class="flex flex-col sm:flex-row gap-4 justify-center">
+        <a href="/start" class="btn-gradient px-8 py-3 rounded-lg font-semibold text-white inline-flex items-center justify-center gap-2">
+          Get Started Free
+        </a>
+        <a href="/docs" class="bg-zinc-800 hover:bg-zinc-700 px-8 py-3 rounded-lg font-semibold text-white inline-flex items-center justify-center gap-2 transition-colors">
+          Read the Docs
+        </a>
+      </div>
+    </section>
+  </article>
+</Layout>

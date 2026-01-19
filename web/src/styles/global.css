@@ -3,10 +3,13 @@
 /* Custom CSS Variables */
 @theme {
   --color-bg-dark: #0a0a0b;
+  --color-bg-darker: #09090b;      /* Navbar/Footer bg */
   --color-bg-card: #111113;
   --color-bg-card-hover: #18181b;
+  --color-bg-input: #0d0d10;       /* Form input bg */
   --color-border: #161618;
   --color-border-light: #1c1c1f;
+  --color-border-card: #1a1a1f;    /* Card border color */
   --color-accent: #3b82f6;
   --color-accent-light: #60a5fa;
   --color-accent-glow: rgba(59, 130, 246, 0.15);

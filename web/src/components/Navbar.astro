@@ -9,7 +9,7 @@ const isActive = (path: string, exact = true) => {
 };
 ---
 
-<nav aria-label="Main navigation" class="fixed top-0 left-0 right-0 z-50 bg-[#09090b]/80 backdrop-blur-lg border-b border-zinc-800/50">
+<nav aria-label="Main navigation" class="fixed top-0 left-0 right-0 z-50 bg-[var(--color-bg-darker)]/80 backdrop-blur-lg border-b border-zinc-800/50">
   <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
     <!-- Logo -->
     <a href="/" class="flex items-center gap-2">
@@ -36,6 +36,13 @@ const isActive = (path: string, exact = true) => {
       </a>
       <a href="/#demo" class="text-sm text-zinc-400 hover:text-white transition-colors">
         Demo
+      </a>
+      <a
+        href="/what-is-pkgwatch"
+        aria-current={isActive('/what-is-pkgwatch') ? 'page' : undefined}
+        class={`text-sm transition-colors ${isActive('/what-is-pkgwatch') ? 'text-white font-medium' : 'text-zinc-400 hover:text-white'}`}
+      >
+        About
       </a>
       <a
         href="/methodology"
@@ -103,7 +110,7 @@ const isActive = (path: string, exact = true) => {
   <!-- Mobile Menu -->
   <div
     id="mobile-menu"
-    class="hidden md:hidden border-t border-zinc-800/50 bg-[#09090b]"
+    class="hidden md:hidden border-t border-zinc-800/50 bg-[var(--color-bg-darker)]"
   >
     <div class="px-4 py-4 space-y-1">
       <a
@@ -115,6 +122,13 @@ const isActive = (path: string, exact = true) => {
       </a>
       <a href="/#demo" class="mobile-nav-link block py-3 text-zinc-400 hover:text-white transition-colors">
         Demo
+      </a>
+      <a
+        href="/what-is-pkgwatch"
+        aria-current={isActive('/what-is-pkgwatch') ? 'page' : undefined}
+        class={`block py-3 transition-colors ${isActive('/what-is-pkgwatch') ? 'text-white font-medium' : 'text-zinc-400 hover:text-white'}`}
+      >
+        About
       </a>
       <a
         href="/methodology"
