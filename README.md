@@ -123,7 +123,7 @@ pkgwatch/
 ├── packages/
 │   └── api-client/          # @pkgwatch/api-client - Shared TypeScript client
 ├── docs/                    # API documentation (OpenAPI spec)
-├── landing-page/            # Astro website
+├── web/                     # Astro website
 │   └── terraform/           # S3 + CloudFront infrastructure
 ├── infrastructure/          # AWS CDK (API infrastructure)
 │   └── lib/
@@ -140,7 +140,7 @@ pkgwatch/
 - **Backend:** Python 3.12, AWS Lambda, DynamoDB, API Gateway
 - **CLI/Action:** TypeScript, Commander.js
 - **Website:** Astro, Tailwind CSS
-- **Infrastructure:** AWS CDK, Terraform (landing page)
+- **Infrastructure:** AWS CDK, Terraform (web)
 - **Data Sources:** deps.dev, npm registry, PyPI registry, GitHub API
 
 ## Development
@@ -187,10 +187,10 @@ aws secretsmanager put-secret-value \
   --secret-string '{"key":"sk_live_..."}'
 ```
 
-### Deploy Landing Page
+### Deploy Web
 
 ```bash
-cd landing-page
+cd web
 npm run build
 ./deploy.sh
 ```

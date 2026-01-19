@@ -46,9 +46,9 @@ npm run diff      # Show changes vs deployed stack
 npm run deploy    # Deploy all stacks
 ```
 
-### Landing Page
+### Web
 ```bash
-cd landing-page
+cd web
 npm run dev       # Development server
 npm run build     # Production build
 ```
@@ -61,7 +61,7 @@ npm run build     # Production build
 - **cli/** - @pkgwatch/cli npm package (Commander.js)
 - **action/** - @pkgwatch/action GitHub Action
 - **infrastructure/** - AWS CDK stacks (TypeScript)
-- **landing-page/** - Astro + Tailwind static site
+- **web/** - Astro + Tailwind marketing site and dashboard
 - **docs/** - API documentation (OpenAPI spec)
 - **tests/** - Python pytest tests (moto for AWS mocking)
 

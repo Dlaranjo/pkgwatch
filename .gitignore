@@ -41,13 +41,13 @@ htmlcov/
 # CDK context
 cdk.context.json
 
-# Landing page
-landing-page/node_modules/
-landing-page/dist/
-landing-page/.astro/
+# Web (marketing site + dashboard)
+web/node_modules/
+web/dist/
+web/.astro/
 
 # Terraform
-landing-page/terraform/.terraform/
-landing-page/terraform/*.tfstate*
-landing-page/terraform/.terraform.lock.hcl
+web/terraform/.terraform/
+web/terraform/*.tfstate*
+web/terraform/.terraform.lock.hcl
 .npmrc

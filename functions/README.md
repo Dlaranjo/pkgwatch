@@ -169,7 +169,7 @@ Predicts probability of abandonment within time horizon:
 - Adoption factor (20%)
 - Release cadence (15%)
 
-See `landing-page/src/pages/methodology.astro` for detailed documentation.
+See `web/src/pages/methodology.astro` for detailed documentation.
 
 ## Adding a New API Endpoint
 

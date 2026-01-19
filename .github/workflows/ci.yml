@@ -82,7 +82,7 @@ jobs:
           grep -q "DependencyParseError" action/dist/index.js || (echo "ERROR: DependencyParseError missing from action bundle" && exit 1)
           echo "Action bundle verified"
 
-  landing-page:
+  web:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -92,10 +92,10 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: landing-page/package-lock.json
+          cache-dependency-path: web/package-lock.json
 
-      - name: Build landing page
-        working-directory: landing-page
+      - name: Build web
+        working-directory: web
         run: |
           npm ci
           npm run build
@@ -115,7 +115,7 @@ jobs:
         continue-on-error: true
 
   deploy:
-    needs: [python-tests, cdk-synth, typescript-build, landing-page]
+    needs: [python-tests, cdk-synth, typescript-build, web]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     concurrency:
@@ -192,8 +192,8 @@ jobs:
           echo "Smoke test failed after 3 attempts"
           exit 1
 
-      - name: Deploy landing page
-        working-directory: landing-page
+      - name: Deploy web
+        working-directory: web
         run: |
           npm ci
           npm run build
