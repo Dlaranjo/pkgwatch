@@ -1513,15 +1513,19 @@ class TestSessionSecurity:
             tier="free",
             email="isolation1@example.com"
         )
+        user1_key_hash = hashlib.sha256(user1_key.encode()).hexdigest()
+        user1_key_id = user1_key_hash[:16]  # API returns first 16 chars as key_id
+
         user2_key = generate_api_key(
             user_id="user_isolation_2",
             tier="pro",
             email="isolation2@example.com"
         )
+        user2_key_hash = hashlib.sha256(user2_key.encode()).hexdigest()
+        user2_key_id = user2_key_hash[:16]  # API returns first 16 chars as key_id
 
         # Mark both as verified
-        for user_id, key in [("user_isolation_1", user1_key), ("user_isolation_2", user2_key)]:
-            key_hash = hashlib.sha256(key.encode()).hexdigest()
+        for user_id, key_hash in [("user_isolation_1", user1_key_hash), ("user_isolation_2", user2_key_hash)]:
             table.update_item(
                 Key={"pk": user_id, "sk": key_hash},
                 UpdateExpression="SET email_verified = :v",
@@ -1541,6 +1545,8 @@ class TestSessionSecurity:
         body1 = json.loads(result1["body"])
         assert len(body1["api_keys"]) == 1
         assert body1["api_keys"][0]["tier"] == "free"
+        # Verify it's actually User 1's key, not just any free-tier key
+        assert body1["api_keys"][0]["key_id"] == user1_key_id
 
         # User 2's session should only return User 2's keys
         api_gateway_event["headers"] = {"cookie": f"session={session2}"}
@@ -1549,6 +1555,8 @@ class TestSessionSecurity:
         body2 = json.loads(result2["body"])
         assert len(body2["api_keys"]) == 1
         assert body2["api_keys"][0]["tier"] == "pro"
+        # Verify it's actually User 2's key, not just any pro-tier key
+        assert body2["api_keys"][0]["key_id"] == user2_key_id
 
 
 class TestWebhookSecurity:
@@ -1654,11 +1662,19 @@ class TestWebhookSecurity:
             body1 = json.loads(result1["body"])
             assert body1.get("received") is True
 
+            # Verify user was upgraded to pro after first webhook
+            response = table.get_item(Key={"pk": "user_idempotent_test", "sk": key_hash})
+            assert response["Item"]["tier"] == "pro"
+
             # Second request with same event ID - should detect duplicate
             result2 = webhook_handler(webhook_event, {})
             assert result2["statusCode"] == 200
             body2 = json.loads(result2["body"])
             assert body2.get("duplicate") is True
+
+            # Verify user tier is still pro (not double-upgraded or modified)
+            response = table.get_item(Key={"pk": "user_idempotent_test", "sk": key_hash})
+            assert response["Item"]["tier"] == "pro"
 
             # Verify billing event was recorded only once
             billing_table = mock_aws_services["dynamodb"].Table("pkgwatch-billing-events")
