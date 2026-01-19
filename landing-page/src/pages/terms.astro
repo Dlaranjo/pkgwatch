@@ -1,7 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 
-const lastUpdated = '2026-01-10';
+const lastUpdated = '2026-01-19';
 ---
 
 <Layout title="Terms of Service | PkgWatch" mainClass="max-w-3xl mx-auto px-4 py-24 pt-32">
@@ -57,11 +57,13 @@ const lastUpdated = '2026-01-10';
           The Service is provided with usage limits based on your subscription tier:
         </p>
         <ul class="list-disc list-inside text-zinc-400 space-y-2 ml-4">
-          <li><strong class="text-zinc-300">Free tier:</strong> 5,000 requests per month</li>
-          <li><strong class="text-zinc-300">Paid tiers:</strong> As specified in your subscription</li>
+          <li><strong class="text-zinc-300">Free:</strong> 5,000 requests per month</li>
+          <li><strong class="text-zinc-300">Starter ($9/mo):</strong> 25,000 requests per month</li>
+          <li><strong class="text-zinc-300">Pro ($29/mo):</strong> 100,000 requests per month</li>
+          <li><strong class="text-zinc-300">Business ($99/mo):</strong> 500,000 requests per month</li>
         </ul>
         <p class="text-zinc-400 leading-relaxed mt-4">
-          Requests exceeding your limit will be rejected. We reserve the right to suspend accounts that consistently attempt to exceed limits or abuse the Service.
+          Demo mode (without API key) is limited to 20 requests per hour per IP address. Requests exceeding your limit will be rejected with a 429 status code. We reserve the right to suspend accounts that consistently attempt to exceed limits or abuse the Service.
         </p>
       </section>
 
@@ -121,21 +123,45 @@ const lastUpdated = '2026-01-10';
       </section>
 
       <section>
-        <h2 class="text-2xl font-semibold text-white mb-4">13. Changes to Terms</h2>
+        <h2 class="text-2xl font-semibold text-white mb-4">13. Indemnification</h2>
+        <p class="text-zinc-400 leading-relaxed">
+          You agree to indemnify, defend, and hold harmless PkgWatch and its officers, directors, employees, and agents from any claims, damages, losses, liabilities, and expenses (including reasonable legal fees) arising from: (a) your use of the Service; (b) your violation of these Terms; (c) your violation of any third-party rights; or (d) any content you submit to the Service.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold text-white mb-4">14. Dispute Resolution</h2>
+        <p class="text-zinc-400 leading-relaxed mb-4">
+          Before initiating any legal proceedings, you agree to first contact us at <a href="mailto:legal@pkgwatch.laranjo.dev" class="text-blue-400 hover:underline">legal@pkgwatch.laranjo.dev</a> and attempt to resolve the dispute informally for at least 30 days.
+        </p>
+        <p class="text-zinc-400 leading-relaxed">
+          If we cannot resolve the dispute informally, any legal action must be filed in the courts of Portugal. You agree to waive any right to participate in a class action lawsuit or class-wide arbitration against PkgWatch.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold text-white mb-4">15. Force Majeure</h2>
+        <p class="text-zinc-400 leading-relaxed">
+          PkgWatch shall not be liable for any failure or delay in performance due to circumstances beyond our reasonable control, including but not limited to: acts of God, natural disasters, war, terrorism, riots, embargoes, acts of civil or military authorities, fire, floods, accidents, strikes, or shortages of transportation, facilities, fuel, energy, labor, or materials.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold text-white mb-4">16. Changes to Terms</h2>
         <p class="text-zinc-400 leading-relaxed">
           We may modify these terms at any time. Material changes will be communicated via email or prominent notice on the Service. Continued use after changes constitutes acceptance of the new terms.
         </p>
       </section>
 
       <section>
-        <h2 class="text-2xl font-semibold text-white mb-4">14. Governing Law</h2>
+        <h2 class="text-2xl font-semibold text-white mb-4">17. Governing Law</h2>
         <p class="text-zinc-400 leading-relaxed">
           These terms are governed by the laws of Portugal. Any disputes shall be resolved in the courts of Portugal.
         </p>
       </section>
 
       <section>
-        <h2 class="text-2xl font-semibold text-white mb-4">15. Contact</h2>
+        <h2 class="text-2xl font-semibold text-white mb-4">18. Contact</h2>
         <p class="text-zinc-400 leading-relaxed">
           For questions about these Terms of Service, contact us at <a href="mailto:legal@pkgwatch.laranjo.dev" class="text-blue-400 hover:underline">legal@pkgwatch.laranjo.dev</a>.
         </p>

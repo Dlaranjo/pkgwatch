@@ -1,7 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 
-const lastUpdated = '2026-01-10';
+const lastUpdated = '2026-01-19';
 ---
 
 <Layout title="Privacy Policy | PkgWatch" mainClass="max-w-3xl mx-auto px-4 py-24 pt-32">
@@ -34,8 +34,9 @@ const lastUpdated = '2026-01-10';
         </p>
         <ul class="list-disc list-inside text-zinc-400 space-y-2 ml-4">
           <li>Package names queried (e.g., "express", "lodash")</li>
-          <li>Request timestamps and IP addresses</li>
+          <li>Request timestamps and IP addresses (for rate limiting and abuse prevention)</li>
           <li>API key identifiers (not the keys themselves)</li>
+          <li>Request metadata (HTTP method, response status codes)</li>
         </ul>
 
         <h3 class="text-lg font-semibold text-white mt-6 mb-3">What We Do NOT Collect</h3>
@@ -70,8 +71,18 @@ const lastUpdated = '2026-01-10';
 
       <section>
         <h2 class="text-2xl font-semibold text-white mb-4">Data Retention</h2>
-        <p class="text-zinc-400 leading-relaxed">
-          We retain your account data for as long as your account is active. API usage logs are retained for 90 days for debugging and abuse prevention purposes. You may request deletion of your account and associated data at any time.
+        <p class="text-zinc-400 leading-relaxed mb-4">
+          We retain different types of data for different periods:
+        </p>
+        <ul class="list-disc list-inside text-zinc-400 space-y-2 ml-4">
+          <li><strong class="text-zinc-300">Account data:</strong> Retained for as long as your account is active</li>
+          <li><strong class="text-zinc-300">API usage counts:</strong> Reset monthly, historical counts retained for billing purposes</li>
+          <li><strong class="text-zinc-300">Rate limiting data:</strong> Automatically deleted within 24-48 hours</li>
+          <li><strong class="text-zinc-300">Application logs:</strong> Retained for 30 days for debugging and security purposes</li>
+          <li><strong class="text-zinc-300">Billing records:</strong> Retained as required by law (typically 7 years)</li>
+        </ul>
+        <p class="text-zinc-400 leading-relaxed mt-4">
+          You may request deletion of your account and associated data at any time by contacting us.
         </p>
       </section>
 
@@ -107,6 +118,40 @@ const lastUpdated = '2026-01-10';
         <h2 class="text-2xl font-semibold text-white mb-4">Cookies</h2>
         <p class="text-zinc-400 leading-relaxed">
           We do not use tracking cookies. We use Plausible Analytics, which is cookie-free and does not track individual users. Session authentication uses secure HTTP-only cookies that are essential for the service to function.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold text-white mb-4">International Data Transfers (GDPR)</h2>
+        <p class="text-zinc-400 leading-relaxed mb-4">
+          If you are located in the European Economic Area (EEA), United Kingdom, or Switzerland, please note that your data is transferred to and processed in the United States where our infrastructure is hosted.
+        </p>
+        <p class="text-zinc-400 leading-relaxed mb-4">
+          We rely on the following legal bases for processing your data:
+        </p>
+        <ul class="list-disc list-inside text-zinc-400 space-y-2 ml-4">
+          <li><strong class="text-zinc-300">Contract performance:</strong> Processing necessary to provide the Service you requested</li>
+          <li><strong class="text-zinc-300">Legitimate interests:</strong> Processing for fraud prevention, security, and service improvement</li>
+          <li><strong class="text-zinc-300">Legal obligations:</strong> Processing required to comply with applicable laws</li>
+        </ul>
+        <p class="text-zinc-400 leading-relaxed mt-4">
+          For international transfers, we use Standard Contractual Clauses approved by the European Commission. You have the right to request a copy of these safeguards by contacting us.
+        </p>
+      </section>
+
+      <section>
+        <h2 class="text-2xl font-semibold text-white mb-4">California Privacy Rights (CCPA)</h2>
+        <p class="text-zinc-400 leading-relaxed mb-4">
+          If you are a California resident, you have additional rights under the California Consumer Privacy Act (CCPA):
+        </p>
+        <ul class="list-disc list-inside text-zinc-400 space-y-2 ml-4">
+          <li><strong class="text-zinc-300">Right to know:</strong> What personal information we collect and how it is used</li>
+          <li><strong class="text-zinc-300">Right to delete:</strong> Request deletion of your personal information</li>
+          <li><strong class="text-zinc-300">Right to opt-out:</strong> We do not sell personal information to third parties</li>
+          <li><strong class="text-zinc-300">Right to non-discrimination:</strong> We will not discriminate against you for exercising these rights</li>
+        </ul>
+        <p class="text-zinc-400 leading-relaxed mt-4">
+          To exercise these rights, contact us at <a href="mailto:privacy@pkgwatch.laranjo.dev" class="text-blue-400 hover:underline">privacy@pkgwatch.laranjo.dev</a>.
         </p>
       </section>
 
