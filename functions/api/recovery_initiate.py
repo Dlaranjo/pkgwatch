@@ -107,7 +107,9 @@ def handler(event, context):
             error_response(500, "internal_error", "Failed to process request", origin=origin),
         )
 
-    # Find a verified user (not PENDING record)
+    # Find a user record (not PENDING record)
+    # Note: We allow recovery for unverified users too - they have a legitimate
+    # account and API key, even if they never clicked the email verification link.
     user_item = None
     user_meta = None
     for item in items:
@@ -116,7 +118,8 @@ def handler(event, context):
             continue
         elif sk == "USER_META":
             user_meta = item
-        elif item.get("email_verified", True):  # Default to True for backwards compat
+        else:
+            # Accept both verified and unverified API key records
             user_item = item
 
     # If no user found, still create a fake session for timing normalization
