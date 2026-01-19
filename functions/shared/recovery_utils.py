@@ -5,35 +5,45 @@ Provides secure generation and verification of recovery codes,
 session IDs, and tokens for the account recovery flow.
 """
 
+import hashlib
+import hmac
+import os
 import secrets
-import bcrypt
 from typing import Optional
 
 
 # Recovery code configuration
 RECOVERY_CODE_SEGMENT_LENGTH = 4  # 4 hex chars per segment
 RECOVERY_CODE_SEGMENTS = 4  # 4 segments = 16 hex chars = 64 bits entropy
-BCRYPT_COST_FACTOR = 12  # bcrypt work factor (2^12 iterations)
+
+# PBKDF2 configuration (NIST SP 800-132 recommended)
+# Using 600,000 iterations as recommended by OWASP 2023 for SHA-256
+# Note: PBKDF2 is used instead of bcrypt because bcrypt requires native
+# compilation which fails on AWS Lambda ARM64. PBKDF2 is built into Python's
+# hashlib and provides adequate security for recovery codes with high entropy.
+PBKDF2_ITERATIONS = 600_000
+PBKDF2_SALT_LENGTH = 16  # 128 bits
+PBKDF2_HASH_LENGTH = 32  # 256 bits
 
 
 def generate_recovery_codes(count: int = 8) -> tuple[list[str], list[str]]:
     """
-    Generate recovery codes and their bcrypt hashes.
+    Generate recovery codes and their PBKDF2 hashes.
 
     Each code is 16 hex characters formatted as XXXX-XXXX-XXXX-XXXX,
-    providing 64 bits of entropy. Codes are hashed with bcrypt for
-    secure storage.
+    providing 64 bits of entropy. Codes are hashed with PBKDF2-HMAC-SHA256
+    for secure storage.
 
     Args:
         count: Number of codes to generate (default 8)
 
     Returns:
-        Tuple of (plaintext_codes, bcrypt_hashes)
+        Tuple of (plaintext_codes, hashes)
         - plaintext_codes: List of formatted codes to show user once
-        - bcrypt_hashes: List of bcrypt hashes to store in database
+        - hashes: List of "salt$hash" strings to store in database
     """
     plaintext_codes = []
-    bcrypt_hashes = []
+    hashes = []
 
     for _ in range(count):
         # Generate 8 random bytes = 64 bits of entropy
@@ -48,14 +58,21 @@ def generate_recovery_codes(count: int = 8) -> tuple[list[str], list[str]]:
         formatted_code = "-".join(segments)
         plaintext_codes.append(formatted_code)
 
-        # Hash with bcrypt for secure storage
-        # Use the unformatted hex string for hashing (normalized)
-        code_hash = bcrypt.hashpw(
-            hex_str.encode("utf-8"), bcrypt.gensalt(rounds=BCRYPT_COST_FACTOR)
+        # Hash with PBKDF2-HMAC-SHA256 for secure storage
+        # Generate a unique salt for each code
+        salt = secrets.token_bytes(PBKDF2_SALT_LENGTH)
+        code_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            hex_str.encode("utf-8"),
+            salt,
+            PBKDF2_ITERATIONS,
+            dklen=PBKDF2_HASH_LENGTH,
         )
-        bcrypt_hashes.append(code_hash.decode("utf-8"))
+        # Store as "salt_hex$hash_hex" format
+        hash_str = f"{salt.hex()}${code_hash.hex()}"
+        hashes.append(hash_str)
 
-    return plaintext_codes, bcrypt_hashes
+    return plaintext_codes, hashes
 
 
 def normalize_recovery_code(code: str) -> str:
@@ -77,13 +94,12 @@ def verify_recovery_code(code: str, hashed_codes: list[str]) -> tuple[bool, int]
     """
     Verify a recovery code against stored hashes.
 
-    Uses bcrypt.checkpw for timing-safe comparison against each
-    stored hash. Returns the index of the matching code for
-    atomic removal.
+    Uses PBKDF2 with timing-safe comparison against each stored hash.
+    Returns the index of the matching code for atomic removal.
 
     Args:
         code: Recovery code to verify (with or without dashes)
-        hashed_codes: List of bcrypt hashes from database
+        hashed_codes: List of "salt$hash" strings from database
 
     Returns:
         Tuple of (is_valid, index)
@@ -102,7 +118,24 @@ def verify_recovery_code(code: str, hashed_codes: list[str]) -> tuple[bool, int]
     # Check against each stored hash
     for i, stored_hash in enumerate(hashed_codes):
         try:
-            if bcrypt.checkpw(normalized.encode("utf-8"), stored_hash.encode("utf-8")):
+            # Parse "salt_hex$hash_hex" format
+            if "$" not in stored_hash:
+                continue
+            salt_hex, hash_hex = stored_hash.split("$", 1)
+            salt = bytes.fromhex(salt_hex)
+            expected_hash = bytes.fromhex(hash_hex)
+
+            # Compute hash with same parameters
+            computed_hash = hashlib.pbkdf2_hmac(
+                "sha256",
+                normalized.encode("utf-8"),
+                salt,
+                PBKDF2_ITERATIONS,
+                dklen=PBKDF2_HASH_LENGTH,
+            )
+
+            # Timing-safe comparison
+            if hmac.compare_digest(computed_hash, expected_hash):
                 return True, i
         except (ValueError, TypeError):
             # Invalid hash format, skip
