@@ -403,7 +403,7 @@ def _demo_rate_limit_response(cors_headers: dict = None) -> dict:
                 "code": "demo_rate_limit_exceeded",
                 "message": f"Demo limit of {DEMO_REQUESTS_PER_HOUR} requests per hour exceeded",
                 "retry_after_seconds": 3600,
-                "signup_url": "https://pkgwatch.laranjo.dev/signup",
+                "signup_url": "https://pkgwatch.laranjo.dev/start",
             }
         }),
     }

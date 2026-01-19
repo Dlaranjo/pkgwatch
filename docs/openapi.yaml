@@ -903,4 +903,4 @@ components:
                   code: demo_rate_limit_exceeded
                   message: Demo limit of 20 requests per hour exceeded
                   retry_after_seconds: 3600
-                  signup_url: https://pkgwatch.laranjo.dev/signup
+                  signup_url: https://pkgwatch.laranjo.dev/start

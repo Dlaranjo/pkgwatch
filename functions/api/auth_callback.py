@@ -262,7 +262,7 @@ def _redirect_with_error(code: str, message: str) -> dict:
     return {
         "statusCode": 302,
         "headers": {
-            "Location": f"{BASE_URL}/login?{redirect_params}",
+            "Location": f"{BASE_URL}/start?{redirect_params}",
             "Cache-Control": "no-store",
             "Content-Security-Policy": "default-src 'none'",
             "X-Content-Type-Options": "nosniff",

@@ -14,7 +14,7 @@ const tiers = [
       'Community support',
     ],
     cta: 'Get Started',
-    ctaLink: '/signup',
+    ctaLink: '/start',
     highlighted: false,
     tier: null,
   },
@@ -364,7 +364,7 @@ const tiers = [
         document.body.style.overflow = 'hidden';
 
       } else if (response.status === 401) {
-        window.location.href = `/login?redirect=${encodeURIComponent('/pricing')}`;
+        window.location.href = `/start?redirect=${encodeURIComponent('/pricing')}`;
       } else {
         alert(data.error?.message || 'Failed to load upgrade preview');
       }
@@ -480,8 +480,8 @@ const tiers = [
           button.textContent = originalText;
         }
       } else if (response.status === 401) {
-        // Not logged in - redirect to login with return URL
-        window.location.href = `/login?redirect=${encodeURIComponent('/pricing')}`;
+        // Not logged in - redirect to start with return URL
+        window.location.href = `/start?redirect=${encodeURIComponent('/pricing')}`;
       } else if (response.status === 409 && data.error?.code === 'upgrade_required') {
         // Existing subscriber - show prorated upgrade preview
         button.disabled = false;

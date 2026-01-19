@@ -202,7 +202,7 @@ def _redirect_with_error(code: str, message: str) -> dict:
     return {
         "statusCode": 302,
         "headers": {
-            "Location": f"{BASE_URL}/signup?{redirect_params}",
+            "Location": f"{BASE_URL}/start?{redirect_params}",
             "Cache-Control": "no-store",
             "Content-Security-Policy": "default-src 'none'",
             "X-Content-Type-Options": "nosniff",
@@ -213,7 +213,7 @@ def _redirect_with_error(code: str, message: str) -> dict:
 
 def _timed_redirect_with_error(start_time: float, code: str, message: str) -> dict:
     """
-    Redirect to signup page with error message, after ensuring minimum response time.
+    Redirect to start page with error message, after ensuring minimum response time.
 
     Timing normalization prevents attackers from distinguishing between
     'token not found' (fast) and 'token found but expired' (slower).

@@ -993,7 +993,7 @@ class TestAuthCallbackContract:
 
         headers = result["headers"]
         location = headers["Location"]
-        assert "login" in location
+        assert "start" in location
         assert "error=" in location
 
 

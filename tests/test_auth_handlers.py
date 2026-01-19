@@ -550,7 +550,7 @@ class TestVerifyEmailHandler:
         result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 302
-        assert "signup" in result["headers"]["Location"]
+        assert "start" in result["headers"]["Location"]
         assert "error=invalid_token" in result["headers"]["Location"]
 
     @mock_aws
@@ -584,7 +584,7 @@ class TestVerifyEmailHandler:
         result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 302
-        assert "signup" in result["headers"]["Location"]
+        assert "start" in result["headers"]["Location"]
         assert "error=token_expired" in result["headers"]["Location"]
 
     @mock_aws
@@ -707,5 +707,5 @@ class TestAuthCallbackHandler:
         result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 302
-        assert "login" in result["headers"]["Location"]
+        assert "start" in result["headers"]["Location"]
         assert "error=invalid_token" in result["headers"]["Location"]

@@ -38,6 +38,9 @@ API_URL = os.environ.get("API_URL", "https://api.pkgwatch.laranjo.dev")
 # Magic link TTL (same as login flow)
 MAGIC_LINK_TTL_MINUTES = 15
 
+# Resend cooldown for pending users (prevents email spam)
+RESEND_COOLDOWN_SECONDS = 60
+
 # Email validation regex
 EMAIL_REGEX = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
 
@@ -112,6 +115,7 @@ def handler(event, context):
 
         # Clean up any stale pending signups (expired verification tokens)
         now = datetime.now(timezone.utc)
+        valid_pending_item = None
         for item in existing_items:
             if item.get("sk") == "PENDING":
                 expires = item.get("verification_expires")
@@ -121,11 +125,20 @@ def handler(event, context):
                         if expires_dt < now:
                             # Delete expired pending signup
                             table.delete_item(Key={"pk": item["pk"], "sk": item["sk"]})
+                        else:
+                            # Valid non-expired PENDING record
+                            valid_pending_item = item
                     except (ValueError, TypeError):
                         pass
                 else:
                     # No expiry set, delete it
                     table.delete_item(Key={"pk": item["pk"], "sk": item["sk"]})
+
+        # Handle existing valid PENDING record - resend verification with cooldown
+        if valid_pending_item:
+            return _handle_pending_user_resend(
+                table, valid_pending_item, email, now, start_time, origin, success_message
+            )
 
     except Exception as e:
         logger.error(f"Error checking existing email: {e}")
@@ -318,6 +331,71 @@ If you didn't request this, you can ignore this email.
     email_prefix = email.split("@")[0][:3] if "@" in email else email[:3]
     email_domain = email.split("@")[1] if "@" in email else "unknown"
     logger.info(f"Magic link sent to existing user {email_prefix}***@{email_domain}")
+
+
+def _handle_pending_user_resend(
+    table, pending_item: dict, email: str, now: datetime, start_time: float, origin: str | None, success_message: str
+) -> dict:
+    """
+    Handle signup attempt for a user with existing PENDING record.
+
+    Resends verification email if cooldown has passed (60 seconds).
+    Returns same success message regardless of whether email was sent
+    to prevent email enumeration attacks.
+    """
+    user_id = pending_item["pk"]
+    last_sent = pending_item.get("last_verification_sent")
+
+    # Check cooldown
+    if last_sent:
+        try:
+            last_sent_dt = datetime.fromisoformat(last_sent.replace("Z", "+00:00"))
+            seconds_since_last = (now - last_sent_dt).total_seconds()
+            if seconds_since_last < RESEND_COOLDOWN_SECONDS:
+                # Cooldown not passed - return success without sending email
+                logger.info(f"Resend cooldown active ({int(seconds_since_last)}s since last send)")
+                return _timed_response(start_time, success_response({"message": success_message}, origin=origin))
+        except (ValueError, TypeError):
+            pass  # If parsing fails, proceed with resend
+
+    # Generate new verification token
+    verification_token = secrets.token_urlsafe(32)
+    verification_expires = (now + timedelta(hours=24)).isoformat()
+    verification_expires_dt = now + timedelta(hours=24)
+    ttl_timestamp = int((verification_expires_dt + timedelta(hours=1)).timestamp())
+
+    # Update the PENDING record with new token
+    try:
+        table.update_item(
+            Key={"pk": user_id, "sk": "PENDING"},
+            UpdateExpression="SET verification_token = :token, verification_expires = :expires, last_verification_sent = :sent, #ttl_attr = :ttl",
+            ExpressionAttributeNames={"#ttl_attr": "ttl"},
+            ExpressionAttributeValues={
+                ":token": verification_token,
+                ":expires": verification_expires,
+                ":sent": now.isoformat(),
+                ":ttl": ttl_timestamp,
+            },
+        )
+    except Exception as e:
+        logger.error(f"Error updating PENDING record for resend: {e}")
+        # Return success anyway to prevent enumeration
+        return _timed_response(start_time, success_response({"message": success_message}, origin=origin))
+
+    # Send verification email
+    verification_url = f"{API_URL}/verify?token={verification_token}"
+    try:
+        _send_verification_email(email, verification_url)
+    except Exception as e:
+        logger.error(f"Failed to resend verification email: {e}")
+        # Don't fail - user sees success message
+
+    # Log without full email for privacy
+    email_prefix = email.split("@")[0][:3] if "@" in email else email[:3]
+    email_domain = email.split("@")[1] if "@" in email else "unknown"
+    logger.info(f"Verification email resent to pending user {email_prefix}***@{email_domain}")
+
+    return _timed_response(start_time, success_response({"message": success_message}, origin=origin))
 
 
 def _timed_response(start_time: float, response: dict) -> dict:
