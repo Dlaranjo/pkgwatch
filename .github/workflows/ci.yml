@@ -55,6 +55,14 @@ jobs:
         env:
           CDK_ENV: ci  # Skip ALERT_EMAIL requirement for synth-only validation
 
+      - name: Upload CDK output
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdk-out
+          path: infrastructure/cdk.out
+          retention-days: 1
+          if-no-files-found: error
+
   typescript-build:
     runs-on: ubuntu-latest
     steps:
@@ -100,6 +108,14 @@ jobs:
           npm ci
           npm run build
 
+      - name: Upload web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 1
+          if-no-files-found: error
+
   dogfood-scan:
     runs-on: ubuntu-latest
     steps:
@@ -138,11 +154,17 @@ jobs:
           cache: 'npm'
           cache-dependency-path: infrastructure/package-lock.json
 
+      - name: Download CDK output
+        uses: actions/download-artifact@v4
+        with:
+          name: cdk-out
+          path: infrastructure/cdk.out
+
       - name: CDK Deploy
         working-directory: infrastructure
         run: |
           npm ci
-          npx cdk deploy --all --require-approval never
+          npx cdk deploy --all --require-approval never --concurrency=2 --app cdk.out
         env:
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
           STRIPE_PRICE_STARTER: ${{ secrets.STRIPE_PRICE_STARTER }}
@@ -151,8 +173,8 @@ jobs:
 
       - name: Wait for Deployment Stabilization
         run: |
-          echo "Waiting 30 seconds for deployment to stabilize..."
-          sleep 30
+          echo "Waiting 15 seconds for deployment to stabilize..."
+          sleep 15
           echo "Stabilization wait complete"
 
       - name: Health Check with Retry
@@ -192,12 +214,15 @@ jobs:
           echo "Smoke test failed after 3 attempts"
           exit 1
 
-      - name: Deploy web
-        working-directory: web
+      - name: Download web build
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: Deploy web to S3
         run: |
-          npm ci
-          npm run build
-          aws s3 sync dist/ s3://pkgwatch-landing-page \
+          aws s3 sync web/dist/ s3://pkgwatch-landing-page \
             --delete \
             --cache-control "max-age=86400" \
             --exclude ".DS_Store"
