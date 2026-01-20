@@ -169,7 +169,7 @@ def create_dynamodb_tables(dynamodb):
                 "Projection": {"ProjectionType": "ALL"},
             },
             {
-                "IndexName": "data-status-index",
+                "IndexName": "data-status-index-v2",  # Matches production GSI name
                 "KeySchema": [
                     {"AttributeName": "data_status", "KeyType": "HASH"},
                     {"AttributeName": "next_retry_at", "KeyType": "RANGE"},
