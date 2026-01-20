@@ -32,7 +32,7 @@ def mock_ses():
     """Mock SES for email sending tests."""
     with mock_aws():
         ses = boto3.client("ses", region_name="us-east-1")
-        ses.verify_email_identity(EmailAddress="noreply@pkgwatch.laranjo.dev")
+        ses.verify_email_identity(EmailAddress="noreply@pkgwatch.dev")
         yield ses
 
 
@@ -122,8 +122,8 @@ def setup_env():
     os.environ["BASE_URL"] = "https://test.example.com"
     os.environ["API_URL"] = "https://api.test.example.com"
     os.environ["SESSION_SECRET_ARN"] = "test-session-secret"
-    os.environ["VERIFICATION_EMAIL_SENDER"] = "noreply@pkgwatch.laranjo.dev"
-    os.environ["LOGIN_EMAIL_SENDER"] = "noreply@pkgwatch.laranjo.dev"
+    os.environ["VERIFICATION_EMAIL_SENDER"] = "noreply@pkgwatch.dev"
+    os.environ["LOGIN_EMAIL_SENDER"] = "noreply@pkgwatch.dev"
 
     yield
 

@@ -67,7 +67,7 @@
   "bugs": {
     "url": "https://github.com/Dlaranjo/pkgwatch/issues"
   },
-  "homepage": "https://pkgwatch.laranjo.dev/docs",
+  "homepage": "https://pkgwatch.dev/docs",
   "author": "PkgWatch",
   "license": "MIT"
 }

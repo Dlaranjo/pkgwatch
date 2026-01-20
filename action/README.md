@@ -14,7 +14,7 @@ Scan your npm and Python dependencies for health risks and security issues in CI
     api-key: ${{ secrets.PKGWATCH_API_KEY }}
 ```
 
-Get your API key at [pkgwatch.laranjo.dev](https://pkgwatch.laranjo.dev).
+Get your API key at [pkgwatch.dev](https://pkgwatch.dev).
 
 ## Inputs
 
@@ -209,9 +209,9 @@ The action automatically creates GitHub annotations for all CRITICAL and HIGH ri
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| `Authentication failed (401)` | Invalid or expired API key | Verify key at [dashboard](https://pkgwatch.laranjo.dev/dashboard) |
+| `Authentication failed (401)` | Invalid or expired API key | Verify key at [dashboard](https://pkgwatch.dev/dashboard) |
 | `Rate limit exceeded (429)` | API quota exhausted | Upgrade plan or reduce scan frequency |
-| `Request timed out` | API unresponsive | Check [status page](https://status.pkgwatch.laranjo.dev) |
+| `Request timed out` | API unresponsive | Check [status page](https://status.pkgwatch.dev) |
 | `Cannot find package.json` | Wrong path | Check `working-directory` input |
 
 ## Security

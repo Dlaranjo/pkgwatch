@@ -5,7 +5,7 @@
  * Uses native fetch (Node 20+).
  */
 
-const DEFAULT_API_BASE = "https://api.pkgwatch.laranjo.dev";
+const DEFAULT_API_BASE = "https://api.pkgwatch.dev";
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MAX_RETRIES = 3;
 

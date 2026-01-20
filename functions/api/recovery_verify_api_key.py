@@ -32,8 +32,8 @@ logger.setLevel(logging.INFO)
 dynamodb = boto3.resource("dynamodb")
 ses = boto3.client("ses")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
-API_URL = os.environ.get("API_URL", "https://api.pkgwatch.laranjo.dev")
-LOGIN_EMAIL_SENDER = os.environ.get("LOGIN_EMAIL_SENDER", "noreply@pkgwatch.laranjo.dev")
+API_URL = os.environ.get("API_URL", "https://api.pkgwatch.dev")
+LOGIN_EMAIL_SENDER = os.environ.get("LOGIN_EMAIL_SENDER", "noreply@pkgwatch.dev")
 
 # Minimum response time for timing normalization (1.5s)
 MIN_RESPONSE_TIME_SECONDS = 1.5

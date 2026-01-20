@@ -53,7 +53,7 @@ class TestGenerateRecoveryCodes:
             "body": "{}",
             "headers": {
                 "cookie": f"session={session_token}",
-                "origin": "https://pkgwatch.laranjo.dev",
+                "origin": "https://pkgwatch.dev",
             },
         }
 
@@ -105,7 +105,7 @@ class TestGenerateRecoveryCodes:
             "body": "{}",
             "headers": {
                 "cookie": f"session={session_token}",
-                "origin": "https://pkgwatch.laranjo.dev",
+                "origin": "https://pkgwatch.dev",
             },
         }
 
@@ -131,7 +131,7 @@ class TestGenerateRecoveryCodes:
             "httpMethod": "POST",
             "body": "{}",
             "headers": {
-                "origin": "https://pkgwatch.laranjo.dev",
+                "origin": "https://pkgwatch.dev",
             },
         }
 
@@ -169,7 +169,7 @@ class TestDeleteRecoveryCodes:
             "httpMethod": "DELETE",
             "headers": {
                 "cookie": f"session={session_token}",
-                "origin": "https://pkgwatch.laranjo.dev",
+                "origin": "https://pkgwatch.dev",
             },
         }
 
@@ -195,7 +195,7 @@ class TestDeleteRecoveryCodes:
             "httpMethod": "DELETE",
             "headers": {
                 "cookie": f"session={session_token}",
-                "origin": "https://pkgwatch.laranjo.dev",
+                "origin": "https://pkgwatch.dev",
             },
         }
 
@@ -237,7 +237,7 @@ class TestRecoveryCodesStatus:
             "httpMethod": "GET",
             "headers": {
                 "cookie": f"session={session_token}",
-                "origin": "https://pkgwatch.laranjo.dev",
+                "origin": "https://pkgwatch.dev",
             },
         }
 
@@ -265,7 +265,7 @@ class TestRecoveryCodesStatus:
             "httpMethod": "GET",
             "headers": {
                 "cookie": f"session={session_token}",
-                "origin": "https://pkgwatch.laranjo.dev",
+                "origin": "https://pkgwatch.dev",
             },
         }
 

@@ -17,20 +17,12 @@ class TestGetCorsHeaders:
         """Should return CORS headers for allowed production origin."""
         from shared.response_utils import get_cors_headers
 
-        result = get_cors_headers("https://pkgwatch.laranjo.dev")
+        result = get_cors_headers("https://pkgwatch.dev")
 
-        assert result["Access-Control-Allow-Origin"] == "https://pkgwatch.laranjo.dev"
+        assert result["Access-Control-Allow-Origin"] == "https://pkgwatch.dev"
         assert "Access-Control-Allow-Methods" in result
         assert "Access-Control-Allow-Headers" in result
         assert result["Access-Control-Allow-Credentials"] == "true"
-
-    def test_returns_cors_headers_for_app_subdomain(self):
-        """Should return CORS headers for app subdomain."""
-        from shared.response_utils import get_cors_headers
-
-        result = get_cors_headers("https://app.pkgwatch.laranjo.dev")
-
-        assert result["Access-Control-Allow-Origin"] == "https://app.pkgwatch.laranjo.dev"
 
     def test_returns_empty_dict_for_disallowed_origin(self):
         """Should return empty dict for non-allowed origin."""
@@ -163,12 +155,12 @@ class TestErrorResponse:
             400,
             "bad_request",
             "Invalid input",
-            origin="https://pkgwatch.laranjo.dev",
+            origin="https://pkgwatch.dev",
         )
 
         assert (
             result["headers"]["Access-Control-Allow-Origin"]
-            == "https://pkgwatch.laranjo.dev"
+            == "https://pkgwatch.dev"
         )
 
 
@@ -207,12 +199,12 @@ class TestSuccessResponse:
         from shared.response_utils import success_response
 
         result = success_response(
-            {"data": "test"}, origin="https://app.pkgwatch.laranjo.dev"
+            {"data": "test"}, origin="https://pkgwatch.dev"
         )
 
         assert (
             result["headers"]["Access-Control-Allow-Origin"]
-            == "https://app.pkgwatch.laranjo.dev"
+            == "https://pkgwatch.dev"
         )
 
 
@@ -223,10 +215,10 @@ class TestRedirectResponse:
         """Should create redirect response with Location header."""
         from shared.response_utils import redirect_response
 
-        result = redirect_response("https://pkgwatch.laranjo.dev/dashboard")
+        result = redirect_response("https://pkgwatch.dev/dashboard")
 
         assert result["statusCode"] == 302
-        assert result["headers"]["Location"] == "https://pkgwatch.laranjo.dev/dashboard"
+        assert result["headers"]["Location"] == "https://pkgwatch.dev/dashboard"
         assert result["body"] == ""
 
     def test_uses_custom_status_code(self):
@@ -242,7 +234,7 @@ class TestRedirectResponse:
         from shared.response_utils import redirect_response
 
         result = redirect_response(
-            "https://pkgwatch.laranjo.dev/dashboard",
+            "https://pkgwatch.dev/dashboard",
             headers={
                 "Set-Cookie": "session=abc123; HttpOnly; Secure",
                 "Cache-Control": "no-store",
@@ -251,4 +243,4 @@ class TestRedirectResponse:
 
         assert result["headers"]["Set-Cookie"] == "session=abc123; HttpOnly; Secure"
         assert result["headers"]["Cache-Control"] == "no-store"
-        assert result["headers"]["Location"] == "https://pkgwatch.laranjo.dev/dashboard"
+        assert result["headers"]["Location"] == "https://pkgwatch.dev/dashboard"

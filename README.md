@@ -1,26 +1,26 @@
 # PkgWatch - Dependency Health Intelligence
 
-[![Website](https://img.shields.io/badge/Website-pkgwatch.laranjo.dev-blue?style=flat-square)](https://pkgwatch.laranjo.dev)
+[![Website](https://img.shields.io/badge/Website-pkgwatch.dev-blue?style=flat-square)](https://pkgwatch.dev)
 [![npm](https://img.shields.io/npm/v/@pkgwatch/cli?style=flat-square&label=CLI)](https://www.npmjs.com/package/@pkgwatch/cli)
-[![Documentation](https://img.shields.io/badge/Docs-API%20Reference-green?style=flat-square)](https://pkgwatch.laranjo.dev/docs)
+[![Documentation](https://img.shields.io/badge/Docs-API%20Reference-green?style=flat-square)](https://pkgwatch.dev/docs)
 [![License](https://img.shields.io/badge/License-Proprietary-red?style=flat-square)](LICENSE)
 
 > **Predict which npm and Python packages are at risk of abandonment, maintenance decline, or security issues — BEFORE problems occur.**
 
 <p align="center">
-  <a href="https://pkgwatch.laranjo.dev"><strong>Website</strong></a> ·
-  <a href="https://pkgwatch.laranjo.dev/docs"><strong>Documentation</strong></a> ·
-  <a href="https://pkgwatch.laranjo.dev/methodology"><strong>Methodology</strong></a> ·
-  <a href="https://pkgwatch.laranjo.dev/pricing"><strong>Pricing</strong></a>
+  <a href="https://pkgwatch.dev"><strong>Website</strong></a> ·
+  <a href="https://pkgwatch.dev/docs"><strong>Documentation</strong></a> ·
+  <a href="https://pkgwatch.dev/methodology"><strong>Methodology</strong></a> ·
+  <a href="https://pkgwatch.dev/pricing"><strong>Pricing</strong></a>
 </p>
 
 ---
 
 **Links:**
-- 🌐 **Website:** https://pkgwatch.laranjo.dev
-- 📖 **Docs:** https://pkgwatch.laranjo.dev/docs
-- 🔬 **Methodology:** https://pkgwatch.laranjo.dev/methodology
-- 🚀 **API:** https://api.pkgwatch.laranjo.dev/v1/
+- 🌐 **Website:** https://pkgwatch.dev
+- 📖 **Docs:** https://pkgwatch.dev/docs
+- 🔬 **Methodology:** https://pkgwatch.dev/methodology
+- 🚀 **API:** https://api.pkgwatch.dev/v1/
 
 ## Features
 
@@ -65,20 +65,20 @@ pkgwatch scan --fail-on HIGH
 ```bash
 # Get health score for npm package
 curl -H "X-API-Key: pw_your_key" \
-  https://api.pkgwatch.laranjo.dev/v1/packages/npm/lodash
+  https://api.pkgwatch.dev/v1/packages/npm/lodash
 
 # Get health score for Python package
 curl -H "X-API-Key: pw_your_key" \
-  https://api.pkgwatch.laranjo.dev/v1/packages/pypi/requests
+  https://api.pkgwatch.dev/v1/packages/pypi/requests
 
 # Scan multiple packages
 curl -X POST -H "X-API-Key: pw_your_key" \
   -H "Content-Type: application/json" \
   -d '{"dependencies": {"lodash": "^4.17.21", "express": "^4.18.0"}}' \
-  https://api.pkgwatch.laranjo.dev/v1/scan
+  https://api.pkgwatch.dev/v1/scan
 ```
 
-Get your API key at [pkgwatch.laranjo.dev](https://pkgwatch.laranjo.dev)
+Get your API key at [pkgwatch.dev](https://pkgwatch.dev)
 
 ## Scoring Methodology
 
@@ -99,7 +99,7 @@ Health scores (0-100) are calculated from 5 weighted components:
 - **True bus factor** — Minimum contributors needed for 50% of commits
 - **Continuous functions** — Log-scale, exponential decay, and sigmoid functions for smooth, gaming-resistant scores
 
-See [/methodology](https://pkgwatch.laranjo.dev/methodology) for full details.
+See [/methodology](https://pkgwatch.dev/methodology) for full details.
 
 ## API Endpoints
 

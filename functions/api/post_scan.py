@@ -141,7 +141,7 @@ def check_usage_alerts(user: dict, current_usage: int) -> Optional[dict]:
         return {
             "level": "exceeded",
             "percent": 100,
-            "message": f"Monthly limit exceeded. Upgrade at https://pkgwatch.laranjo.dev/pricing",
+            "message": f"Monthly limit exceeded. Upgrade at https://pkgwatch.dev/pricing",
         }
     elif usage_percent >= 95:
         return {

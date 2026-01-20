@@ -46,14 +46,14 @@ class TestLogoutHandler:
         """Logout should include CORS headers for allowed origins."""
         from api.logout import handler
 
-        api_gateway_event["headers"]["origin"] = "https://pkgwatch.laranjo.dev"
+        api_gateway_event["headers"]["origin"] = "https://pkgwatch.dev"
 
         result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 200
         # CORS headers should be present for allowed origin
         assert "Access-Control-Allow-Origin" in result["headers"]
-        assert result["headers"]["Access-Control-Allow-Origin"] == "https://pkgwatch.laranjo.dev"
+        assert result["headers"]["Access-Control-Allow-Origin"] == "https://pkgwatch.dev"
 
     @mock_aws
     def test_logout_no_cors_for_disallowed_origin(self, api_gateway_event):

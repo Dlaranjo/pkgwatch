@@ -98,7 +98,7 @@ async function checkRateLimitWarning(client: PkgWatchClient): Promise<void> {
 
     if (usedPercent >= 95) {
       console.log(pc.red(`\n⚠ Warning: ${remaining.toLocaleString()} requests remaining this month (${usedPercent.toFixed(0)}% used)`));
-      console.log(pc.dim("  Upgrade at https://pkgwatch.laranjo.dev/pricing"));
+      console.log(pc.dim("  Upgrade at https://pkgwatch.dev/pricing"));
     } else if (usedPercent >= 80) {
       console.log(pc.yellow(`\n⚠ ${remaining.toLocaleString()} requests remaining this month (${usedPercent.toFixed(0)}% used)`));
     }
@@ -192,7 +192,7 @@ function toSarif(result: ScanResult): object {
         driver: {
           name: "pkgwatch",
           version: VERSION,
-          informationUri: "https://pkgwatch.laranjo.dev",
+          informationUri: "https://pkgwatch.dev",
         }
       },
       results: result.packages
@@ -353,7 +353,7 @@ program
         } else if (error.code === "rate_limited") {
           console.error(pc.red("Rate limit exceeded."));
           console.error(pc.dim("Your API quota has been exhausted. Try again later or upgrade your plan."));
-          console.error(pc.dim("  https://pkgwatch.laranjo.dev/pricing"));
+          console.error(pc.dim("  https://pkgwatch.dev/pricing"));
         } else if (error.code === "forbidden") {
           console.error(pc.red("Access denied - check your API key permissions."));
           console.error(pc.dim("Your API key may not have access to this resource."));
@@ -533,7 +533,7 @@ async function runRecursiveScan(
   if (!apiKey) {
     console.error(pc.red("Recursive scan requires an API key."));
     console.error(pc.dim("Run: pkgwatch config set"));
-    console.error(pc.dim("Get your key at https://pkgwatch.laranjo.dev"));
+    console.error(pc.dim("Get your key at https://pkgwatch.dev"));
     process.exit(EXIT_CLI_ERROR);
   }
 
@@ -702,14 +702,14 @@ function handleApiError(error: ApiClientError): void {
   if (error.code === "rate_limited") {
     console.error(pc.red("Rate limit exceeded."));
     console.error(pc.dim("Your API quota has been exhausted. Try again later or upgrade your plan."));
-    console.error(pc.dim("  https://pkgwatch.laranjo.dev/pricing"));
+    console.error(pc.dim("  https://pkgwatch.dev/pricing"));
   } else if (error.code === "forbidden") {
     console.error(pc.red("Access denied - check your API key permissions."));
     console.error(pc.dim("Your API key may not have access to this resource."));
   } else if (error.code === "unauthorized") {
     console.error(pc.red("Authentication failed."));
     console.error(pc.dim("Your API key may be invalid or expired."));
-    console.error(pc.dim("  https://pkgwatch.laranjo.dev/dashboard"));
+    console.error(pc.dim("  https://pkgwatch.dev/dashboard"));
   } else {
     console.error(pc.red(`API Error: ${error.message}`));
   }
@@ -1046,7 +1046,7 @@ program
         if (error.code === "rate_limited") {
           console.error(pc.red("Rate limit exceeded."));
           console.error(pc.dim("Your API quota has been exhausted. Try again later or upgrade your plan."));
-          console.error(pc.dim("  https://pkgwatch.laranjo.dev/pricing"));
+          console.error(pc.dim("  https://pkgwatch.dev/pricing"));
         } else if (error.code === "forbidden") {
           console.error(pc.red("Access denied - check your API key permissions."));
           console.error(pc.dim("Your API key may not have access to this resource."));
@@ -1105,7 +1105,7 @@ program
         if (error.code === "rate_limited") {
           console.error(pc.red("Rate limit exceeded."));
           console.error(pc.dim("Your API quota has been exhausted. Try again later or upgrade your plan."));
-          console.error(pc.dim("  https://pkgwatch.laranjo.dev/pricing"));
+          console.error(pc.dim("  https://pkgwatch.dev/pricing"));
         } else if (error.code === "forbidden") {
           console.error(pc.red("Access denied - check your API key permissions."));
           console.error(pc.dim("Your API key may not have access to this resource."));
@@ -1190,7 +1190,7 @@ configCmd
   .action(async () => {
     console.log("");
     console.log("Enter your PkgWatch API key.");
-    console.log(pc.dim(`Get one at ${pc.underline("https://pkgwatch.laranjo.dev")}`));
+    console.log(pc.dim(`Get one at ${pc.underline("https://pkgwatch.dev")}`));
     console.log("");
 
     const key = await prompt("API Key: ");
@@ -1222,7 +1222,7 @@ configCmd
       spinner?.fail("API key validation failed");
       if (error instanceof ApiClientError && error.code === "unauthorized") {
         console.error(pc.red("\nInvalid API key. Please check your key and try again."));
-        console.error(pc.dim("Get your API key at https://pkgwatch.laranjo.dev"));
+        console.error(pc.dim("Get your API key at https://pkgwatch.dev"));
       } else if (error instanceof Error) {
         console.error(pc.red(`\nError: ${error.message}`));
       } else {

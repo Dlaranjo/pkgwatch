@@ -8,7 +8,7 @@ const endpoints = [
     description: 'Health check endpoint. No authentication required.',
     auth: false,
     example: {
-      request: 'curl https://api.pkgwatch.laranjo.dev/health',
+      request: 'curl https://api.pkgwatch.dev/health',
       response: `{
   "status": "healthy",
   "version": "1.0.0",
@@ -28,11 +28,11 @@ const endpoints = [
     example: {
       request: `# npm package
 curl -H "X-API-Key: YOUR_KEY" \\
-  https://api.pkgwatch.laranjo.dev/packages/npm/express
+  https://api.pkgwatch.dev/packages/npm/express
 
 # PyPI package
 curl -H "X-API-Key: YOUR_KEY" \\
-  https://api.pkgwatch.laranjo.dev/packages/pypi/requests`,
+  https://api.pkgwatch.dev/packages/pypi/requests`,
       response: `{
   "package": "express",
   "ecosystem": "npm",
@@ -104,7 +104,7 @@ curl -H "X-API-Key: YOUR_KEY" \\
       request: `curl -X POST -H "X-API-Key: YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"dependencies": {"express": "^4.0.0"}}' \\
-  https://api.pkgwatch.laranjo.dev/scan`,
+  https://api.pkgwatch.dev/scan`,
       response: `{
   "total": 1,
   "critical": 0,
@@ -142,7 +142,7 @@ curl -H "X-API-Key: YOUR_KEY" \\
     auth: true,
     example: {
       request: `curl -H "X-API-Key: YOUR_KEY" \\
-  https://api.pkgwatch.laranjo.dev/usage`,
+  https://api.pkgwatch.dev/usage`,
       response: `{
   "tier": "free",
   "usage": {
@@ -186,7 +186,7 @@ const riskLevels = [
           <div class="bg-black/30 rounded-lg p-4 font-mono text-sm overflow-x-auto">
             <pre class="text-zinc-300"><code># Check a package
 curl -H "X-API-Key: YOUR_KEY" \
-  https://api.pkgwatch.laranjo.dev/packages/npm/express</code></pre>
+  https://api.pkgwatch.dev/packages/npm/express</code></pre>
           </div>
         </div>
       </section>
@@ -220,7 +220,7 @@ curl -H "X-API-Key: YOUR_KEY" \
 
         <div class="bg-[var(--color-bg-card)] border border-[var(--color-border-card)] rounded-xl p-6">
           <div class="bg-black/30 rounded-lg p-4 font-mono text-sm">
-            <code class="text-green-400">https://api.pkgwatch.laranjo.dev</code>
+            <code class="text-green-400">https://api.pkgwatch.dev</code>
           </div>
         </div>
       </section>

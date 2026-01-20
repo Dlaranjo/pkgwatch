@@ -71,7 +71,7 @@ try {
 
 ```typescript
 const client = new PkgWatchClient(apiKey, {
-  baseUrl: 'https://api.pkgwatch.laranjo.dev/v1',  // Default
+  baseUrl: 'https://api.pkgwatch.dev/v1',  // Default
   timeout: 30000,  // 30 seconds default
   maxRetries: 3,   // Automatic retry with exponential backoff
 });

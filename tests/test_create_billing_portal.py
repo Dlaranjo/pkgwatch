@@ -99,7 +99,7 @@ class TestCreateBillingPortalHandler:
     def test_creates_billing_portal_session(self, mock_dynamodb, api_gateway_event):
         """Should create Stripe billing portal session for paid user."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
-        os.environ["BASE_URL"] = "https://pkgwatch.laranjo.dev"
+        os.environ["BASE_URL"] = "https://pkgwatch.dev"
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         key_hash = hashlib.sha256(b"pw_test").hexdigest()
@@ -144,7 +144,7 @@ class TestCreateBillingPortalHandler:
                     # Return URL includes portal_return=1 so dashboard refreshes subscription data
                     mock_stripe.billing_portal.Session.create.assert_called_once_with(
                         customer="cus_existing123",
-                        return_url="https://pkgwatch.laranjo.dev/dashboard?portal_return=1",
+                        return_url="https://pkgwatch.dev/dashboard?portal_return=1",
                     )
 
     @mock_aws
@@ -171,7 +171,7 @@ class TestCreateBillingPortalHandler:
     def test_handles_stripe_error(self, mock_dynamodb, api_gateway_event):
         """Should return 500 when Stripe API fails."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
-        os.environ["BASE_URL"] = "https://pkgwatch.laranjo.dev"
+        os.environ["BASE_URL"] = "https://pkgwatch.dev"
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         key_hash = hashlib.sha256(b"pw_test").hexdigest()

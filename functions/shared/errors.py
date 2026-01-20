@@ -58,7 +58,7 @@ class RateLimitExceededError(APIError):
         self,
         limit: int,
         retry_after_seconds: int,
-        upgrade_url: str = "https://pkgwatch.laranjo.dev/pricing",
+        upgrade_url: str = "https://pkgwatch.dev/pricing",
     ):
         super().__init__(
             code="rate_limit_exceeded",

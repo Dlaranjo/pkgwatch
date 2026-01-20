@@ -534,7 +534,7 @@ describe("run() - Error Handling", () => {
       expect.stringContaining("Authentication failed (401)")
     );
     expect(core.setFailed).toHaveBeenCalledWith(
-      expect.stringContaining("pkgwatch.laranjo.dev/dashboard")
+      expect.stringContaining("pkgwatch.dev/dashboard")
     );
   });
 
@@ -583,7 +583,7 @@ describe("run() - Error Handling", () => {
       expect.stringContaining("Rate limit exceeded (429)")
     );
     expect(core.setFailed).toHaveBeenCalledWith(
-      expect.stringContaining("pkgwatch.laranjo.dev/pricing")
+      expect.stringContaining("pkgwatch.dev/pricing")
     );
   });
 
@@ -632,7 +632,7 @@ describe("run() - Error Handling", () => {
       expect.stringContaining("Network error")
     );
     expect(core.setFailed).toHaveBeenCalledWith(
-      expect.stringContaining("status.pkgwatch.laranjo.dev")
+      expect.stringContaining("status.pkgwatch.dev")
     );
   });
 
@@ -658,7 +658,7 @@ describe("run() - Error Handling", () => {
       expect.stringContaining("Invalid API key format")
     );
     expect(core.setFailed).toHaveBeenCalledWith(
-      expect.stringContaining("pkgwatch.laranjo.dev/dashboard")
+      expect.stringContaining("pkgwatch.dev/dashboard")
     );
   });
 

@@ -8,7 +8,7 @@ branding:
 
 inputs:
   api-key:
-    description: 'PkgWatch API key. Get one at https://pkgwatch.laranjo.dev'
+    description: 'PkgWatch API key. Get one at https://pkgwatch.dev'
     required: true
   working-directory:
     description: 'Directory containing package.json or requirements.txt to scan'

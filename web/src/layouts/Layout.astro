@@ -14,7 +14,7 @@ interface Props {
 const {
   title,
   description = 'Free dependency health checker for npm & Python. Get health scores (0-100), predict package abandonment, and protect your builds. CLI + GitHub Action included.',
-  image = 'https://pkgwatch.laranjo.dev/og-image.svg',
+  image = 'https://pkgwatch.dev/og-image.svg',
   canonical = Astro.url.href,
   mainClass = 'pt-24',
 } = Astro.props
@@ -59,9 +59,9 @@ const {
       script-src 'self' https://plausible.io https://js.stripe.com 'unsafe-inline';
       style-src 'self' https://fonts.googleapis.com 'unsafe-inline';
       font-src 'self' https://fonts.gstatic.com;
-      img-src 'self' data: https://pkgwatch.laranjo.dev https://*.stripe.com;
+      img-src 'self' data: https://pkgwatch.dev https://*.stripe.com;
       frame-src https://js.stripe.com https://hooks.stripe.com;
-      connect-src 'self' https://api.pkgwatch.laranjo.dev https://plausible.io https://api.stripe.com;
+      connect-src 'self' https://api.pkgwatch.dev https://plausible.io https://api.stripe.com;
       frame-ancestors 'none';
       form-action 'self';
       base-uri 'self';
@@ -82,26 +82,26 @@ const {
       "@graph": [
         {
           "@type": "WebSite",
-          "@id": "https://pkgwatch.laranjo.dev/#website",
+          "@id": "https://pkgwatch.dev/#website",
           "name": "PkgWatch",
           "alternateName": ["Pkg Watch", "pkgwatch"],
-          "url": "https://pkgwatch.laranjo.dev",
+          "url": "https://pkgwatch.dev",
           "description": "Dependency health intelligence platform for npm and Python packages",
-          "publisher": { "@id": "https://pkgwatch.laranjo.dev/#organization" }
+          "publisher": { "@id": "https://pkgwatch.dev/#organization" }
         },
         {
           "@type": "Organization",
-          "@id": "https://pkgwatch.laranjo.dev/#organization",
+          "@id": "https://pkgwatch.dev/#organization",
           "name": "PkgWatch",
-          "url": "https://pkgwatch.laranjo.dev",
+          "url": "https://pkgwatch.dev",
           "logo": {
             "@type": "ImageObject",
-            "url": "https://pkgwatch.laranjo.dev/favicon.svg"
+            "url": "https://pkgwatch.dev/favicon.svg"
           }
         },
         {
           "@type": "SoftwareApplication",
-          "@id": "https://pkgwatch.laranjo.dev/#software",
+          "@id": "https://pkgwatch.dev/#software",
           "name": "PkgWatch",
           "applicationCategory": "DeveloperApplication",
           "applicationSubCategory": "Code Quality Tools",
@@ -114,14 +114,14 @@ const {
             "offerCount": "4"
           },
           "description": "Dependency health intelligence platform that predicts npm and Python package abandonment with health scores (0-100).",
-          "url": "https://pkgwatch.laranjo.dev",
+          "url": "https://pkgwatch.dev",
           "featureList": [
             "Health scores (0-100) for npm and Python packages",
             "Abandonment risk prediction",
             "CLI tool and GitHub Action integration",
             "REST API access"
           ],
-          "author": { "@id": "https://pkgwatch.laranjo.dev/#organization" }
+          "author": { "@id": "https://pkgwatch.dev/#organization" }
         }
       ]
     }
@@ -145,14 +145,14 @@ const {
     <!-- Analytics -->
     <script
       defer
-      data-domain="pkgwatch.laranjo.dev"
+      data-domain="pkgwatch.dev"
       src="https://plausible.io/js/script.js"
     ></script>
 
     <!-- Track outbound links -->
     <script
       defer
-      data-domain="pkgwatch.laranjo.dev"
+      data-domain="pkgwatch.dev"
       src="https://plausible.io/js/script.outbound-links.js"
     ></script>
 

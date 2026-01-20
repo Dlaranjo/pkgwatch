@@ -30,10 +30,10 @@ dynamodb = boto3.resource("dynamodb")
 ses = boto3.client("ses")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 VERIFICATION_EMAIL_SENDER = os.environ.get(
-    "VERIFICATION_EMAIL_SENDER", "noreply@pkgwatch.laranjo.dev"
+    "VERIFICATION_EMAIL_SENDER", "noreply@pkgwatch.dev"
 )
-BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.laranjo.dev")
-API_URL = os.environ.get("API_URL", "https://api.pkgwatch.laranjo.dev")
+BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.dev")
+API_URL = os.environ.get("API_URL", "https://api.pkgwatch.dev")
 
 # Magic link TTL (same as login flow)
 MAGIC_LINK_TTL_MINUTES = 15

@@ -41,7 +41,7 @@ variable "aws_region" {
 variable "domain_name" {
   description = "Domain name for the landing page"
   type        = string
-  default     = "pkgwatch.laranjo.dev"
+  default     = "pkgwatch.dev"
 }
 
 variable "bucket_name" {

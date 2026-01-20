@@ -39,9 +39,9 @@ logger.setLevel(logging.INFO)
 dynamodb = boto3.resource("dynamodb")
 ses = boto3.client("ses")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
-API_URL = os.environ.get("API_URL", "https://api.pkgwatch.laranjo.dev")
-BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.laranjo.dev")
-EMAIL_SENDER = os.environ.get("VERIFICATION_EMAIL_SENDER", "noreply@pkgwatch.laranjo.dev")
+API_URL = os.environ.get("API_URL", "https://api.pkgwatch.dev")
+BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.dev")
+EMAIL_SENDER = os.environ.get("VERIFICATION_EMAIL_SENDER", "noreply@pkgwatch.dev")
 
 # Email validation regex
 EMAIL_REGEX = re.compile(r"^[^@]+@[^@]+\.[^@]+$")

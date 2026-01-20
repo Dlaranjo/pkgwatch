@@ -26,8 +26,7 @@ from shared.package_validation import normalize_npm_name
 DEMO_REQUESTS_PER_HOUR = 20
 # Production CORS origins - localhost only allowed if ALLOW_DEV_CORS is set
 _PROD_ORIGINS = [
-    "https://pkgwatch.laranjo.dev",
-    "https://app.pkgwatch.laranjo.dev",
+    "https://pkgwatch.dev",
 ]
 _DEV_ORIGINS = [
     "http://localhost:4321",  # Astro dev server
@@ -378,7 +377,7 @@ def _rate_limit_response(user: dict, cors_headers: dict = None) -> dict:
                 "code": "rate_limit_exceeded",
                 "message": f"Monthly limit of {user['monthly_limit']} requests exceeded",
                 "retry_after_seconds": seconds_until_reset,
-                "upgrade_url": "https://pkgwatch.laranjo.dev/pricing",
+                "upgrade_url": "https://pkgwatch.dev/pricing",
             }
         }),
     }
@@ -403,7 +402,7 @@ def _demo_rate_limit_response(cors_headers: dict = None) -> dict:
                 "code": "demo_rate_limit_exceeded",
                 "message": f"Demo limit of {DEMO_REQUESTS_PER_HOUR} requests per hour exceeded",
                 "retry_after_seconds": 3600,
-                "signup_url": "https://pkgwatch.laranjo.dev/start",
+                "signup_url": "https://pkgwatch.dev/start",
             }
         }),
     }

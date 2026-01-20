@@ -18,12 +18,12 @@ info:
 
     Demo mode (without API key) has hourly limits.
   contact:
-    email: hello@laranjo.dev
+    email: hello@pkgwatch.dev
   license:
     name: Proprietary
 
 servers:
-  - url: https://api.pkgwatch.laranjo.dev/v1
+  - url: https://api.pkgwatch.dev/v1
     description: Production
 
 security:
@@ -912,11 +912,11 @@ components:
                   code: rate_limit_exceeded
                   message: Monthly limit of 5000 requests exceeded
                   retry_after_seconds: 86400
-                  upgrade_url: https://pkgwatch.laranjo.dev/pricing
+                  upgrade_url: https://pkgwatch.dev/pricing
             demoLimit:
               value:
                 error:
                   code: demo_rate_limit_exceeded
                   message: Demo limit of 20 requests per hour exceeded
                   retry_after_seconds: 3600
-                  signup_url: https://pkgwatch.laranjo.dev/start
+                  signup_url: https://pkgwatch.dev/start

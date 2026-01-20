@@ -27,7 +27,7 @@ from api.auth_callback import _create_session_token, _get_session_secret, SESSIO
 
 dynamodb = boto3.resource("dynamodb")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
-BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.laranjo.dev")
+BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.dev")
 
 # Pending key display TTL (5 minutes)
 PENDING_KEY_TTL_SECONDS = 300

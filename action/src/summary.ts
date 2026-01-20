@@ -119,13 +119,13 @@ export async function generateSummary(
   summary.addRaw("\n---\n");
   if (hasIssues) {
     summary.addRaw(
-      `*[PkgWatch](https://pkgwatch.laranjo.dev?utm_source=action&utm_medium=summary) v${VERSION}* | ` +
+      `*[PkgWatch](https://pkgwatch.dev?utm_source=action&utm_medium=summary) v${VERSION}* | ` +
       `[Wrong score?](${GITHUB_REPO}/issues/new?template=bug_report.yml&labels=bug,action,false-positive) | ` +
       `[Feedback](${GITHUB_REPO}/discussions/new?category=feedback)\n`
     );
   } else {
     summary.addRaw(
-      `*[PkgWatch](https://pkgwatch.laranjo.dev?utm_source=action&utm_medium=summary) v${VERSION}*\n`
+      `*[PkgWatch](https://pkgwatch.dev?utm_source=action&utm_medium=summary) v${VERSION}*\n`
     );
   }
 
@@ -346,13 +346,13 @@ export async function generateRepoSummary(
   summary.addRaw("\n---\n");
   if (hasIssues) {
     summary.addRaw(
-      `*[PkgWatch](https://pkgwatch.laranjo.dev?utm_source=action&utm_medium=summary) v${VERSION}* | ` +
+      `*[PkgWatch](https://pkgwatch.dev?utm_source=action&utm_medium=summary) v${VERSION}* | ` +
       `[Wrong score?](${GITHUB_REPO}/issues/new?template=bug_report.yml&labels=bug,action,false-positive) | ` +
       `[Feedback](${GITHUB_REPO}/discussions/new?category=feedback)\n`
     );
   } else {
     summary.addRaw(
-      `*[PkgWatch](https://pkgwatch.laranjo.dev?utm_source=action&utm_medium=summary) v${VERSION}*\n`
+      `*[PkgWatch](https://pkgwatch.dev?utm_source=action&utm_medium=summary) v${VERSION}*\n`
     );
   }
 

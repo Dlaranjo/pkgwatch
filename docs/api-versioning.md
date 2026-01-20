@@ -3,7 +3,7 @@
 ## Current Version
 
 **Version:** v1
-**Base URL:** `https://api.pkgwatch.laranjo.dev/v1`
+**Base URL:** `https://api.pkgwatch.dev/v1`
 **Status:** Active (Current)
 
 ## Versioning Principles
@@ -82,7 +82,7 @@ When an endpoint or feature is deprecated:
 ```
 Deprecation: true
 Sunset: Sat, 1 Jun 2026 00:00:00 GMT
-Link: <https://docs.pkgwatch.laranjo.dev/migration/v1-to-v2>; rel="deprecation"
+Link: <https://docs.pkgwatch.dev/migration/v1-to-v2>; rel="deprecation"
 ```
 
 ## Version Support Timeline
@@ -160,7 +160,7 @@ Future endpoints returning lists will use consistent pagination:
 ### v1 → v2 Migration (when available)
 
 Migration guides will be published at:
-- [https://docs.pkgwatch.laranjo.dev/migration/v1-to-v2](https://docs.pkgwatch.laranjo.dev/migration/v1-to-v2)
+- [https://docs.pkgwatch.dev/migration/v1-to-v2](https://docs.pkgwatch.dev/migration/v1-to-v2)
 
 ## Client Library Versioning
 
@@ -185,8 +185,8 @@ Currently, use URL versioning exclusively.
 ## Contact
 
 For questions about API versioning or migration:
-- Email: [hello@laranjo.dev](mailto:hello@laranjo.dev)
-- Documentation: [https://docs.pkgwatch.laranjo.dev](https://docs.pkgwatch.laranjo.dev)
+- Email: [hello@pkgwatch.dev](mailto:hello@pkgwatch.dev)
+- Documentation: [https://docs.pkgwatch.dev](https://docs.pkgwatch.dev)
 
 ---
 

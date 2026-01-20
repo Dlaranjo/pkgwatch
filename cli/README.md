@@ -18,7 +18,7 @@ Requires Node.js 20+.
 
 ## Setup
 
-Get your API key at [pkgwatch.laranjo.dev](https://pkgwatch.laranjo.dev).
+Get your API key at [pkgwatch.dev](https://pkgwatch.dev).
 
 ```bash
 # Option 1: Interactive setup

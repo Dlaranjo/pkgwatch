@@ -21,7 +21,7 @@ class TestSignupHandler:
         # Mock SES to avoid actual email sending
         import boto3
         ses = boto3.client("ses", region_name="us-east-1")
-        ses.verify_email_identity(EmailAddress="noreply@pkgwatch.laranjo.dev")
+        ses.verify_email_identity(EmailAddress="noreply@pkgwatch.dev")
 
         from api.signup import handler
 
@@ -615,7 +615,7 @@ class TestMagicLinkHandler:
         # Mock SES
         import boto3
         ses = boto3.client("ses", region_name="us-east-1")
-        ses.verify_email_identity(EmailAddress="noreply@pkgwatch.laranjo.dev")
+        ses.verify_email_identity(EmailAddress="noreply@pkgwatch.dev")
 
         from api.magic_link import handler
 

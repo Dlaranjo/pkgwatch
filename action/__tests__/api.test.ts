@@ -35,7 +35,7 @@ describe("PkgWatchClient", () => {
       const result = await client.scan({ lodash: "^4.17.21" });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://api.pkgwatch.laranjo.dev/scan",
+        "https://api.pkgwatch.dev/scan",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({

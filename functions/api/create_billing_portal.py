@@ -24,7 +24,7 @@ secretsmanager = boto3.client("secretsmanager")
 
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
-BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.laranjo.dev")
+BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.dev")
 
 # Import shared utilities
 import sys

@@ -21,8 +21,8 @@ from moto import mock_aws
 
 # Set environment variables before importing handlers
 os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
-os.environ["API_URL"] = "https://api.pkgwatch.laranjo.dev"
-os.environ["BASE_URL"] = "https://pkgwatch.laranjo.dev"
+os.environ["API_URL"] = "https://api.pkgwatch.dev"
+os.environ["BASE_URL"] = "https://pkgwatch.dev"
 
 
 class TestRecoveryInitiate:
@@ -38,7 +38,7 @@ class TestRecoveryInitiate:
 
         event = {
             "body": json.dumps({"email": "test@example.com"}),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         # Mock time.sleep to speed up test
@@ -57,7 +57,7 @@ class TestRecoveryInitiate:
 
         event = {
             "body": json.dumps({"email": "nonexistent@example.com"}),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"):
@@ -75,7 +75,7 @@ class TestRecoveryInitiate:
 
         event = {
             "body": json.dumps({"email": "not-an-email"}),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         response = handler(event, None)
@@ -114,7 +114,7 @@ class TestRecoveryVerifyApiKey:
                 "recovery_session_id": session_id,
                 "api_key": test_key,
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"), patch("api.recovery_verify_api_key.ses") as mock_ses:
@@ -152,7 +152,7 @@ class TestRecoveryVerifyApiKey:
                 "recovery_session_id": session_id,
                 "api_key": "pw_invalid_key_12345",
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"):
@@ -204,7 +204,7 @@ class TestRecoveryVerifyCode:
                 "recovery_session_id": session_id,
                 "recovery_code": plaintext_codes[0],  # Use first code
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"):
@@ -258,7 +258,7 @@ class TestRecoveryVerifyCode:
                 "recovery_session_id": session_id,
                 "recovery_code": "AAAA-BBBB-CCCC-DDDD",  # Invalid code
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"):
@@ -300,7 +300,7 @@ class TestRecoveryVerifyCode:
                 "recovery_session_id": session_id,
                 "recovery_code": "AAAA-BBBB-CCCC-DDDD",
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"):
@@ -343,7 +343,7 @@ class TestRecoveryUpdateEmail:
                 "recovery_token": recovery_token,
                 "new_email": "new@example.com",
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"), patch("api.recovery_update_email.ses") as mock_ses:
@@ -385,7 +385,7 @@ class TestRecoveryUpdateEmail:
                 "recovery_token": recovery_token,
                 "new_email": "new@example.com",
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"):
@@ -404,7 +404,7 @@ class TestRecoveryUpdateEmail:
                 "recovery_token": "invalid-token-xyz",
                 "new_email": "new@example.com",
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"):
@@ -456,7 +456,7 @@ class TestRecoveryVerifyCodeRaceCondition:
                 "recovery_session_id": session_id,
                 "recovery_code": plaintext_codes[0],
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         # First request should succeed
@@ -483,7 +483,7 @@ class TestRecoveryVerifyCodeRaceCondition:
                 "recovery_session_id": session_id2,
                 "recovery_code": plaintext_codes[0],  # Same code
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         # Second request with same code should fail (code already consumed)
@@ -634,7 +634,7 @@ class TestRecoveryVerifyCodeErrors:
 
         event = {
             "body": "invalid json{",
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         response = handler(event, None)
@@ -669,7 +669,7 @@ class TestRecoveryVerifyCodeErrors:
                 "recovery_session_id": session_id,
                 "recovery_code": "AAAA-BBBB-CCCC-DDDD",
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"):
@@ -689,7 +689,7 @@ class TestRecoveryVerifyCodeErrors:
                 "recovery_session_id": "test-session-123",
                 "recovery_code": "AAAA-BBBB-CCCC-DDDD",
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         # Mock the table scan to raise an error
@@ -733,7 +733,7 @@ class TestRecoveryVerifyCodeErrors:
                 "recovery_session_id": session_id,
                 "recovery_code": "AAAA-BBBB-CCCC-DDDD",
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         # Mock scan to work but get_item to fail
@@ -800,7 +800,7 @@ class TestRecoveryVerifyCodeErrors:
                 "recovery_session_id": session_id,
                 "recovery_code": plaintext_codes[0],
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         # Mock update_item to raise ConditionalCheckFailedException
@@ -845,7 +845,7 @@ class TestRecoveryUpdateEmailErrors:
 
         event = {
             "body": "not valid json",
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         response = handler(event, None)
@@ -883,7 +883,7 @@ class TestRecoveryUpdateEmailErrors:
                 "recovery_token": recovery_token,
                 "new_email": "new@example.com",
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"):
@@ -922,7 +922,7 @@ class TestRecoveryUpdateEmailErrors:
                 "recovery_token": recovery_token,
                 "new_email": "new@example.com",
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"):
@@ -975,7 +975,7 @@ class TestRecoveryUpdateEmailErrors:
                 "recovery_token": recovery_token,
                 "new_email": "taken@example.com",  # Already in use
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"):
@@ -995,7 +995,7 @@ class TestRecoveryUpdateEmailErrors:
                 "recovery_token": "test-token-123",
                 "new_email": "new@example.com",
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"), \
@@ -1041,7 +1041,7 @@ class TestRecoveryUpdateEmailErrors:
                 "recovery_token": recovery_token,
                 "new_email": "new@example.com",
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         # SES fails but operation should still succeed
@@ -1064,7 +1064,7 @@ class TestRecoveryVerifyApiKeyErrors:
 
         event = {
             "body": "not valid json",
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         response = handler(event, None)
@@ -1099,7 +1099,7 @@ class TestRecoveryVerifyApiKeyErrors:
                 "recovery_session_id": session_id,
                 "api_key": test_key,
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"):
@@ -1119,7 +1119,7 @@ class TestRecoveryVerifyApiKeyErrors:
                 "recovery_session_id": "test-session-123",
                 "api_key": "pw_test_key_12345",
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"), \
@@ -1151,7 +1151,7 @@ class TestRecoveryVerifyApiKeyErrors:
                 "recovery_session_id": "test-session-123",
                 "api_key": test_key,
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         now = datetime.now(timezone.utc)
@@ -1205,7 +1205,7 @@ class TestRecoveryVerifyApiKeyErrors:
                 "recovery_session_id": session_id,
                 "api_key": test_key,
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"):
@@ -1243,7 +1243,7 @@ class TestRecoveryVerifyApiKeyErrors:
                 "recovery_session_id": session_id,
                 "api_key": test_key,
             }),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"), \
@@ -1420,7 +1420,7 @@ class TestRecoveryInitiateErrors:
 
         event = {
             "body": "not valid json",
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         response = handler(event, None)
@@ -1436,7 +1436,7 @@ class TestRecoveryInitiateErrors:
 
         event = {
             "body": json.dumps({"email": "test@example.com"}),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"), \
@@ -1464,7 +1464,7 @@ class TestRecoveryInitiateErrors:
 
         event = {
             "body": json.dumps({"email": "test@example.com"}),
-            "headers": {"origin": "https://pkgwatch.laranjo.dev"},
+            "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         with patch("time.sleep"), \

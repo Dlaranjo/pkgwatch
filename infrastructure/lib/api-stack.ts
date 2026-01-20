@@ -332,7 +332,7 @@ export class ApiStack extends cdk.Stack {
           STRIPE_PRICE_STARTER: process.env.STRIPE_PRICE_STARTER || "",
           STRIPE_PRICE_PRO: process.env.STRIPE_PRICE_PRO || "",
           STRIPE_PRICE_BUSINESS: process.env.STRIPE_PRICE_BUSINESS || "",
-          BASE_URL: "https://pkgwatch.laranjo.dev",
+          BASE_URL: "https://pkgwatch.dev",
           SESSION_SECRET_ARN: "pkgwatch/session-secret",
         },
       }
@@ -354,7 +354,7 @@ export class ApiStack extends cdk.Stack {
         description: "Create Stripe billing portal session for subscription management",
         environment: {
           ...commonLambdaProps.environment,
-          BASE_URL: "https://pkgwatch.laranjo.dev",
+          BASE_URL: "https://pkgwatch.dev",
           SESSION_SECRET_ARN: "pkgwatch/session-secret",
         },
       }
@@ -417,11 +417,11 @@ export class ApiStack extends cdk.Stack {
       ...commonLambdaProps,
       environment: {
         ...commonLambdaProps.environment,
-        BASE_URL: "https://pkgwatch.laranjo.dev",
-        API_URL: "https://api.pkgwatch.laranjo.dev",  // Used for magic link callbacks
+        BASE_URL: "https://pkgwatch.dev",
+        API_URL: "https://api.pkgwatch.dev",  // Used for magic link callbacks
         SESSION_SECRET_ARN: "pkgwatch/session-secret",  // Use name, not partial ARN
-        VERIFICATION_EMAIL_SENDER: "noreply@pkgwatch.laranjo.dev",
-        LOGIN_EMAIL_SENDER: "noreply@pkgwatch.laranjo.dev",
+        VERIFICATION_EMAIL_SENDER: "noreply@pkgwatch.dev",
+        LOGIN_EMAIL_SENDER: "noreply@pkgwatch.dev",
       },
     };
 
@@ -440,7 +440,7 @@ export class ApiStack extends cdk.Stack {
     // SES: Email Identity for domain verification
     // ===========================================
     const emailIdentity = new ses.EmailIdentity(this, "PkgWatchEmailIdentity", {
-      identity: ses.Identity.domain("pkgwatch.laranjo.dev"),
+      identity: ses.Identity.domain("pkgwatch.dev"),
     });
 
     // Output DKIM tokens for DNS configuration
@@ -454,8 +454,8 @@ export class ApiStack extends cdk.Stack {
       effect: iam.Effect.ALLOW,
       actions: ["ses:SendEmail", "ses:SendRawEmail"],
       resources: [
-        // Domain-level identity allows sending from any address @pkgwatch.laranjo.dev
-        `arn:aws:ses:${this.region}:${this.account}:identity/pkgwatch.laranjo.dev`,
+        // Domain-level identity allows sending from any address @pkgwatch.dev
+        `arn:aws:ses:${this.region}:${this.account}:identity/pkgwatch.dev`,
       ],
     });
 
@@ -691,15 +691,11 @@ export class ApiStack extends cdk.Stack {
         // CORS origins - localhost only allowed in dev mode
         allowOrigins: isDevMode
           ? [
-              "https://pkgwatch.laranjo.dev",
-              "https://app.pkgwatch.laranjo.dev",
+              "https://pkgwatch.dev",
               "http://localhost:3000", // For local development
               "http://localhost:4321", // Astro dev server
             ]
-          : [
-              "https://pkgwatch.laranjo.dev",
-              "https://app.pkgwatch.laranjo.dev",
-            ],
+          : ["https://pkgwatch.dev"],
         allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
         allowHeaders: [
           "Content-Type",
@@ -719,7 +715,7 @@ export class ApiStack extends cdk.Stack {
     // CORS headers are included so the browser can read the error message.
 
     const corsResponseHeaders = {
-      "Access-Control-Allow-Origin": "'https://pkgwatch.laranjo.dev'",
+      "Access-Control-Allow-Origin": "'https://pkgwatch.dev'",
       "Access-Control-Allow-Headers":
         "'Content-Type,X-API-Key,Authorization,Cookie'",
       "Access-Control-Allow-Methods": "'GET,POST,DELETE,OPTIONS'",
@@ -1889,9 +1885,9 @@ export class ApiStack extends cdk.Stack {
     });
 
     // ===========================================
-    // Custom Domain: api.pkgwatch.laranjo.dev
+    // Custom Domain: api.pkgwatch.dev
     // ===========================================
-    const apiDomainName = "api.pkgwatch.laranjo.dev";
+    const apiDomainName = "api.pkgwatch.dev";
 
     // Create ACM certificate for API domain
     const apiCertificate = new acm.Certificate(this, "ApiCertificate", {
@@ -1918,7 +1914,7 @@ export class ApiStack extends cdk.Stack {
     // Output the target domain for DNS configuration
     new cdk.CfnOutput(this, "ApiCustomDomainTarget", {
       value: customDomain.domainNameAliasDomainName,
-      description: "Target domain for api.pkgwatch.laranjo.dev CNAME record",
+      description: "Target domain for api.pkgwatch.dev CNAME record",
       exportName: "PkgWatchApiCustomDomainTarget",
     });
 

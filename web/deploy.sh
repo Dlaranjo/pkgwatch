@@ -36,5 +36,5 @@ aws cloudfront create-invalidation \
 
 echo ""
 echo "=== Deployment Complete ==="
-echo "Website: https://pkgwatch.laranjo.dev"
+echo "Website: https://pkgwatch.dev"
 echo ""

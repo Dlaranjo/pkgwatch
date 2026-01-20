@@ -193,7 +193,7 @@ class TestCreateCheckoutHandler:
     def test_creates_checkout_session(self, mock_dynamodb, api_gateway_event):
         """Should create Stripe checkout session for valid upgrade."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
-        os.environ["BASE_URL"] = "https://pkgwatch.laranjo.dev"
+        os.environ["BASE_URL"] = "https://pkgwatch.dev"
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         key_hash = hashlib.sha256(b"pw_test").hexdigest()
@@ -246,7 +246,7 @@ class TestCreateCheckoutHandler:
     def test_reuses_existing_stripe_customer(self, mock_dynamodb, api_gateway_event):
         """Should reuse existing Stripe customer ID for upgrades."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
-        os.environ["BASE_URL"] = "https://pkgwatch.laranjo.dev"
+        os.environ["BASE_URL"] = "https://pkgwatch.dev"
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         key_hash = hashlib.sha256(b"pw_test").hexdigest()

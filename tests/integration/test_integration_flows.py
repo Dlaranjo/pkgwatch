@@ -111,7 +111,7 @@ def mock_aws_services():
 
         # Set up SES for email sending
         ses = boto3.client("ses", region_name="us-east-1")
-        ses.verify_email_identity(EmailAddress="noreply@pkgwatch.laranjo.dev")
+        ses.verify_email_identity(EmailAddress="noreply@pkgwatch.dev")
 
         # Set up Secrets Manager for session secret
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")

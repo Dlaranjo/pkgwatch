@@ -24,10 +24,10 @@ dynamodb = boto3.resource("dynamodb")
 ses = boto3.client("ses")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 LOGIN_EMAIL_SENDER = os.environ.get(
-    "LOGIN_EMAIL_SENDER", "noreply@pkgwatch.laranjo.dev"
+    "LOGIN_EMAIL_SENDER", "noreply@pkgwatch.dev"
 )
-BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.laranjo.dev")
-API_URL = os.environ.get("API_URL", "https://api.pkgwatch.laranjo.dev")
+BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.dev")
+API_URL = os.environ.get("API_URL", "https://api.pkgwatch.dev")
 
 # Email validation regex
 EMAIL_REGEX = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
