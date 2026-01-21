@@ -57,6 +57,9 @@ def handler(event, context):
     # in subsequent runs as newer ones are processed.
     for status in ["partial", "minimal"]:
         try:
+            # GSI name is "v2" because the original index was replaced in AWS
+            # (DynamoDB doesn't support in-place GSI modifications).
+            # Note: CDK still has "data-status-index" due to CloudFormation drift.
             response = table.query(
                 IndexName="data-status-index-v2",
                 KeyConditionExpression=(

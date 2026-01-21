@@ -23,6 +23,7 @@ def count_by_status(table, status: str) -> int:
     last_key = None
 
     while True:
+        # GSI "v2" - original index was replaced (DynamoDB doesn't support in-place mods)
         query_params = {
             "IndexName": "data-status-index-v2",
             "KeyConditionExpression": Key("data_status").eq(status),
