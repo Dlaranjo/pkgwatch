@@ -151,16 +151,36 @@ class TestDynamoDBCircuitBreaker:
 
     @patch.object(DynamoDBCircuitBreaker, "_get_state")
     def test_can_execute_half_open_blocks_excess(self, mock_get_state):
-        """Test that half-open circuit blocks after max calls."""
+        """Test that half-open circuit blocks after max calls when timeout hasn't passed."""
+        # Set half_open_at to now, so timeout hasn't passed yet
         mock_get_state.return_value = {
             "state": CircuitState.HALF_OPEN.value,
             "half_open_calls": 10,  # Exceeds max_calls (3)
+            "half_open_at": datetime.now(timezone.utc).isoformat(),
             "version": 1,
         }
 
         result = self.circuit.can_execute()
 
         assert result is False
+
+    @patch.object(DynamoDBCircuitBreaker, "_reset_half_open_calls")
+    @patch.object(DynamoDBCircuitBreaker, "_get_state")
+    def test_can_execute_half_open_resets_after_timeout(self, mock_get_state, mock_reset):
+        """Test that half-open circuit resets calls after timeout has passed."""
+        # Set half_open_at to well in the past (timeout has passed)
+        old_time = (datetime.now(timezone.utc) - timedelta(seconds=200)).isoformat()
+        mock_get_state.return_value = {
+            "state": CircuitState.HALF_OPEN.value,
+            "half_open_calls": 10,  # Exceeds max_calls (3)
+            "half_open_at": old_time,
+            "version": 1,
+        }
+
+        result = self.circuit.can_execute()
+
+        assert result is True
+        mock_reset.assert_called_once()
 
     @patch.object(DynamoDBCircuitBreaker, "_get_dynamodb_table")
     @patch.object(DynamoDBCircuitBreaker, "_get_state")

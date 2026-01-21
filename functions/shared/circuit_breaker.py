@@ -451,6 +451,13 @@ class DynamoDBCircuitBreaker:
             self._increment_half_open_calls(state)
             return True
 
+        # Half-open calls exhausted - check if enough time has passed to retry
+        # This prevents the circuit from being stuck forever when all probes failed
+        # but record_failure wasn't called (e.g., circuit check itself prevented the call)
+        if self._should_reset_half_open_calls(state):
+            self._reset_half_open_calls(state)
+            return True
+
         return False
 
     async def can_execute_async(self) -> bool:
@@ -481,6 +488,53 @@ class DynamoDBCircuitBreaker:
             self._local_cache = None
         except ClientError:
             pass  # Ignore - we already allowed the request
+
+    def _should_reset_half_open_calls(self, state: dict) -> bool:
+        """
+        Check if enough time has passed to reset half_open_calls.
+
+        This prevents circuits from being stuck forever when half_open_calls
+        exceeds the limit but failures weren't recorded (e.g., when the circuit
+        check itself blocks the request before it's made).
+        """
+        half_open_at = state.get("half_open_at")
+        if not half_open_at:
+            return True
+
+        try:
+            half_open_dt = datetime.fromisoformat(half_open_at.replace("Z", "+00:00"))
+            elapsed = (datetime.now(timezone.utc) - half_open_dt).total_seconds()
+            # Reset after timeout period has passed
+            return elapsed >= self.config.timeout_seconds
+        except (ValueError, TypeError):
+            return True
+
+    def _reset_half_open_calls(self, state: dict) -> None:
+        """Reset half_open_calls counter to allow new probe requests."""
+        try:
+            table = self._get_dynamodb_table()
+            now = datetime.now(timezone.utc)
+            version = state.get("version", 0)
+
+            table.update_item(
+                Key={"pk": self._pk, "sk": self._sk},
+                UpdateExpression=(
+                    "SET half_open_calls = :one, "
+                    "half_open_at = :now, "
+                    "version = version + :inc"
+                ),
+                ExpressionAttributeValues={
+                    ":one": 1,  # Set to 1 since we're allowing this request
+                    ":now": now.isoformat(),
+                    ":inc": 1,
+                    ":version": version,
+                },
+                ConditionExpression="version = :version",
+            )
+            logger.info(f"Circuit {self.name}: Reset half_open_calls (timeout elapsed)")
+            self._local_cache = None
+        except ClientError:
+            pass  # Ignore - we'll try again next time
 
     def record_success(self) -> None:
         """Record a successful request."""
