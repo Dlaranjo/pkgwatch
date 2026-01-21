@@ -251,6 +251,154 @@ class TestBonusCredits:
         assert amount == 0
 
 
+class TestGenerateUniqueReferralCode:
+    """Test unique referral code generation."""
+
+    def test_generates_unique_code(self, mock_dynamodb):
+        """Should generate a unique code that doesn't exist."""
+        from shared.referral_utils import generate_unique_referral_code
+
+        code = generate_unique_referral_code()
+
+        assert code is not None
+        assert len(code) >= 6
+
+    def test_multiple_codes_are_unique(self, mock_dynamodb):
+        """Multiple generated codes should be unique."""
+        from shared.referral_utils import generate_unique_referral_code
+
+        codes = [generate_unique_referral_code() for _ in range(10)]
+        unique_codes = set(codes)
+
+        assert len(unique_codes) == 10
+
+
+class TestUpdateReferralEventToCredited:
+    """Test updating referral event status."""
+
+    @pytest.fixture
+    def pending_event(self, mock_dynamodb):
+        """Create a pending referral event."""
+        table = mock_dynamodb.Table("pkgwatch-referral-events")
+        referrer_id = "user_referrer_credited"
+        referred_id = "user_referred_credited"
+
+        table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": f"{referred_id}#pending",
+                "referrer_id": referrer_id,
+                "referred_id": referred_id,
+                "event_type": "pending",
+                "reward_amount": 0,
+            }
+        )
+        return table, referrer_id, referred_id
+
+    def test_updates_event_to_credited(self, pending_event):
+        """Should update pending event to credited with reward amount."""
+        from shared.referral_utils import update_referral_event_to_credited
+
+        table, referrer_id, referred_id = pending_event
+
+        result = update_referral_event_to_credited(
+            referrer_id=referrer_id,
+            referred_id=referred_id,
+            reward_amount=5000,
+        )
+
+        assert result is True
+
+        # Verify event was updated
+        response = table.get_item(
+            Key={"pk": referrer_id, "sk": f"{referred_id}#signup"}
+        )
+        assert "Item" in response
+        assert response["Item"]["event_type"] == "signup"
+        assert response["Item"]["reward_amount"] == 5000
+
+
+class TestMarkRetentionChecked:
+    """Test marking retention as checked."""
+
+    @pytest.fixture
+    def paid_event_with_retention(self, mock_dynamodb):
+        """Create a paid event needing retention check."""
+        table = mock_dynamodb.Table("pkgwatch-referral-events")
+        referrer_id = "user_referrer_retention"
+        referred_id = "user_referred_retention"
+
+        table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": f"{referred_id}#paid",
+                "referrer_id": referrer_id,
+                "referred_id": referred_id,
+                "event_type": "paid",
+                "needs_retention_check": "true",
+                "retention_check_date": "2024-03-15T00:00:00Z",
+            }
+        )
+        return table, referrer_id, referred_id
+
+    def test_clears_retention_check_flag(self, paid_event_with_retention):
+        """Should clear the needs_retention_check flag."""
+        from shared.referral_utils import mark_retention_checked
+
+        table, referrer_id, referred_id = paid_event_with_retention
+
+        result = mark_retention_checked(referrer_id, referred_id)
+
+        assert result is True
+
+        # Verify flag was cleared
+        response = table.get_item(
+            Key={"pk": referrer_id, "sk": f"{referred_id}#paid"}
+        )
+        item = response.get("Item", {})
+        assert item.get("needs_retention_check") is None
+
+
+class TestGetBonusBalance:
+    """Test getting bonus balance."""
+
+    @pytest.fixture
+    def user_with_bonus(self, mock_dynamodb):
+        """Create a user with bonus balance."""
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        table.put_item(
+            Item={
+                "pk": "user_bonus_test",
+                "sk": "USER_META",
+                "bonus_requests": 15000,
+                "bonus_requests_lifetime": 30000,
+            }
+        )
+        return table
+
+    def test_returns_bonus_balance(self, user_with_bonus):
+        """Should return current bonus balance."""
+        from shared.referral_utils import get_bonus_balance
+
+        result = get_bonus_balance("user_bonus_test")
+
+        assert result["bonus_requests"] == 15000
+        assert result["bonus_requests_lifetime"] == 30000
+        assert result["at_cap"] is False
+
+    def test_returns_zero_for_no_bonus(self, mock_dynamodb):
+        """Should return zero for user without bonus."""
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        table.put_item(Item={"pk": "user_no_bonus", "sk": "USER_META"})
+
+        from shared.referral_utils import get_bonus_balance
+
+        result = get_bonus_balance("user_no_bonus")
+
+        assert result["bonus_requests"] == 0
+        assert result["bonus_requests_lifetime"] == 0
+
+
 class TestReferralCodeLookup:
     """Test referral code lookup via GSI."""
 
@@ -399,6 +547,85 @@ class TestReferrerStats:
         assert stats["paid_conversions"] == 2
         assert stats["retained_conversions"] == 1
         assert stats["total_rewards_earned"] == 55000
+
+
+class TestGetReferralEvents:
+    """Test getting referral events for a user."""
+
+    @pytest.fixture
+    def referrer_with_events(self, mock_dynamodb):
+        """Create a referrer with multiple referral events."""
+        table = mock_dynamodb.Table("pkgwatch-referral-events")
+        referrer_id = "user_referrer_events"
+
+        # Add multiple events
+        events = [
+            {"pk": referrer_id, "sk": "user1#pending", "event_type": "pending", "referred_id": "user1", "created_at": "2024-01-15T10:00:00Z"},
+            {"pk": referrer_id, "sk": "user2#signup", "event_type": "signup", "referred_id": "user2", "created_at": "2024-01-14T10:00:00Z"},
+            {"pk": referrer_id, "sk": "user3#paid", "event_type": "paid", "referred_id": "user3", "created_at": "2024-01-13T10:00:00Z"},
+        ]
+        for event in events:
+            table.put_item(Item=event)
+
+        return table, referrer_id
+
+    def test_returns_events_for_referrer(self, referrer_with_events):
+        """Should return all referral events for a referrer."""
+        from shared.referral_utils import get_referral_events
+
+        table, referrer_id = referrer_with_events
+
+        events = get_referral_events(referrer_id)
+
+        assert len(events) == 3
+
+    def test_returns_empty_for_no_events(self, mock_dynamodb):
+        """Should return empty list when no events exist."""
+        from shared.referral_utils import get_referral_events
+
+        events = get_referral_events("user_no_events")
+
+        assert events == []
+
+    def test_respects_limit(self, referrer_with_events):
+        """Should respect limit parameter."""
+        from shared.referral_utils import get_referral_events
+
+        table, referrer_id = referrer_with_events
+
+        events = get_referral_events(referrer_id, limit=2)
+
+        assert len(events) == 2
+
+
+class TestCodeExists:
+    """Test checking if referral code exists."""
+
+    @pytest.fixture
+    def existing_code(self, mock_dynamodb):
+        """Create a user with a referral code."""
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        table.put_item(
+            Item={
+                "pk": "user_code_exists",
+                "sk": "USER_META",
+                "referral_code": "existcode",
+                "email": "exists@example.com",
+            }
+        )
+        return table
+
+    def test_returns_true_for_existing_code(self, existing_code):
+        """Should return True if code exists."""
+        from shared.referral_utils import code_exists
+
+        assert code_exists("existcode") is True
+
+    def test_returns_false_for_nonexistent_code(self, mock_dynamodb):
+        """Should return False if code doesn't exist."""
+        from shared.referral_utils import code_exists
+
+        assert code_exists("notacode1") is False
 
 
 class TestLateEntry:
