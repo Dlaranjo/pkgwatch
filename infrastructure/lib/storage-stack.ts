@@ -10,6 +10,7 @@ export class StorageStack extends cdk.Stack {
   public readonly packagesTable: dynamodb.Table;
   public readonly apiKeysTable: dynamodb.Table;
   public readonly billingEventsTable: dynamodb.Table;
+  public readonly referralEventsTable: dynamodb.Table;
   public readonly rawDataBucket: s3.Bucket;
   public readonly accessLogsBucket: s3.Bucket;
   public readonly publicDataBucket: s3.Bucket;
@@ -176,6 +177,18 @@ export class StorageStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.KEYS_ONLY,
     });
 
+    // GSI for looking up user by referral code
+    // Used to validate referral codes and credit referrers
+    this.apiKeysTable.addGlobalSecondaryIndex({
+      indexName: "referral-code-index",
+      partitionKey: {
+        name: "referral_code",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: ["pk", "email"], // Include email for self-referral check
+    });
+
     // ===========================================
     // DynamoDB: Billing Events Table
     // ===========================================
@@ -207,6 +220,42 @@ export class StorageStack extends cdk.Stack {
       },
       sortKey: {
         name: "processed_at",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // ===========================================
+    // DynamoDB: Referral Events Table
+    // ===========================================
+    // Tracks referral relationships and reward events
+    // PK: referrer_id (user who made the referral)
+    // SK: referred_id#event_type (e.g., "user_abc123#signup", "user_abc123#paid")
+    // TTL: 90 days for pending referrals that never convert
+    this.referralEventsTable = new dynamodb.Table(this, "ReferralEventsTable", {
+      tableName: "pkgwatch-referral-events",
+      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      deletionProtection: true,
+      timeToLiveAttribute: "ttl",
+    });
+
+    // GSI for querying referrals needing retention check
+    // Allows scheduled Lambda to efficiently find referrals due for 2-month retention bonus
+    this.referralEventsTable.addGlobalSecondaryIndex({
+      indexName: "retention-due-index",
+      partitionKey: {
+        name: "needs_retention_check",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "retention_check_date",
         type: dynamodb.AttributeType.STRING,
       },
       projectionType: dynamodb.ProjectionType.ALL,
@@ -303,6 +352,7 @@ export class StorageStack extends cdk.Stack {
         backup.BackupResource.fromDynamoDbTable(this.packagesTable),
         backup.BackupResource.fromDynamoDbTable(this.apiKeysTable),
         backup.BackupResource.fromDynamoDbTable(this.billingEventsTable),
+        backup.BackupResource.fromDynamoDbTable(this.referralEventsTable),
       ],
     });
 
@@ -325,6 +375,12 @@ export class StorageStack extends cdk.Stack {
       value: this.billingEventsTable.tableName,
       description: "DynamoDB billing events table name",
       exportName: "PkgWatchBillingEventsTable",
+    });
+
+    new cdk.CfnOutput(this, "ReferralEventsTableName", {
+      value: this.referralEventsTable.tableName,
+      description: "DynamoDB referral events table name",
+      exportName: "PkgWatchReferralEventsTable",
     });
 
     new cdk.CfnOutput(this, "RawDataBucketName", {

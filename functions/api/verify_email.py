@@ -21,6 +21,17 @@ logger.setLevel(logging.INFO)
 # Import API key generation from shared module
 from shared.auth import generate_api_key
 from shared.recovery_utils import generate_recovery_codes
+from shared.referral_utils import (
+    generate_unique_referral_code,
+    lookup_referrer_by_code,
+    is_self_referral,
+    canonicalize_email,
+    add_bonus_with_cap,
+    record_referral_event,
+    update_referrer_stats,
+    REFERRED_USER_BONUS,
+    PENDING_TIMEOUT_DAYS,
+)
 
 # Import session creation from auth_callback
 from api.auth_callback import _create_session_token, _get_session_secret, SESSION_TTL_DAYS
@@ -165,19 +176,80 @@ def handler(event, context):
     try:
         plaintext_codes, hashed_codes = generate_recovery_codes(count=4)
 
-        # Create USER_META with recovery codes (and initial counters)
-        table.put_item(
-            Item={
-                "pk": user_id,
-                "sk": "USER_META",
-                "recovery_codes_hash": hashed_codes,
-                "recovery_codes_count": 4,
-                "recovery_codes_generated_at": now.isoformat(),
-                "recovery_codes_shown": False,  # Track if user has seen codes
-                "key_count": 1,
-                "requests_this_month": 0,
-            }
-        )
+        # Generate a unique referral code for the new user
+        user_referral_code = generate_unique_referral_code()
+
+        # Process referral if signup used a referral code
+        referral_code_used = pending_user.get("referral_code_used")
+        referred_by = None
+        referral_pending = False
+        referral_pending_expires = None
+        bonus_requests = 0
+
+        if referral_code_used:
+            referrer = lookup_referrer_by_code(referral_code_used)
+            if referrer:
+                referrer_id = referrer["user_id"]
+                referrer_email = referrer.get("email", "")
+
+                # Check for self-referral
+                if is_self_referral(referrer_email, email):
+                    logger.warning(f"Self-referral attempt blocked: {user_id}")
+                else:
+                    # Valid referral - set up the relationship
+                    referred_by = referrer_id
+                    referral_pending = True
+                    referral_pending_expires = (now + timedelta(days=PENDING_TIMEOUT_DAYS)).isoformat()
+
+                    # Credit referred user with bonus immediately
+                    bonus_requests = REFERRED_USER_BONUS
+
+                    # Record pending referral event
+                    record_referral_event(
+                        referrer_id=referrer_id,
+                        referred_id=user_id,
+                        event_type="pending",
+                        referred_email=email,
+                        reward_amount=0,  # Referrer hasn't been credited yet
+                        ttl_days=PENDING_TIMEOUT_DAYS,
+                    )
+
+                    # Update referrer stats (total and pending count)
+                    update_referrer_stats(
+                        referrer_id,
+                        total_delta=1,
+                        pending_delta=1,
+                    )
+
+                    logger.info(
+                        f"Referral processed: {user_id} referred by {referrer_id}, "
+                        f"referred user credited {bonus_requests}"
+                    )
+
+        # Create USER_META with recovery codes, referral code, and initial counters
+        user_meta_item = {
+            "pk": user_id,
+            "sk": "USER_META",
+            "recovery_codes_hash": hashed_codes,
+            "recovery_codes_count": 4,
+            "recovery_codes_generated_at": now.isoformat(),
+            "recovery_codes_shown": False,  # Track if user has seen codes
+            "key_count": 1,
+            "requests_this_month": 0,
+            "referral_code": user_referral_code,
+            "created_at": now.isoformat(),
+            "bonus_requests": bonus_requests,
+            "bonus_requests_lifetime": bonus_requests,
+        }
+
+        # Add referral tracking if referred
+        if referred_by:
+            user_meta_item["referred_by"] = referred_by
+            user_meta_item["referred_at"] = now.isoformat()
+            user_meta_item["referral_pending"] = referral_pending
+            user_meta_item["referral_pending_expires"] = referral_pending_expires
+
+        table.put_item(Item=user_meta_item)
 
         # Store plaintext codes for one-time retrieval (like PENDING_DISPLAY)
         # User will see these after dismissing the API key modal

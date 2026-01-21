@@ -154,6 +154,38 @@ export interface UsageStats {
   limits_by_tier: Record<string, number>;
 }
 
+export interface ReferralStats {
+  total_referrals: number;
+  pending_referrals: number;
+  paid_conversions: number;
+  retained_conversions: number;
+  total_rewards_earned: number;
+}
+
+export interface ReferralEntry {
+  email: string;
+  status: "pending" | "credited";
+  date: string;
+  reward: number;
+  expires?: string;
+}
+
+export interface ReferralStatus {
+  referral_code: string;
+  referral_url: string;
+  bonus_requests: number;
+  bonus_cap: number;
+  bonus_lifetime: number;
+  at_cap: boolean;
+  stats: ReferralStats;
+  referrals: ReferralEntry[];
+}
+
+export interface AddReferralCodeResponse {
+  message: string;
+  bonus_added: number;
+}
+
 export interface ClientOptions {
   baseUrl?: string;
   timeout?: number;
@@ -429,6 +461,27 @@ export class PkgWatchClient {
     } catch {
       return { healthy: false };
     }
+  }
+
+  /**
+   * Get referral program status and stats.
+   * Requires session authentication (not API key).
+   */
+  async getReferralStatus(): Promise<ReferralStatus> {
+    return this.request<ReferralStatus>("/referral/status");
+  }
+
+  /**
+   * Add a referral code (late entry within 14 days of signup).
+   * Requires session authentication (not API key).
+   *
+   * @param code - The referral code to add
+   */
+  async addReferralCode(code: string): Promise<AddReferralCodeResponse> {
+    return this.request<AddReferralCodeResponse>("/referral/add-code", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    });
   }
 }
 

@@ -20,6 +20,7 @@ from botocore.exceptions import ClientError
 
 from shared.response_utils import decimal_default, error_response, get_cors_headers
 from shared.constants import TIER_LIMITS
+from shared.referral_utils import BONUS_CAP, LATE_ENTRY_DAYS
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -178,6 +179,37 @@ def handler(event, context):
         # Get billing cycle end for reset date calculation
         current_period_end = primary_key.get("current_period_end")
 
+        # Get bonus credits and referral info from USER_META
+        bonus_requests = 0
+        bonus_lifetime = 0
+        referral_code = None
+        can_add_referral = False
+        referral_code_deadline = None
+
+        if user_meta:
+            bonus_requests = int(user_meta.get("bonus_requests", 0))
+            bonus_lifetime = int(user_meta.get("bonus_requests_lifetime", 0))
+            referral_code = user_meta.get("referral_code")
+
+            # Check if user can add a late referral code
+            if not user_meta.get("referred_by"):
+                created_at = user_meta.get("created_at")
+                if created_at:
+                    from datetime import datetime, timedelta, timezone
+                    try:
+                        created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                        deadline = created_dt + timedelta(days=LATE_ENTRY_DAYS)
+                        now = datetime.now(timezone.utc)
+                        if now < deadline:
+                            can_add_referral = True
+                            referral_code_deadline = deadline.isoformat()
+                    except (ValueError, TypeError):
+                        pass
+
+        # Calculate effective limit (monthly + bonus)
+        monthly_limit = TIER_LIMITS.get(primary_key.get("tier", "free"), TIER_LIMITS["free"])
+        effective_limit = monthly_limit + bonus_requests
+
         return {
             "statusCode": 200,
             "headers": response_headers,
@@ -186,12 +218,19 @@ def handler(event, context):
                 "email": email,
                 "tier": primary_key.get("tier", "free"),
                 "requests_this_month": total_requests,
-                "monthly_limit": TIER_LIMITS.get(primary_key.get("tier", "free"), TIER_LIMITS["free"]),
-                "created_at": primary_key.get("created_at"),
+                "monthly_limit": monthly_limit,
+                "bonus_requests": bonus_requests,
+                "bonus_cap": BONUS_CAP,
+                "bonus_lifetime": bonus_lifetime,
+                "effective_limit": effective_limit,
+                "created_at": primary_key.get("created_at") or (user_meta.get("created_at") if user_meta else None),
                 "last_login": primary_key.get("last_login"),
                 "cancellation_pending": cancellation_pending,
                 "cancellation_date": cancellation_date,
                 "current_period_end": current_period_end,
+                "referral_code": referral_code,
+                "can_add_referral": can_add_referral,
+                "referral_code_deadline": referral_code_deadline,
                 "data_source": data_source,
             }, default=decimal_default),
         }

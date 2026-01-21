@@ -1270,6 +1270,84 @@ configCmd
   });
 
 // ------------------------------------------------------------
+// referral - Manage referral program
+// ------------------------------------------------------------
+const referralCmd = program
+  .command("referral")
+  .description("Manage your referral program");
+
+referralCmd
+  .command("status")
+  .description("Show referral stats and bonus balance")
+  .action(async () => {
+    const spinner = createSpinner("Fetching referral status...");
+
+    try {
+      const client = getClient();
+      const data = await client.getReferralStatus();
+
+      spinner?.succeed("Referral status loaded");
+
+      log("");
+      log(pc.bold("Referral Program"));
+      log(pc.dim("─".repeat(40)));
+      log("");
+      log(`${pc.cyan("Referral Link:")} ${data.referral_url}`);
+      log(`${pc.green("Bonus Balance:")} ${data.bonus_requests.toLocaleString()} requests`);
+      log(`${pc.dim("Lifetime Cap:")} ${data.bonus_lifetime.toLocaleString()} / ${data.bonus_cap.toLocaleString()}${data.at_cap ? pc.yellow(" (at cap)") : ""}`);
+      log("");
+      log(pc.bold("Stats"));
+      log(`  Total Referrals: ${data.stats.total_referrals}`);
+      log(`  Pending: ${data.stats.pending_referrals}`);
+      log(`  Paid Conversions: ${data.stats.paid_conversions}`);
+      log(`  Retained: ${data.stats.retained_conversions}`);
+      log(`  Rewards Earned: ${data.stats.total_rewards_earned.toLocaleString()}`);
+
+      if (data.referrals.length > 0) {
+        log("");
+        log(pc.bold("Recent Referrals"));
+        for (const ref of data.referrals.slice(0, 5)) {
+          const statusColor = ref.status === "credited" ? pc.green : pc.yellow;
+          log(`  ${ref.email} - ${statusColor(ref.status)} ${ref.reward > 0 ? `(+${ref.reward.toLocaleString()})` : ""}`);
+        }
+      }
+
+      process.exit(EXIT_SUCCESS);
+    } catch (error) {
+      spinner?.fail("Failed to fetch referral status");
+      if (error instanceof ApiClientError) {
+        if (error.code === "unauthorized") {
+          console.error(pc.red("Requires session authentication. Please log in via the dashboard."));
+        } else {
+          console.error(pc.red(error.message));
+        }
+      } else {
+        console.error(pc.red("Unknown error occurred"));
+      }
+      process.exit(EXIT_CLI_ERROR);
+    }
+  });
+
+referralCmd
+  .command("link")
+  .description("Show your referral link")
+  .action(async () => {
+    try {
+      const client = getClient();
+      const data = await client.getReferralStatus();
+      console.log(data.referral_url);
+      process.exit(EXIT_SUCCESS);
+    } catch (error) {
+      if (error instanceof ApiClientError && error.code === "unauthorized") {
+        console.error(pc.red("Requires session authentication. Please log in via the dashboard."));
+      } else {
+        console.error(pc.red("Failed to fetch referral link"));
+      }
+      process.exit(EXIT_CLI_ERROR);
+    }
+  });
+
+// ------------------------------------------------------------
 // feedback - Send feedback or report issues
 // ------------------------------------------------------------
 const feedbackCmd = program
@@ -1325,6 +1403,8 @@ Examples:
   pkgwatch scan -r --max-manifests 50  Limit to 50 manifests
   pkgwatch scan -r --ignore-not-found  Hide packages not found in registry
   pkgwatch doctor                      Diagnose configuration issues
+  pkgwatch referral status             Show referral program stats
+  pkgwatch referral link               Print your referral link
   pkgwatch feedback                    Open feedback options
   pkgwatch feedback bug                Report a bug
   pkgwatch feedback feature            Request a new feature

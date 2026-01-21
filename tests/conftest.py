@@ -100,6 +100,7 @@ def create_dynamodb_tables(dynamodb):
             {"AttributeName": "stripe_customer_id", "AttributeType": "S"},
             {"AttributeName": "verification_token", "AttributeType": "S"},
             {"AttributeName": "magic_token", "AttributeType": "S"},
+            {"AttributeName": "referral_code", "AttributeType": "S"},
         ],
         GlobalSecondaryIndexes=[
             {
@@ -126,6 +127,14 @@ def create_dynamodb_tables(dynamodb):
                 "IndexName": "magic-token-index",
                 "KeySchema": [{"AttributeName": "magic_token", "KeyType": "HASH"}],
                 "Projection": {"ProjectionType": "KEYS_ONLY"},
+            },
+            {
+                "IndexName": "referral-code-index",
+                "KeySchema": [{"AttributeName": "referral_code", "KeyType": "HASH"}],
+                "Projection": {
+                    "ProjectionType": "INCLUDE",
+                    "NonKeyAttributes": ["pk", "email"],
+                },
             },
         ],
         BillingMode="PAY_PER_REQUEST",
@@ -215,6 +224,32 @@ def create_dynamodb_tables(dynamodb):
                 "KeySchema": [
                     {"AttributeName": "customer_id", "KeyType": "HASH"},
                     {"AttributeName": "processed_at", "KeyType": "RANGE"},
+                ],
+                "Projection": {"ProjectionType": "ALL"},
+            },
+        ],
+        BillingMode="PAY_PER_REQUEST",
+    )
+
+    # Referral events table for tracking referral relationships and rewards
+    dynamodb.create_table(
+        TableName="pkgwatch-referral-events",
+        KeySchema=[
+            {"AttributeName": "pk", "KeyType": "HASH"},   # referrer_id
+            {"AttributeName": "sk", "KeyType": "RANGE"},  # referred_id#event_type
+        ],
+        AttributeDefinitions=[
+            {"AttributeName": "pk", "AttributeType": "S"},
+            {"AttributeName": "sk", "AttributeType": "S"},
+            {"AttributeName": "needs_retention_check", "AttributeType": "S"},
+            {"AttributeName": "retention_check_date", "AttributeType": "S"},
+        ],
+        GlobalSecondaryIndexes=[
+            {
+                "IndexName": "retention-due-index",
+                "KeySchema": [
+                    {"AttributeName": "needs_retention_check", "KeyType": "HASH"},
+                    {"AttributeName": "retention_check_date", "KeyType": "RANGE"},
                 ],
                 "Projection": {"ProjectionType": "ALL"},
             },

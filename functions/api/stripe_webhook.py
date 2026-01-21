@@ -49,6 +49,13 @@ STRIPE_WEBHOOK_SECRET_ARN = os.environ.get("STRIPE_WEBHOOK_SECRET_ARN")
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
 from constants import TIER_LIMITS, TIER_ORDER
+from shared.referral_utils import (
+    add_bonus_with_cap,
+    record_referral_event,
+    update_referrer_stats,
+    REFERRAL_REWARDS,
+    RETENTION_MONTHS,
+)
 
 # Payment failure grace period - days to wait before downgrading
 GRACE_PERIOD_DAYS = int(os.environ.get("PAYMENT_GRACE_PERIOD_DAYS", "7"))
@@ -370,6 +377,89 @@ def _customer_exists(customer_id: str) -> bool:
         return False
 
 
+def _process_paid_referral_reward(user_id: str, referred_email: str):
+    """
+    Award paid conversion bonus to referrer.
+
+    Called when a referred user upgrades to a paid tier.
+
+    Args:
+        user_id: The referred user's ID
+        referred_email: Email for logging (masked)
+    """
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
+
+    try:
+        # Get user's referral info
+        response = table.get_item(
+            Key={"pk": user_id, "sk": "USER_META"},
+            ProjectionExpression="referred_by",
+        )
+
+        meta = response.get("Item", {})
+        referrer_id = meta.get("referred_by")
+
+        if not referrer_id:
+            # User was not referred
+            return
+
+        # Check if we already processed a "paid" event for this user
+        # (idempotency - in case webhook fires multiple times)
+        events_table = _get_dynamodb().Table(BILLING_EVENTS_TABLE)
+        existing = events_table.get_item(
+            Key={"pk": f"referral_paid:{referrer_id}:{user_id}", "sk": "paid"},
+        )
+        if existing.get("Item"):
+            logger.info(f"Paid referral reward already processed for {user_id}")
+            return
+
+        # Credit referrer with paid conversion bonus
+        reward_amount = REFERRAL_REWARDS["paid"]
+        actual_reward = add_bonus_with_cap(referrer_id, reward_amount)
+
+        # Calculate retention check date (2 months from now)
+        retention_check_date = (
+            datetime.now(timezone.utc) + timedelta(days=30 * RETENTION_MONTHS)
+        ).isoformat()
+
+        # Record paid event with retention check
+        record_referral_event(
+            referrer_id=referrer_id,
+            referred_id=user_id,
+            event_type="paid",
+            referred_email=referred_email,
+            reward_amount=actual_reward,
+            retention_check_date=retention_check_date,
+        )
+
+        # Update referrer stats
+        update_referrer_stats(
+            referrer_id,
+            paid_delta=1,
+            rewards_delta=actual_reward,
+        )
+
+        # Mark as processed (idempotency record)
+        events_table.put_item(
+            Item={
+                "pk": f"referral_paid:{referrer_id}:{user_id}",
+                "sk": "paid",
+                "processed_at": datetime.now(timezone.utc).isoformat(),
+                "reward_amount": actual_reward,
+                "ttl": int((datetime.now(timezone.utc) + timedelta(days=365)).timestamp()),
+            }
+        )
+
+        logger.info(
+            f"Paid referral reward: credited {referrer_id} with {actual_reward} "
+            f"for referred user {user_id} upgrade"
+        )
+
+    except Exception as e:
+        logger.error(f"Error processing paid referral reward for {user_id}: {e}")
+        # Don't re-raise - the tier upgrade should still succeed
+
+
 def _handle_checkout_completed(session: dict):
     """Handle successful checkout - upgrade user to paid tier."""
     customer_email = session.get("customer_email")
@@ -431,6 +521,53 @@ def _handle_checkout_completed(session: dict):
         )
     else:
         logger.warning("No customer email or customer ID in checkout session")
+        return
+
+    # Process referral reward if this user was referred
+    # Need to find user_id from email or customer_id
+    user_id = None
+    if customer_email:
+        user_id = _get_user_id_by_email(customer_email)
+    elif customer_id:
+        user_id = _get_user_id_by_customer_id(customer_id)
+
+    if user_id:
+        _process_paid_referral_reward(user_id, customer_email or "")
+
+
+def _get_user_id_by_email(email: str) -> str | None:
+    """Look up user_id by email using GSI."""
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    try:
+        response = table.query(
+            IndexName="email-index",
+            KeyConditionExpression=Key("email").eq(email),
+            Limit=1,
+        )
+        items = response.get("Items", [])
+        for item in items:
+            if item.get("sk") != "PENDING":
+                return item.get("pk")
+    except Exception as e:
+        logger.error(f"Error looking up user by email: {e}")
+    return None
+
+
+def _get_user_id_by_customer_id(customer_id: str) -> str | None:
+    """Look up user_id by Stripe customer ID using GSI."""
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    try:
+        response = table.query(
+            IndexName="stripe-customer-index",
+            KeyConditionExpression=Key("stripe_customer_id").eq(customer_id),
+            Limit=1,
+        )
+        items = response.get("Items", [])
+        if items:
+            return items[0].get("pk")
+    except Exception as e:
+        logger.error(f"Error looking up user by customer ID: {e}")
+    return None
 
 
 def _handle_subscription_updated(subscription: dict):

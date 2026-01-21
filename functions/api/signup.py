@@ -21,6 +21,11 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 from shared.response_utils import error_response, success_response
+from shared.referral_utils import (
+    is_disposable_email,
+    is_valid_referral_code,
+    lookup_referrer_by_code,
+)
 
 # Minimum response time to normalize timing and prevent enumeration
 # Set to 1.5s to fully absorb worst-case SES latency variance (~200-500ms)
@@ -85,11 +90,34 @@ def handler(event, context):
         return error_response(400, "invalid_json", "Request body must be valid JSON", origin=origin)
 
     email = body.get("email", "").strip().lower()
+    referral_code = body.get("referral_code", "").strip() if body.get("referral_code") else None
 
     # Validate email format
     if not email or not EMAIL_REGEX.match(email):
         # Validation errors can return early - they don't reveal email existence
         return error_response(400, "invalid_email", "Please provide a valid email address", origin=origin)
+
+    # Block disposable email domains (anti-fraud)
+    if is_disposable_email(email):
+        return error_response(
+            400,
+            "disposable_email",
+            "Please use a permanent email address. Disposable email addresses are not allowed.",
+            origin=origin
+        )
+
+    # Validate referral code format if provided
+    if referral_code and not is_valid_referral_code(referral_code):
+        # Don't block signup, just ignore invalid code
+        logger.info(f"Invalid referral code format ignored: {referral_code[:20]}...")
+        referral_code = None
+
+    # Verify referral code exists (optional - silently ignore if not found)
+    if referral_code:
+        referrer = lookup_referrer_by_code(referral_code)
+        if not referrer:
+            logger.info(f"Referral code not found, ignoring: {referral_code}")
+            referral_code = None
 
     # Check if email already exists using email-index GSI
     table = dynamodb.Table(API_KEYS_TABLE)
@@ -157,19 +185,27 @@ def handler(event, context):
     verification_expires_dt = now + timedelta(hours=24)
     ttl_timestamp = int((verification_expires_dt + timedelta(hours=1)).timestamp())
 
+    # Build PENDING record
+    pending_item = {
+        "pk": user_id,
+        "sk": "PENDING",
+        "email": email,
+        "verification_token": verification_token,
+        "verification_expires": verification_expires,
+        "created_at": now.isoformat(),
+        "last_verification_sent": now.isoformat(),  # For resend cooldown tracking
+        "email_verified": False,
+        "ttl": ttl_timestamp,  # Auto-cleanup of expired PENDING records
+    }
+
+    # Store referral code if provided (will be processed during verification)
+    if referral_code:
+        pending_item["referral_code_used"] = referral_code
+        logger.info(f"Signup with referral code: {referral_code}")
+
     try:
         table.put_item(
-            Item={
-                "pk": user_id,
-                "sk": "PENDING",
-                "email": email,
-                "verification_token": verification_token,
-                "verification_expires": verification_expires,
-                "created_at": now.isoformat(),
-                "last_verification_sent": now.isoformat(),  # For resend cooldown tracking
-                "email_verified": False,
-                "ttl": ttl_timestamp,  # Auto-cleanup of expired PENDING records
-            },
+            Item=pending_item,
             ConditionExpression="attribute_not_exists(pk) OR attribute_not_exists(sk)",
         )
     except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:

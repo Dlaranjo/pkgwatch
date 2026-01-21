@@ -96,6 +96,13 @@ def _reset_caches():
     except (ImportError, AttributeError):
         pass
 
+    # Reset referral_utils module's DynamoDB resource
+    try:
+        import shared.referral_utils as referral_module
+        referral_module._dynamodb = None
+    except (ImportError, AttributeError):
+        pass
+
 
 @pytest.fixture
 def mock_aws_services():
@@ -1682,3 +1689,377 @@ class TestWebhookSecurity:
                 Key={"pk": "evt_idempotent_123", "sk": "checkout.session.completed"}
             )
             assert "Item" in response
+
+
+# =============================================================================
+# Referral Program Integration Tests
+# =============================================================================
+
+
+class TestReferralProgramFlow:
+    """Integration tests for the referral program end-to-end flow.
+
+    Tests the complete referral journey:
+    1. Referrer signs up and gets referral code
+    2. Referred user signs up with code → gets 10K bonus
+    3. Referred user scans 100+ packages → referrer gets 5K signup bonus
+    4. Referred user upgrades to paid → referrer gets 25K paid bonus
+    5. Referral status endpoint returns correct data
+    """
+
+    def test_full_referral_flow(self, mock_aws_services, api_gateway_event):
+        """Test complete referral flow from signup through activity gate."""
+        os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
+
+        # Reset caches to pick up new env var
+        _reset_caches()
+
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
+        referral_events_table = mock_aws_services["dynamodb"].Table("pkgwatch-referral-events")
+
+        # --- Step 1: Create the referrer user ---
+        from shared.auth import generate_api_key
+        from shared.referral_utils import generate_unique_referral_code
+
+        referrer_id = "user_referrer_test"
+        referrer_email = "referrer@example.com"
+        referrer_key = generate_api_key(
+            user_id=referrer_id,
+            tier="free",
+            email=referrer_email,
+        )
+
+        # Generate referral code for referrer
+        referral_code = generate_unique_referral_code()
+        table.update_item(
+            Key={"pk": referrer_id, "sk": "USER_META"},
+            UpdateExpression="SET referral_code = :code, email = :email",
+            ExpressionAttributeValues={
+                ":code": referral_code,
+                ":email": referrer_email,
+            },
+        )
+
+        # Verify referrer has code
+        response = table.get_item(Key={"pk": referrer_id, "sk": "USER_META"})
+        assert response["Item"]["referral_code"] == referral_code
+
+        # --- Step 2: Referred user signs up with referral code ---
+        referred_id = "user_referred_test"
+        referred_email = "referred@example.com"
+
+        # Simulate the verify_email flow which processes referral
+        from shared.referral_utils import (
+            lookup_referrer_by_code,
+            is_self_referral,
+            add_bonus_with_cap,
+            record_referral_event,
+            update_referrer_stats,
+            REFERRED_USER_BONUS,
+            PENDING_TIMEOUT_DAYS,
+        )
+
+        # Look up referrer
+        referrer_info = lookup_referrer_by_code(referral_code)
+        assert referrer_info is not None
+        assert referrer_info["user_id"] == referrer_id
+
+        # Verify not self-referral
+        assert is_self_referral(referrer_email, referred_email) is False
+
+        # Create referred user with referral relationship
+        referred_key = generate_api_key(
+            user_id=referred_id,
+            tier="free",
+            email=referred_email,
+        )
+
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone.utc)
+        pending_expires = (now + timedelta(days=PENDING_TIMEOUT_DAYS)).isoformat()
+
+        table.update_item(
+            Key={"pk": referred_id, "sk": "USER_META"},
+            UpdateExpression="""
+                SET referred_by = :referrer,
+                    referred_at = :now,
+                    referral_pending = :pending,
+                    referral_pending_expires = :expires,
+                    created_at = :created
+            """,
+            ExpressionAttributeValues={
+                ":referrer": referrer_id,
+                ":now": now.isoformat(),
+                ":pending": True,
+                ":expires": pending_expires,
+                ":created": now.isoformat(),
+            },
+        )
+
+        # Credit referred user with signup bonus (10K)
+        amount_added = add_bonus_with_cap(referred_id, REFERRED_USER_BONUS)
+        assert amount_added == REFERRED_USER_BONUS
+
+        # Record pending referral event
+        record_referral_event(
+            referrer_id=referrer_id,
+            referred_id=referred_id,
+            event_type="pending",
+            referred_email=referred_email,
+            reward_amount=0,
+            ttl_days=PENDING_TIMEOUT_DAYS,
+        )
+
+        # Update referrer stats
+        update_referrer_stats(referrer_id, total_delta=1, pending_delta=1)
+
+        # Verify referred user has bonus
+        response = table.get_item(Key={"pk": referred_id, "sk": "USER_META"})
+        assert response["Item"]["bonus_requests"] == REFERRED_USER_BONUS
+        assert response["Item"]["referred_by"] == referrer_id
+        assert response["Item"]["referral_pending"] is True
+
+        # Verify referrer has pending count
+        response = table.get_item(Key={"pk": referrer_id, "sk": "USER_META"})
+        assert response["Item"]["referral_total"] == 1
+        assert response["Item"]["referral_pending_count"] == 1
+
+        # Verify pending event was recorded
+        response = referral_events_table.get_item(
+            Key={"pk": referrer_id, "sk": f"{referred_id}#pending"}
+        )
+        assert "Item" in response
+        assert response["Item"]["event_type"] == "pending"
+
+        # --- Step 3: Referred user scans 100+ packages (triggers activity gate) ---
+        from shared.auth import check_and_increment_usage_with_bonus
+        from shared.referral_utils import ACTIVITY_THRESHOLD, REFERRAL_REWARDS
+
+        key_hash = hashlib.sha256(referred_key.encode()).hexdigest()
+
+        # Simulate scanning exactly 100 packages (should trigger activity gate)
+        # First, set total_packages_scanned to 99
+        table.update_item(
+            Key={"pk": referred_id, "sk": "USER_META"},
+            UpdateExpression="SET total_packages_scanned = :count",
+            ExpressionAttributeValues={":count": 99},
+        )
+
+        # Now scan 1 more to hit threshold (100)
+        allowed, usage, bonus = check_and_increment_usage_with_bonus(
+            referred_id, key_hash, limit=5000, count=1
+        )
+        assert allowed is True
+
+        # Verify referrer was credited with signup bonus
+        response = table.get_item(Key={"pk": referrer_id, "sk": "USER_META"})
+        referrer_meta = response["Item"]
+
+        # Check referrer got the signup reward (5000)
+        assert referrer_meta.get("bonus_requests", 0) == REFERRAL_REWARDS["signup"]
+        assert referrer_meta.get("referral_pending_count", 0) == 0  # Decremented
+        assert referrer_meta.get("referral_rewards_earned", 0) == REFERRAL_REWARDS["signup"]
+
+        # Verify referred user's pending flag was cleared
+        response = table.get_item(Key={"pk": referred_id, "sk": "USER_META"})
+        referred_meta = response["Item"]
+        assert referred_meta.get("referral_pending") is not True
+        assert referred_meta.get("referral_activity_credited") is True
+
+        # --- Step 4: Check referral status endpoint ---
+        session_token = create_session_token(referrer_id, referrer_email, "free")
+
+        from api.referral_status import handler as status_handler
+
+        status_event = {
+            "httpMethod": "GET",
+            "headers": {"cookie": f"session={session_token}"},
+            "pathParameters": {},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = status_handler(status_event, {})
+        assert result["statusCode"] == 200
+
+        body = json.loads(result["body"])
+        assert body["referral_code"] == referral_code
+        assert body["bonus_requests"] == REFERRAL_REWARDS["signup"]
+        assert body["stats"]["total_referrals"] == 1
+        assert body["stats"]["pending_referrals"] == 0  # No longer pending
+        assert body["stats"]["total_rewards_earned"] == REFERRAL_REWARDS["signup"]
+
+    def test_self_referral_prevention(self, mock_aws_services, api_gateway_event):
+        """Test that self-referral via Gmail aliases is prevented."""
+        os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
+        _reset_caches()
+
+        from shared.referral_utils import is_self_referral, canonicalize_email
+
+        # Same base email with Gmail aliases
+        referrer_email = "john@gmail.com"
+        referred_email_dot = "j.o.h.n@gmail.com"
+        referred_email_plus = "john+referral@gmail.com"
+        referred_email_combined = "j.o.h.n+work@gmail.com"
+
+        # All should be detected as self-referral
+        assert is_self_referral(referrer_email, referred_email_dot) is True
+        assert is_self_referral(referrer_email, referred_email_plus) is True
+        assert is_self_referral(referrer_email, referred_email_combined) is True
+
+        # googlemail.com alias
+        assert is_self_referral(referrer_email, "john@googlemail.com") is True
+
+        # Different users should NOT be flagged
+        assert is_self_referral(referrer_email, "jane@gmail.com") is False
+        assert is_self_referral(referrer_email, "john@example.com") is False
+
+    def test_bonus_cap_enforcement(self, mock_aws_services, api_gateway_event):
+        """Test that bonus credits respect the 500K lifetime cap."""
+        os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
+        _reset_caches()
+
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
+
+        from shared.auth import generate_api_key
+        from shared.referral_utils import add_bonus_with_cap, BONUS_CAP
+
+        # Create user near the cap (490K)
+        user_id = "user_near_cap"
+        generate_api_key(user_id=user_id, tier="free", email="nearcap@example.com")
+
+        table.update_item(
+            Key={"pk": user_id, "sk": "USER_META"},
+            UpdateExpression="SET bonus_requests = :bonus, bonus_requests_lifetime = :lifetime",
+            ExpressionAttributeValues={
+                ":bonus": 10000,
+                ":lifetime": 490000,
+            },
+        )
+
+        # Try to add 25K (should only add 10K to reach cap)
+        amount_added = add_bonus_with_cap(user_id, 25000)
+        assert amount_added == 10000  # Partial credit
+
+        # Verify at cap
+        response = table.get_item(Key={"pk": user_id, "sk": "USER_META"})
+        assert response["Item"]["bonus_requests_lifetime"] == BONUS_CAP
+
+        # Try to add more - should return 0
+        amount_added = add_bonus_with_cap(user_id, 5000)
+        assert amount_added == 0
+
+    def test_late_entry_referral_code(self, mock_aws_services, api_gateway_event):
+        """Test adding referral code within 14-day window."""
+        os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
+        _reset_caches()
+
+        table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
+
+        from shared.auth import generate_api_key
+        from shared.referral_utils import (
+            generate_unique_referral_code,
+            can_add_late_referral,
+            LATE_ENTRY_DAYS,
+        )
+        from datetime import datetime, timedelta, timezone
+
+        # Create referrer with code
+        referrer_id = "user_referrer_late"
+        referrer_code = generate_unique_referral_code()
+        generate_api_key(user_id=referrer_id, tier="free", email="referrer_late@example.com")
+        table.update_item(
+            Key={"pk": referrer_id, "sk": "USER_META"},
+            UpdateExpression="SET referral_code = :code, email = :email",
+            ExpressionAttributeValues={
+                ":code": referrer_code,
+                ":email": "referrer_late@example.com",
+            },
+        )
+
+        # Create user created 5 days ago (within window)
+        recent_user_id = "user_recent_late"
+        created_5_days_ago = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
+        generate_api_key(user_id=recent_user_id, tier="free", email="recent@example.com")
+        table.update_item(
+            Key={"pk": recent_user_id, "sk": "USER_META"},
+            UpdateExpression="SET created_at = :created",
+            ExpressionAttributeValues={":created": created_5_days_ago},
+        )
+
+        can_add, deadline = can_add_late_referral(recent_user_id)
+        assert can_add is True
+        assert deadline is not None
+
+        # Create user created 20 days ago (outside window)
+        old_user_id = "user_old_late"
+        created_20_days_ago = (datetime.now(timezone.utc) - timedelta(days=20)).isoformat()
+        generate_api_key(user_id=old_user_id, tier="free", email="old@example.com")
+        table.update_item(
+            Key={"pk": old_user_id, "sk": "USER_META"},
+            UpdateExpression="SET created_at = :created",
+            ExpressionAttributeValues={":created": created_20_days_ago},
+        )
+
+        can_add, deadline = can_add_late_referral(old_user_id)
+        assert can_add is False
+        assert deadline is None
+
+    def test_referral_redirect_handler(self, mock_aws_services, api_gateway_event):
+        """Test /r/{code} redirect handler."""
+        os.environ["BASE_URL"] = "https://pkgwatch.dev"
+
+        from api.referral_redirect import handler as redirect_handler
+
+        event = {
+            "httpMethod": "GET",
+            "headers": {},
+            "pathParameters": {"code": "abc12345"},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = redirect_handler(event, {})
+
+        assert result["statusCode"] == 302
+        assert result["headers"]["Location"] == "https://pkgwatch.dev/start?ref=abc12345"
+
+    def test_add_referral_code_validates_user_id(self, mock_aws_services, api_gateway_event):
+        """Test that add_referral_code validates user_id format."""
+        os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
+        _reset_caches()
+
+        from api.add_referral_code import handler as add_code_handler
+
+        # Create a session with invalid user_id format
+        session_secret = "test-secret-key-for-signing-sessions-1234567890"
+        session_expires = datetime.now(timezone.utc) + timedelta(days=7)
+        session_data = {
+            "user_id": "invalid_format",  # Should start with "user_"
+            "email": "test@example.com",
+            "tier": "free",
+            "exp": int(session_expires.timestamp()),
+        }
+        payload = base64.urlsafe_b64encode(json.dumps(session_data).encode()).decode()
+        signature = hmac.new(
+            session_secret.encode(), payload.encode(), hashlib.sha256
+        ).hexdigest()
+        bad_session = f"{payload}.{signature}"
+
+        event = {
+            "httpMethod": "POST",
+            "headers": {"cookie": f"session={bad_session}"},
+            "pathParameters": {},
+            "queryStringParameters": {},
+            "body": json.dumps({"code": "abc12345"}),
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = add_code_handler(event, {})
+
+        assert result["statusCode"] == 401
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_session"

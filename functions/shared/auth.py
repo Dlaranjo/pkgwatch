@@ -372,6 +372,240 @@ def check_and_increment_usage_batch(
         raise
 
 
+def check_and_increment_usage_with_bonus(
+    user_id: str, key_hash: str, limit: int, count: int = 1
+) -> tuple[bool, int, int]:
+    """
+    Check limit and increment usage, with bonus credit support and activity gate.
+
+    Consumption priority:
+    1. Monthly tier limit (requests_this_month)
+    2. Bonus credits (bonus_requests) - used only after monthly exhausted
+
+    Activity gate: If user has referral_pending=True and crosses ACTIVITY_THRESHOLD
+    packages scanned, triggers referrer credit.
+
+    Args:
+        user_id: User's partition key
+        key_hash: Key hash for per-key analytics
+        limit: Monthly tier limit
+        count: Number of requests to increment (default 1)
+
+    Returns:
+        Tuple of (allowed: bool, new_usage_count: int, remaining_bonus: int)
+        - remaining_bonus is -1 if no bonus credits exist
+    """
+    # Import here to avoid circular import
+    from shared.referral_utils import ACTIVITY_THRESHOLD
+
+    if not DYNAMODB_CIRCUIT.can_execute():
+        logger.warning("DynamoDB circuit open, allowing request (degraded mode)")
+        return True, -1, -1
+
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
+
+    try:
+        # Get current USER_META state
+        response = table.get_item(
+            Key={"pk": user_id, "sk": "USER_META"},
+            ProjectionExpression=(
+                "requests_this_month, bonus_requests, referral_pending, "
+                "referred_by, referral_pending_expires, total_packages_scanned"
+            ),
+        )
+
+        meta = response.get("Item", {})
+        current_usage = int(meta.get("requests_this_month", 0))
+        bonus_available = int(meta.get("bonus_requests", 0))
+        referral_pending = meta.get("referral_pending", False)
+        total_scanned = int(meta.get("total_packages_scanned", 0))
+
+        # Calculate effective limit (monthly + bonus)
+        effective_limit = limit + bonus_available
+
+        # Check if request fits within effective limit
+        if current_usage + count > effective_limit:
+            DYNAMODB_CIRCUIT.record_success()
+            return False, current_usage, bonus_available
+
+        # Determine how much goes to monthly vs bonus
+        new_usage = current_usage + count
+        bonus_consumed = 0
+
+        if new_usage > limit:
+            # Part or all consumed from bonus
+            bonus_consumed = min(new_usage - limit, count)
+            # Clamp usage at monthly limit
+            usage_increment = count - bonus_consumed
+
+            # Atomic update with both monthly and bonus.
+            # GUARD: Condition ensures bonus_requests >= bonus_dec to prevent negative balance.
+            # If another concurrent request consumed bonus first, this will fail and we reject.
+            try:
+                table.update_item(
+                    Key={"pk": user_id, "sk": "USER_META"},
+                    UpdateExpression=(
+                        "SET requests_this_month = if_not_exists(requests_this_month, :zero) + :usage_inc, "
+                        "bonus_requests = bonus_requests - :bonus_dec, "
+                        "total_packages_scanned = if_not_exists(total_packages_scanned, :zero) + :count"
+                    ),
+                    ConditionExpression="bonus_requests >= :bonus_dec",
+                    ExpressionAttributeValues={
+                        ":usage_inc": usage_increment,
+                        ":bonus_dec": bonus_consumed,
+                        ":count": count,
+                        ":zero": 0,
+                    },
+                )
+            except ClientError as e:
+                if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                    # Bonus was consumed by concurrent request - reject this request
+                    logger.warning(f"Bonus race condition for {user_id}, rejecting request")
+                    DYNAMODB_CIRCUIT.record_success()
+                    return False, current_usage, 0
+                raise
+            new_bonus = bonus_available - bonus_consumed
+        else:
+            # All within monthly limit
+            table.update_item(
+                Key={"pk": user_id, "sk": "USER_META"},
+                UpdateExpression=(
+                    "SET requests_this_month = if_not_exists(requests_this_month, :zero) + :inc, "
+                    "total_packages_scanned = if_not_exists(total_packages_scanned, :zero) + :count"
+                ),
+                ExpressionAttributeValues={
+                    ":inc": count,
+                    ":count": count,
+                    ":zero": 0,
+                },
+            )
+            new_bonus = bonus_available
+
+        DYNAMODB_CIRCUIT.record_success()
+
+        # Update per-key counter (best-effort)
+        try:
+            table.update_item(
+                Key={"pk": user_id, "sk": key_hash},
+                UpdateExpression="ADD requests_this_month :inc",
+                ExpressionAttributeValues={":inc": count},
+            )
+        except Exception:
+            pass
+
+        # Check activity gate for referral credit
+        new_total_scanned = total_scanned + count
+        if referral_pending and new_total_scanned >= ACTIVITY_THRESHOLD and total_scanned < ACTIVITY_THRESHOLD:
+            # User just crossed the activity threshold - trigger referrer credit
+            _trigger_referral_activity_gate(user_id, meta)
+
+        return True, new_usage, new_bonus
+
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "")
+        if error_code in THROTTLING_ERRORS:
+            DYNAMODB_CIRCUIT.record_failure(e)
+        raise
+
+
+def _trigger_referral_activity_gate(user_id: str, user_meta: dict):
+    """
+    Credit referrer when referred user hits activity threshold.
+
+    Called when user crosses ACTIVITY_THRESHOLD packages scanned
+    and has referral_pending=True.
+
+    Uses atomic conditional update to prevent double-crediting from
+    concurrent requests.
+
+    Args:
+        user_id: The referred user's ID
+        user_meta: USER_META record for the referred user
+    """
+    from datetime import datetime, timezone
+    from shared.referral_utils import (
+        add_bonus_with_cap,
+        update_referrer_stats,
+        update_referral_event_to_credited,
+        REFERRAL_REWARDS,
+    )
+
+    referrer_id = user_meta.get("referred_by")
+    if not referrer_id:
+        logger.warning(f"Activity gate triggered but no referrer for {user_id}")
+        return
+
+    # Check if pending has expired
+    expires = user_meta.get("referral_pending_expires")
+    if expires:
+        try:
+            expires_dt = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > expires_dt:
+                logger.info(f"Referral pending expired for {user_id}, not crediting referrer")
+                # Clear the pending flag
+                table = _get_dynamodb().Table(API_KEYS_TABLE)
+                table.update_item(
+                    Key={"pk": user_id, "sk": "USER_META"},
+                    UpdateExpression="REMOVE referral_pending, referral_pending_expires",
+                )
+                return
+        except (ValueError, TypeError):
+            pass
+
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
+
+    try:
+        # IDEMPOTENCY: Atomically clear pending flag and set credited marker.
+        # This prevents double-crediting if concurrent requests both trigger the gate.
+        # The condition ensures only one request succeeds.
+        table.update_item(
+            Key={"pk": user_id, "sk": "USER_META"},
+            UpdateExpression=(
+                "SET referral_activity_credited = :true "
+                "REMOVE referral_pending, referral_pending_expires"
+            ),
+            ConditionExpression=(
+                "referral_pending = :pending AND "
+                "attribute_not_exists(referral_activity_credited)"
+            ),
+            ExpressionAttributeValues={
+                ":true": True,
+                ":pending": True,
+            },
+        )
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            # Another concurrent request already processed this - that's OK
+            logger.info(f"Activity gate already processed for {user_id} (concurrent request)")
+            return
+        raise
+
+    # If we get here, we won the race - proceed with crediting
+    try:
+        # Credit referrer with signup bonus (respecting cap)
+        reward_amount = REFERRAL_REWARDS["signup"]
+        actual_reward = add_bonus_with_cap(referrer_id, reward_amount)
+
+        # Update referral event from pending to credited
+        update_referral_event_to_credited(referrer_id, user_id, actual_reward)
+
+        # Update referrer stats
+        update_referrer_stats(
+            referrer_id,
+            pending_delta=-1,  # Decrease pending count
+            rewards_delta=actual_reward,
+        )
+
+        logger.info(
+            f"Activity gate: credited referrer {referrer_id} with {actual_reward} "
+            f"for referred user {user_id}"
+        )
+
+    except Exception as e:
+        logger.error(f"Error processing activity gate for {user_id}: {e}")
+        # Don't re-raise - the user's request should still succeed
+
+
 def reset_monthly_usage(user_id: str, key_hash: str) -> None:
     """
     Reset monthly usage counter (called at start of each month).

@@ -1,0 +1,21 @@
+---
+/**
+ * Referral URL redirect - /r/{code}
+ *
+ * Redirects to /start?ref={code} so the start page can capture the referral.
+ * This is a backup for the API Gateway redirect (which should handle most traffic).
+ */
+
+export const prerender = false;
+
+const { code } = Astro.params;
+
+// Validate code format (alphanumeric, 6-12 chars)
+const isValidCode = code && /^[a-zA-Z0-9]{6,12}$/.test(code);
+
+if (isValidCode) {
+  return Astro.redirect(`/start?ref=${code}`, 302);
+} else {
+  return Astro.redirect('/start', 302);
+}
+---

@@ -166,6 +166,88 @@ import Layout from '../layouts/Layout.astro';
         </div>
       </section>
 
+      <!-- Late entry banner (for new users without referrer within 14-day window) -->
+      <div id="late-entry-banner" class="hidden bg-emerald-900/30 border border-emerald-700 rounded-xl p-4">
+        <div class="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <p class="font-medium text-white">Were you referred by someone?</p>
+            <p class="text-sm text-zinc-400">Add their code to get 10,000 bonus requests!</p>
+          </div>
+          <button id="add-code-btn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition">
+            Add Code
+          </button>
+        </div>
+        <p id="late-entry-deadline" class="text-xs text-zinc-500 mt-2">
+          Expires in <span id="days-remaining">--</span> days
+        </p>
+      </div>
+
+      <!-- Referral Program Section -->
+      <section aria-labelledby="referral-heading" id="referral-section" class="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div class="flex items-center justify-between mb-4 flex-wrap gap-4">
+          <h2 id="referral-heading" class="text-lg font-semibold text-white">Refer Friends</h2>
+          <span id="bonus-display" class="text-emerald-400 font-medium text-sm">
+            0 bonus requests
+          </span>
+        </div>
+
+        <!-- Referral Link -->
+        <div class="mb-6">
+          <label class="text-sm text-zinc-400 mb-2 block">Your referral link</label>
+          <div class="flex gap-2">
+            <input type="text" id="referral-link" readonly
+              class="flex-1 px-4 py-2 bg-black/50 border border-zinc-700 rounded-lg font-mono text-sm text-white"
+              value="Loading..." />
+            <button id="copy-referral-btn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition">
+              Copy
+            </button>
+          </div>
+        </div>
+
+        <!-- Rewards Explanation -->
+        <div class="grid grid-cols-3 gap-4 mb-6 text-center text-sm">
+          <div class="p-3 bg-black/30 rounded-lg">
+            <div class="text-lg font-bold text-white">5K</div>
+            <div class="text-zinc-500 text-xs">They scan 100 pkgs</div>
+          </div>
+          <div class="p-3 bg-black/30 rounded-lg">
+            <div class="text-lg font-bold text-white">+25K</div>
+            <div class="text-zinc-500 text-xs">They upgrade</div>
+          </div>
+          <div class="p-3 bg-black/30 rounded-lg">
+            <div class="text-lg font-bold text-white">+25K</div>
+            <div class="text-zinc-500 text-xs">2 months retained</div>
+          </div>
+        </div>
+
+        <!-- Cap indicator (shown when approaching limit) -->
+        <div id="cap-indicator" class="hidden mb-4 p-3 bg-amber-900/30 border border-amber-700 rounded-lg text-sm text-amber-400">
+          You've earned <span id="lifetime-earned">0</span> of 500,000 lifetime bonus requests.
+        </div>
+
+        <!-- Referrals list -->
+        <div id="referrals-section">
+          <h3 class="text-sm font-medium text-zinc-400 mb-3">Your Referrals</h3>
+          <!-- Empty state -->
+          <div id="referrals-empty" class="text-center py-6 text-zinc-500">
+            <p>No referrals yet. Share your link to start earning!</p>
+          </div>
+          <!-- Referrals table (hidden until data loaded) -->
+          <table id="referrals-table" class="hidden w-full text-sm">
+            <thead>
+              <tr class="text-left text-zinc-400 border-b border-zinc-800">
+                <th class="pb-2">Email</th>
+                <th class="pb-2">Status</th>
+                <th class="pb-2 text-right">Reward</th>
+              </tr>
+            </thead>
+            <tbody id="referrals-tbody">
+              <!-- Populated by JavaScript -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- Recovery Codes Setup Banner (shown for returning users without codes) -->
       <div id="setup-recovery-banner" class="hidden bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
         <div class="flex items-center justify-between gap-4">
@@ -904,10 +986,16 @@ import Layout from '../layouts/Layout.astro';
   function updateUsage(userData: any): void {
     const requests = userData.requests_this_month || 0;
     const limit = userData.monthly_limit || 100;
-    const percentage = Math.min((requests / limit) * 100, 100);
+    const bonus = userData.bonus_requests || 0;
+    const effectiveLimit = limit + bonus;
+    const percentage = Math.min((requests / effectiveLimit) * 100, 100);
 
     if (usageCount) {
-      usageCount.textContent = `${formatNumber(requests)} / ${formatNumber(limit)}`;
+      if (bonus > 0) {
+        usageCount.textContent = `${formatNumber(requests)} / ${formatNumber(limit)} (+${formatNumber(bonus)} bonus)`;
+      } else {
+        usageCount.textContent = `${formatNumber(requests)} / ${formatNumber(limit)}`;
+      }
     }
 
     if (usageBar) {
@@ -1228,6 +1316,10 @@ import Layout from '../layouts/Layout.astro';
       updateUsage(userData);
       updateKeysList(keysData.api_keys || []);
 
+      // Load referral data and check late entry eligibility
+      loadReferralStatus();
+      checkLateEntryEligibility(userData);
+
       showContent();
 
       // Check for stored redirect after login (e.g., from /login?redirect=/pricing)
@@ -1363,6 +1455,124 @@ import Layout from '../layouts/Layout.astro';
       if (!regenerateWarningModal?.classList.contains('hidden')) {
         closeRegenerateWarningModal();
       }
+    }
+  });
+
+  // ===========================================
+  // Referral Program Functionality
+  // ===========================================
+
+  const referralLink = document.getElementById('referral-link') as HTMLInputElement;
+  const copyReferralBtn = document.getElementById('copy-referral-btn');
+  const bonusDisplay = document.getElementById('bonus-display');
+  const capIndicator = document.getElementById('cap-indicator');
+  const lifetimeEarned = document.getElementById('lifetime-earned');
+  const referralsEmpty = document.getElementById('referrals-empty');
+  const referralsTable = document.getElementById('referrals-table');
+  const referralsTbody = document.getElementById('referrals-tbody');
+  const lateEntryBanner = document.getElementById('late-entry-banner');
+  const daysRemaining = document.getElementById('days-remaining');
+  const addCodeBtn = document.getElementById('add-code-btn');
+
+  async function loadReferralStatus(): Promise<void> {
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/referral/status`);
+      if (!response.ok) {
+        console.error('Failed to load referral status');
+        return;
+      }
+      const data = await response.json();
+
+      // Update referral link
+      if (referralLink && data.referral_url) {
+        referralLink.value = data.referral_url;
+      }
+
+      // Update bonus display
+      if (bonusDisplay) {
+        const bonus = data.bonus_requests || 0;
+        bonusDisplay.textContent = `${bonus.toLocaleString()} bonus requests`;
+      }
+
+      // Show cap indicator if approaching limit
+      if (capIndicator && lifetimeEarned && data.bonus_lifetime > 400000) {
+        capIndicator.classList.remove('hidden');
+        lifetimeEarned.textContent = data.bonus_lifetime.toLocaleString();
+      }
+
+      // Update referrals list
+      const referrals = data.referrals || [];
+      if (referrals.length > 0 && referralsTable && referralsTbody) {
+        referralsEmpty?.classList.add('hidden');
+        referralsTable.classList.remove('hidden');
+        referralsTbody.innerHTML = referrals.map((r: any) => {
+          const statusClass = r.status === 'credited' ? 'text-emerald-400' : 'text-amber-400';
+          const statusText = r.status === 'credited' ? 'Credited' : 'Pending';
+          return `
+            <tr class="border-b border-zinc-800">
+              <td class="py-2 text-white">${escapeHtml(r.email || '')}</td>
+              <td class="py-2 ${statusClass}">${statusText}</td>
+              <td class="py-2 text-right text-zinc-400">${r.reward > 0 ? `+${r.reward.toLocaleString()}` : '-'}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+    } catch (error) {
+      console.error('Error loading referral status:', error);
+    }
+  }
+
+  // Check if user can add late referral code
+  function checkLateEntryEligibility(userData: any): void {
+    if (userData.can_add_referral && lateEntryBanner && daysRemaining) {
+      lateEntryBanner.classList.remove('hidden');
+      if (userData.referral_code_deadline) {
+        const deadline = new Date(userData.referral_code_deadline);
+        const now = new Date();
+        const days = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        daysRemaining.textContent = days.toString();
+      }
+    }
+  }
+
+  // Copy referral link
+  copyReferralBtn?.addEventListener('click', async () => {
+    if (!referralLink?.value) return;
+    try {
+      await navigator.clipboard.writeText(referralLink.value);
+      const originalText = copyReferralBtn.textContent;
+      copyReferralBtn.textContent = 'Copied!';
+      setTimeout(() => {
+        copyReferralBtn.textContent = originalText;
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
+  });
+
+  // Add referral code modal
+  addCodeBtn?.addEventListener('click', async () => {
+    const code = prompt('Enter referral code:');
+    if (!code) return;
+
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/referral/add-code`, {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert(data.message || 'Referral code applied!');
+        lateEntryBanner?.classList.add('hidden');
+        // Reload to update bonus display
+        window.location.reload();
+      } else {
+        alert(data.error?.message || 'Failed to add referral code');
+      }
+    } catch (error) {
+      alert('Network error. Please try again.');
     }
   });
 

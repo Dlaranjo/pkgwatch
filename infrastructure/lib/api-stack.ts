@@ -22,6 +22,7 @@ interface ApiStackProps extends cdk.StackProps {
   packagesTable: dynamodb.Table;
   apiKeysTable: dynamodb.Table;
   billingEventsTable: dynamodb.Table;
+  referralEventsTable: dynamodb.Table;
   alertTopic?: sns.Topic;
   packageQueue?: sqs.Queue; // For package request API endpoint
 }
@@ -32,7 +33,7 @@ export class ApiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
-    const { packagesTable, apiKeysTable, billingEventsTable, alertTopic, packageQueue } = props;
+    const { packagesTable, apiKeysTable, billingEventsTable, referralEventsTable, alertTopic, packageQueue } = props;
 
     // ===========================================
     // Stripe Environment Variable Validation
@@ -126,6 +127,7 @@ export class ApiStack extends cdk.Stack {
         PACKAGES_TABLE: packagesTable.tableName,
         API_KEYS_TABLE: apiKeysTable.tableName,
         BILLING_EVENTS_TABLE: billingEventsTable.tableName,
+        REFERRAL_EVENTS_TABLE: referralEventsTable.tableName,
         STRIPE_SECRET_ARN: "pkgwatch/stripe-secret",  // Use name, not partial ARN
         STRIPE_WEBHOOK_SECRET_ARN: "pkgwatch/stripe-webhook",  // Use name, not partial ARN
         ...(isDevMode && { ALLOW_DEV_CORS: "true" }), // Allow localhost CORS in dev
@@ -1352,6 +1354,85 @@ export class ApiStack extends cdk.Stack {
     recoveryConfirmEmailHandler.addToRolePolicy(sesPolicy);
 
     // ===========================================
+    // Lambda: Referral Handlers
+    // ===========================================
+
+    // GET /referral/status - Get referral program status
+    const referralStatusHandler = new lambda.Function(this, "ReferralStatusHandler", {
+      ...authLambdaProps,
+      functionName: "pkgwatch-api-referral-status",
+      handler: "api.referral_status.handler",
+      code: apiCodeWithShared,
+      description: "Get referral program status and stats",
+    });
+
+    apiKeysTable.grantReadWriteData(referralStatusHandler);
+    referralEventsTable.grantReadData(referralStatusHandler);
+    referralStatusHandler.addToRolePolicy(sessionSecretPolicy);
+
+    // GET /r/{code} - Referral URL redirect
+    const referralRedirectHandler = new lambda.Function(this, "ReferralRedirectHandler", {
+      ...commonLambdaProps,
+      functionName: "pkgwatch-api-referral-redirect",
+      handler: "api.referral_redirect.handler",
+      code: apiCodeWithShared,
+      description: "Redirect referral URLs to start page",
+    });
+
+    // POST /referral/add-code - Add referral code (late entry)
+    const addReferralCodeHandler = new lambda.Function(this, "AddReferralCodeHandler", {
+      ...authLambdaProps,
+      functionName: "pkgwatch-api-add-referral-code",
+      handler: "api.add_referral_code.handler",
+      code: apiCodeWithShared,
+      description: "Add referral code within 14 days of signup",
+    });
+
+    apiKeysTable.grantReadWriteData(addReferralCodeHandler);
+    referralEventsTable.grantReadWriteData(addReferralCodeHandler);
+    addReferralCodeHandler.addToRolePolicy(sessionSecretPolicy);
+
+    // Scheduled: Referral retention check (daily at 1:30 AM UTC)
+    const referralRetentionHandler = new lambda.Function(this, "ReferralRetentionHandler", {
+      ...commonLambdaProps,
+      functionName: "pkgwatch-api-referral-retention",
+      handler: "api.referral_retention_check.handler",
+      code: apiCodeWithShared,
+      timeout: cdk.Duration.minutes(5),
+      description: "Check and award retention bonuses for referrals",
+    });
+
+    apiKeysTable.grantReadWriteData(referralRetentionHandler);
+    referralEventsTable.grantReadWriteData(referralRetentionHandler);
+    referralRetentionHandler.addToRolePolicy(stripeSecretPolicy);
+
+    new events.Rule(this, "DailyReferralRetention", {
+      ruleName: "pkgwatch-referral-retention-check",
+      description: "Daily check for referral retention bonuses",
+      schedule: events.Schedule.cron({ minute: "30", hour: "1" }),
+      targets: [new targets.LambdaFunction(referralRetentionHandler)],
+    });
+
+    // Scheduled: Referral cleanup (daily at 2:00 AM UTC)
+    const referralCleanupHandler = new lambda.Function(this, "ReferralCleanupHandler", {
+      ...commonLambdaProps,
+      functionName: "pkgwatch-api-referral-cleanup",
+      handler: "api.referral_cleanup.handler",
+      code: apiCodeWithShared,
+      timeout: cdk.Duration.minutes(5),
+      description: "Clean up stale pending referrals",
+    });
+
+    apiKeysTable.grantReadWriteData(referralCleanupHandler);
+
+    new events.Rule(this, "DailyReferralCleanup", {
+      ruleName: "pkgwatch-referral-cleanup",
+      description: "Daily cleanup of stale pending referrals",
+      schedule: events.Schedule.cron({ minute: "0", hour: "2" }),
+      targets: [new targets.LambdaFunction(referralCleanupHandler)],
+    });
+
+    // ===========================================
     // Account Recovery Routes
     // ===========================================
 
@@ -1433,6 +1514,35 @@ export class ApiStack extends cdk.Stack {
     recoveryConfirmEmailResource.addMethod(
       "GET",
       new apigateway.LambdaIntegration(recoveryConfirmEmailHandler)
+    );
+
+    // ===========================================
+    // Referral Routes
+    // ===========================================
+
+    // /referral routes
+    const referralResource = this.api.root.addResource("referral");
+
+    // GET /referral/status
+    const referralStatusResource = referralResource.addResource("status");
+    referralStatusResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(referralStatusHandler)
+    );
+
+    // POST /referral/add-code
+    const addCodeResource = referralResource.addResource("add-code");
+    addCodeResource.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(addReferralCodeHandler)
+    );
+
+    // GET /r/{code} - Clean referral URL redirect
+    const rResource = this.api.root.addResource("r");
+    const codeResource = rResource.addResource("{code}");
+    codeResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(referralRedirectHandler)
     );
 
     // ===========================================
@@ -1649,6 +1759,13 @@ export class ApiStack extends cdk.Stack {
     createLambdaAlarms(recoveryVerifyCodeHandler, "RecoveryVerifyCode");
     createLambdaAlarms(recoveryUpdateEmailHandler, "RecoveryUpdateEmail");
     createLambdaAlarms(recoveryConfirmEmailHandler, "RecoveryConfirmEmail");
+
+    // Referral program Lambda alarms
+    createLambdaAlarms(referralStatusHandler, "ReferralStatus");
+    createLambdaAlarms(referralRedirectHandler, "ReferralRedirect");
+    createLambdaAlarms(addReferralCodeHandler, "AddReferralCode");
+    createLambdaAlarms(referralRetentionHandler, "ReferralRetention");
+    createLambdaAlarms(referralCleanupHandler, "ReferralCleanup");
 
     // API Gateway 5XX alarm
     const api5xxAlarm = new cloudwatch.Alarm(this, "Api5xxAlarm", {
