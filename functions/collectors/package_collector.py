@@ -951,7 +951,8 @@ async def process_single_package(message: dict) -> tuple[bool, str, Optional[str
         # Note: If this is a retry, we already incremented retry_count in DynamoDB above,
         # so we need to pass the incremented value to avoid overwriting it
         if existing:
-            base_retry_count = existing.get("retry_count", 0)
+            # Convert to int - DynamoDB returns Decimal which can't be used as list index
+            base_retry_count = int(existing.get("retry_count", 0))
             # If this is a retry, the count was already incremented in DynamoDB
             data["_existing_retry_count"] = base_retry_count + 1 if is_retry else base_retry_count
 
