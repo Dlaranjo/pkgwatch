@@ -105,6 +105,7 @@ resource "aws_cloudfront_origin_access_control" "landing_page" {
 }
 
 # CloudFront Function for URL rewrites (handles /docs -> /docs/index.html)
+# Also redirects /r/* referral URLs to api.pkgwatch.dev
 resource "aws_cloudfront_function" "url_rewrite" {
   name    = "pkgwatch-url-rewrite"
   runtime = "cloudfront-js-2.0"
@@ -113,6 +114,18 @@ resource "aws_cloudfront_function" "url_rewrite" {
     function handler(event) {
       var request = event.request;
       var uri = request.uri;
+
+      // Redirect /r/{code} referral URLs to API Gateway
+      if (uri.startsWith('/r/')) {
+        return {
+          statusCode: 302,
+          statusDescription: 'Found',
+          headers: {
+            'location': { value: 'https://api.pkgwatch.dev' + uri },
+            'cache-control': { value: 'no-store' }
+          }
+        };
+      }
 
       // If URI ends with / add index.html
       if (uri.endsWith('/')) {
