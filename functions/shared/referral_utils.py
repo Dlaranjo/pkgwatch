@@ -61,8 +61,8 @@ LATE_ENTRY_DAYS = 14         # Days after signup to add referral code
 PENDING_TIMEOUT_DAYS = 90    # Days before pending referral expires
 RETENTION_MONTHS = 2         # Months before retention bonus triggers
 
-# Referral code format
-REFERRAL_CODE_REGEX = re.compile(r"^[a-zA-Z0-9]{6,12}$")
+# Referral code format (allows alphanumeric plus _ and - for backwards compatibility)
+REFERRAL_CODE_REGEX = re.compile(r"^[a-zA-Z0-9_-]{6,12}$")
 
 # ===========================================
 # Email Canonicalization
@@ -147,14 +147,15 @@ def generate_referral_code() -> str:
     """
     Generate a unique 8-character alphanumeric referral code.
 
-    Uses URL-safe base64 characters (A-Z, a-z, 0-9, _, -) but truncates
-    to 8 chars and avoids confusing characters.
+    Uses only alphanumeric characters (A-Z, a-z, 0-9) to match
+    the validation regex and avoid URL encoding issues.
 
     Returns:
-        8-character referral code like "abc12345"
+        8-character referral code like "AbC12DeF"
     """
-    # Generate more entropy than needed and take first 8 chars
-    return secrets.token_urlsafe(6)[:8]
+    # Use only alphanumeric characters to match validation regex
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    return "".join(secrets.choice(alphabet) for _ in range(8))
 
 
 def is_valid_referral_code(code: str) -> bool:

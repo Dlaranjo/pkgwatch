@@ -7,11 +7,15 @@ Example: /r/abc12345 -> /start?ref=abc12345
 
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.dev")
+
+# Match referral_utils.py regex (alphanumeric + _ and - for backwards compatibility)
+REFERRAL_CODE_REGEX = re.compile(r"^[a-zA-Z0-9_-]{6,12}$")
 
 
 def handler(event, context):
@@ -36,8 +40,8 @@ def handler(event, context):
             "body": "",
         }
 
-    # Basic validation - alphanumeric, 6-12 chars
-    if not code.isalnum() or len(code) < 6 or len(code) > 12:
+    # Validate code format (alphanumeric, _, -, 6-12 chars)
+    if not REFERRAL_CODE_REGEX.match(code):
         logger.warning(f"Invalid referral code format in redirect: {code[:20]}")
         return {
             "statusCode": 302,
