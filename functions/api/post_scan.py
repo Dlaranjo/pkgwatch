@@ -110,7 +110,7 @@ def _queue_packages_for_collection(packages: list[str], ecosystem: str) -> int:
     return queued
 
 # Import from shared module (bundled with Lambda)
-from shared.auth import validate_api_key, check_and_increment_usage_batch
+from shared.auth import validate_api_key, check_and_increment_usage_with_bonus
 from shared.response_utils import error_response, decimal_default, get_cors_headers
 from shared.data_quality import build_data_quality_compact
 
@@ -218,21 +218,26 @@ def handler(event, context):
 
     # Atomically check rate limit and reserve quota for this scan
     # This prevents race conditions where concurrent scans can exceed the limit
-    allowed, new_count = check_and_increment_usage_batch(
+    # Uses bonus-aware function to track total_packages_scanned and trigger referral activity gate
+    allowed, new_count, bonus_remaining = check_and_increment_usage_with_bonus(
         user["user_id"],
         user["key_hash"],
         user["monthly_limit"],
         len(dependencies),
     )
     if not allowed:
-        remaining = user["monthly_limit"] - new_count
+        # Calculate remaining including bonus credits
+        effective_limit = user["monthly_limit"] + max(0, bonus_remaining)
+        remaining = effective_limit - new_count
         return error_response(
             429,
             "rate_limit_exceeded",
-            f"Scanning {len(dependencies)} packages would exceed your remaining {remaining} requests.",
+            f"Scanning {len(dependencies)} packages would exceed your remaining {max(0, remaining)} requests.",
             origin=origin,
         )
-    remaining = user["monthly_limit"] - new_count
+    # Calculate remaining including bonus credits
+    effective_limit = user["monthly_limit"] + max(0, bonus_remaining)
+    remaining = effective_limit - new_count
 
     # Fetch scores for all dependencies using BatchGetItem for efficiency
     results = []

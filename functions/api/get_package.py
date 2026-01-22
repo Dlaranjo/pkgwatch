@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # Import from shared module (bundled with Lambda)
-from shared.auth import validate_api_key, check_and_increment_usage
+from shared.auth import validate_api_key, check_and_increment_usage_with_bonus
 from shared.response_utils import decimal_default, error_response
 from shared.rate_limit_utils import check_usage_alerts, get_reset_timestamp
 from shared.data_quality import build_data_quality_full
@@ -209,7 +209,8 @@ def handler(event, context):
     if user:
         # Authenticated request - atomically check limit and increment
         # This prevents race conditions where concurrent requests exceed the limit
-        allowed, authenticated_usage_count = check_and_increment_usage(
+        # Uses bonus-aware function to track total_packages_scanned and trigger referral activity gate
+        allowed, authenticated_usage_count, _bonus = check_and_increment_usage_with_bonus(
             user["user_id"], user["key_hash"], user["monthly_limit"]
         )
         if not allowed:
