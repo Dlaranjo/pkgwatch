@@ -51,3 +51,4 @@ web/terraform/.terraform/
 web/terraform/*.tfstate*
 web/terraform/.terraform.lock.hcl
 .npmrc
+web/terraform/tfplan
