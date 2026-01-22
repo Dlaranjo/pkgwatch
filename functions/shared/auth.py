@@ -466,19 +466,34 @@ def check_and_increment_usage_with_bonus(
                 raise
             new_bonus = bonus_available - bonus_consumed
         else:
-            # All within monthly limit
-            table.update_item(
-                Key={"pk": user_id, "sk": "USER_META"},
-                UpdateExpression=(
-                    "SET requests_this_month = if_not_exists(requests_this_month, :zero) + :inc, "
-                    "total_packages_scanned = if_not_exists(total_packages_scanned, :zero) + :count"
-                ),
-                ExpressionAttributeValues={
-                    ":inc": count,
-                    ":count": count,
-                    ":zero": 0,
-                },
-            )
+            # All within monthly limit.
+            # GUARD: Condition ensures we don't exceed limit from concurrent requests.
+            # If another request already pushed usage over limit, this will fail.
+            try:
+                table.update_item(
+                    Key={"pk": user_id, "sk": "USER_META"},
+                    UpdateExpression=(
+                        "SET requests_this_month = if_not_exists(requests_this_month, :zero) + :inc, "
+                        "total_packages_scanned = if_not_exists(total_packages_scanned, :zero) + :count"
+                    ),
+                    ConditionExpression=(
+                        "attribute_not_exists(requests_this_month) OR "
+                        "requests_this_month < :max_allowed"
+                    ),
+                    ExpressionAttributeValues={
+                        ":inc": count,
+                        ":count": count,
+                        ":zero": 0,
+                        ":max_allowed": limit - count + 1,  # Allow if result won't exceed limit
+                    },
+                )
+            except ClientError as e:
+                if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                    # Concurrent request pushed usage over limit - reject this request
+                    logger.warning(f"Monthly limit race condition for {user_id}, rejecting request")
+                    DYNAMODB_CIRCUIT.record_success()
+                    return False, current_usage, bonus_available
+                raise
             new_bonus = bonus_available
 
         DYNAMODB_CIRCUIT.record_success()

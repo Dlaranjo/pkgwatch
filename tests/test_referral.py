@@ -104,10 +104,10 @@ class TestReferralCodeGeneration:
     """Test referral code generation and validation."""
 
     def test_code_format(self):
-        """Generated codes should be 8 characters alphanumeric."""
+        """Generated codes should be 8 characters alphanumeric only."""
         code = generate_referral_code()
         assert len(code) == 8
-        assert code.isalnum() or '_' in code or '-' in code
+        assert code.isalnum()  # New codes are always alphanumeric (no _ or -)
 
     def test_codes_unique(self):
         """Generated codes should be unique."""
