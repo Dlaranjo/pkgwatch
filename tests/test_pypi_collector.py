@@ -544,3 +544,676 @@ class TestPackageCollectorPyPIValidation:
         })
         assert is_valid is False
         assert "path traversal" in error
+
+
+# =============================================================================
+# RETRY WITH BACKOFF TESTS
+# =============================================================================
+
+
+class TestRetryWithBackoff:
+    """Tests for retry_with_backoff function."""
+
+    def test_success_on_first_attempt(self):
+        """Test successful execution on first attempt."""
+        from pypi_collector import retry_with_backoff
+
+        call_count = 0
+
+        async def mock_func():
+            nonlocal call_count
+            call_count += 1
+            return "success"
+
+        result = run_async(retry_with_backoff(mock_func))
+        assert result == "success"
+        assert call_count == 1
+
+    def test_retry_on_429_rate_limit(self):
+        """Test retry on 429 Too Many Requests."""
+        from pypi_collector import retry_with_backoff
+
+        call_count = 0
+
+        async def mock_func():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                response = httpx.Response(429, request=httpx.Request("GET", "http://test"))
+                raise httpx.HTTPStatusError("Rate limited", request=response.request, response=response)
+            return "success"
+
+        result = run_async(retry_with_backoff(mock_func, max_retries=3, base_delay=0.01))
+        assert result == "success"
+        assert call_count == 3
+
+    def test_retry_on_500_server_error(self):
+        """Test retry on 500 Internal Server Error."""
+        from pypi_collector import retry_with_backoff
+
+        call_count = 0
+
+        async def mock_func():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                response = httpx.Response(500, request=httpx.Request("GET", "http://test"))
+                raise httpx.HTTPStatusError("Server error", request=response.request, response=response)
+            return "success"
+
+        result = run_async(retry_with_backoff(mock_func, max_retries=3, base_delay=0.01))
+        assert result == "success"
+        assert call_count == 2
+
+    def test_retry_on_502_bad_gateway(self):
+        """Test retry on 502 Bad Gateway."""
+        from pypi_collector import retry_with_backoff
+
+        call_count = 0
+
+        async def mock_func():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                response = httpx.Response(502, request=httpx.Request("GET", "http://test"))
+                raise httpx.HTTPStatusError("Bad gateway", request=response.request, response=response)
+            return "success"
+
+        result = run_async(retry_with_backoff(mock_func, max_retries=3, base_delay=0.01))
+        assert result == "success"
+
+    def test_retry_on_503_service_unavailable(self):
+        """Test retry on 503 Service Unavailable."""
+        from pypi_collector import retry_with_backoff
+
+        call_count = 0
+
+        async def mock_func():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                response = httpx.Response(503, request=httpx.Request("GET", "http://test"))
+                raise httpx.HTTPStatusError("Service unavailable", request=response.request, response=response)
+            return "success"
+
+        result = run_async(retry_with_backoff(mock_func, max_retries=3, base_delay=0.01))
+        assert result == "success"
+
+    def test_retry_on_504_gateway_timeout(self):
+        """Test retry on 504 Gateway Timeout."""
+        from pypi_collector import retry_with_backoff
+
+        call_count = 0
+
+        async def mock_func():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                response = httpx.Response(504, request=httpx.Request("GET", "http://test"))
+                raise httpx.HTTPStatusError("Gateway timeout", request=response.request, response=response)
+            return "success"
+
+        result = run_async(retry_with_backoff(mock_func, max_retries=3, base_delay=0.01))
+        assert result == "success"
+
+    def test_no_retry_on_400_client_error(self):
+        """Test no retry on 400 Bad Request (client error)."""
+        from pypi_collector import retry_with_backoff
+
+        call_count = 0
+
+        async def mock_func():
+            nonlocal call_count
+            call_count += 1
+            response = httpx.Response(400, request=httpx.Request("GET", "http://test"))
+            raise httpx.HTTPStatusError("Bad request", request=response.request, response=response)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            run_async(retry_with_backoff(mock_func, max_retries=3, base_delay=0.01))
+        assert call_count == 1  # No retries for client errors
+
+    def test_no_retry_on_404_not_found(self):
+        """Test no retry on 404 Not Found."""
+        from pypi_collector import retry_with_backoff
+
+        call_count = 0
+
+        async def mock_func():
+            nonlocal call_count
+            call_count += 1
+            response = httpx.Response(404, request=httpx.Request("GET", "http://test"))
+            raise httpx.HTTPStatusError("Not found", request=response.request, response=response)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            run_async(retry_with_backoff(mock_func, max_retries=3, base_delay=0.01))
+        assert call_count == 1
+
+    def test_retry_on_network_error(self):
+        """Test retry on network/connection errors."""
+        from pypi_collector import retry_with_backoff
+
+        call_count = 0
+
+        async def mock_func():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise httpx.ConnectError("Connection failed")
+            return "success"
+
+        result = run_async(retry_with_backoff(mock_func, max_retries=3, base_delay=0.01))
+        assert result == "success"
+        assert call_count == 3
+
+    def test_retry_on_timeout_error(self):
+        """Test retry on timeout errors."""
+        from pypi_collector import retry_with_backoff
+
+        call_count = 0
+
+        async def mock_func():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise httpx.ReadTimeout("Request timed out")
+            return "success"
+
+        result = run_async(retry_with_backoff(mock_func, max_retries=3, base_delay=0.01))
+        assert result == "success"
+
+    def test_raises_after_max_retries(self):
+        """Test that exception is raised after max retries exhausted."""
+        from pypi_collector import retry_with_backoff
+
+        call_count = 0
+
+        async def mock_func():
+            nonlocal call_count
+            call_count += 1
+            response = httpx.Response(500, request=httpx.Request("GET", "http://test"))
+            raise httpx.HTTPStatusError("Server error", request=response.request, response=response)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            run_async(retry_with_backoff(mock_func, max_retries=3, base_delay=0.01))
+        assert call_count == 3
+
+
+# =============================================================================
+# EDGE CASE TESTS FOR METADATA PARSING
+# =============================================================================
+
+
+class TestPyPIMetadataEdgeCases:
+    """Tests for edge cases in PyPI metadata parsing."""
+
+    def _create_pypi_response(self, **overrides):
+        """Create a mock PyPI JSON response with optional overrides."""
+        base = {
+            "info": {
+                "name": "test-package",
+                "version": "1.0.0",
+                "author": None,
+                "maintainer": None,
+                "author_email": None,
+                "maintainer_email": None,
+                "summary": "A test package",
+                "license": "MIT",
+                "requires_python": ">=3.8",
+                "classifiers": [],
+                "project_urls": {},
+                "home_page": None,
+                "keywords": None,
+            },
+            "releases": {
+                "1.0.0": [{"upload_time_iso_8601": "2023-01-01T00:00:00Z"}],
+            },
+        }
+        for key, value in overrides.items():
+            if key in base["info"]:
+                base["info"][key] = value
+            elif key == "releases":
+                base["releases"] = value
+        return base
+
+    def _create_pypistats_response(self):
+        """Create a mock pypistats response."""
+        return {"data": {"last_week": 1000}}
+
+    def test_invalid_json_response(self):
+        """Test handling of invalid JSON response from PyPI."""
+        from pypi_collector import get_pypi_metadata
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "pypi.org" in url:
+                return httpx.Response(200, content=b"not valid json {{{")
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("test-package"))
+            assert result["error"] == "invalid_json_response"
+            assert result["name"] == "test-package"
+
+    def test_maintainer_from_email_when_name_missing(self):
+        """Test extracting maintainer from email when name is not provided."""
+        from pypi_collector import get_pypi_metadata
+
+        response = self._create_pypi_response(
+            author=None,
+            author_email="author@example.com",
+            maintainer=None,
+            maintainer_email="maintainer@example.com",
+        )
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "pypi.org" in url:
+                return httpx.Response(200, json=response)
+            elif "pypistats.org" in url:
+                return httpx.Response(200, json=self._create_pypistats_response())
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("test-package"))
+            assert "author@example.com" in result["maintainers"]
+            assert "maintainer@example.com" in result["maintainers"]
+            assert result["maintainer_count"] == 2
+
+    def test_maintainer_deduplicated_when_same_as_author(self):
+        """Test that maintainer is not duplicated when same as author."""
+        from pypi_collector import get_pypi_metadata
+
+        response = self._create_pypi_response(
+            author="John Doe",
+            maintainer="John Doe",  # Same as author
+        )
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "pypi.org" in url:
+                return httpx.Response(200, json=response)
+            elif "pypistats.org" in url:
+                return httpx.Response(200, json=self._create_pypistats_response())
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("test-package"))
+            # Should only have one maintainer, not duplicated
+            assert result["maintainer_count"] == 1
+            assert result["maintainers"] == ["John Doe"]
+
+    def test_maintainer_email_deduplicated(self):
+        """Test that maintainer_email is not duplicated when same as author_email."""
+        from pypi_collector import get_pypi_metadata
+
+        response = self._create_pypi_response(
+            author=None,
+            author_email="same@example.com",
+            maintainer=None,
+            maintainer_email="same@example.com",  # Same as author_email
+        )
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "pypi.org" in url:
+                return httpx.Response(200, json=response)
+            elif "pypistats.org" in url:
+                return httpx.Response(200, json=self._create_pypistats_response())
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("test-package"))
+            # Should only have one maintainer
+            assert result["maintainer_count"] == 1
+
+    def test_empty_releases(self):
+        """Test handling of package with no releases."""
+        from pypi_collector import get_pypi_metadata
+
+        response = self._create_pypi_response(releases={})
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "pypi.org" in url:
+                return httpx.Response(200, json=response)
+            elif "pypistats.org" in url:
+                return httpx.Response(200, json=self._create_pypistats_response())
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("test-package"))
+            assert result["created_at"] is None
+            assert result["last_published"] is None
+
+    def test_release_with_empty_files_list(self):
+        """Test handling of release with empty files list."""
+        from pypi_collector import get_pypi_metadata
+
+        response = self._create_pypi_response()
+        response["releases"] = {
+            "1.0.0": [],  # Empty files list
+            "0.9.0": [{"upload_time_iso_8601": "2022-01-01T00:00:00Z"}],
+        }
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "pypi.org" in url:
+                return httpx.Response(200, json=response)
+            elif "pypistats.org" in url:
+                return httpx.Response(200, json=self._create_pypistats_response())
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("test-package"))
+            # Should still get timestamps from 0.9.0
+            assert result["created_at"] == "2022-01-01T00:00:00Z"
+
+    def test_repository_url_git_plus_prefix(self):
+        """Test cleaning of git+ prefix from repository URL."""
+        from pypi_collector import get_pypi_metadata
+
+        response = self._create_pypi_response()
+        response["info"]["project_urls"] = {
+            "Repository": "git+https://github.com/user/repo"
+        }
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "pypi.org" in url:
+                return httpx.Response(200, json=response)
+            elif "pypistats.org" in url:
+                return httpx.Response(200, json=self._create_pypistats_response())
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("test-package"))
+            assert result["repository_url"] == "https://github.com/user/repo"
+
+    def test_repository_url_git_protocol(self):
+        """Test cleaning of git:// protocol from repository URL."""
+        from pypi_collector import get_pypi_metadata
+
+        response = self._create_pypi_response()
+        response["info"]["project_urls"] = {
+            "Source": "git://github.com/user/repo.git"
+        }
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "pypi.org" in url:
+                return httpx.Response(200, json=response)
+            elif "pypistats.org" in url:
+                return httpx.Response(200, json=self._create_pypistats_response())
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("test-package"))
+            assert result["repository_url"] == "https://github.com/user/repo"
+
+    def test_gitlab_url_preserved(self):
+        """Test that GitLab URLs are preserved."""
+        from pypi_collector import get_pypi_metadata
+
+        response = self._create_pypi_response()
+        response["info"]["project_urls"] = {
+            "Source": "https://gitlab.com/user/repo"
+        }
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "pypi.org" in url:
+                return httpx.Response(200, json=response)
+            elif "pypistats.org" in url:
+                return httpx.Response(200, json=self._create_pypistats_response())
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("test-package"))
+            assert result["repository_url"] == "https://gitlab.com/user/repo"
+
+    def test_bitbucket_url_preserved(self):
+        """Test that Bitbucket URLs are preserved."""
+        from pypi_collector import get_pypi_metadata
+
+        response = self._create_pypi_response()
+        response["info"]["project_urls"] = {
+            "Source": "https://bitbucket.org/user/repo"
+        }
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "pypi.org" in url:
+                return httpx.Response(200, json=response)
+            elif "pypistats.org" in url:
+                return httpx.Response(200, json=self._create_pypistats_response())
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("test-package"))
+            assert result["repository_url"] == "https://bitbucket.org/user/repo"
+
+    def test_project_urls_fallback_order(self):
+        """Test fallback order for project URLs."""
+        from pypi_collector import get_pypi_metadata
+
+        response = self._create_pypi_response()
+        response["info"]["project_urls"] = {
+            "Documentation": "https://docs.example.com",
+            "Code": "https://github.com/user/repo-from-code",
+        }
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "pypi.org" in url:
+                return httpx.Response(200, json=response)
+            elif "pypistats.org" in url:
+                return httpx.Response(200, json=self._create_pypistats_response())
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("test-package"))
+            assert result["repository_url"] == "https://github.com/user/repo-from-code"
+
+    def test_null_project_urls(self):
+        """Test handling of null project_urls field."""
+        from pypi_collector import get_pypi_metadata
+
+        response = self._create_pypi_response()
+        response["info"]["project_urls"] = None
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "pypi.org" in url:
+                return httpx.Response(200, json=response)
+            elif "pypistats.org" in url:
+                return httpx.Response(200, json=self._create_pypistats_response())
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("test-package"))
+            assert result["repository_url"] is None
+
+    def test_pypistats_generic_exception(self):
+        """Test handling of generic exception from pypistats."""
+        from pypi_collector import get_pypi_metadata
+
+        response = self._create_pypi_response()
+        response["info"]["project_urls"] = {
+            "Source": "https://github.com/user/repo"
+        }
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "pypi.org" in url:
+                return httpx.Response(200, json=response)
+            elif "pypistats.org" in url:
+                # Return invalid JSON to trigger generic exception
+                return httpx.Response(200, content=b"not json")
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_metadata("test-package"))
+            # Should succeed with 0 downloads
+            assert "error" not in result
+            assert result["weekly_downloads"] == 0
+
+    def test_parse_keywords_non_string_type(self):
+        """Test _parse_keywords with non-string/non-list type."""
+        from pypi_collector import _parse_keywords
+        assert _parse_keywords(12345) == []
+        assert _parse_keywords({"key": "value"}) == []
+
+
+# =============================================================================
+# DOWNLOAD STATS TESTS
+# =============================================================================
+
+
+class TestGetPyPIDownloadStats:
+    """Tests for get_pypi_download_stats function."""
+
+    def test_successful_stats_fetch(self):
+        """Test successful download stats fetch."""
+        from pypi_collector import get_pypi_download_stats
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={
+                "data": {
+                    "last_day": 10000,
+                    "last_week": 70000,
+                    "last_month": 300000,
+                }
+            })
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_download_stats("requests"))
+            assert result["package"] == "requests"
+            assert result["last_day"] == 10000
+            assert result["last_week"] == 70000
+            assert result["last_month"] == 300000
+
+    def test_stats_fetch_failure(self):
+        """Test handling of download stats fetch failure."""
+        from pypi_collector import get_pypi_download_stats
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(500)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_pypi_download_stats("requests"))
+            assert result["package"] == "requests"
+            assert result["error"] == "fetch_failed"
+
+    def test_stats_fetch_normalizes_name(self):
+        """Test that package name is normalized for stats fetch."""
+        from pypi_collector import get_pypi_download_stats
+
+        requested_url = None
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            nonlocal requested_url
+            requested_url = str(request.url)
+            return httpx.Response(200, json={
+                "data": {"last_day": 1, "last_week": 7, "last_month": 30}
+            })
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            run_async(get_pypi_download_stats("Flask_WTF"))
+            # Check that the normalized name is used
+            assert "flask-wtf" in requested_url

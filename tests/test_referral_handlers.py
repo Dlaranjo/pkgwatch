@@ -566,3 +566,998 @@ class TestReferralRetentionCheckHandler:
         assert result["processed"] == 0
         assert result["credited"] == 0
         assert result["errors"] == 0
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    def test_returns_error_when_stripe_not_configured(self, mock_stripe_key, mock_dynamodb):
+        """Should return error when Stripe API key is not available."""
+        mock_stripe_key.return_value = None
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+
+        from api.referral_retention_check import handler
+
+        result = handler({}, {})
+
+        assert result["processed"] == 0
+        assert result["credited"] == 0
+        assert result["error"] == "Stripe not configured"
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_credits_referrer_when_subscription_active(
+        self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
+    ):
+        """Should credit referrer when referred user has active subscription."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        # Mock active Stripe subscription
+        mock_subscription = MagicMock()
+        mock_subscription.status = "active"
+        mock_stripe_retrieve.return_value = mock_subscription
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+
+        # Reset shared.referral_utils module cache
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        from api.referral_retention_check import handler
+
+        api_table, events_table, referrer_id, referred_id = retention_due_referrals
+
+        # Also need API key record (not just USER_META) for subscription lookup
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key_hash_123",
+                "stripe_subscription_id": "sub_test123",
+                "tier": "pro",
+            }
+        )
+
+        result = handler({}, {})
+
+        assert result["processed"] == 1
+        assert result["credited"] == 1
+        assert result["errors"] == 0
+
+        # Verify referrer received bonus credits
+        response = api_table.get_item(Key={"pk": referrer_id, "sk": "USER_META"})
+        item = response["Item"]
+        assert item["bonus_requests"] == 25000
+        assert item["bonus_requests_lifetime"] == 25000
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_credits_referrer_when_subscription_trialing(
+        self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
+    ):
+        """Should credit referrer when referred user has trialing subscription."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        # Mock trialing Stripe subscription
+        mock_subscription = MagicMock()
+        mock_subscription.status = "trialing"
+        mock_stripe_retrieve.return_value = mock_subscription
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        from api.referral_retention_check import handler
+
+        api_table, events_table, referrer_id, referred_id = retention_due_referrals
+
+        # Add API key record with subscription
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key_hash_456",
+                "stripe_subscription_id": "sub_test123",
+                "tier": "pro",
+            }
+        )
+
+        result = handler({}, {})
+
+        assert result["processed"] == 1
+        assert result["credited"] == 1
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_skips_credit_when_subscription_canceled(
+        self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
+    ):
+        """Should not credit referrer when referred user's subscription is canceled."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        # Mock canceled subscription
+        mock_subscription = MagicMock()
+        mock_subscription.status = "canceled"
+        mock_stripe_retrieve.return_value = mock_subscription
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        from api.referral_retention_check import handler
+
+        api_table, events_table, referrer_id, referred_id = retention_due_referrals
+
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key_hash_789",
+                "stripe_subscription_id": "sub_test123",
+            }
+        )
+
+        result = handler({}, {})
+
+        assert result["processed"] == 1
+        assert result["credited"] == 0  # No credit awarded
+
+        # Verify referrer did not receive bonus
+        response = api_table.get_item(Key={"pk": referrer_id, "sk": "USER_META"})
+        item = response["Item"]
+        assert item["bonus_requests"] == 0
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_skips_credit_when_no_subscription_found(
+        self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
+    ):
+        """Should not credit when referred user has no Stripe subscription."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        from api.referral_retention_check import handler
+
+        api_table, events_table, referrer_id, referred_id = retention_due_referrals
+
+        # Remove the USER_META with subscription and add one without
+        api_table.delete_item(Key={"pk": referred_id, "sk": "USER_META"})
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "USER_META",
+                "tier": "free",
+                # No stripe_subscription_id
+            }
+        )
+
+        result = handler({}, {})
+
+        assert result["processed"] == 1
+        assert result["credited"] == 0
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_handles_stripe_api_error_gracefully(
+        self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
+    ):
+        """Should handle Stripe API errors gracefully and continue processing."""
+        import stripe
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        # Mock Stripe error
+        mock_stripe_retrieve.side_effect = stripe.StripeError("API Error")
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        from api.referral_retention_check import handler
+
+        api_table, events_table, referrer_id, referred_id = retention_due_referrals
+
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key_hash_stripe_err",
+                "stripe_subscription_id": "sub_test123",
+            }
+        )
+
+        result = handler({}, {})
+
+        # Should process but not credit due to Stripe error
+        assert result["processed"] == 1
+        assert result["credited"] == 0
+        assert result["errors"] == 0  # Stripe errors are warnings, not errors
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_clears_retention_flag_regardless_of_outcome(
+        self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
+    ):
+        """Should clear retention check flag even if user churned."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        # Mock canceled subscription (churned user)
+        mock_subscription = MagicMock()
+        mock_subscription.status = "canceled"
+        mock_stripe_retrieve.return_value = mock_subscription
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        from api.referral_retention_check import handler
+
+        api_table, events_table, referrer_id, referred_id = retention_due_referrals
+
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key_hash_clear",
+                "stripe_subscription_id": "sub_test123",
+            }
+        )
+
+        handler({}, {})
+
+        # Verify retention check flag was cleared
+        response = events_table.get_item(
+            Key={"pk": referrer_id, "sk": f"{referred_id}#paid"}
+        )
+        item = response.get("Item", {})
+        assert item.get("needs_retention_check") is None
+        assert item.get("retention_check_date") is None
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_processes_multiple_referrals_from_same_referrer(
+        self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
+    ):
+        """Should process multiple referrals from the same referrer."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        mock_subscription = MagicMock()
+        mock_subscription.status = "active"
+        mock_stripe_retrieve.return_value = mock_subscription
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+
+        referrer_id = "user_multi_referrer"
+
+        # Create referrer
+        api_table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": "USER_META",
+                "bonus_requests": 0,
+                "bonus_requests_lifetime": 0,
+            }
+        )
+
+        # Create two referred users with active subscriptions
+        past_date = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+
+        for i in range(2):
+            referred_id = f"user_referred_multi_{i}"
+
+            api_table.put_item(
+                Item={
+                    "pk": referred_id,
+                    "sk": f"api_key_hash_{i}",
+                    "stripe_subscription_id": f"sub_multi_{i}",
+                    "tier": "pro",
+                }
+            )
+
+            events_table.put_item(
+                Item={
+                    "pk": referrer_id,
+                    "sk": f"{referred_id}#paid",
+                    "referrer_id": referrer_id,
+                    "referred_id": referred_id,
+                    "event_type": "paid",
+                    "needs_retention_check": "true",
+                    "retention_check_date": past_date,
+                }
+            )
+
+        from api.referral_retention_check import handler
+
+        result = handler({}, {})
+
+        assert result["processed"] == 2
+        assert result["credited"] == 2
+
+        # Verify referrer got credits for both
+        response = api_table.get_item(Key={"pk": referrer_id, "sk": "USER_META"})
+        item = response["Item"]
+        assert item["bonus_requests"] == 50000  # 25000 * 2
+        assert item["bonus_requests_lifetime"] == 50000
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_retention_check_date_boundary_future_date_not_processed(
+        self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
+    ):
+        """Referrals with future retention dates should not be processed."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+
+        referrer_id = "user_referrer_future"
+        referred_id = "user_referred_future"
+
+        api_table.put_item(Item={"pk": referrer_id, "sk": "USER_META"})
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key",
+                "stripe_subscription_id": "sub_future",
+            }
+        )
+
+        # Future date - should NOT be processed
+        future_date = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+        events_table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": f"{referred_id}#paid",
+                "referrer_id": referrer_id,
+                "referred_id": referred_id,
+                "event_type": "paid",
+                "needs_retention_check": "true",
+                "retention_check_date": future_date,
+            }
+        )
+
+        from api.referral_retention_check import handler
+
+        result = handler({}, {})
+
+        # Should not process future-dated retention checks
+        assert result["processed"] == 0
+        assert result["credited"] == 0
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_retention_check_date_boundary_exactly_now(
+        self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
+    ):
+        """Referrals with retention date at exactly now should be processed."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        mock_subscription = MagicMock()
+        mock_subscription.status = "active"
+        mock_stripe_retrieve.return_value = mock_subscription
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+
+        referrer_id = "user_referrer_now"
+        referred_id = "user_referred_now"
+
+        api_table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": "USER_META",
+                "bonus_requests": 0,
+                "bonus_requests_lifetime": 0,
+            }
+        )
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key",
+                "stripe_subscription_id": "sub_now",
+            }
+        )
+
+        # Exactly now - should be processed (lte comparison)
+        now_date = datetime.now(timezone.utc).isoformat()
+        events_table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": f"{referred_id}#paid",
+                "referrer_id": referrer_id,
+                "referred_id": referred_id,
+                "event_type": "paid",
+                "needs_retention_check": "true",
+                "retention_check_date": now_date,
+            }
+        )
+
+        from api.referral_retention_check import handler
+
+        result = handler({}, {})
+
+        assert result["processed"] == 1
+        assert result["credited"] == 1
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_retention_check_60_days_after_paid(
+        self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
+    ):
+        """Retention check should be scheduled for 60 days (2 months) after paid conversion."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        mock_subscription = MagicMock()
+        mock_subscription.status = "active"
+        mock_stripe_retrieve.return_value = mock_subscription
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+
+        referrer_id = "user_referrer_60d"
+        referred_id = "user_referred_60d"
+
+        api_table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": "USER_META",
+                "bonus_requests": 0,
+                "bonus_requests_lifetime": 0,
+            }
+        )
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key",
+                "stripe_subscription_id": "sub_60d",
+            }
+        )
+
+        # Simulate paid event that occurred 61 days ago
+        paid_date = datetime.now(timezone.utc) - timedelta(days=61)
+        # Retention check was scheduled 60 days after that = 1 day ago
+        retention_date = (paid_date + timedelta(days=60)).isoformat()
+
+        events_table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": f"{referred_id}#paid",
+                "referrer_id": referrer_id,
+                "referred_id": referred_id,
+                "event_type": "paid",
+                "needs_retention_check": "true",
+                "retention_check_date": retention_date,
+                "created_at": paid_date.isoformat(),
+            }
+        )
+
+        from api.referral_retention_check import handler
+
+        result = handler({}, {})
+
+        assert result["processed"] == 1
+        assert result["credited"] == 1
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_records_retained_event(
+        self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
+    ):
+        """Should record a 'retained' event when crediting referrer."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        mock_subscription = MagicMock()
+        mock_subscription.status = "active"
+        mock_stripe_retrieve.return_value = mock_subscription
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        from api.referral_retention_check import handler
+
+        api_table, events_table, referrer_id, referred_id = retention_due_referrals
+
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key_record",
+                "stripe_subscription_id": "sub_test123",
+            }
+        )
+
+        handler({}, {})
+
+        # Verify retained event was recorded
+        response = events_table.get_item(
+            Key={"pk": referrer_id, "sk": f"{referred_id}#retained"}
+        )
+        assert "Item" in response
+        item = response["Item"]
+        assert item["event_type"] == "retained"
+        assert item["reward_amount"] == 25000
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_updates_referrer_retained_stats(
+        self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
+    ):
+        """Should update referrer's retained count when crediting."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        mock_subscription = MagicMock()
+        mock_subscription.status = "active"
+        mock_stripe_retrieve.return_value = mock_subscription
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        from api.referral_retention_check import handler
+
+        api_table, events_table, referrer_id, referred_id = retention_due_referrals
+
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key_stats",
+                "stripe_subscription_id": "sub_test123",
+            }
+        )
+
+        handler({}, {})
+
+        # Verify referrer stats updated
+        response = api_table.get_item(Key={"pk": referrer_id, "sk": "USER_META"})
+        item = response["Item"]
+        assert item["referral_retained"] == 1  # Was 0, now 1
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check._get_dynamodb")
+    def test_handles_dynamodb_query_error(self, mock_get_dynamodb, mock_stripe_key, mock_dynamodb):
+        """Should handle DynamoDB errors during index query."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        from botocore.exceptions import ClientError
+
+        # Create a mock table that raises an error on query
+        mock_table = MagicMock()
+        mock_table.query.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
+            "Query"
+        )
+
+        mock_dynamodb_resource = MagicMock()
+        mock_dynamodb_resource.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        from api.referral_retention_check import handler
+
+        result = handler({}, {})
+
+        assert result["processed"] == 0
+        assert result["credited"] == 0
+        assert "error" in result
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_handles_processing_error_continues_with_others(
+        self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
+    ):
+        """Should continue processing other referrals when one fails."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        mock_subscription = MagicMock()
+        mock_subscription.status = "active"
+        mock_stripe_retrieve.return_value = mock_subscription
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+
+        past_date = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+
+        # First referral - will have processing error (no referrer USER_META)
+        events_table.put_item(
+            Item={
+                "pk": "user_missing_referrer",
+                "sk": "user_referred_error#paid",
+                "referrer_id": "user_missing_referrer",
+                "referred_id": "user_referred_error",
+                "event_type": "paid",
+                "needs_retention_check": "true",
+                "retention_check_date": past_date,
+            }
+        )
+        api_table.put_item(
+            Item={
+                "pk": "user_referred_error",
+                "sk": "api_key",
+                "stripe_subscription_id": "sub_error",
+            }
+        )
+
+        # Second referral - should succeed
+        referrer_id = "user_good_referrer"
+        referred_id = "user_good_referred"
+        api_table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": "USER_META",
+                "bonus_requests": 0,
+                "bonus_requests_lifetime": 0,
+            }
+        )
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key",
+                "stripe_subscription_id": "sub_good",
+            }
+        )
+        events_table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": f"{referred_id}#paid",
+                "referrer_id": referrer_id,
+                "referred_id": referred_id,
+                "event_type": "paid",
+                "needs_retention_check": "true",
+                "retention_check_date": past_date,
+            }
+        )
+
+        from api.referral_retention_check import handler
+
+        result = handler({}, {})
+
+        # Should process both, credit at least one
+        assert result["processed"] == 2
+        assert result["credited"] >= 1
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_bonus_cap_applied_on_retention_credit(
+        self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
+    ):
+        """Should apply bonus cap when crediting retention reward."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        mock_subscription = MagicMock()
+        mock_subscription.status = "active"
+        mock_stripe_retrieve.return_value = mock_subscription
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+
+        referrer_id = "user_referrer_cap"
+        referred_id = "user_referred_cap"
+
+        # Referrer is at 490K of 500K cap
+        api_table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": "USER_META",
+                "bonus_requests": 10000,
+                "bonus_requests_lifetime": 490000,
+            }
+        )
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key",
+                "stripe_subscription_id": "sub_cap",
+            }
+        )
+
+        past_date = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        events_table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": f"{referred_id}#paid",
+                "referrer_id": referrer_id,
+                "referred_id": referred_id,
+                "event_type": "paid",
+                "needs_retention_check": "true",
+                "retention_check_date": past_date,
+            }
+        )
+
+        from api.referral_retention_check import handler
+
+        result = handler({}, {})
+
+        assert result["processed"] == 1
+        assert result["credited"] == 1
+
+        # Verify partial credit applied (only 10K to reach cap, not full 25K)
+        response = api_table.get_item(Key={"pk": referrer_id, "sk": "USER_META"})
+        item = response["Item"]
+        assert item["bonus_requests_lifetime"] == 500000  # At cap
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_skips_pending_and_user_meta_records(
+        self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
+    ):
+        """Should skip PENDING and USER_META records when looking for subscription."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        mock_subscription = MagicMock()
+        mock_subscription.status = "active"
+        mock_stripe_retrieve.return_value = mock_subscription
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        from api.referral_retention_check import handler
+
+        api_table, events_table, referrer_id, referred_id = retention_due_referrals
+
+        # Add PENDING record (should be skipped)
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "PENDING",
+                "stripe_subscription_id": "should_be_skipped",
+            }
+        )
+
+        # Add actual API key record with subscription
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key_actual",
+                "stripe_subscription_id": "sub_actual",
+            }
+        )
+
+        result = handler({}, {})
+
+        # Verify the actual subscription was found
+        mock_stripe_retrieve.assert_called_once_with("sub_actual")
+        assert result["credited"] == 1
+
+
+class TestGetStripeApiKey:
+    """Tests for _get_stripe_api_key function."""
+
+    @pytest.fixture(autouse=True)
+    def setup_env(self):
+        """Setup environment for Stripe tests."""
+        original_env = os.environ.copy()
+        os.environ["STRIPE_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123456789:secret:test-stripe"
+
+        # Reload the module to pick up new environment variable
+        import api.referral_retention_check as retention_module
+        # Reimport with updated env
+        import importlib
+        importlib.reload(retention_module)
+        retention_module._secretsmanager = None
+
+        yield
+
+        os.environ.clear()
+        os.environ.update(original_env)
+        # Reload again to restore original
+        importlib.reload(retention_module)
+
+    @patch("api.referral_retention_check._get_secretsmanager")
+    def test_retrieves_key_from_json_secret(self, mock_get_sm):
+        """Should retrieve Stripe key from JSON secret."""
+        mock_sm = MagicMock()
+        mock_sm.get_secret_value.return_value = {
+            "SecretString": '{"key": "sk_test_json_key"}'
+        }
+        mock_get_sm.return_value = mock_sm
+
+        from api.referral_retention_check import _get_stripe_api_key
+
+        result = _get_stripe_api_key()
+
+        assert result == "sk_test_json_key"
+
+    @patch("api.referral_retention_check._get_secretsmanager")
+    def test_retrieves_key_from_plain_string_secret(self, mock_get_sm):
+        """Should retrieve Stripe key from plain string secret."""
+        mock_sm = MagicMock()
+        mock_sm.get_secret_value.return_value = {
+            "SecretString": "sk_test_plain_key"
+        }
+        mock_get_sm.return_value = mock_sm
+
+        from api.referral_retention_check import _get_stripe_api_key
+
+        result = _get_stripe_api_key()
+
+        assert result == "sk_test_plain_key"
+
+    @patch("api.referral_retention_check._get_secretsmanager")
+    def test_handles_secrets_manager_error(self, mock_get_sm):
+        """Should return None when Secrets Manager fails."""
+        from botocore.exceptions import ClientError
+
+        mock_sm = MagicMock()
+        mock_sm.get_secret_value.side_effect = ClientError(
+            {"Error": {"Code": "ResourceNotFoundException", "Message": "Not found"}},
+            "GetSecretValue"
+        )
+        mock_get_sm.return_value = mock_sm
+
+        from api.referral_retention_check import _get_stripe_api_key
+
+        result = _get_stripe_api_key()
+
+        assert result is None
+
+    @patch("api.referral_retention_check._get_secretsmanager")
+    def test_uses_json_key_field_when_present(self, mock_get_sm):
+        """Should prefer 'key' field from JSON over entire string."""
+        mock_sm = MagicMock()
+        mock_sm.get_secret_value.return_value = {
+            "SecretString": '{"key": "sk_test_from_key_field", "other": "value"}'
+        }
+        mock_get_sm.return_value = mock_sm
+
+        from api.referral_retention_check import _get_stripe_api_key
+
+        result = _get_stripe_api_key()
+
+        assert result == "sk_test_from_key_field"
+
+    @patch("api.referral_retention_check._get_secretsmanager")
+    def test_falls_back_to_secret_string_when_key_empty(self, mock_get_sm):
+        """Should fall back to full secret string when 'key' field is empty."""
+        mock_sm = MagicMock()
+        mock_sm.get_secret_value.return_value = {
+            "SecretString": '{"key": "", "fallback": "data"}'
+        }
+        mock_get_sm.return_value = mock_sm
+
+        from api.referral_retention_check import _get_stripe_api_key
+
+        result = _get_stripe_api_key()
+
+        # Falls back to the entire JSON string when key is empty
+        assert result == '{"key": "", "fallback": "data"}'
+
+
+class TestRetentionCheckNoStripeArn:
+    """Test behavior when STRIPE_SECRET_ARN is not set."""
+
+    @pytest.fixture(autouse=True)
+    def setup_env(self):
+        """Setup environment without Stripe ARN."""
+        original_env = os.environ.copy()
+        # Ensure STRIPE_SECRET_ARN is not set
+        os.environ.pop("STRIPE_SECRET_ARN", None)
+
+        import api.referral_retention_check as retention_module
+        import importlib
+        importlib.reload(retention_module)
+
+        yield
+
+        os.environ.clear()
+        os.environ.update(original_env)
+        importlib.reload(retention_module)
+
+    def test_returns_not_configured_when_no_arn(self, mock_dynamodb):
+        """Should return error when STRIPE_SECRET_ARN is not set."""
+        from api.referral_retention_check import _get_stripe_api_key
+
+        result = _get_stripe_api_key()
+
+        assert result is None
+
+
+class TestRetentionCheckErrorRecovery:
+    """Test error handling and recovery in retention check processing."""
+
+    @pytest.fixture(autouse=True)
+    def referral_env_vars(self):
+        """Set environment variables for referral tests."""
+        original_env = os.environ.copy()
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
+
+        yield
+
+        os.environ.clear()
+        os.environ.update(original_env)
+
+    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    @patch("api.referral_retention_check.add_bonus_with_cap")
+    def test_increments_error_count_on_processing_exception(
+        self, mock_add_bonus, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
+    ):
+        """Should increment error count when processing individual referral fails."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        # Mock active subscription
+        mock_subscription = MagicMock()
+        mock_subscription.status = "active"
+        mock_stripe_retrieve.return_value = mock_subscription
+
+        # Mock add_bonus_with_cap to raise an exception
+        mock_add_bonus.side_effect = Exception("Simulated bonus error")
+
+        import api.referral_retention_check as retention_module
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+
+        past_date = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+
+        referrer_id = "user_error_referrer"
+        referred_id = "user_error_referred"
+
+        # Create referral event with referred_id field
+        events_table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": f"{referred_id}#paid",
+                "referrer_id": referrer_id,
+                "referred_id": referred_id,
+                "event_type": "paid",
+                "needs_retention_check": "true",
+                "retention_check_date": past_date,
+            }
+        )
+
+        # Add subscription for referred user
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key",
+                "stripe_subscription_id": "sub_error_test",
+            }
+        )
+
+        from api.referral_retention_check import handler
+
+        result = handler({}, {})
+
+        # Should have processed 1 and counted 1 error
+        assert result["processed"] == 1
+        assert result["credited"] == 0
+        assert result["errors"] == 1
