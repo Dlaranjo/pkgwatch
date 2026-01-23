@@ -41,6 +41,7 @@ Resource Management:
               response = await client.get(url)
 """
 
+import asyncio
 import logging
 import os
 from typing import Optional
@@ -51,6 +52,7 @@ logger = logging.getLogger(__name__)
 
 # Global client instance (lazy-initialized)
 _client: Optional[httpx.AsyncClient] = None
+_client_loop_id: Optional[int] = None  # Track which event loop the client was created on
 
 # Configuration
 DEFAULT_TIMEOUT = httpx.Timeout(
@@ -75,6 +77,8 @@ def get_http_client() -> httpx.AsyncClient:
 
     In production (USE_CONNECTION_POOLING=true):
         Returns a shared client with connection pooling for better performance.
+        The client is recreated if the event loop changes (Lambda creates new
+        loops between invocations while reusing execution context).
 
     In tests (USE_CONNECTION_POOLING=false):
         Creates a new client per call to allow proper test isolation.
@@ -82,7 +86,7 @@ def get_http_client() -> httpx.AsyncClient:
     Returns:
         httpx.AsyncClient configured for the environment
     """
-    global _client
+    global _client, _client_loop_id
 
     if not _use_connection_pooling():
         # Create new client per call (allows mocking in tests)
@@ -93,6 +97,20 @@ def get_http_client() -> httpx.AsyncClient:
             http2=False,
         )
 
+    # Check if we need to recreate the client due to event loop change
+    # Lambda creates a new event loop per invocation but may reuse execution context
+    try:
+        current_loop_id = id(asyncio.get_running_loop())
+    except RuntimeError:
+        # No running loop - will be created when async code runs
+        current_loop_id = None
+
+    if _client is not None and _client_loop_id != current_loop_id:
+        logger.debug("Event loop changed, recreating HTTP client")
+        # Don't await close() here as we may not be in async context
+        # The old client will be garbage collected
+        _client = None
+
     if _client is None:
         logger.debug("Initializing shared HTTP client with connection pooling")
         _client = httpx.AsyncClient(
@@ -101,6 +119,7 @@ def get_http_client() -> httpx.AsyncClient:
             follow_redirects=True,
             http2=False,  # HTTP/1.1 for compatibility (some APIs don't support HTTP/2)
         )
+        _client_loop_id = current_loop_id
 
     return _client
 
