@@ -1930,3 +1930,451 @@ class TestDynamoDBErrorHandling:
         body = json.loads(result["body"])
         # Package should be in not_found list
         assert "some-pkg" in body["not_found"]
+
+
+class TestLargeDependencyLists:
+    """Tests for handling large dependency lists to prevent DoS."""
+
+    @mock_aws
+    def test_handles_500_dependencies(
+        self, mock_dynamodb, api_gateway_event
+    ):
+        """Should handle scanning 500 dependencies without timing out."""
+        import hashlib
+
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        # Create user with business tier (higher limits)
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_test_large"
+        key_hash = hashlib.sha256(test_key.encode()).hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_large",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "large@example.com",
+                "tier": "business",  # Business tier = 500000 limit
+                "requests_this_month": 0,
+                "created_at": "2024-01-01T00:00:00Z",
+                "email_verified": True,
+            }
+        )
+
+        from api.post_scan import handler
+
+        # Generate 500 dependencies
+        large_deps = {f"pkg-{i}": "^1.0.0" for i in range(500)}
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": large_deps,
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["total"] == 500
+        # All packages should be in not_found since we didn't seed any
+        assert len(body["not_found"]) == 500
+
+    @mock_aws
+    def test_rate_limits_enforce_on_large_scans(
+        self, mock_dynamodb, api_gateway_event
+    ):
+        """Should rate limit before processing if batch would exceed limit."""
+        import hashlib
+
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        # Create user with free tier (5000 limit)
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_test_large_limit"
+        key_hash = hashlib.sha256(test_key.encode()).hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_large_limit",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "largelimit@example.com",
+                "tier": "free",  # Free = 5000 limit
+                "requests_this_month": 0,
+                "created_at": "2024-01-01T00:00:00Z",
+                "email_verified": True,
+            }
+        )
+
+        # Set USER_META with usage almost at limit
+        table.put_item(
+            Item={
+                "pk": "user_large_limit",
+                "sk": "USER_META",
+                "requests_this_month": 4999,  # Only 1 remaining
+                "total_packages_scanned": 4999,
+            }
+        )
+
+        from api.post_scan import handler
+
+        # Try to scan 10 packages (would exceed the remaining 1)
+        large_deps = {f"pkg-{i}": "^1.0.0" for i in range(10)}
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": large_deps,
+        })
+
+        result = handler(api_gateway_event, {})
+
+        # Should be rate limited before processing
+        assert result["statusCode"] == 429
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "rate_limit_exceeded"
+
+
+class TestUnicodePackageNames:
+    """Tests for handling Unicode in package names."""
+
+    @mock_aws
+    def test_handles_unicode_package_names_in_dependencies(
+        self, seeded_api_keys_table, api_gateway_event
+    ):
+        """Should handle Unicode package names without crashing."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        # Include package names with Chinese, emoji, etc.
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": {
+                "\u4e2d\u6587\u5305": "1.0.0",  # Chinese characters
+                "pkg-\ud83d\ude00": "1.0.0",  # Emoji (escaped)
+                "normal-pkg": "1.0.0",
+            },
+        })
+
+        result = handler(api_gateway_event, {})
+
+        # Should succeed, but Unicode packages will be filtered out as invalid
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        # All packages should be in not_found
+        assert body["total"] >= 1
+
+    @mock_aws
+    def test_handles_unicode_in_package_json_content(
+        self, seeded_api_keys_table, api_gateway_event
+    ):
+        """Should handle Unicode in package.json content field."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        # Package.json with Unicode name and description
+        package_json = json.dumps({
+            "name": "\u6d4b\u8bd5\u9879\u76ee",  # Chinese project name
+            "description": "A project with Unicode \u2764",
+            "dependencies": {"lodash": "^4.17.21"},
+        })
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({"content": package_json})
+
+        result = handler(api_gateway_event, {})
+
+        # Should still extract lodash dependency
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["total"] == 1
+
+
+class TestMalformedRequestPayloads:
+    """Tests for malformed request payload handling."""
+
+    @mock_aws
+    def test_handles_deeply_nested_json(
+        self, seeded_api_keys_table, api_gateway_event
+    ):
+        """Should handle deeply nested JSON without crashing."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        # Create deeply nested structure
+        nested = {"dependencies": {"lodash": "1.0.0"}}
+        for i in range(50):
+            nested = {"nested": nested}
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps(nested)
+
+        result = handler(api_gateway_event, {})
+
+        # Should return 400 since no dependencies are found at expected path
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "no_dependencies"
+
+    @mock_aws
+    def test_handles_very_long_package_names(
+        self, seeded_api_keys_table, api_gateway_event
+    ):
+        """Should handle very long package names gracefully."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        # npm package names are limited to 214 characters
+        long_name = "a" * 300
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": {long_name: "1.0.0"},
+        })
+
+        result = handler(api_gateway_event, {})
+
+        # Should succeed but filter out invalid package name
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        # Long name should be in not_found (invalid for queueing but still counted)
+        assert len(body["not_found"]) == 1
+
+    @mock_aws
+    def test_handles_special_version_strings(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """Should handle unusual version strings."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": {
+                "lodash": "file:../local-lodash",  # Local file reference
+            },
+        })
+
+        result = handler(api_gateway_event, {})
+
+        # Should still process (version is ignored in lookups)
+        assert result["statusCode"] == 200
+
+    @mock_aws
+    def test_handles_empty_string_dependency_values(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """Should handle empty string version values."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": {
+                "lodash": "",  # Empty version
+                "abandoned-pkg": None,  # Null version
+            },
+        })
+
+        result = handler(api_gateway_event, {})
+
+        # Should still find the packages
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        # Packages should be found despite weird version values
+        assert len(body["packages"]) >= 1
+
+
+class TestResponseBodyCompleteness:
+    """Tests to verify response body contains all expected fields."""
+
+    @mock_aws
+    def test_response_contains_all_expected_fields(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """Should return response with all documented fields."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": {"lodash": "^4.17.21", "unknown-pkg": "^1.0.0"},
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+
+        # Verify all top-level fields are present
+        assert "total" in body
+        assert "packages" in body
+        assert "not_found" in body
+        assert "low" in body
+        assert "medium" in body
+        assert "high" in body
+        assert "critical" in body
+        assert "data_quality" in body
+        assert "verified_risk_count" in body
+        assert "unverified_risk_count" in body
+
+        # Verify package record structure
+        assert len(body["packages"]) == 1
+        pkg = body["packages"][0]
+        assert "package" in pkg
+        # Note: ecosystem is only included if different from request ecosystem
+        assert "health_score" in pkg
+        assert "risk_level" in pkg
+        assert "data_quality" in pkg
+
+    @mock_aws
+    def test_response_headers_contain_rate_limit_info(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """Should return response with all rate limit headers."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": {"lodash": "^4.17.21"},
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        headers = result["headers"]
+
+        # Verify required rate limit headers are present
+        assert "X-RateLimit-Limit" in headers
+        assert "X-RateLimit-Remaining" in headers
+        assert "X-RateLimit-Reset" in headers
+
+        # Verify header values are valid
+        assert int(headers["X-RateLimit-Limit"]) > 0
+        assert int(headers["X-RateLimit-Remaining"]) >= 0
+        assert int(headers["X-RateLimit-Reset"]) > 0
+
+
+class TestErrorMessageQuality:
+    """Tests to verify error messages are helpful and informative."""
+
+    @mock_aws
+    def test_invalid_json_error_includes_details(
+        self, seeded_api_keys_table, api_gateway_event
+    ):
+        """Invalid JSON error should include helpful message."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = "{invalid json"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_json"
+        assert "message" in body["error"]
+        assert len(body["error"]["message"]) > 10  # Meaningful message
+
+    @mock_aws
+    def test_rate_limit_error_includes_upgrade_info(
+        self, mock_dynamodb, api_gateway_event
+    ):
+        """Rate limit error should include upgrade and reset info."""
+        import hashlib
+
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        # Create user at limit
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_test_err_msg"
+        key_hash = hashlib.sha256(test_key.encode()).hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_err_msg",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "errmsg@example.com",
+                "tier": "free",
+                "created_at": "2024-01-01T00:00:00Z",
+                "email_verified": True,
+            }
+        )
+        table.put_item(
+            Item={
+                "pk": "user_err_msg",
+                "sk": "USER_META",
+                "requests_this_month": 5000,  # At free tier limit
+                "total_packages_scanned": 5000,
+            }
+        )
+
+        from api.post_scan import handler
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": {"lodash": "^4.17.21"},
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 429
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "rate_limit_exceeded"
+        # Should include helpful information
+        assert "message" in body["error"]
+        # Should indicate the limit/quota issue
+        error_msg = body["error"]["message"].lower()
+        # Message format: "Scanning N packages would exceed your remaining X requests."
+        assert "exceed" in error_msg or "remaining" in error_msg

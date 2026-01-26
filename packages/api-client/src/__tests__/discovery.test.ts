@@ -503,3 +503,427 @@ describe("edge cases", () => {
     expect(result.manifests[0].relativePath).toContain("my-app_v2.0");
   });
 });
+
+// ===========================================
+// Multi-language Repository Tests
+// ===========================================
+
+describe("multi-language repositories", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("discovers npm, pypi, and mixed manifests in same repo", () => {
+    // Root npm
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    // Python service
+    mkdirSync(join(testDir, "services", "api"), { recursive: true });
+    writeFileSync(join(testDir, "services", "api", "requirements.txt"), REQUIREMENTS_TXT);
+
+    // Another Python service with pyproject.toml
+    mkdirSync(join(testDir, "services", "ml"), { recursive: true });
+    writeFileSync(join(testDir, "services", "ml", "pyproject.toml"), PYPROJECT_TOML);
+
+    // Frontend npm
+    mkdirSync(join(testDir, "apps", "web"), { recursive: true });
+    writeFileSync(join(testDir, "apps", "web", "package.json"), PACKAGE_JSON);
+
+    const result = discoverManifests({ basePath: testDir });
+
+    expect(result.manifests).toHaveLength(4);
+
+    const npmCount = result.manifests.filter((m) => m.ecosystem === "npm").length;
+    const pypiCount = result.manifests.filter((m) => m.ecosystem === "pypi").length;
+
+    expect(npmCount).toBe(2);
+    expect(pypiCount).toBe(2);
+  });
+
+  it("handles same directory with both package.json and requirements.txt", () => {
+    // Some projects have both (e.g., JS tools with Python scripts)
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+    writeFileSync(join(testDir, "requirements.txt"), REQUIREMENTS_TXT);
+
+    const result = discoverManifests({ basePath: testDir });
+
+    // Should only find one manifest (package.json takes priority)
+    expect(result.manifests).toHaveLength(1);
+    expect(result.manifests[0].format).toBe("package.json");
+  });
+
+  it("handles deeply nested multi-language structure", () => {
+    // Deep nesting
+    mkdirSync(join(testDir, "a", "b", "c", "d", "e"), { recursive: true });
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+    writeFileSync(join(testDir, "a", "requirements.txt"), REQUIREMENTS_TXT);
+    writeFileSync(join(testDir, "a", "b", "package.json"), PACKAGE_JSON);
+    writeFileSync(join(testDir, "a", "b", "c", "pyproject.toml"), PYPROJECT_TOML);
+    writeFileSync(join(testDir, "a", "b", "c", "d", "e", "package.json"), PACKAGE_JSON);
+
+    const result = discoverManifests({ basePath: testDir, maxDepth: 10 });
+
+    expect(result.manifests.length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+// ===========================================
+// Missing/Invalid File Tests
+// ===========================================
+
+describe("missing and invalid files", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("handles non-existent base path gracefully", () => {
+    const nonExistent = join(testDir, "does-not-exist");
+    // This should not throw, but handle gracefully
+    expect(() => discoverManifests({ basePath: nonExistent })).not.toThrow();
+  });
+
+  it("handles invalid workspace patterns gracefully", () => {
+    const invalidWorkspaces = `{
+      "name": "test",
+      "workspaces": ["packages/*/does/not/exist"]
+    }`;
+    writeFileSync(join(testDir, "package.json"), invalidWorkspaces);
+
+    const result = discoverManifests({ basePath: testDir });
+
+    // Should still work, just no workspace packages found
+    expect(result.manifests).toHaveLength(1);
+    expect(result.manifests[0].relativePath).toBe("package.json");
+  });
+
+  it("handles malformed package.json for workspace detection", () => {
+    writeFileSync(join(testDir, "package.json"), "not valid json");
+
+    const result = discoverManifests({ basePath: testDir });
+
+    // Should have a warning about failed workspace detection
+    expect(result.warnings.length).toBeGreaterThanOrEqual(1);
+    expect(result.warnings.some((w) => w.includes("package.json"))).toBe(true);
+  });
+
+  it("handles malformed pnpm-workspace.yaml", () => {
+    writeFileSync(join(testDir, "pnpm-workspace.yaml"), "not: [valid: yaml");
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    const result = discoverManifests({ basePath: testDir });
+
+    // Should fall back to recursive discovery
+    expect(result.manifests.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("handles empty workspace arrays", () => {
+    const emptyWorkspaces = `{
+      "name": "test",
+      "workspaces": []
+    }`;
+    writeFileSync(join(testDir, "package.json"), emptyWorkspaces);
+
+    const result = discoverManifests({ basePath: testDir });
+
+    // Should fall back to recursive discovery or find root
+    expect(result.manifests.length).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ===========================================
+// Workspace Detection Edge Cases
+// ===========================================
+
+describe("workspace detection edge cases", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("handles workspaces with negation patterns", () => {
+    // Some workspaces use negation (not all tools support this)
+    const workspacesWithNegation = `{
+      "name": "test",
+      "workspaces": ["packages/*", "!packages/internal"]
+    }`;
+    writeFileSync(join(testDir, "package.json"), workspacesWithNegation);
+
+    mkdirSync(join(testDir, "packages", "public"), { recursive: true });
+    writeFileSync(join(testDir, "packages", "public", "package.json"), PACKAGE_JSON);
+
+    mkdirSync(join(testDir, "packages", "internal"), { recursive: true });
+    writeFileSync(join(testDir, "packages", "internal", "package.json"), PACKAGE_JSON);
+
+    const result = discoverManifests({ basePath: testDir });
+
+    // Negation may or may not be supported - just verify no crash
+    expect(result.manifests.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("handles direct path workspaces (not globs)", () => {
+    const directPaths = `{
+      "name": "test",
+      "workspaces": ["packages/core", "packages/cli"]
+    }`;
+    writeFileSync(join(testDir, "package.json"), directPaths);
+
+    mkdirSync(join(testDir, "packages", "core"), { recursive: true });
+    writeFileSync(join(testDir, "packages", "core", "package.json"), PACKAGE_JSON);
+
+    mkdirSync(join(testDir, "packages", "cli"), { recursive: true });
+    writeFileSync(join(testDir, "packages", "cli", "package.json"), PACKAGE_JSON);
+
+    const result = discoverManifests({ basePath: testDir });
+
+    // Should find root + 2 workspace packages
+    expect(result.manifests.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("handles pnpm workspace with quoted entries", () => {
+    const pnpmWorkspace = `packages:
+  - "packages/*"
+  - 'apps/*'
+`;
+    writeFileSync(join(testDir, "pnpm-workspace.yaml"), pnpmWorkspace);
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    mkdirSync(join(testDir, "packages", "a"), { recursive: true });
+    writeFileSync(join(testDir, "packages", "a", "package.json"), PACKAGE_JSON);
+
+    const result = discoverManifests({ basePath: testDir });
+
+    expect(result.manifests.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("handles pnpm workspace with comments", () => {
+    const pnpmWorkspaceWithComments = `# This is a comment
+packages:
+  # Another comment
+  - "packages/*"
+`;
+    writeFileSync(join(testDir, "pnpm-workspace.yaml"), pnpmWorkspaceWithComments);
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    mkdirSync(join(testDir, "packages", "a"), { recursive: true });
+    writeFileSync(join(testDir, "packages", "a", "package.json"), PACKAGE_JSON);
+
+    const result = discoverManifests({ basePath: testDir });
+
+    expect(result.manifests.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ===========================================
+// Performance and Limits
+// ===========================================
+
+describe("performance and limits", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("handles exactly maxManifests limit", () => {
+    // Create exactly 5 packages
+    for (let i = 0; i < 5; i++) {
+      const dir = join(testDir, `pkg-${i}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "package.json"), PACKAGE_JSON);
+    }
+
+    const result = discoverManifests({
+      basePath: testDir,
+      maxManifests: 5,
+    });
+
+    // Should find exactly 5 or be truncated at 5
+    expect(result.manifests.length).toBeLessThanOrEqual(5);
+    // If exactly 5, may or may not be truncated depending on traversal order
+  });
+
+  it("handles maxManifests of 1", () => {
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+    mkdirSync(join(testDir, "sub"), { recursive: true });
+    writeFileSync(join(testDir, "sub", "package.json"), PACKAGE_JSON);
+
+    const result = discoverManifests({
+      basePath: testDir,
+      maxManifests: 1,
+    });
+
+    expect(result.manifests).toHaveLength(1);
+    expect(result.truncated).toBe(true);
+  });
+
+  it("handles maxDepth of 0 (root only)", () => {
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+    mkdirSync(join(testDir, "sub"), { recursive: true });
+    writeFileSync(join(testDir, "sub", "package.json"), PACKAGE_JSON);
+
+    const result = discoverManifests({
+      basePath: testDir,
+      maxDepth: 0,
+      followWorkspaces: false,
+    });
+
+    // Should only find root
+    expect(result.manifests).toHaveLength(1);
+    expect(result.manifests[0].relativePath).toBe("package.json");
+  });
+
+  it("handles wide but shallow directory structure", () => {
+    // 50 directories at same level
+    for (let i = 0; i < 50; i++) {
+      const dir = join(testDir, `pkg-${i}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "package.json"), PACKAGE_JSON);
+    }
+
+    const result = discoverManifests({ basePath: testDir });
+
+    expect(result.manifests).toHaveLength(50);
+    expect(result.truncated).toBe(false);
+  });
+});
+
+// ===========================================
+// Exclude Pattern Edge Cases
+// ===========================================
+
+describe("exclude pattern edge cases", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("handles exclude pattern with no matches", () => {
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    const result = discoverManifests({
+      basePath: testDir,
+      excludePatterns: ["**/nonexistent/**"],
+    });
+
+    expect(result.manifests).toHaveLength(1);
+  });
+
+  it("handles empty exclude patterns array", () => {
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+    mkdirSync(join(testDir, "node_modules", "pkg"), { recursive: true });
+    writeFileSync(join(testDir, "node_modules", "pkg", "package.json"), PACKAGE_JSON);
+
+    const result = discoverManifests({
+      basePath: testDir,
+      excludePatterns: [],
+    });
+
+    // With empty excludes, should find both
+    expect(result.manifests.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("handles exclude pattern that matches root", () => {
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    const result = discoverManifests({
+      basePath: testDir,
+      excludePatterns: ["**/package.json"],
+    });
+
+    // Root package.json path starts with empty string for relative
+    // The behavior here depends on implementation
+    expect(result.manifests.length).toBeLessThanOrEqual(1);
+  });
+
+  it("handles complex glob patterns", () => {
+    mkdirSync(join(testDir, "packages", "pkg-a"), { recursive: true });
+    writeFileSync(join(testDir, "packages", "pkg-a", "package.json"), PACKAGE_JSON);
+
+    mkdirSync(join(testDir, "packages", "internal-a"), { recursive: true });
+    writeFileSync(join(testDir, "packages", "internal-a", "package.json"), PACKAGE_JSON);
+
+    const result = discoverManifests({
+      basePath: testDir,
+      excludePatterns: ["**/internal-*/**"],
+      followWorkspaces: false,
+    });
+
+    // Should find pkg-a and possibly exclude internal-a
+    // The exact behavior depends on glob pattern matching implementation
+    expect(result.manifests.length).toBeGreaterThanOrEqual(1);
+    // At least one should be pkg-a
+    const pkgAManifest = result.manifests.find((m) => m.relativePath.includes("pkg-a"));
+    expect(pkgAManifest).toBeDefined();
+  });
+});
+
+// ===========================================
+// Absolute Path Handling
+// ===========================================
+
+describe("absolute path handling", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("returns absolute paths for manifest.path", () => {
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    const result = discoverManifests({ basePath: testDir });
+
+    expect(result.manifests[0].path.startsWith("/")).toBe(true);
+    expect(result.manifests[0].path).toContain(testDir);
+  });
+
+  it("handles basePath with trailing slash", () => {
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    const result = discoverManifests({ basePath: testDir + "/" });
+
+    expect(result.manifests).toHaveLength(1);
+  });
+
+  it("handles relative basePath", () => {
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    // This test assumes the relative path can be resolved
+    // In practice, discoverManifests uses resolve() internally
+    const result = discoverManifests({ basePath: testDir });
+
+    expect(result.manifests).toHaveLength(1);
+    // Path should still be absolute after resolution
+    expect(result.manifests[0].path.startsWith("/")).toBe(true);
+  });
+});

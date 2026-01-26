@@ -2689,3 +2689,239 @@ class TestUserMetaSyncEdgeCases:
         response = table.get_item(Key={"pk": "user_no_meta", "sk": key_hash})
         item = response.get("Item")
         assert item["tier"] == "pro"
+
+
+class TestWebhookSignatureTampering:
+    """Tests for Stripe webhook signature verification to prevent tampering."""
+
+    @mock_aws
+    def test_tampered_payload_rejected(self, mock_dynamodb, api_gateway_event):
+        """Should reject webhook with tampered payload that doesn't match signature."""
+        pytest.importorskip("stripe")
+        import stripe
+        import time
+        import hmac
+        import hashlib as stdlib_hashlib
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+        os.environ["STRIPE_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123456789012:secret:stripe"
+        os.environ["STRIPE_WEBHOOK_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123456789012:secret:webhook"
+
+        # Reset secrets cache with test webhook secret
+        import api.stripe_webhook as webhook_module
+        webhook_secret = "whsec_test_secret_key"
+        webhook_module._stripe_secrets_cache = ("sk_test_xxx", webhook_secret)
+        webhook_module._stripe_secrets_cache_time = 9999999999.0
+
+        # Create a valid signature for original payload
+        original_payload = json.dumps({"type": "invoice.paid", "id": "evt_123"})
+        timestamp = int(time.time())
+        signed_payload = f"{timestamp}.{original_payload}"
+        expected_sig = hmac.new(
+            webhook_secret.encode("utf-8"),
+            signed_payload.encode("utf-8"),
+            stdlib_hashlib.sha256
+        ).hexdigest()
+        stripe_signature = f"t={timestamp},v1={expected_sig}"
+
+        # Now TAMPER with the payload (change event ID)
+        tampered_payload = json.dumps({"type": "invoice.paid", "id": "evt_TAMPERED"})
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = tampered_payload  # Tampered!
+        api_gateway_event["headers"] = {"stripe-signature": stripe_signature}
+
+        from api.stripe_webhook import handler
+        result = handler(api_gateway_event, {})
+
+        # Should be rejected - signature doesn't match tampered payload
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"] == "Invalid signature"
+
+    @mock_aws
+    def test_expired_signature_rejected(self, mock_dynamodb, api_gateway_event):
+        """Should reject webhook with expired timestamp in signature."""
+        pytest.importorskip("stripe")
+        import time
+        import hmac
+        import hashlib as stdlib_hashlib
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+
+        import api.stripe_webhook as webhook_module
+        webhook_secret = "whsec_test_expired"
+        webhook_module._stripe_secrets_cache = ("sk_test_xxx", webhook_secret)
+        webhook_module._stripe_secrets_cache_time = 9999999999.0
+
+        # Create a signature with OLD timestamp (6 minutes ago, beyond Stripe's 5 min tolerance)
+        payload = json.dumps({"type": "invoice.paid", "id": "evt_456"})
+        old_timestamp = int(time.time()) - 360  # 6 minutes ago
+        signed_payload = f"{old_timestamp}.{payload}"
+        expected_sig = hmac.new(
+            webhook_secret.encode("utf-8"),
+            signed_payload.encode("utf-8"),
+            stdlib_hashlib.sha256
+        ).hexdigest()
+        stripe_signature = f"t={old_timestamp},v1={expected_sig}"
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = payload
+        api_gateway_event["headers"] = {"stripe-signature": stripe_signature}
+
+        from api.stripe_webhook import handler
+        result = handler(api_gateway_event, {})
+
+        # Should be rejected due to timestamp tolerance
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"] == "Invalid signature"
+
+    @mock_aws
+    def test_replay_attack_prevented_by_idempotency(self, mock_dynamodb, api_gateway_event):
+        """Should prevent replay attacks via idempotency check."""
+        pytest.importorskip("stripe")
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+
+        from api.stripe_webhook import _check_and_claim_event
+
+        # First claim succeeds
+        result1 = _check_and_claim_event("evt_replay", "invoice.paid")
+        assert result1 is True
+
+        # Replay attempt is blocked
+        result2 = _check_and_claim_event("evt_replay", "invoice.paid")
+        assert result2 is False
+
+        # Verify the event was recorded
+        table = mock_dynamodb.Table("pkgwatch-billing-events")
+        response = table.get_item(Key={"pk": "evt_replay", "sk": "invoice.paid"})
+        assert response.get("Item") is not None
+
+    @mock_aws
+    def test_malformed_signature_rejected(self, mock_dynamodb, api_gateway_event):
+        """Should reject webhook with malformed signature format."""
+        pytest.importorskip("stripe")
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+
+        import api.stripe_webhook as webhook_module
+        webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_test")
+        webhook_module._stripe_secrets_cache_time = 9999999999.0
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = json.dumps({"type": "invoice.paid"})
+        # Malformed signature - missing timestamp
+        api_gateway_event["headers"] = {"stripe-signature": "v1=abc123"}
+
+        from api.stripe_webhook import handler
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"] == "Invalid signature"
+
+    @mock_aws
+    def test_wrong_webhook_secret_rejected(self, mock_dynamodb, api_gateway_event):
+        """Should reject webhook signed with wrong secret."""
+        pytest.importorskip("stripe")
+        import time
+        import hmac
+        import hashlib as stdlib_hashlib
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+
+        import api.stripe_webhook as webhook_module
+        # Server expects this secret
+        webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_correct_secret")
+        webhook_module._stripe_secrets_cache_time = 9999999999.0
+
+        # But payload was signed with wrong secret
+        wrong_secret = "whsec_WRONG_secret"
+        payload = json.dumps({"type": "invoice.paid", "id": "evt_wrong"})
+        timestamp = int(time.time())
+        signed_payload = f"{timestamp}.{payload}"
+        wrong_sig = hmac.new(
+            wrong_secret.encode("utf-8"),
+            signed_payload.encode("utf-8"),
+            stdlib_hashlib.sha256
+        ).hexdigest()
+        stripe_signature = f"t={timestamp},v1={wrong_sig}"
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = payload
+        api_gateway_event["headers"] = {"stripe-signature": stripe_signature}
+
+        from api.stripe_webhook import handler
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"] == "Invalid signature"
+
+
+class TestWebhookErrorResponseQuality:
+    """Tests for webhook error response quality and security."""
+
+    @mock_aws
+    def test_signature_error_does_not_leak_secret(self, mock_dynamodb, api_gateway_event, caplog):
+        """Signature errors should not leak the webhook secret in logs or response."""
+        pytest.importorskip("stripe")
+        import logging
+        caplog.set_level(logging.DEBUG)
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+
+        import api.stripe_webhook as webhook_module
+        secret = "whsec_supersecret123"
+        webhook_module._stripe_secrets_cache = ("sk_test_xxx", secret)
+        webhook_module._stripe_secrets_cache_time = 9999999999.0
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = json.dumps({"type": "invoice.paid"})
+        api_gateway_event["headers"] = {"stripe-signature": "invalid_signature"}
+
+        from api.stripe_webhook import handler
+        result = handler(api_gateway_event, {})
+
+        # Secret should NOT appear in response
+        assert secret not in result["body"]
+
+        # Secret should NOT appear in logs
+        assert secret not in caplog.text
+
+    @mock_aws
+    def test_error_response_is_generic_not_detailed(self, mock_dynamodb, api_gateway_event):
+        """Error responses should be generic to not aid attackers."""
+        pytest.importorskip("stripe")
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+
+        import api.stripe_webhook as webhook_module
+        webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_test")
+        webhook_module._stripe_secrets_cache_time = 9999999999.0
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = json.dumps({"type": "invoice.paid"})
+        api_gateway_event["headers"] = {"stripe-signature": "t=123,v1=wrong"}
+
+        from api.stripe_webhook import handler
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        # Should just say "Invalid signature", not "signature mismatch" or
+        # "expected X got Y" which could leak information
+        assert body["error"] == "Invalid signature"
+        # Should NOT contain detailed information
+        assert "expected" not in body.get("error", "").lower()
+        assert "hmac" not in body.get("error", "").lower()
+        assert "secret" not in body.get("error", "").lower()

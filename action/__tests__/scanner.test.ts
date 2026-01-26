@@ -3,11 +3,22 @@ import { scanDependencies } from "../src/scanner.js";
 import { PkgWatchClient } from "../src/api.js";
 
 // Use vi.hoisted to ensure these are available when vi.mock is executed
-const { mockScan, mockReadDependencies, mockReadDependenciesFromFile, MockDependencyParseError, mockExistsSync, mockStatSync, mockRealpathSync } = vi.hoisted(() => {
+const { mockScan, mockReadDependencies, mockReadDependenciesFromFile, MockDependencyParseError, MockApiClientError, mockExistsSync, mockStatSync, mockRealpathSync } = vi.hoisted(() => {
   class MockDependencyParseError extends Error {
     constructor(message: string) {
       super(message);
       this.name = "DependencyParseError";
+    }
+  }
+
+  class MockApiClientError extends Error {
+    status: number;
+    code: string;
+    constructor(message: string, status: number, code: string) {
+      super(message);
+      this.name = "ApiClientError";
+      this.status = status;
+      this.code = code;
     }
   }
 
@@ -16,6 +27,7 @@ const { mockScan, mockReadDependencies, mockReadDependenciesFromFile, MockDepend
     mockReadDependencies: vi.fn(),
     mockReadDependenciesFromFile: vi.fn(),
     MockDependencyParseError,
+    MockApiClientError,
     mockExistsSync: vi.fn(),
     mockStatSync: vi.fn(),
     mockRealpathSync: vi.fn(),
@@ -28,6 +40,7 @@ vi.mock("../src/api.js", () => ({
     scan: mockScan,
   })),
   DependencyParseError: MockDependencyParseError,
+  ApiClientError: MockApiClientError,
   readDependencies: (...args: unknown[]) => mockReadDependencies(...args),
   readDependenciesFromFile: (...args: unknown[]) => mockReadDependenciesFromFile(...args),
 }));
@@ -390,5 +403,453 @@ describe("scanDependencies - Symlink Security", () => {
     await expect(
       scanDependencies("test-key", "./protected-link", false)
     ).rejects.toThrow("Cannot resolve path");
+  });
+});
+
+describe("scanDependencies - Python Ecosystem", () => {
+  const originalGitHubWorkspace = process.env.GITHUB_WORKSPACE;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/repo";
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ isFile: () => false, isDirectory: () => true });
+    mockRealpathSync.mockImplementation((p: string) => p);
+  });
+
+  afterEach(() => {
+    if (originalGitHubWorkspace === undefined) {
+      delete process.env.GITHUB_WORKSPACE;
+    } else {
+      process.env.GITHUB_WORKSPACE = originalGitHubWorkspace;
+    }
+  });
+
+  it("detects pypi ecosystem from requirements.txt", async () => {
+    mockReadDependencies.mockReturnValue({
+      dependencies: { requests: ">=2.28.0", flask: ">=2.0.0" },
+      ecosystem: "pypi",
+      format: "requirements.txt",
+      count: 2,
+    });
+
+    mockScan.mockResolvedValue({
+      total: 2,
+      critical: 0,
+      high: 0,
+      medium: 1,
+      low: 1,
+      packages: [
+        { package: "requests", risk_level: "LOW", health_score: 85 },
+        { package: "flask", risk_level: "MEDIUM", health_score: 70 },
+      ],
+    });
+
+    const result = await scanDependencies("test-key", "/repo", true);
+
+    expect(result.ecosystem).toBe("pypi");
+    expect(result.format).toBe("requirements.txt");
+    expect(mockScan).toHaveBeenCalledWith(expect.any(Object), "pypi");
+  });
+
+  it("detects pypi ecosystem from pyproject.toml", async () => {
+    mockStatSync.mockReturnValue({ isFile: () => true, isDirectory: () => false });
+    mockReadDependenciesFromFile.mockReturnValue({
+      dependencies: { django: ">=4.0", celery: ">=5.0" },
+      ecosystem: "pypi",
+      format: "pyproject.toml",
+      count: 2,
+    });
+
+    mockScan.mockResolvedValue({
+      total: 2,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 2,
+      packages: [
+        { package: "django", risk_level: "LOW", health_score: 92 },
+        { package: "celery", risk_level: "LOW", health_score: 88 },
+      ],
+    });
+
+    const result = await scanDependencies("test-key", "/repo/pyproject.toml", false);
+
+    expect(result.ecosystem).toBe("pypi");
+    expect(result.format).toBe("pyproject.toml");
+  });
+});
+
+describe("scanDependencies - Ecosystem Override", () => {
+  const originalGitHubWorkspace = process.env.GITHUB_WORKSPACE;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/repo";
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ isFile: () => false, isDirectory: () => true });
+    mockRealpathSync.mockImplementation((p: string) => p);
+  });
+
+  afterEach(() => {
+    if (originalGitHubWorkspace === undefined) {
+      delete process.env.GITHUB_WORKSPACE;
+    } else {
+      process.env.GITHUB_WORKSPACE = originalGitHubWorkspace;
+    }
+  });
+
+  it("allows ecosystem override", async () => {
+    mockReadDependencies.mockReturnValue({
+      dependencies: { lodash: "^4.0.0" },
+      ecosystem: "npm",
+      format: "package.json",
+      count: 1,
+    });
+
+    mockScan.mockResolvedValue({
+      total: 1,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 1,
+      packages: [{ package: "lodash", risk_level: "LOW", health_score: 90 }],
+    });
+
+    // Override to pypi (unusual but tests the mechanism)
+    const result = await scanDependencies("test-key", "/repo", true, "pypi");
+
+    expect(result.ecosystem).toBe("pypi");
+    expect(mockScan).toHaveBeenCalledWith(expect.any(Object), "pypi");
+  });
+});
+
+describe("scanDependencies - Data Quality Aggregation", () => {
+  const originalGitHubWorkspace = process.env.GITHUB_WORKSPACE;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/repo";
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ isFile: () => false, isDirectory: () => true });
+    mockRealpathSync.mockImplementation((p: string) => p);
+  });
+
+  afterEach(() => {
+    if (originalGitHubWorkspace === undefined) {
+      delete process.env.GITHUB_WORKSPACE;
+    } else {
+      process.env.GITHUB_WORKSPACE = originalGitHubWorkspace;
+    }
+  });
+
+  it("aggregates data quality counts across batches", async () => {
+    // Create 30 dependencies to trigger batching
+    const dependencies: Record<string, string> = {};
+    for (let i = 0; i < 30; i++) {
+      dependencies[`pkg-${i}`] = "^1.0.0";
+    }
+
+    mockReadDependencies.mockReturnValue({
+      dependencies,
+      ecosystem: "npm",
+      format: "package.json",
+      count: 30,
+    });
+
+    // First batch: 15 verified, 10 partial
+    const batch1Packages = Array.from({ length: 25 }, (_, i) => ({
+      package: `pkg-${i}`,
+      risk_level: i < 5 ? "HIGH" : "LOW",
+      health_score: 50 + i,
+      data_quality: {
+        assessment: i < 15 ? "VERIFIED" : "PARTIAL",
+        has_repository: true,
+      },
+    }));
+
+    // Second batch: 3 verified, 2 unverified
+    const batch2Packages = Array.from({ length: 5 }, (_, i) => ({
+      package: `pkg-${25 + i}`,
+      risk_level: i === 0 ? "HIGH" : "LOW",
+      health_score: 60 + i,
+      data_quality: {
+        assessment: i < 3 ? "VERIFIED" : "UNVERIFIED",
+        has_repository: i < 3,
+      },
+    }));
+
+    mockScan
+      .mockResolvedValueOnce({
+        total: 25,
+        critical: 0,
+        high: 5,
+        medium: 0,
+        low: 20,
+        packages: batch1Packages,
+      })
+      .mockResolvedValueOnce({
+        total: 5,
+        critical: 0,
+        high: 1,
+        medium: 0,
+        low: 4,
+        packages: batch2Packages,
+      });
+
+    const result = await scanDependencies("test-key", "/repo", true);
+
+    // Verify data quality aggregation
+    expect(result.data_quality).toEqual({
+      verified_count: 18, // 15 + 3
+      partial_count: 10,
+      unverified_count: 2,
+    });
+
+    // Verify risk count aggregation
+    // HIGH packages: 5 (batch1, all verified) + 1 (batch2, verified) = 6 HIGH total
+    // Of those: verified HIGH = 5 (batch1) + 1 (batch2) = 6, unverified HIGH = 0
+    // Wait - let's check the logic more carefully
+    // Batch 1: 15 verified (5 HIGH, 10 LOW), 10 partial (0 HIGH, 10 LOW)
+    // Batch 2: 3 verified (1 HIGH, 2 LOW), 2 unverified (0 HIGH, 2 LOW)
+    expect(result.verified_risk_count).toBe(6); // 5 verified HIGH from batch1 + 1 from batch2
+    expect(result.unverified_risk_count).toBe(0); // No HIGH in unverified/partial
+  });
+});
+
+describe("scanDependencies - Batch Failure Handling", () => {
+  const originalGitHubWorkspace = process.env.GITHUB_WORKSPACE;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/repo";
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ isFile: () => false, isDirectory: () => true });
+    mockRealpathSync.mockImplementation((p: string) => p);
+  });
+
+  afterEach(() => {
+    if (originalGitHubWorkspace === undefined) {
+      delete process.env.GITHUB_WORKSPACE;
+    } else {
+      process.env.GITHUB_WORKSPACE = originalGitHubWorkspace;
+    }
+  });
+
+  it("continues on batch failure and returns partial results", async () => {
+    const dependencies: Record<string, string> = {};
+    for (let i = 0; i < 30; i++) {
+      dependencies[`pkg-${i}`] = "^1.0.0";
+    }
+
+    mockReadDependencies.mockReturnValue({
+      dependencies,
+      ecosystem: "npm",
+      format: "package.json",
+      count: 30,
+    });
+
+    // First batch succeeds
+    mockScan
+      .mockResolvedValueOnce({
+        total: 25,
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 25,
+        packages: Array.from({ length: 25 }, (_, i) => ({
+          package: `pkg-${i}`,
+          risk_level: "LOW",
+          health_score: 85,
+        })),
+      })
+      // Second batch fails with a non-retryable error (not ApiClientError)
+      .mockRejectedValueOnce(new Error("Unexpected server error"));
+
+    const result = await scanDependencies("test-key", "/repo", true);
+
+    // Should have partial results from first batch
+    expect(result.total).toBe(25);
+    expect(result.packages.length).toBe(25);
+  });
+
+  it("fails immediately on rate limit error during batch", async () => {
+    const dependencies: Record<string, string> = {};
+    for (let i = 0; i < 30; i++) {
+      dependencies[`pkg-${i}`] = "^1.0.0";
+    }
+
+    mockReadDependencies.mockReturnValue({
+      dependencies,
+      ecosystem: "npm",
+      format: "package.json",
+      count: 30,
+    });
+
+    // First batch succeeds
+    mockScan
+      .mockResolvedValueOnce({
+        total: 25,
+        critical: 0, high: 0, medium: 0, low: 25,
+        packages: [],
+      })
+      // Second batch hits rate limit - use the mock class
+      .mockRejectedValueOnce(new MockApiClientError("Rate limited", 429, "rate_limited"));
+
+    await expect(
+      scanDependencies("test-key", "/repo", true)
+    ).rejects.toThrow("Rate limited");
+  });
+
+  it("fails immediately on auth error during batch", async () => {
+    const dependencies: Record<string, string> = {};
+    for (let i = 0; i < 30; i++) {
+      dependencies[`pkg-${i}`] = "^1.0.0";
+    }
+
+    mockReadDependencies.mockReturnValue({
+      dependencies,
+      ecosystem: "npm",
+      format: "package.json",
+      count: 30,
+    });
+
+    // Use the mock class for the error
+    mockScan.mockRejectedValueOnce(
+      new MockApiClientError("Unauthorized", 401, "unauthorized")
+    );
+
+    await expect(
+      scanDependencies("test-key", "/repo", true)
+    ).rejects.toThrow("Unauthorized");
+
+    // Should not have retried more batches
+    expect(mockScan).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("scanDependencies - Path Validation", () => {
+  const originalGitHubWorkspace = process.env.GITHUB_WORKSPACE;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/repo";
+    mockRealpathSync.mockImplementation((p: string) => p);
+  });
+
+  afterEach(() => {
+    if (originalGitHubWorkspace === undefined) {
+      delete process.env.GITHUB_WORKSPACE;
+    } else {
+      process.env.GITHUB_WORKSPACE = originalGitHubWorkspace;
+    }
+  });
+
+  it("throws error when path does not exist", async () => {
+    mockExistsSync.mockReturnValue(false);
+
+    await expect(
+      scanDependencies("test-key", "/repo/nonexistent", false)
+    ).rejects.toThrow("Path does not exist");
+  });
+
+  it("throws error for non-file non-directory paths", async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({
+      isFile: () => false,
+      isDirectory: () => false,
+    });
+
+    await expect(
+      scanDependencies("test-key", "/repo/some-socket", false)
+    ).rejects.toThrow("not a file or directory");
+  });
+});
+
+describe("scanDependencies - Result Metadata", () => {
+  const originalGitHubWorkspace = process.env.GITHUB_WORKSPACE;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/repo";
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ isFile: () => false, isDirectory: () => true });
+    mockRealpathSync.mockImplementation((p: string) => p);
+  });
+
+  afterEach(() => {
+    if (originalGitHubWorkspace === undefined) {
+      delete process.env.GITHUB_WORKSPACE;
+    } else {
+      process.env.GITHUB_WORKSPACE = originalGitHubWorkspace;
+    }
+  });
+
+  it("includes format and ecosystem in result", async () => {
+    mockReadDependencies.mockReturnValue({
+      dependencies: { express: "^4.0.0" },
+      ecosystem: "npm",
+      format: "package.json",
+      count: 1,
+    });
+
+    mockScan.mockResolvedValue({
+      total: 1,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 1,
+      packages: [{ package: "express", risk_level: "LOW", health_score: 90 }],
+    });
+
+    const result = await scanDependencies("test-key", "/repo", true);
+
+    expect(result.format).toBe("package.json");
+    expect(result.ecosystem).toBe("npm");
+  });
+
+  it("includes not_found when present", async () => {
+    mockReadDependencies.mockReturnValue({
+      dependencies: { "real-pkg": "^1.0.0", "fake-pkg": "^1.0.0" },
+      ecosystem: "npm",
+      format: "package.json",
+      count: 2,
+    });
+
+    mockScan.mockResolvedValue({
+      total: 1,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 1,
+      packages: [{ package: "real-pkg", risk_level: "LOW", health_score: 90 }],
+      not_found: ["fake-pkg"],
+    });
+
+    const result = await scanDependencies("test-key", "/repo", true);
+
+    expect(result.not_found).toEqual(["fake-pkg"]);
+  });
+
+  it("does not include not_found when empty", async () => {
+    mockReadDependencies.mockReturnValue({
+      dependencies: { express: "^4.0.0" },
+      ecosystem: "npm",
+      format: "package.json",
+      count: 1,
+    });
+
+    mockScan.mockResolvedValue({
+      total: 1,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 1,
+      packages: [{ package: "express", risk_level: "LOW", health_score: 90 }],
+    });
+
+    const result = await scanDependencies("test-key", "/repo", true);
+
+    expect(result.not_found).toBeUndefined();
   });
 });

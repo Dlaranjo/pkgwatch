@@ -12,6 +12,7 @@ describe("PkgWatchClient retry behavior", () => {
   });
 
   afterEach(() => {
+    vi.clearAllTimers();
     vi.useRealTimers();
   });
 
@@ -216,12 +217,18 @@ describe("PkgWatchClient retry behavior", () => {
   // ===========================================
 
   it("fails after max retries exceeded", async () => {
-    mockFetch.mockResolvedValue({
+    // Use mockResolvedValueOnce for exact number of expected calls
+    const errorResponse = {
       ok: false,
       status: 500,
       statusText: "Internal Server Error",
       json: () => Promise.reject(new Error("No body")),
-    });
+    };
+    mockFetch
+      .mockResolvedValueOnce(errorResponse)
+      .mockResolvedValueOnce(errorResponse)
+      .mockResolvedValueOnce(errorResponse)
+      .mockResolvedValueOnce(errorResponse);
 
     const client = createClient();
     const resultPromise = client.getPackage("lodash");
@@ -259,7 +266,12 @@ describe("PkgWatchClient retry behavior", () => {
   });
 
   it("throws network_error after all retries fail", async () => {
-    mockFetch.mockRejectedValue(new Error("Network failure"));
+    const networkError = new Error("Network failure");
+    mockFetch
+      .mockRejectedValueOnce(networkError)
+      .mockRejectedValueOnce(networkError)
+      .mockRejectedValueOnce(networkError)
+      .mockRejectedValueOnce(networkError);
 
     const client = createClient();
     const resultPromise = client.getPackage("lodash");
@@ -279,7 +291,11 @@ describe("PkgWatchClient retry behavior", () => {
     // Create an abort error
     const abortError = new Error("Aborted");
     abortError.name = "AbortError";
-    mockFetch.mockRejectedValue(abortError);
+    mockFetch
+      .mockRejectedValueOnce(abortError)
+      .mockRejectedValueOnce(abortError)
+      .mockRejectedValueOnce(abortError)
+      .mockRejectedValueOnce(abortError);
 
     const client = createClient();
     const resultPromise = client.getPackage("lodash");
@@ -352,12 +368,17 @@ describe("PkgWatchClient retry behavior", () => {
   });
 
   it("maps 429 to rate_limited", async () => {
-    mockFetch.mockResolvedValue({
+    const rateLimitResponse = {
       ok: false,
       status: 429,
       statusText: "Too Many Requests",
       json: () => Promise.resolve({}),
-    });
+    };
+    mockFetch
+      .mockResolvedValueOnce(rateLimitResponse)
+      .mockResolvedValueOnce(rateLimitResponse)
+      .mockResolvedValueOnce(rateLimitResponse)
+      .mockResolvedValueOnce(rateLimitResponse);
 
     const client = createClient();
     const resultPromise = client.getPackage("test");
@@ -370,12 +391,17 @@ describe("PkgWatchClient retry behavior", () => {
   });
 
   it("maps 500 to server_error", async () => {
-    mockFetch.mockResolvedValue({
+    const serverErrorResponse = {
       ok: false,
       status: 500,
       statusText: "Internal Server Error",
       json: () => Promise.resolve({}),
-    });
+    };
+    mockFetch
+      .mockResolvedValueOnce(serverErrorResponse)
+      .mockResolvedValueOnce(serverErrorResponse)
+      .mockResolvedValueOnce(serverErrorResponse)
+      .mockResolvedValueOnce(serverErrorResponse);
 
     const client = createClient();
     const resultPromise = client.getPackage("test");

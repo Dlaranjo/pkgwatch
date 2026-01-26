@@ -458,3 +458,583 @@ describe("edge cases", () => {
     expect(result.manifests[1].manifest.relativePath).toContain("z-package");
   });
 });
+
+// ===========================================
+// Large Repository Tests
+// ===========================================
+
+describe("large repository handling", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+    vi.clearAllMocks();
+
+    mockScan.mockImplementation((deps: Record<string, string>) => {
+      const packages = Object.keys(deps).map((name) => ({
+        package: name,
+        health_score: 75,
+        risk_level: "LOW" as const,
+        abandonment_risk: {},
+        is_deprecated: false,
+        archived: false,
+        last_updated: "2024-01-01T00:00:00Z",
+      }));
+      return Promise.resolve(createMockScanResult(packages));
+    });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("handles many manifests efficiently", async () => {
+    // Create 20 packages
+    for (let i = 0; i < 20; i++) {
+      const dir = join(testDir, `pkg-${i}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "package.json"),
+        JSON.stringify({
+          dependencies: { [`dep-${i}`]: "^1.0.0" },
+        })
+      );
+    }
+
+    const result = await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+    });
+
+    expect(result.summary.totalManifests).toBe(20);
+    expect(result.summary.uniquePackages).toBe(20);
+  });
+
+  it("handles manifest with many dependencies", async () => {
+    const deps: Record<string, string> = {};
+    for (let i = 0; i < 100; i++) {
+      deps[`package-${i}`] = "^1.0.0";
+    }
+    writeFileSync(join(testDir, "package.json"), JSON.stringify({ dependencies: deps }));
+
+    const result = await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+    });
+
+    expect(result.summary.uniquePackages).toBe(100);
+    expect(result.quotaUsed).toBe(100);
+  });
+
+  it("deduplicates shared dependencies across many manifests", async () => {
+    // 10 packages all depending on lodash
+    for (let i = 0; i < 10; i++) {
+      const dir = join(testDir, `pkg-${i}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "package.json"),
+        JSON.stringify({
+          dependencies: { lodash: "^4.17.21" },
+        })
+      );
+    }
+
+    const result = await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+    });
+
+    // lodash is shared, so unique count should be 1
+    expect(result.summary.uniquePackages).toBe(1);
+    expect(result.quotaUsed).toBe(1);
+    // But total packages across manifests is 10
+    expect(result.summary.totalPackages).toBe(10);
+  });
+});
+
+// ===========================================
+// Nested Dependencies Tests
+// ===========================================
+
+describe("nested dependencies handling", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+    vi.clearAllMocks();
+
+    mockScan.mockImplementation((deps: Record<string, string>, ecosystem: string) => {
+      if (ecosystem === "npm") {
+        const packages = MOCK_NPM_HEALTH.filter((p) => Object.keys(deps).includes(p.package));
+        return Promise.resolve(createMockScanResult(packages));
+      } else {
+        const packages = MOCK_PYPI_HEALTH.filter((p) => Object.keys(deps).includes(p.package));
+        return Promise.resolve(createMockScanResult(packages));
+      }
+    });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("handles nested workspaces", async () => {
+    const workspaceConfig = `{
+      "name": "root",
+      "workspaces": ["packages/*"]
+    }`;
+    writeFileSync(join(testDir, "package.json"), workspaceConfig);
+
+    // Create workspace packages
+    mkdirSync(join(testDir, "packages", "a"), { recursive: true });
+    writeFileSync(
+      join(testDir, "packages", "a", "package.json"),
+      JSON.stringify({ dependencies: { lodash: "^4.17.21" } })
+    );
+
+    mkdirSync(join(testDir, "packages", "b"), { recursive: true });
+    writeFileSync(
+      join(testDir, "packages", "b", "package.json"),
+      JSON.stringify({ dependencies: { express: "^4.18.0" } })
+    );
+
+    const result = await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+    });
+
+    // Should find root + 2 workspace packages (root has no deps)
+    expect(result.manifests.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("handles devDependencies correctly", async () => {
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON_WITH_DEV);
+
+    const resultWithDev = await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+      includeDev: true,
+    });
+
+    vi.clearAllMocks();
+    mockScan.mockImplementation((deps: Record<string, string>) => {
+      const packages = MOCK_NPM_HEALTH.filter((p) => Object.keys(deps).includes(p.package));
+      return Promise.resolve(createMockScanResult(packages));
+    });
+
+    const resultWithoutDev = await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+      includeDev: false,
+    });
+
+    expect(resultWithDev.summary.uniquePackages).toBeGreaterThanOrEqual(
+      resultWithoutDev.summary.uniquePackages
+    );
+  });
+});
+
+// ===========================================
+// Error Recovery Tests
+// ===========================================
+
+describe("error recovery", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("continues scanning after parse error in one manifest", async () => {
+    // Valid manifest
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    // Invalid manifest
+    mkdirSync(join(testDir, "broken"), { recursive: true });
+    writeFileSync(join(testDir, "broken", "package.json"), "not valid json");
+
+    // Another valid manifest
+    mkdirSync(join(testDir, "valid"), { recursive: true });
+    writeFileSync(join(testDir, "valid", "package.json"), PACKAGE_JSON);
+
+    mockScan.mockResolvedValue(createMockScanResult(MOCK_NPM_HEALTH));
+
+    const result = await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+    });
+
+    // Should have processed 2 valid + 1 parse error
+    expect(result.summary.totalManifests).toBe(3);
+    expect(result.summary.successfulManifests).toBe(2);
+    expect(result.summary.failedManifests).toBe(1);
+
+    const parseError = result.manifests.find((m) => m.status === "parse_error");
+    expect(parseError).toBeDefined();
+    expect(parseError?.manifest.relativePath).toContain("broken");
+  });
+
+  it("handles unexpected API errors gracefully", async () => {
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    mockScan.mockRejectedValue(new Error("Unexpected error"));
+
+    const result = await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+    });
+
+    expect(result.manifests[0].status).toBe("api_error");
+    expect(result.manifests[0].error).toContain("Unexpected error");
+    expect(result.warnings.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("handles npm rate limit and skips pypi scan", async () => {
+    mkdirSync(join(testDir, "frontend"), { recursive: true });
+    writeFileSync(join(testDir, "frontend", "package.json"), PACKAGE_JSON);
+
+    mkdirSync(join(testDir, "backend"), { recursive: true });
+    writeFileSync(join(testDir, "backend", "requirements.txt"), REQUIREMENTS_TXT);
+
+    // npm scan fails with rate limit
+    mockScan.mockRejectedValueOnce(
+      new ApiClientError("Rate limit exceeded", 429, "rate_limited")
+    );
+
+    const result = await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+    });
+
+    expect(result.rateLimited).toBe(true);
+
+    // Both npm and pypi manifests should be marked as rate limited
+    const rateLimitedManifests = result.manifests.filter(
+      (m) => m.status === "rate_limited"
+    );
+    expect(rateLimitedManifests).toHaveLength(2);
+  });
+
+  it("handles 401 unauthorized error", async () => {
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    mockScan.mockRejectedValueOnce(
+      new ApiClientError("Invalid API key", 401, "unauthorized")
+    );
+
+    const result = await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+    });
+
+    expect(result.manifests[0].status).toBe("api_error");
+    expect(result.manifests[0].error).toContain("Invalid API key");
+  });
+
+  it("handles 403 forbidden error", async () => {
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    mockScan.mockRejectedValueOnce(
+      new ApiClientError("Access denied", 403, "forbidden")
+    );
+
+    const result = await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+    });
+
+    expect(result.manifests[0].status).toBe("api_error");
+    expect(result.manifests[0].error).toContain("Access denied");
+  });
+});
+
+// ===========================================
+// Risk Level Counting Tests
+// ===========================================
+
+describe("risk level counting", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("correctly counts all risk levels", async () => {
+    const mixedRiskPackages: PackageHealth[] = [
+      {
+        package: "critical-pkg",
+        health_score: 20,
+        risk_level: "CRITICAL",
+        abandonment_risk: {},
+        is_deprecated: true,
+        archived: false,
+        last_updated: "2024-01-01T00:00:00Z",
+      },
+      {
+        package: "high-pkg",
+        health_score: 40,
+        risk_level: "HIGH",
+        abandonment_risk: {},
+        is_deprecated: false,
+        archived: false,
+        last_updated: "2024-01-01T00:00:00Z",
+      },
+      {
+        package: "medium-pkg",
+        health_score: 60,
+        risk_level: "MEDIUM",
+        abandonment_risk: {},
+        is_deprecated: false,
+        archived: false,
+        last_updated: "2024-01-01T00:00:00Z",
+      },
+      {
+        package: "low-pkg",
+        health_score: 85,
+        risk_level: "LOW",
+        abandonment_risk: {},
+        is_deprecated: false,
+        archived: false,
+        last_updated: "2024-01-01T00:00:00Z",
+      },
+    ];
+
+    mockScan.mockResolvedValue(createMockScanResult(mixedRiskPackages));
+
+    writeFileSync(
+      join(testDir, "package.json"),
+      JSON.stringify({
+        dependencies: {
+          "critical-pkg": "^1.0.0",
+          "high-pkg": "^1.0.0",
+          "medium-pkg": "^1.0.0",
+          "low-pkg": "^1.0.0",
+        },
+      })
+    );
+
+    const result = await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+    });
+
+    expect(result.summary.critical).toBe(1);
+    expect(result.summary.high).toBe(1);
+    expect(result.summary.medium).toBe(1);
+    expect(result.summary.low).toBe(1);
+  });
+
+  it("counts only unique packages in summary", async () => {
+    // Same high-risk package in two manifests
+    mockScan.mockResolvedValue(
+      createMockScanResult([
+        {
+          package: "risky-pkg",
+          health_score: 30,
+          risk_level: "HIGH",
+          abandonment_risk: {},
+          is_deprecated: false,
+          archived: false,
+          last_updated: "2024-01-01T00:00:00Z",
+        },
+      ])
+    );
+
+    writeFileSync(
+      join(testDir, "package.json"),
+      JSON.stringify({ dependencies: { "risky-pkg": "^1.0.0" } })
+    );
+
+    mkdirSync(join(testDir, "sub"), { recursive: true });
+    writeFileSync(
+      join(testDir, "sub", "package.json"),
+      JSON.stringify({ dependencies: { "risky-pkg": "^1.0.0" } })
+    );
+
+    const result = await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+    });
+
+    // High count should be 1 (unique), not 2
+    expect(result.summary.high).toBe(1);
+  });
+});
+
+// ===========================================
+// Progress Callback Tests
+// ===========================================
+
+describe("progress callback", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+    vi.clearAllMocks();
+
+    mockScan.mockResolvedValue(createMockScanResult(MOCK_NPM_HEALTH));
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("calls progress with correct counts", async () => {
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    mkdirSync(join(testDir, "sub"), { recursive: true });
+    writeFileSync(join(testDir, "sub", "package.json"), PACKAGE_JSON);
+
+    const progressCalls: Array<{ current: number; total: number; manifest: string }> = [];
+    const onProgress = (current: number, total: number, manifest: string) => {
+      progressCalls.push({ current, total, manifest });
+    };
+
+    await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+      onProgress,
+    });
+
+    expect(progressCalls.length).toBeGreaterThan(0);
+    // Should show scanning messages
+    expect(progressCalls.some((p) => p.manifest.includes("Scanning"))).toBe(true);
+  });
+
+  it("progress callback receives increasing values", async () => {
+    mkdirSync(join(testDir, "frontend"), { recursive: true });
+    writeFileSync(join(testDir, "frontend", "package.json"), PACKAGE_JSON);
+
+    mkdirSync(join(testDir, "backend"), { recursive: true });
+    writeFileSync(join(testDir, "backend", "requirements.txt"), REQUIREMENTS_TXT);
+
+    mockScan.mockImplementation((deps: Record<string, string>, ecosystem: string) => {
+      if (ecosystem === "npm") {
+        return Promise.resolve(createMockScanResult(MOCK_NPM_HEALTH));
+      }
+      return Promise.resolve(createMockScanResult(MOCK_PYPI_HEALTH));
+    });
+
+    const progressValues: number[] = [];
+    const onProgress = (current: number) => {
+      progressValues.push(current);
+    };
+
+    await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+      onProgress,
+    });
+
+    // Progress should generally increase
+    for (let i = 1; i < progressValues.length; i++) {
+      expect(progressValues[i]).toBeGreaterThanOrEqual(progressValues[i - 1]);
+    }
+  });
+});
+
+// ===========================================
+// Client Options Tests
+// ===========================================
+
+describe("client options", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+    vi.clearAllMocks();
+    mockScan.mockResolvedValue(createMockScanResult(MOCK_NPM_HEALTH));
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("passes client options to PkgWatchClient", async () => {
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+      clientOptions: {
+        baseUrl: "https://custom.api.com",
+        timeout: 60000,
+        maxRetries: 5,
+      },
+    });
+
+    // The mock client is instantiated - we can't easily verify options
+    // but this test ensures no errors with custom options
+    expect(mockScan).toHaveBeenCalled();
+  });
+});
+
+// ===========================================
+// Mixed Ecosystem Scan Order Tests
+// ===========================================
+
+describe("mixed ecosystem scan order", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("scans npm before pypi", async () => {
+    const callOrder: string[] = [];
+
+    mockScan.mockImplementation((_deps: Record<string, string>, ecosystem: string) => {
+      callOrder.push(ecosystem);
+      return Promise.resolve(
+        createMockScanResult(ecosystem === "npm" ? MOCK_NPM_HEALTH : MOCK_PYPI_HEALTH)
+      );
+    });
+
+    mkdirSync(join(testDir, "frontend"), { recursive: true });
+    writeFileSync(join(testDir, "frontend", "package.json"), PACKAGE_JSON);
+
+    mkdirSync(join(testDir, "backend"), { recursive: true });
+    writeFileSync(join(testDir, "backend", "requirements.txt"), REQUIREMENTS_TXT);
+
+    await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+    });
+
+    expect(callOrder).toEqual(["npm", "pypi"]);
+  });
+
+  it("skips ecosystem scan if no packages of that type", async () => {
+    mockScan.mockResolvedValue(createMockScanResult(MOCK_NPM_HEALTH));
+
+    // Only npm packages
+    writeFileSync(join(testDir, "package.json"), PACKAGE_JSON);
+
+    await scanRepository({
+      basePath: testDir,
+      apiKey: "pw_test_key",
+    });
+
+    // Should only call scan once (for npm)
+    expect(mockScan).toHaveBeenCalledTimes(1);
+    expect(mockScan).toHaveBeenCalledWith(
+      expect.any(Object),
+      "npm"
+    );
+  });
+});

@@ -75,6 +75,24 @@ def _reset_circuits():
         pass  # Circuit breakers not imported yet
 
 
+@pytest.fixture(autouse=True)
+def reset_session_secret_cache():
+    """Reset the session secret cache between tests to prevent pollution.
+
+    This ensures that cached session secrets from one test don't affect
+    subsequent tests that may need different mock secrets.
+    """
+    yield  # Let the test run
+
+    # Reset AFTER test
+    try:
+        import api.auth_callback as auth_callback
+        auth_callback._session_secret_cache = None
+        auth_callback._session_secret_cache_time = 0.0
+    except ImportError:
+        pass  # Module not imported yet
+
+
 def create_dynamodb_tables(dynamodb):
     """Create all DynamoDB tables with their GSIs.
 

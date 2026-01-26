@@ -535,3 +535,577 @@ class TestRevokeApiKeyHandler:
         # The key_prefix should contain the actual key suffix, not the hash suffix
         assert listed_key_prefix.endswith(actual_suffix), \
             f"Listed key suffix '{listed_key_prefix}' should end with actual key suffix '{actual_suffix}'"
+
+
+class TestGetApiKeysFiltering:
+    """Tests for filtering out non-API key records."""
+
+    @mock_aws
+    def test_filters_out_pending_records(self, mock_dynamodb, api_gateway_event):
+        """Should not include PENDING records in API key list."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Add PENDING record
+        table.put_item(
+            Item={
+                "pk": "user_filter_test",
+                "sk": "PENDING",
+                "email": "filter@example.com",
+            }
+        )
+
+        # Add real API key
+        key_hash = hashlib.sha256(b"pw_real_key").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_filter_test",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "filter@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+
+        from api.get_api_keys import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        session_token = _create_test_session_token("user_filter_test", "filter@example.com")
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert len(body["api_keys"]) == 1  # Only the real key, not PENDING
+
+    @mock_aws
+    def test_filters_out_user_meta_records(self, mock_dynamodb, api_gateway_event):
+        """Should not include USER_META records in API key list."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Add USER_META record
+        table.put_item(
+            Item={
+                "pk": "user_meta_filter",
+                "sk": "USER_META",
+                "key_count": 1,
+                "requests_this_month": 100,
+            }
+        )
+
+        # Add real API key
+        key_hash = hashlib.sha256(b"pw_real_key_2").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_meta_filter",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "meta_filter@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+
+        from api.get_api_keys import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        session_token = _create_test_session_token("user_meta_filter", "meta_filter@example.com")
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert len(body["api_keys"]) == 1
+
+    @mock_aws
+    def test_filters_out_recovery_records(self, mock_dynamodb, api_gateway_event):
+        """Should not include RECOVERY_* records in API key list."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Add recovery session record
+        table.put_item(
+            Item={
+                "pk": "user_recovery_filter",
+                "sk": "RECOVERY_abc123",
+                "recovery_code_hash": "somehash",
+            }
+        )
+
+        # Add real API key
+        key_hash = hashlib.sha256(b"pw_recovery_test").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_recovery_filter",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "recovery@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+
+        from api.get_api_keys import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        session_token = _create_test_session_token("user_recovery_filter", "recovery@example.com")
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert len(body["api_keys"]) == 1
+
+
+class TestCreateApiKeyWithName:
+    """Tests for API key creation with custom names."""
+
+    @mock_aws
+    def test_creates_key_with_custom_name(self, mock_dynamodb, api_gateway_event):
+        """Should create key with provided custom name."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create existing key to get past the count check
+        key_hash = hashlib.sha256(b"pw_existing_named").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_named_key",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "named@example.com",
+                "tier": "pro",
+                "email_verified": True,
+            }
+        )
+
+        from api.create_api_key import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        session_token = _create_test_session_token("user_named_key", "named@example.com", "pro")
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+        api_gateway_event["body"] = json.dumps({"name": "Production Server"})
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 201
+
+        # Verify the key was created with the custom name
+        response = table.query(
+            KeyConditionExpression=boto3.dynamodb.conditions.Key("pk").eq("user_named_key")
+        )
+        # Find the new key (not the existing one)
+        new_key = None
+        for item in response["Items"]:
+            if item.get("sk") != key_hash and item.get("sk") != "USER_META":
+                new_key = item
+                break
+
+        assert new_key is not None
+        assert new_key.get("key_name") == "Production Server"
+
+    @mock_aws
+    def test_creates_key_with_default_name(self, mock_dynamodb, api_gateway_event):
+        """Should create key with default name when none provided."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create existing key
+        key_hash = hashlib.sha256(b"pw_existing_default").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_default_name",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "default@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+
+        from api.create_api_key import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        session_token = _create_test_session_token("user_default_name", "default@example.com")
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+        # No body provided
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 201
+
+
+class TestRevokeApiKeyEdgeCases:
+    """Additional tests for API key revocation edge cases."""
+
+    @mock_aws
+    def test_returns_400_for_missing_key_id(self, mock_dynamodb, api_gateway_event):
+        """Should return 400 when key_id is not provided."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        from api.revoke_api_key import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        session_token = _create_test_session_token("user_missing_id", "missing@example.com")
+        api_gateway_event["httpMethod"] = "DELETE"
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+        api_gateway_event["pathParameters"] = {}  # No key_id
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "missing_key_id"
+
+    @mock_aws
+    def test_returns_401_for_expired_session(self, mock_dynamodb, api_gateway_event):
+        """Should return 401 when session is expired."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        from api.revoke_api_key import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        # Create expired session token
+        from api.auth_callback import _create_session_token
+        expired_data = {
+            "user_id": "user_expired",
+            "email": "expired@example.com",
+            "tier": "free",
+            "exp": 1000,  # Unix timestamp in the past
+        }
+        expired_token = _create_session_token(expired_data, "test-secret-key-for-signing-sessions")
+
+        api_gateway_event["httpMethod"] = "DELETE"
+        api_gateway_event["headers"]["Cookie"] = f"session={expired_token}"
+        api_gateway_event["pathParameters"] = {"key_id": "somekeyid"}
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 401
+
+    @mock_aws
+    def test_decrements_user_meta_key_count(self, mock_dynamodb, api_gateway_event):
+        """Should decrement USER_META.key_count when revoking a key."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create two API keys
+        key_hash1 = hashlib.sha256(b"pw_to_revoke_count").hexdigest()
+        key_hash2 = hashlib.sha256(b"pw_to_keep_count").hexdigest()
+
+        for key_hash in [key_hash1, key_hash2]:
+            table.put_item(
+                Item={
+                    "pk": "user_count_test",
+                    "sk": key_hash,
+                    "key_hash": key_hash,
+                    "email": "count@example.com",
+                    "tier": "free",
+                    "email_verified": True,
+                }
+            )
+
+        # Create USER_META with key_count=2
+        table.put_item(
+            Item={
+                "pk": "user_count_test",
+                "sk": "USER_META",
+                "key_count": 2,
+            }
+        )
+
+        from api.revoke_api_key import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        session_token = _create_test_session_token("user_count_test", "count@example.com")
+        api_gateway_event["httpMethod"] = "DELETE"
+        api_gateway_event["pathParameters"] = {"key_id": key_hash1}
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 204
+
+        # Verify key_count was decremented
+        meta_response = table.get_item(Key={"pk": "user_count_test", "sk": "USER_META"})
+        assert meta_response["Item"]["key_count"] == 1
+
+
+class TestApiKeysCorsHandling:
+    """Tests for CORS handling on API key endpoints."""
+
+    @mock_aws
+    def test_get_keys_includes_cors_headers(self, mock_dynamodb, api_gateway_event):
+        """GET /api-keys should include CORS headers for allowed origins."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_cors_test").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_cors",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "cors@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+
+        from api.get_api_keys import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        session_token = _create_test_session_token("user_cors", "cors@example.com")
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+        api_gateway_event["headers"]["origin"] = "https://pkgwatch.dev"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        assert result["headers"]["Access-Control-Allow-Origin"] == "https://pkgwatch.dev"
+
+    @mock_aws
+    def test_create_key_includes_cors_headers(self, mock_dynamodb, api_gateway_event):
+        """POST /api-keys should include CORS headers for allowed origins."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_cors_create").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_cors_create",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "cors_create@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+
+        from api.create_api_key import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        session_token = _create_test_session_token("user_cors_create", "cors_create@example.com")
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+        api_gateway_event["headers"]["origin"] = "https://pkgwatch.dev"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 201
+        assert result["headers"]["Access-Control-Allow-Origin"] == "https://pkgwatch.dev"
+
+
+class TestApiKeysResponseFormat:
+    """Tests for API response format and content."""
+
+    @mock_aws
+    def test_get_keys_includes_no_cache_headers(self, mock_dynamodb, api_gateway_event):
+        """GET /api-keys should include no-cache headers."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_cache_test").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_cache",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "cache@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+
+        from api.get_api_keys import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        session_token = _create_test_session_token("user_cache", "cache@example.com")
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        assert "Cache-Control" in result["headers"]
+        assert "no-store" in result["headers"]["Cache-Control"]
+
+    @mock_aws
+    def test_create_key_returns_message(self, mock_dynamodb, api_gateway_event):
+        """POST /api-keys should include warning message about key visibility."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_message_test").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_message",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "message@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+
+        from api.create_api_key import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        session_token = _create_test_session_token("user_message", "message@example.com")
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 201
+        body = json.loads(result["body"])
+        assert "message" in body
+        assert "won't be shown again" in body["message"]
+
+    @mock_aws
+    def test_create_key_returns_key_id(self, mock_dynamodb, api_gateway_event):
+        """POST /api-keys should return key_id for identification."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+
+        secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(
+            Name="test-secret",
+            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+        )
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_keyid_test").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_keyid",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "keyid@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+
+        from api.create_api_key import handler
+        import api.auth_callback
+        api.auth_callback._session_secret_cache = None
+
+        session_token = _create_test_session_token("user_keyid", "keyid@example.com")
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 201
+        body = json.loads(result["body"])
+        assert "key_id" in body
+        assert len(body["key_id"]) == 16  # First 16 chars of hash

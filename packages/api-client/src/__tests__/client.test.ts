@@ -189,4 +189,184 @@ describe("ApiClientError", () => {
     expect(error).toBeInstanceOf(Error);
     expect(error).toBeInstanceOf(ApiClientError);
   });
+
+  it("has stack trace", () => {
+    const error = new ApiClientError("Test", 500, "server_error");
+    expect(error.stack).toBeDefined();
+    expect(error.stack).toContain("ApiClientError");
+  });
+
+  it("can be stringified", () => {
+    const error = new ApiClientError("Test message", 404, "not_found");
+    expect(error.toString()).toContain("Test message");
+  });
+
+  it("works with all error codes", () => {
+    const codes = [
+      "unauthorized",
+      "forbidden",
+      "rate_limited",
+      "not_found",
+      "invalid_request",
+      "network_error",
+      "timeout",
+      "server_error",
+      "unknown_error",
+    ] as const;
+
+    for (const code of codes) {
+      const error = new ApiClientError("Test", 400, code);
+      expect(error.code).toBe(code);
+    }
+  });
+});
+
+// ===========================================
+// Additional Constructor Edge Cases
+// ===========================================
+
+describe("PkgWatchClient constructor edge cases", () => {
+  it("rejects API key that is just 'pw_' with no suffix", () => {
+    // pw_ alone is technically valid format but unusual
+    expect(() => new PkgWatchClient("pw_")).not.toThrow();
+  });
+
+  it("rejects invalid URL as baseUrl", () => {
+    expect(
+      () =>
+        new PkgWatchClient("pw_test123", {
+          baseUrl: "not-a-valid-url",
+        })
+    ).toThrow("baseUrl must use HTTPS for security");
+  });
+
+  it("accepts custom timeout value", () => {
+    const client = new PkgWatchClient("pw_test123", {
+      timeout: 60000,
+    });
+    expect(client).toBeInstanceOf(PkgWatchClient);
+  });
+
+  it("accepts custom maxRetries value", () => {
+    const client = new PkgWatchClient("pw_test123", {
+      maxRetries: 5,
+    });
+    expect(client).toBeInstanceOf(PkgWatchClient);
+  });
+
+  it("accepts zero maxRetries", () => {
+    const client = new PkgWatchClient("pw_test123", {
+      maxRetries: 0,
+    });
+    expect(client).toBeInstanceOf(PkgWatchClient);
+  });
+
+  it("rejects API key with leading/trailing whitespace around pw_", () => {
+    // " pw_test" has space before pw_
+    expect(() => new PkgWatchClient(" pw_test")).toThrow(
+      "Invalid API key format"
+    );
+  });
+
+  it("accepts API key with very long suffix", () => {
+    const longKey = "pw_" + "a".repeat(500);
+    expect(() => new PkgWatchClient(longKey)).not.toThrow();
+  });
+
+  it("allows localhost without port", () => {
+    expect(
+      () =>
+        new PkgWatchClient("pw_test123", {
+          baseUrl: "http://localhost",
+        })
+    ).not.toThrow();
+  });
+
+  it("allows 127.0.0.1 without port", () => {
+    expect(
+      () =>
+        new PkgWatchClient("pw_test123", {
+          baseUrl: "http://127.0.0.1",
+        })
+    ).not.toThrow();
+  });
+
+  it("rejects FTP protocol", () => {
+    expect(
+      () =>
+        new PkgWatchClient("pw_test123", {
+          baseUrl: "ftp://files.example.com",
+        })
+    ).toThrow("baseUrl must use HTTPS for security");
+  });
+
+  it("rejects file:// protocol", () => {
+    expect(
+      () =>
+        new PkgWatchClient("pw_test123", {
+          baseUrl: "file:///etc/passwd",
+        })
+    ).toThrow("baseUrl must use HTTPS for security");
+  });
+});
+
+// ===========================================
+// Additional formatBytes Edge Cases
+// ===========================================
+
+describe("formatBytes edge cases", () => {
+  it("handles very small positive numbers", () => {
+    // Very small positive numbers should be formatted as bytes
+    const result = formatBytes(1);
+    expect(result).toBe("1 B");
+  });
+
+  it("handles negative infinity", () => {
+    expect(formatBytes(-Infinity)).toBe("0 B");
+  });
+
+  it("handles MAX_SAFE_INTEGER", () => {
+    const result = formatBytes(Number.MAX_SAFE_INTEGER);
+    expect(result).toContain("TB");
+  });
+
+  it("rounds to one decimal place", () => {
+    expect(formatBytes(1536)).toBe("1.5 KB"); // Exact 1.5
+    expect(formatBytes(1638)).toBe("1.6 KB"); // 1.599...
+    expect(formatBytes(1587)).toBe("1.5 KB"); // 1.549...
+  });
+
+  it("handles boundary values between units", () => {
+    expect(formatBytes(1023)).toBe("1023 B");
+    expect(formatBytes(1024)).toBe("1 KB");
+    expect(formatBytes(1025)).toBe("1 KB");
+  });
+});
+
+// ===========================================
+// getRiskColor Edge Cases
+// ===========================================
+
+describe("getRiskColor edge cases", () => {
+  it("handles lowercase risk levels", () => {
+    expect(getRiskColor("critical")).toBe("blue"); // Case sensitive
+    expect(getRiskColor("high")).toBe("blue");
+    expect(getRiskColor("medium")).toBe("blue");
+    expect(getRiskColor("low")).toBe("blue");
+  });
+
+  it("handles mixed case", () => {
+    expect(getRiskColor("Critical")).toBe("blue");
+    expect(getRiskColor("High")).toBe("blue");
+  });
+
+  it("handles numeric strings", () => {
+    expect(getRiskColor("1")).toBe("blue");
+    expect(getRiskColor("100")).toBe("blue");
+  });
+
+  it("handles special characters", () => {
+    expect(getRiskColor("HIGH!")).toBe("blue");
+    expect(getRiskColor("LOW-RISK")).toBe("blue");
+  });
 });

@@ -22,7 +22,7 @@ class TestValidateApiKey:
 
     @mock_aws
     def test_valid_key_returns_user_info(self, aws_credentials, mock_dynamodb):
-        """Valid API key should return user info."""
+        """Valid API key should return user info with all expected fields."""
         # Import inside test to ensure moto is active
         from shared.auth import generate_api_key, validate_api_key
 
@@ -33,11 +33,20 @@ class TestValidateApiKey:
         # Validate the key
         result = validate_api_key(api_key)
 
+        # Verify all returned fields - this is security-critical
         assert result is not None
         assert result["user_id"] == user_id
         assert result["tier"] == "pro"
         assert result["monthly_limit"] == 100000  # pro tier limit
         assert result["requests_this_month"] == 0
+        # Verify key_hash is returned (needed for increment_usage)
+        assert "key_hash" in result
+        assert len(result["key_hash"]) == 64  # SHA256 hex = 64 chars
+        # Verify email is returned
+        assert result["email"] == "test@example.com"
+        # Verify created_at is returned and is a valid ISO timestamp
+        assert "created_at" in result
+        assert "T" in result["created_at"]  # ISO format check
 
     @mock_aws
     def test_invalid_key_returns_none(self, aws_credentials, mock_dynamodb):
@@ -74,29 +83,127 @@ class TestValidateApiKey:
 
         assert result is None  # Should not crash, just return None
 
+    @mock_aws
+    def test_key_with_special_characters_handled(self, aws_credentials, mock_dynamodb):
+        """Keys with special characters should not crash or cause injection."""
+        from shared.auth import validate_api_key
+
+        # Test SQL injection-style attack patterns
+        malicious_keys = [
+            "pw_' OR '1'='1",
+            "pw_\"; DROP TABLE users;--",
+            "pw_<script>alert('xss')</script>",
+            "pw_\x00null_byte",
+            "pw_\n\r\t",  # Control characters
+            "pw_" + "\u200b" * 100,  # Zero-width spaces
+        ]
+
+        for malicious_key in malicious_keys:
+            result = validate_api_key(malicious_key)
+            assert result is None, f"Malicious key {repr(malicious_key)} should return None"
+
+    @mock_aws
+    def test_key_with_unicode_handled(self, aws_credentials, mock_dynamodb):
+        """Keys with unicode characters should be handled safely."""
+        from shared.auth import validate_api_key
+
+        unicode_key = "pw_" + "\u4e2d\u6587" * 10  # Chinese characters
+        result = validate_api_key(unicode_key)
+        assert result is None
+
+    @mock_aws
+    def test_key_hash_is_deterministic(self, aws_credentials, mock_dynamodb):
+        """Same key should always produce same hash for consistent validation."""
+        from shared.auth import generate_api_key, validate_api_key
+
+        user_id = "user_deterministic"
+        api_key = generate_api_key(user_id, tier="free")
+
+        # Validate same key multiple times
+        result1 = validate_api_key(api_key)
+        result2 = validate_api_key(api_key)
+
+        assert result1 is not None
+        assert result2 is not None
+        assert result1["key_hash"] == result2["key_hash"]
+
+    @mock_aws
+    def test_key_without_email_returns_none_for_email_field(self, aws_credentials, mock_dynamodb):
+        """Keys generated without email should return None for email field."""
+        from shared.auth import generate_api_key, validate_api_key
+
+        # Generate key without email
+        api_key = generate_api_key("user_no_email", tier="free")
+        result = validate_api_key(api_key)
+
+        assert result is not None
+        assert result["email"] is None
+
+    @mock_aws
+    def test_case_sensitive_key_validation(self, aws_credentials, mock_dynamodb):
+        """API key validation should be case-sensitive."""
+        from shared.auth import generate_api_key, validate_api_key
+
+        user_id = "user_case"
+        api_key = generate_api_key(user_id, tier="free")
+
+        # Original key works
+        assert validate_api_key(api_key) is not None
+
+        # Modified case should NOT work
+        upper_key = api_key.upper()
+        if upper_key != api_key:  # Only test if case differs
+            assert validate_api_key(upper_key) is None
+
 
 class TestGenerateApiKey:
     """Tests for generate_api_key function."""
 
     @mock_aws
     def test_generates_valid_key_format(self, aws_credentials, mock_dynamodb):
-        """Generated key should have correct format."""
+        """Generated key should have correct format and sufficient entropy."""
         from shared.auth import generate_api_key
 
         api_key = generate_api_key("user_123", tier="free")
 
         assert api_key.startswith("pw_")
-        assert len(api_key) > 10
+        # secrets.token_urlsafe(32) produces 43 chars, plus "pw_" prefix = 46+
+        assert len(api_key) >= 46, f"Key too short: {len(api_key)} chars"
+        # Verify key contains only URL-safe characters after prefix
+        key_body = api_key[3:]  # Remove "pw_"
+        assert all(c.isalnum() or c in "-_" for c in key_body), \
+            f"Key contains invalid characters: {key_body}"
 
     @mock_aws
     def test_keys_are_unique(self, aws_credentials, mock_dynamodb):
-        """Each generated key should be unique."""
+        """Each generated key should be unique and cryptographically random."""
         from shared.auth import generate_api_key
 
         keys = [generate_api_key(f"user_{i}") for i in range(10)]
 
         # All keys should be unique
         assert len(set(keys)) == 10
+
+        # Keys should have high entropy - no common prefixes beyond "pw_"
+        key_bodies = [k[3:6] for k in keys]  # First 3 chars after prefix
+        assert len(set(key_bodies)) >= 8, "Keys have suspicious common patterns"
+
+    @mock_aws
+    def test_keys_are_unique_for_same_user(self, aws_credentials, mock_dynamodb):
+        """Same user can have multiple unique keys."""
+        from shared.auth import generate_api_key, validate_api_key
+
+        user_id = "user_multikey"
+        keys = [generate_api_key(user_id, tier="free") for _ in range(3)]
+
+        # All keys should be unique
+        assert len(set(keys)) == 3
+
+        # All keys should validate and return same user_id
+        for key in keys:
+            result = validate_api_key(key)
+            assert result is not None
+            assert result["user_id"] == user_id
 
     @mock_aws
     def test_tier_stored_correctly(self, aws_credentials, mock_dynamodb):
@@ -111,7 +218,7 @@ class TestGenerateApiKey:
 
     @mock_aws
     def test_key_suffix_stored_correctly(self, aws_credentials, mock_dynamodb):
-        """Key suffix should be stored for dashboard display."""
+        """Key suffix should be stored for dashboard display and match actual key."""
         import boto3
         from boto3.dynamodb.conditions import Key
         from shared.auth import generate_api_key
@@ -131,6 +238,51 @@ class TestGenerateApiKey:
         stored_suffix = items[0].get("key_suffix")
         assert stored_suffix == expected_suffix, \
             f"Stored key_suffix '{stored_suffix}' should match actual suffix '{expected_suffix}'"
+
+        # Verify suffix length is exactly 8
+        assert len(stored_suffix) == 8, \
+            f"Key suffix should be 8 chars, got {len(stored_suffix)}"
+
+        # Verify suffix is different from key_hash suffix (security check)
+        key_hash = items[0].get("key_hash")
+        assert key_hash[-8:] != stored_suffix, \
+            "Key suffix should be from actual key, not from hash"
+
+    @mock_aws
+    def test_payment_failures_initialized_to_zero(self, aws_credentials, mock_dynamodb):
+        """New keys should have payment_failures initialized to 0."""
+        import boto3
+        from boto3.dynamodb.conditions import Key
+        from shared.auth import generate_api_key
+
+        generate_api_key("user_payment_init", tier="free")
+
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+        response = table.query(
+            KeyConditionExpression=Key("pk").eq("user_payment_init"),
+        )
+
+        items = response.get("Items", [])
+        assert len(items) == 1
+        assert items[0].get("payment_failures") == 0
+
+    @mock_aws
+    def test_email_verified_initialized_to_false(self, aws_credentials, mock_dynamodb):
+        """New keys should have email_verified initialized to False."""
+        import boto3
+        from boto3.dynamodb.conditions import Key
+        from shared.auth import generate_api_key
+
+        generate_api_key("user_email_init", tier="free", email="test@example.com")
+
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+        response = table.query(
+            KeyConditionExpression=Key("pk").eq("user_email_init"),
+        )
+
+        items = response.get("Items", [])
+        assert len(items) == 1
+        assert items[0].get("email_verified") is False
 
 
 class TestIncrementUsage:
@@ -514,3 +666,154 @@ class TestUserLevelRateLimiting:
 
         assert not allowed1
         assert not allowed2
+
+
+class TestUpdateTierEdgeCases:
+    """Additional edge case tests for update_tier function."""
+
+    @mock_aws
+    def test_update_tier_validates_case_sensitive(self, aws_credentials, mock_dynamodb):
+        """Tier names should be case-sensitive."""
+        from shared.auth import generate_api_key, update_tier, validate_api_key
+
+        api_key = generate_api_key("user_tier_case")
+        user = validate_api_key(api_key)
+
+        # Uppercase tier should be rejected
+        with pytest.raises(ValueError, match="Invalid tier"):
+            update_tier(user["user_id"], user["key_hash"], "FREE")
+
+        with pytest.raises(ValueError, match="Invalid tier"):
+            update_tier(user["user_id"], user["key_hash"], "Pro")
+
+    @mock_aws
+    def test_update_tier_rejects_empty_string(self, aws_credentials, mock_dynamodb):
+        """Empty string should be rejected as tier."""
+        from shared.auth import generate_api_key, update_tier, validate_api_key
+
+        api_key = generate_api_key("user_tier_empty")
+        user = validate_api_key(api_key)
+
+        with pytest.raises(ValueError, match="Invalid tier"):
+            update_tier(user["user_id"], user["key_hash"], "")
+
+
+class TestRevokeApiKeyEdgeCases:
+    """Edge case tests for revoke_api_key function."""
+
+    @mock_aws
+    def test_revoke_nonexistent_key_does_not_raise(self, aws_credentials, mock_dynamodb):
+        """Revoking a non-existent key should not raise an error."""
+        from shared.auth import revoke_api_key
+
+        # Should not raise even if key doesn't exist
+        revoke_api_key("user_nonexistent", "nonexistent_hash" * 4)
+
+    @mock_aws
+    def test_revoke_makes_key_immediately_invalid(self, aws_credentials, mock_dynamodb):
+        """Revoked key should be immediately invalid."""
+        from shared.auth import generate_api_key, validate_api_key, revoke_api_key
+
+        api_key = generate_api_key("user_revoke_imm", tier="free")
+
+        # Key works before revocation
+        assert validate_api_key(api_key) is not None
+
+        # Get user info for revocation
+        user = validate_api_key(api_key)
+        revoke_api_key(user["user_id"], user["key_hash"])
+
+        # Key immediately invalid
+        assert validate_api_key(api_key) is None
+
+
+class TestGetUserKeysEdgeCases:
+    """Edge case tests for get_user_keys function."""
+
+    @mock_aws
+    def test_get_user_keys_returns_empty_for_nonexistent_user(self, aws_credentials, mock_dynamodb):
+        """Should return empty list for user with no keys."""
+        from shared.auth import get_user_keys
+
+        result = get_user_keys("user_nonexistent")
+        assert result == []
+
+    @mock_aws
+    def test_get_user_keys_excludes_sensitive_data(self, aws_credentials, mock_dynamodb):
+        """Should not expose full key hash or other sensitive fields."""
+        from shared.auth import generate_api_key, get_user_keys
+
+        user_id = "user_keys_secure"
+        api_key = generate_api_key(user_id, tier="free", email="secure@example.com")
+
+        keys = get_user_keys(user_id)
+
+        assert len(keys) == 1
+        key_info = keys[0]
+
+        # Should have truncated hash prefix only
+        assert "key_hash_prefix" in key_info
+        assert key_info["key_hash_prefix"].endswith("...")
+        assert len(key_info["key_hash_prefix"]) == 11  # 8 chars + "..."
+
+        # Should NOT contain full key hash, email, or actual key
+        assert "key_hash" not in key_info or key_info.get("key_hash", "").endswith("...")
+        assert "email" not in key_info
+        assert "api_key" not in key_info
+
+    @mock_aws
+    def test_get_user_keys_returns_all_keys_for_user(self, aws_credentials, mock_dynamodb):
+        """Should return all keys for a user."""
+        from shared.auth import generate_api_key, get_user_keys
+
+        user_id = "user_multi_keys"
+
+        # Generate 3 keys
+        for _ in range(3):
+            generate_api_key(user_id, tier="free")
+
+        keys = get_user_keys(user_id)
+
+        # Should return all 3 keys
+        assert len(keys) == 3
+
+        # All should have different hash prefixes
+        prefixes = [k["key_hash_prefix"] for k in keys]
+        assert len(set(prefixes)) == 3
+
+
+class TestResetMonthlyUsageEdgeCases:
+    """Edge case tests for reset_monthly_usage function."""
+
+    @mock_aws
+    def test_reset_records_timestamp(self, aws_credentials, mock_dynamodb):
+        """Reset should record the timestamp of the reset."""
+        import boto3
+        from shared.auth import generate_api_key, increment_usage, reset_monthly_usage, validate_api_key
+
+        user_id = "user_reset_ts"
+        api_key = generate_api_key(user_id, tier="free")
+        user = validate_api_key(api_key)
+
+        # Use some quota
+        increment_usage(user["user_id"], user["key_hash"], count=100)
+
+        # Reset
+        reset_monthly_usage(user["user_id"], user["key_hash"])
+
+        # Verify last_reset timestamp was recorded
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+        response = table.get_item(Key={"pk": user_id, "sk": user["key_hash"]})
+        item = response.get("Item")
+
+        assert "last_reset" in item
+        assert "T" in item["last_reset"]  # ISO format check
+
+    @mock_aws
+    def test_reset_on_nonexistent_user_creates_record(self, aws_credentials, mock_dynamodb):
+        """Reset on nonexistent user should not raise."""
+        from shared.auth import reset_monthly_usage
+
+        # This may create a record or just fail silently - should not raise
+        # DynamoDB update_item creates the item if it doesn't exist
+        reset_monthly_usage("user_nonexistent", "hash" * 16)

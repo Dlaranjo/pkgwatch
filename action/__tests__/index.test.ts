@@ -10,6 +10,7 @@ vi.mock("@actions/core", () => ({
   setFailed: vi.fn(),
   warning: vi.fn(),
   info: vi.fn(),
+  debug: vi.fn(),
   summary: {
     addRaw: vi.fn().mockReturnThis(),
     addHeading: vi.fn().mockReturnThis(),
@@ -26,10 +27,16 @@ vi.mock("../src/scanner.js", () => ({
 // Mock summary
 vi.mock("../src/summary.js", () => ({
   generateSummary: vi.fn().mockResolvedValue(undefined),
+  generateRepoSummary: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Use vi.hoisted for mocks that need to be available at mock definition time
+const { mockScanRepository } = vi.hoisted(() => ({
+  mockScanRepository: vi.fn(),
 }));
 
 import { scanDependencies } from "../src/scanner.js";
-import { generateSummary } from "../src/summary.js";
+import { generateSummary, generateRepoSummary } from "../src/summary.js";
 import { ApiClientError } from "../src/api.js";
 
 // Mock the api module for error handling tests
@@ -38,6 +45,8 @@ vi.mock("../src/api.js", async (importOriginal) => {
   return {
     ...actual,
     ApiClientError: actual.ApiClientError,
+    scanRepository: mockScanRepository,
+    DEFAULT_EXCLUDES: ["node_modules", ".git", "vendor"],
   };
 });
 
@@ -875,5 +884,1015 @@ describe("run() - Include Dev Parsing", () => {
     await new Promise((r) => setTimeout(r, 50));
 
     expect(scanDependencies).toHaveBeenCalledWith("test-key", "/workspace", false);
+  });
+});
+
+describe("run() - Scan Mode Validation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/workspace";
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_WORKSPACE;
+  });
+
+  it("accepts scan-mode=single", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "single";
+        default:
+          return "";
+      }
+    });
+
+    vi.mocked(scanDependencies).mockResolvedValue({
+      total: 1, critical: 0, high: 0, medium: 0, low: 1, packages: [],
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(scanDependencies).toHaveBeenCalled();
+    expect(core.setFailed).not.toHaveBeenCalledWith(
+      expect.stringContaining("Invalid 'scan-mode'")
+    );
+  });
+
+  it("accepts scan-mode=recursive (case insensitive)", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "RECURSIVE";
+        default:
+          return "";
+      }
+    });
+
+    mockScanRepository.mockResolvedValue({
+      manifests: [],
+      summary: {
+        totalManifests: 0,
+        successfulManifests: 0,
+        failedManifests: 0,
+        uniquePackages: 0,
+        totalPackages: 0,
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+      },
+      truncated: false,
+      rateLimited: false,
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockScanRepository).toHaveBeenCalled();
+    expect(core.setFailed).not.toHaveBeenCalledWith(
+      expect.stringContaining("Invalid 'scan-mode'")
+    );
+  });
+
+  it("rejects invalid scan-mode values", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "invalid-mode";
+        default:
+          return "";
+      }
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("Invalid 'scan-mode' value: invalid-mode")
+    );
+  });
+});
+
+describe("run() - Max Manifests Validation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/workspace";
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_WORKSPACE;
+  });
+
+  it("accepts valid max-manifests value", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "recursive";
+        case "max-manifests":
+          return "50";
+        default:
+          return "";
+      }
+    });
+
+    mockScanRepository.mockResolvedValue({
+      manifests: [],
+      summary: {
+        totalManifests: 0,
+        successfulManifests: 0,
+        failedManifests: 0,
+        uniquePackages: 0,
+        totalPackages: 0,
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+      },
+      truncated: false,
+      rateLimited: false,
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.setFailed).not.toHaveBeenCalledWith(
+      expect.stringContaining("Invalid 'max-manifests'")
+    );
+  });
+
+  it("rejects max-manifests below minimum (1)", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "recursive";
+        case "max-manifests":
+          return "0";
+        default:
+          return "";
+      }
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("Invalid 'max-manifests'")
+    );
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("between 1 and 1000")
+    );
+  });
+
+  it("rejects max-manifests above maximum (1000)", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "recursive";
+        case "max-manifests":
+          return "1001";
+        default:
+          return "";
+      }
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("Invalid 'max-manifests'")
+    );
+  });
+
+  it("rejects non-numeric max-manifests", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "recursive";
+        case "max-manifests":
+          return "abc";
+        default:
+          return "";
+      }
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("Invalid 'max-manifests'")
+    );
+  });
+});
+
+describe("run() - Recursive Scan Outputs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/workspace";
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_WORKSPACE;
+  });
+
+  it("sets recursive-specific outputs", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "recursive";
+        default:
+          return "";
+      }
+    });
+
+    mockScanRepository.mockResolvedValue({
+      manifests: [
+        {
+          manifest: { relativePath: "package.json", ecosystem: "npm" },
+          status: "success",
+          packages: [
+            { package: "lodash", risk_level: "LOW", health_score: 90 },
+          ],
+          counts: { critical: 0, high: 0, medium: 0, low: 1 },
+        },
+        {
+          manifest: { relativePath: "packages/api/package.json", ecosystem: "npm" },
+          status: "success",
+          packages: [
+            { package: "express", risk_level: "MEDIUM", health_score: 70 },
+          ],
+          counts: { critical: 0, high: 0, medium: 1, low: 0 },
+        },
+      ],
+      summary: {
+        totalManifests: 2,
+        successfulManifests: 2,
+        failedManifests: 0,
+        uniquePackages: 2,
+        totalPackages: 2,
+        critical: 0,
+        high: 0,
+        medium: 1,
+        low: 1,
+      },
+      truncated: false,
+      rateLimited: false,
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.setOutput).toHaveBeenCalledWith("manifests-scanned", 2);
+    expect(core.setOutput).toHaveBeenCalledWith("manifests-failed", 0);
+    expect(core.setOutput).toHaveBeenCalledWith("truncated", false);
+    expect(core.setOutput).toHaveBeenCalledWith("highest-risk", "MEDIUM");
+    expect(core.setOutput).toHaveBeenCalledWith("has-issues", false);
+    expect(core.setOutput).toHaveBeenCalledWith(
+      "per-manifest-results",
+      expect.stringContaining("package.json")
+    );
+  });
+
+  it("warns when scan is truncated", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "recursive";
+        case "max-manifests":
+          return "5";
+        default:
+          return "";
+      }
+    });
+
+    mockScanRepository.mockResolvedValue({
+      manifests: [],
+      summary: {
+        totalManifests: 5,
+        successfulManifests: 5,
+        failedManifests: 0,
+        uniquePackages: 100,
+        totalPackages: 150,
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 100,
+      },
+      truncated: true,
+      rateLimited: false,
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("Manifest limit reached")
+    );
+    expect(core.setOutput).toHaveBeenCalledWith("truncated", true);
+  });
+
+  it("warns when rate limited during recursive scan", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "recursive";
+        default:
+          return "";
+      }
+    });
+
+    mockScanRepository.mockResolvedValue({
+      manifests: [],
+      summary: {
+        totalManifests: 3,
+        successfulManifests: 2,
+        failedManifests: 1,
+        uniquePackages: 50,
+        totalPackages: 50,
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 50,
+      },
+      truncated: false,
+      rateLimited: true,
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("Rate limit reached")
+    );
+  });
+
+  it("aggregates not-found packages across manifests", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "recursive";
+        default:
+          return "";
+      }
+    });
+
+    mockScanRepository.mockResolvedValue({
+      manifests: [
+        {
+          manifest: { relativePath: "package.json", ecosystem: "npm" },
+          status: "success",
+          packages: [],
+          counts: { critical: 0, high: 0, medium: 0, low: 0 },
+          notFound: ["pkg-a", "pkg-b"],
+        },
+        {
+          manifest: { relativePath: "apps/web/package.json", ecosystem: "npm" },
+          status: "success",
+          packages: [],
+          counts: { critical: 0, high: 0, medium: 0, low: 0 },
+          notFound: ["pkg-c"],
+        },
+      ],
+      summary: {
+        totalManifests: 2,
+        successfulManifests: 2,
+        failedManifests: 0,
+        uniquePackages: 0,
+        totalPackages: 0,
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+      },
+      truncated: false,
+      rateLimited: false,
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.setOutput).toHaveBeenCalledWith("not-found-count", 3);
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("3 package(s) not found")
+    );
+  });
+});
+
+describe("run() - Recursive Scan Threshold Logic", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/workspace";
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_WORKSPACE;
+  });
+
+  it("fails when recursive scan finds critical packages with fail-on=CRITICAL", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "recursive";
+        case "fail-on":
+          return "CRITICAL";
+        default:
+          return "";
+      }
+    });
+
+    mockScanRepository.mockResolvedValue({
+      manifests: [
+        {
+          manifest: { relativePath: "package.json", ecosystem: "npm" },
+          status: "success",
+          packages: [
+            { package: "vulnerable-pkg", risk_level: "CRITICAL", health_score: 10 },
+          ],
+          counts: { critical: 1, high: 0, medium: 0, low: 0 },
+        },
+      ],
+      summary: {
+        totalManifests: 1,
+        successfulManifests: 1,
+        failedManifests: 0,
+        uniquePackages: 1,
+        totalPackages: 1,
+        critical: 1,
+        high: 0,
+        medium: 0,
+        low: 0,
+      },
+      truncated: false,
+      rateLimited: false,
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("CRITICAL")
+    );
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("1 manifests")
+    );
+  });
+
+  it("warns in soft-fail mode for recursive scans", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "recursive";
+        case "fail-on":
+          return "HIGH";
+        case "soft-fail":
+          return "true";
+        default:
+          return "";
+      }
+    });
+
+    mockScanRepository.mockResolvedValue({
+      manifests: [
+        {
+          manifest: { relativePath: "package.json", ecosystem: "npm" },
+          status: "success",
+          packages: [
+            { package: "risky-pkg", risk_level: "HIGH", health_score: 35 },
+          ],
+          counts: { critical: 0, high: 1, medium: 0, low: 0 },
+        },
+      ],
+      summary: {
+        totalManifests: 1,
+        successfulManifests: 1,
+        failedManifests: 0,
+        uniquePackages: 1,
+        totalPackages: 1,
+        critical: 0,
+        high: 1,
+        medium: 0,
+        low: 0,
+      },
+      truncated: false,
+      rateLimited: false,
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("soft-fail mode")
+    );
+    // Should not call setFailed for threshold in soft-fail
+    const failedCalls = vi.mocked(core.setFailed).mock.calls;
+    const thresholdFails = failedCalls.filter(
+      (call) => call[0].includes("HIGH") && !call[0].includes("Authentication")
+    );
+    expect(thresholdFails.length).toBe(0);
+  });
+});
+
+describe("run() - Recursive Scan Annotations", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/workspace";
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_WORKSPACE;
+  });
+
+  it("generates annotations with manifest path as file reference", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "recursive";
+        default:
+          return "";
+      }
+    });
+
+    mockScanRepository.mockResolvedValue({
+      manifests: [
+        {
+          manifest: { relativePath: "apps/frontend/package.json", ecosystem: "npm" },
+          status: "success",
+          packages: [
+            {
+              package: "risky-dep",
+              risk_level: "CRITICAL",
+              health_score: 15,
+              abandonment_risk: { risk_factors: ["No commits in 2 years"] },
+            },
+          ],
+          counts: { critical: 1, high: 0, medium: 0, low: 0 },
+        },
+      ],
+      summary: {
+        totalManifests: 1,
+        successfulManifests: 1,
+        failedManifests: 0,
+        uniquePackages: 1,
+        totalPackages: 1,
+        critical: 1,
+        high: 0,
+        medium: 0,
+        low: 0,
+      },
+      truncated: false,
+      rateLimited: false,
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("risky-dep"),
+      expect.objectContaining({
+        title: "Critical Dependency Risk",
+        file: "apps/frontend/package.json",
+      })
+    );
+  });
+
+  it("skips annotations for failed manifests", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "recursive";
+        default:
+          return "";
+      }
+    });
+
+    mockScanRepository.mockResolvedValue({
+      manifests: [
+        {
+          manifest: { relativePath: "broken/package.json", ecosystem: "npm" },
+          status: "parse_error",
+          error: "Invalid JSON",
+        },
+      ],
+      summary: {
+        totalManifests: 1,
+        successfulManifests: 0,
+        failedManifests: 1,
+        uniquePackages: 0,
+        totalPackages: 0,
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+      },
+      truncated: false,
+      rateLimited: false,
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Should not have any package-related warnings
+    const warningCalls = vi.mocked(core.warning).mock.calls;
+    const packageWarnings = warningCalls.filter(
+      (call) => typeof call[0] === "string" && call[0].includes("risk")
+    );
+    expect(packageWarnings.length).toBe(0);
+  });
+});
+
+describe("run() - Exclude Patterns", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/workspace";
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_WORKSPACE;
+  });
+
+  it("uses default excludes when no patterns provided", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "recursive";
+        case "exclude-patterns":
+          return "";
+        default:
+          return "";
+      }
+    });
+
+    mockScanRepository.mockResolvedValue({
+      manifests: [],
+      summary: {
+        totalManifests: 0,
+        successfulManifests: 0,
+        failedManifests: 0,
+        uniquePackages: 0,
+        totalPackages: 0,
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+      },
+      truncated: false,
+      rateLimited: false,
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockScanRepository).toHaveBeenCalledWith(
+      expect.objectContaining({
+        excludePatterns: ["node_modules", ".git", "vendor"],
+      })
+    );
+  });
+
+  it("parses comma-separated exclude patterns", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        case "scan-mode":
+          return "recursive";
+        case "exclude-patterns":
+          return "dist, build, coverage";
+        default:
+          return "";
+      }
+    });
+
+    mockScanRepository.mockResolvedValue({
+      manifests: [],
+      summary: {
+        totalManifests: 0,
+        successfulManifests: 0,
+        failedManifests: 0,
+        uniquePackages: 0,
+        totalPackages: 0,
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+      },
+      truncated: false,
+      rateLimited: false,
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockScanRepository).toHaveBeenCalledWith(
+      expect.objectContaining({
+        excludePatterns: ["dist", "build", "coverage"],
+      })
+    );
+  });
+});
+
+describe("run() - Highest Risk Determination", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/workspace";
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_WORKSPACE;
+  });
+
+  it("sets highest-risk to NONE when all packages are healthy", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        default:
+          return "";
+      }
+    });
+
+    vi.mocked(scanDependencies).mockResolvedValue({
+      total: 2,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      packages: [],
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.setOutput).toHaveBeenCalledWith("highest-risk", "NONE");
+  });
+
+  it("sets highest-risk to LOW when only low-risk packages exist", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        default:
+          return "";
+      }
+    });
+
+    vi.mocked(scanDependencies).mockResolvedValue({
+      total: 5,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 5,
+      packages: [],
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.setOutput).toHaveBeenCalledWith("highest-risk", "LOW");
+  });
+
+  it("sets highest-risk to MEDIUM when medium is highest", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        default:
+          return "";
+      }
+    });
+
+    vi.mocked(scanDependencies).mockResolvedValue({
+      total: 5,
+      critical: 0,
+      high: 0,
+      medium: 2,
+      low: 3,
+      packages: [],
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.setOutput).toHaveBeenCalledWith("highest-risk", "MEDIUM");
+  });
+});
+
+describe("run() - API Key Required Error", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/workspace";
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_WORKSPACE;
+  });
+
+  it("handles API key is required error with actionable message", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        default:
+          return "";
+      }
+    });
+
+    const error = new Error("API key is required for this operation");
+    vi.mocked(scanDependencies).mockRejectedValue(error);
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("API key is required")
+    );
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("pkgwatch.dev/dashboard")
+    );
+  });
+});
+
+describe("run() - Default API Error", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/workspace";
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_WORKSPACE;
+  });
+
+  it("handles ApiClientError with unknown code gracefully", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        default:
+          return "";
+      }
+    });
+
+    const error = new ApiClientError("Something went wrong", 500, "server_error");
+    vi.mocked(scanDependencies).mockRejectedValue(error);
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("API error: Something went wrong")
+    );
+  });
+});
+
+describe("run() - Single Scan Metadata Outputs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.GITHUB_WORKSPACE = "/workspace";
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_WORKSPACE;
+  });
+
+  it("sets recursive-mode outputs to defaults in single mode", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        default:
+          return "";
+      }
+    });
+
+    vi.mocked(scanDependencies).mockResolvedValue({
+      total: 1,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 1,
+      packages: [],
+    });
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.setOutput).toHaveBeenCalledWith("manifests-scanned", 1);
+    expect(core.setOutput).toHaveBeenCalledWith("manifests-failed", 0);
+    expect(core.setOutput).toHaveBeenCalledWith("per-manifest-results", "{}");
+    expect(core.setOutput).toHaveBeenCalledWith("truncated", false);
+  });
+
+  it("outputs full JSON results", async () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      switch (name) {
+        case "api-key":
+          return "test-key";
+        default:
+          return "";
+      }
+    });
+
+    const mockResult = {
+      total: 2,
+      critical: 1,
+      high: 0,
+      medium: 0,
+      low: 1,
+      packages: [
+        { package: "bad", risk_level: "CRITICAL", health_score: 10 },
+        { package: "good", risk_level: "LOW", health_score: 90 },
+      ],
+    };
+
+    vi.mocked(scanDependencies).mockResolvedValue(mockResult);
+
+    vi.resetModules();
+    await import("../src/index.js");
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(core.setOutput).toHaveBeenCalledWith(
+      "results",
+      JSON.stringify(mockResult)
+    );
   });
 });
