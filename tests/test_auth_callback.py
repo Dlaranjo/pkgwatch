@@ -51,22 +51,16 @@ def reset_auth_callback_cache():
 @contextmanager
 def mock_session_secret(secret_value="test-secret-value-123"):
     """
-    Context manager that creates the session secret and patches the secretsmanager client.
+    Context manager that mocks the session secret retrieval.
 
-    The auth_callback module creates a global secretsmanager client at import time.
-    We need to patch the module's client to use our mocked client inside mock_aws.
+    Instead of trying to mock Secrets Manager (which has timing issues with
+    module-level client creation), we directly patch _get_session_secret.
     """
-    # Create the secret in the mock
-    sm = boto3.client("secretsmanager", region_name="us-east-1")
-    sm.create_secret(
-        Name="pkgwatch-test-session-secret",
-        SecretString=json.dumps({"secret": secret_value})
-    )
-
-    # Reset cache and patch the module's global secretsmanager client
+    # Reset cache before patching
     reset_auth_callback_cache()
-    with patch("api.auth_callback.secretsmanager", sm):
-        yield sm
+
+    with patch("api.auth_callback._get_session_secret", return_value=secret_value):
+        yield secret_value
 
 
 @pytest.fixture
@@ -786,46 +780,47 @@ class TestSecurityHeaders:
 class TestSessionSecretCaching:
     """Tests for session secret caching behavior."""
 
-    @mock_aws
-    def test_session_secret_is_cached(self, mock_dynamodb):
+    def test_session_secret_is_cached(self):
         """Should cache session secret to avoid repeated Secrets Manager calls."""
-        with mock_session_secret("cached-secret-value"):
-            from api.auth_callback import _get_session_secret
-            import api.auth_callback as auth_callback_module
-
-            # First call
-            secret1 = _get_session_secret()
-            assert secret1 == "cached-secret-value"
-
-            # Modify the cache directly to prove caching is working
-            auth_callback_module._session_secret_cache = "modified-cached-value"
-
-            # Second call should return cached value (within TTL)
-            secret2 = _get_session_secret()
-            assert secret2 == "modified-cached-value"
-
-    @mock_aws
-    def test_session_secret_cache_ttl(self, mock_dynamodb):
-        """Should refresh cache after TTL expires."""
-        # Create secret first
-        sm = boto3.client("secretsmanager", region_name="us-east-1")
-        sm.create_secret(
-            Name="pkgwatch-test-session-secret",
-            SecretString=json.dumps({"secret": "fresh-secret-value"})
-        )
-
         import api.auth_callback as auth_callback_module
+
+        # Reset cache
+        reset_auth_callback_cache()
+
+        # Simulate caching by setting the cache directly
+        auth_callback_module._session_secret_cache = "cached-secret-value"
+        auth_callback_module._session_secret_cache_time = time.time()
+
+        # Function should return cached value without calling Secrets Manager
+        with patch("api.auth_callback.secretsmanager") as mock_sm:
+            from api.auth_callback import _get_session_secret
+            secret = _get_session_secret()
+
+            assert secret == "cached-secret-value"
+            # Secrets Manager should NOT be called since cache is valid
+            mock_sm.get_secret_value.assert_not_called()
+
+    def test_session_secret_cache_ttl(self):
+        """Should refresh cache after TTL expires."""
+        import api.auth_callback as auth_callback_module
+
+        # Set expired cache
         auth_callback_module._session_secret_cache = "old-cached-value"
-        # Set cache time to past TTL
         auth_callback_module._session_secret_cache_time = time.time() - 400  # Past 300s TTL
 
-        with patch("api.auth_callback.secretsmanager", sm):
-            from api.auth_callback import _get_session_secret
+        # Mock Secrets Manager to return fresh value
+        mock_sm = MagicMock()
+        mock_sm.get_secret_value.return_value = {
+            "SecretString": json.dumps({"secret": "fresh-secret-value"})
+        }
 
-            # Should fetch fresh value since cache expired
+        with patch("api.auth_callback.secretsmanager", mock_sm):
+            from api.auth_callback import _get_session_secret
             secret = _get_session_secret()
 
             assert secret == "fresh-secret-value"
+            # Secrets Manager should be called since cache expired
+            mock_sm.get_secret_value.assert_called_once()
 
 
 class TestUserNotFoundAfterGSIQuery:
@@ -861,21 +856,18 @@ class TestUserNotFoundAfterGSIQuery:
 class TestSessionSecretPlainStringFormat:
     """Tests for session secret in plain string format (not JSON)."""
 
-    @mock_aws
-    def test_plain_string_secret_handled(self, mock_dynamodb):
+    def test_plain_string_secret_handled(self):
         """Should handle secret stored as plain string (not JSON)."""
         reset_auth_callback_cache()
 
-        sm = boto3.client("secretsmanager", region_name="us-east-1")
-        # Store as plain string, not JSON
-        sm.create_secret(
-            Name="pkgwatch-test-session-secret",
-            SecretString="plain-string-secret-value"
-        )
+        # Mock Secrets Manager to return plain string (not JSON)
+        mock_sm = MagicMock()
+        mock_sm.get_secret_value.return_value = {
+            "SecretString": "plain-string-secret-value"  # Not JSON
+        }
 
-        with patch("api.auth_callback.secretsmanager", sm):
+        with patch("api.auth_callback.secretsmanager", mock_sm):
             from api.auth_callback import _get_session_secret
-
             secret = _get_session_secret()
 
             assert secret == "plain-string-secret-value"
