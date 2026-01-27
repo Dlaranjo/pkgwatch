@@ -643,6 +643,16 @@ async def collect_package_data(
             if isinstance(npm_result, CircuitOpenError):
                 logger.warning(f"npm circuit open for {name}")
                 combined_data["npm_error"] = "circuit_open"
+                # Try stale data fallback
+                fallback_data = existing or await _get_existing_package_data(ecosystem, name)
+                if fallback_data and _is_data_acceptable(fallback_data, max_age_days=STALE_DATA_MAX_AGE_DAYS):
+                    logger.info(f"Using stale npm data for {name} (circuit open)")
+                    cached = _extract_cached_npm_fields(fallback_data)
+                    for key, value in cached.items():
+                        if value is not None:
+                            combined_data[key] = value
+                    combined_data["sources"].append("npm_stale")
+                    combined_data["npm_freshness"] = "stale"
             elif isinstance(npm_result, Exception):
                 logger.error(f"Failed to fetch npm data for {name}: {npm_result}")
                 combined_data["npm_error"] = _sanitize_error(str(npm_result))
@@ -674,6 +684,17 @@ async def collect_package_data(
             if isinstance(bundle_result, CircuitOpenError):
                 logger.warning(f"Bundlephobia circuit open for {name}")
                 combined_data["bundlephobia_error"] = "circuit_open"
+                # Try stale data fallback
+                fallback_data = existing or await _get_existing_package_data(ecosystem, name)
+                if fallback_data and _is_data_acceptable(fallback_data, max_age_days=STALE_DATA_MAX_AGE_DAYS):
+                    logger.info(f"Using stale bundlephobia data for {name} (circuit open)")
+                    cached = _extract_cached_bundlephobia_fields(fallback_data)
+                    for key, value in cached.items():
+                        if value is not None:
+                            combined_data[key] = value
+                    if any(v is not None for v in cached.values()):
+                        combined_data["sources"].append("bundlephobia_stale")
+                    combined_data["bundlephobia_freshness"] = "stale"
             elif isinstance(bundle_result, Exception):
                 logger.warning(f"Failed to fetch bundle size for {name}: {bundle_result}")
                 combined_data["bundlephobia_error"] = _sanitize_error(str(bundle_result))
@@ -735,6 +756,16 @@ async def collect_package_data(
             except CircuitOpenError:
                 logger.warning(f"PyPI circuit open for {name}")
                 combined_data["pypi_error"] = "circuit_open"
+                # Try stale data fallback
+                fallback_data = existing or await _get_existing_package_data(ecosystem, name)
+                if fallback_data and _is_data_acceptable(fallback_data, max_age_days=STALE_DATA_MAX_AGE_DAYS):
+                    logger.info(f"Using stale PyPI data for {name} (circuit open)")
+                    cached = _extract_cached_pypi_fields(fallback_data)
+                    for key, value in cached.items():
+                        if value is not None:
+                            combined_data[key] = value
+                    combined_data["sources"].append("pypi_stale")
+                    combined_data["pypi_freshness"] = "stale"
             except Exception as e:
                 logger.error(f"Failed to fetch PyPI data for {name}: {e}")
                 combined_data["pypi_error"] = _sanitize_error(str(e))

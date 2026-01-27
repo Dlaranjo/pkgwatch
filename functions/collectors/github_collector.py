@@ -22,7 +22,7 @@ import httpx
 
 import sys
 sys.path.insert(0, os.path.dirname(__file__))  # Add collectors directory
-from http_client import get_http_client_with_headers
+from http_client import get_github_client
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -190,8 +190,8 @@ class GitHubCollector:
         Returns:
             Dictionary with repository metrics
         """
-        # Use shared HTTP client with GitHub headers for connection pooling
-        client = get_http_client_with_headers(self.headers)
+        # Use cached HTTP client for connection pooling (keyed by token hash)
+        client = get_github_client(self.headers)
         # 1. Repository metadata (1 call)
         repo_url = f"{GITHUB_API}/repos/{owner}/{repo}"
         repo_data = await self._request_with_retry(client, repo_url)

@@ -23,6 +23,7 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))  # Add collectors directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))  # Add functions directory
 from shared.circuit_breaker import circuit_breaker, DEPSDEV_CIRCUIT
+from shared.constants import DEPSDEV_API, DEFAULT_TIMEOUT
 from http_client import get_http_client
 
 # HTTP status codes that are safe to retry
@@ -30,9 +31,6 @@ RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-DEPSDEV_API = "https://api.deps.dev/v3alpha"
-DEFAULT_TIMEOUT = 30.0
 
 
 def encode_package_name(name: str) -> str:

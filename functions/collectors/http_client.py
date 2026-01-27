@@ -146,6 +146,9 @@ def get_http_client_with_headers(headers: dict) -> httpx.AsyncClient:
     Use this when you need service-specific headers (e.g., auth tokens).
     The returned client still benefits from connection pooling.
 
+    Note: For GitHub API calls, prefer get_github_client() which caches
+    clients by token hash for connection reuse across calls.
+
     Args:
         headers: Default headers to include in all requests
 
@@ -159,3 +162,71 @@ def get_http_client_with_headers(headers: dict) -> httpx.AsyncClient:
         http2=False,
         headers=headers,
     )
+
+
+# Cached GitHub clients, keyed by token hash
+# This enables connection reuse across GitHub API calls while handling token rotation
+_github_clients: dict[str, httpx.AsyncClient] = {}
+_github_client_loop_ids: dict[str, int] = {}
+
+
+def get_github_client(headers: dict) -> httpx.AsyncClient:
+    """
+    Get a cached HTTP client for GitHub API with connection pooling.
+
+    Unlike get_http_client_with_headers() which creates a new client per call,
+    this caches clients by token hash. This enables:
+    - Connection reuse across multiple GitHub API calls in the same Lambda invocation
+    - Proper handling of token rotation (new token = new client)
+    - Reduced TLS handshake overhead
+
+    Args:
+        headers: Headers including Authorization token
+
+    Returns:
+        httpx.AsyncClient configured for GitHub API
+    """
+    global _github_clients, _github_client_loop_ids
+
+    if not _use_connection_pooling():
+        # In tests, create new client per call for isolation
+        return httpx.AsyncClient(
+            timeout=DEFAULT_TIMEOUT,
+            limits=DEFAULT_LIMITS,
+            follow_redirects=True,
+            http2=False,
+            headers=headers,
+        )
+
+    # Create a cache key from the Authorization header (or empty string if none)
+    # Use hash to avoid storing tokens in memory as plain text
+    import hashlib
+    auth_header = headers.get("Authorization", "")
+    token_hash = hashlib.sha256(auth_header.encode()).hexdigest()[:16]
+
+    # Check if we need to recreate due to event loop change
+    try:
+        current_loop_id = id(asyncio.get_running_loop())
+    except RuntimeError:
+        current_loop_id = None
+
+    # Check if existing client is on a different event loop
+    if token_hash in _github_clients:
+        if _github_client_loop_ids.get(token_hash) != current_loop_id:
+            logger.debug("Event loop changed, recreating GitHub client")
+            del _github_clients[token_hash]
+            del _github_client_loop_ids[token_hash]
+
+    # Create new client if needed
+    if token_hash not in _github_clients:
+        logger.debug("Creating cached GitHub client")
+        _github_clients[token_hash] = httpx.AsyncClient(
+            timeout=DEFAULT_TIMEOUT,
+            limits=DEFAULT_LIMITS,
+            follow_redirects=True,
+            http2=False,
+            headers=headers,
+        )
+        _github_client_loop_ids[token_hash] = current_loop_id
+
+    return _github_clients[token_hash]
