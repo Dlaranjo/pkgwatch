@@ -75,7 +75,7 @@ GITHUB_TOKEN_SECRET_ARN = os.environ.get("GITHUB_TOKEN_SECRET_ARN")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
 # Configurable thresholds
-STALE_DATA_MAX_AGE_DAYS = int(os.environ.get("STALE_DATA_MAX_AGE_DAYS", "7"))
+STALE_DATA_MAX_AGE_DAYS = int(os.environ.get("STALE_DATA_MAX_AGE_DAYS", "14"))
 DEDUP_WINDOW_MINUTES = int(os.environ.get("DEDUP_WINDOW_MINUTES", "30"))
 
 # Reason-based stale data thresholds
@@ -695,11 +695,22 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
                                     "archived", False
                                 )
                             else:
-                                # Record failure for circuit breaker (API returned error, thread-safe)
-                                await GITHUB_CIRCUIT.record_failure_async()
-                                combined_data["github_error"] = github_data["error"]
+                                # Check if error is transient or not
+                                error_type = github_data.get("error", "")
+                                # Non-transient errors: 404 (not found), invalid URL, etc.
+                                # These shouldn't trip the circuit breaker
+                                non_transient_errors = ["repository_not_found", "invalid_github_url"]
+                                if error_type not in non_transient_errors:
+                                    # Transient error - record failure for circuit breaker
+                                    await GITHUB_CIRCUIT.record_failure_async()
+                                else:
+                                    # Non-transient error - don't count against circuit breaker
+                                    logger.debug(
+                                        f"GitHub non-transient error for {ecosystem}/{name}: {error_type}"
+                                    )
+                                combined_data["github_error"] = error_type
                                 github_failed = True
-                                github_error_reason = github_data["error"]
+                                github_error_reason = error_type
 
                 except Exception as e:
                     # Record failure for circuit breaker (thread-safe)
@@ -854,12 +865,18 @@ def store_package_data(ecosystem: str, name: str, data: dict, tier: int):
     # Calculate data completeness status for retry tracking
     data_status, missing_sources = _calculate_data_status(data, ecosystem)
 
-    # Upgrade minimal to abandoned_minimal if max retries reached
+    # Upgrade to abandoned status if max retries reached
     existing_retry = data.get("_existing_retry_count", 0)
     if data_status == "minimal" and existing_retry >= MAX_RETRY_COUNT:
         data_status = "abandoned_minimal"
         logger.info(
             f"Package {ecosystem}/{name} marked as abandoned_minimal "
+            f"after {existing_retry} retries"
+        )
+    elif data_status == "partial" and existing_retry >= MAX_RETRY_COUNT:
+        data_status = "abandoned_partial"
+        logger.info(
+            f"Package {ecosystem}/{name} marked as abandoned_partial "
             f"after {existing_retry} retries"
         )
 
@@ -871,7 +888,7 @@ def store_package_data(ecosystem: str, name: str, data: dict, tier: int):
         # Reset retry tracking on successful complete collection
         item["retry_count"] = 0
         # Don't set next_retry_at - will be removed by None filter below
-    elif data_status == "abandoned_minimal":
+    elif data_status in ("abandoned_minimal", "abandoned_partial"):
         # Keep retry_count but don't schedule more retries
         item["retry_count"] = existing_retry
         # next_retry_at intentionally not set - package has exhausted retries

@@ -296,6 +296,7 @@ async def get_pypi_metadata(name: str) -> dict:
 
     # 2. Download statistics from pypistats.org
     weekly_downloads = 0
+    downloads_error = None
     try:
         stats_url = f"{PYPISTATS_API}/packages/{normalized_name}/recent?period=week"
         stats_resp = await retry_with_backoff(client.get, stats_url)
@@ -303,11 +304,13 @@ async def get_pypi_metadata(name: str) -> dict:
         stats_data = stats_resp.json()
         weekly_downloads = stats_data.get("data", {}).get("last_week", 0)
     except httpx.HTTPStatusError as e:
-        logger.debug(f"Could not fetch download stats for {name}: {e}")
+        logger.warning(f"Could not fetch download stats for {name}: HTTP {e.response.status_code}")
+        downloads_error = f"http_{e.response.status_code}"
     except Exception as e:
-        logger.debug(f"Error fetching pypistats for {name}: {e}")
+        logger.warning(f"Error fetching pypistats for {name}: {type(e).__name__}")
+        downloads_error = f"error_{type(e).__name__}"
 
-    return {
+    result = {
         "name": name,
         "normalized_name": normalized_name,
         "latest_version": latest_version,
@@ -328,6 +331,9 @@ async def get_pypi_metadata(name: str) -> dict:
         "python_versions": _extract_python_versions(classifiers),
         "source": "pypi",
     }
+    if downloads_error:
+        result["downloads_error"] = downloads_error
+    return result
 
 
 async def get_pypi_download_stats(name: str) -> dict:

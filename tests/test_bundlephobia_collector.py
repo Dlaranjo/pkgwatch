@@ -187,7 +187,7 @@ class TestGetBundleSize:
             assert result["source"] == "bundlephobia"
 
     def test_rate_limited(self):
-        """Test 429 rate limit handling."""
+        """Test 429 rate limit raises exception for circuit breaker."""
         from bundlephobia_collector import get_bundle_size
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
@@ -200,13 +200,13 @@ class TestGetBundleSize:
             original_init(self, *args, **kwargs)
 
         with patch.object(httpx.AsyncClient, "__init__", patched_init):
-            result = run_async(get_bundle_size("lodash"))
-
-            assert result["error"] == "rate_limited"
-            assert result["name"] == "lodash"
+            # 429 should raise HTTPStatusError so circuit breaker records failure
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
+                run_async(get_bundle_size("lodash"))
+            assert exc_info.value.response.status_code == 429
 
     def test_timeout_504(self):
-        """Test 504 timeout handling (large/complex packages)."""
+        """Test 504 timeout raises exception for circuit breaker."""
         from bundlephobia_collector import get_bundle_size
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
@@ -219,10 +219,10 @@ class TestGetBundleSize:
             original_init(self, *args, **kwargs)
 
         with patch.object(httpx.AsyncClient, "__init__", patched_init):
-            result = run_async(get_bundle_size("huge-package"))
-
-            assert result["error"] == "timeout"
-            assert result["name"] == "huge-package"
+            # 504 should raise HTTPStatusError so circuit breaker records failure
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
+                run_async(get_bundle_size("huge-package"))
+            assert exc_info.value.response.status_code == 504
 
     def test_generic_exception_handling(self):
         """Test generic exception handling."""

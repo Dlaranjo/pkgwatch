@@ -144,28 +144,18 @@ async def get_bundle_size(name: str, version: Optional[str] = None) -> dict:
 
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
+            # Not found is not transient - return error dict
             logger.debug(f"Bundle size not available for {name}")
             return {
                 "name": name,
                 "error": "not_found",
                 "source": "bundlephobia",
             }
-        elif e.response.status_code == 429:
-            # Rate limited - back off
-            logger.warning(f"Bundlephobia rate limited for {name}")
-            return {
-                "name": name,
-                "error": "rate_limited",
-                "source": "bundlephobia",
-            }
-        elif e.response.status_code == 504:
-            # Bundlephobia times out for very large/complex packages
-            logger.warning(f"Bundlephobia timeout for {name}")
-            return {
-                "name": name,
-                "error": "timeout",
-                "source": "bundlephobia",
-            }
+        elif e.response.status_code in (429, 504):
+            # Transient errors - re-raise so circuit breaker can record failure
+            # 429 = rate limited, 504 = timeout for large packages
+            logger.warning(f"Bundlephobia transient error {e.response.status_code} for {name}")
+            raise
         raise
 
     except Exception as e:

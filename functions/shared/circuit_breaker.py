@@ -150,6 +150,8 @@ class InMemoryCircuitBreaker:
                 logger.info(f"Circuit {self.name}: HALF_OPEN -> CLOSED (service recovered)")
                 self._state.state = CircuitState.CLOSED
                 self._state.failure_count = 0
+                self._state.half_open_calls = 0  # Reset for next open cycle
+                self._state.success_count = 0    # Reset for next open cycle
         elif self._state.state == CircuitState.CLOSED:
             # Reset failure count on success
             self._state.failure_count = 0
@@ -163,6 +165,8 @@ class InMemoryCircuitBreaker:
                     logger.info(f"Circuit {self.name}: HALF_OPEN -> CLOSED (service recovered)")
                     self._state.state = CircuitState.CLOSED
                     self._state.failure_count = 0
+                    self._state.half_open_calls = 0  # Reset for next open cycle
+                    self._state.success_count = 0    # Reset for next open cycle
             elif self._state.state == CircuitState.CLOSED:
                 # Reset failure count on success
                 self._state.failure_count = 0

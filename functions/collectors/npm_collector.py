@@ -182,15 +182,20 @@ async def get_npm_metadata(name: str) -> dict:
 
     # 2. Download statistics (separate API)
     weekly_downloads = 0
+    downloads_error = None
     try:
         downloads_url = f"{NPM_API}/downloads/point/last-week/{name}"
         downloads_resp = await retry_with_backoff(client.get, downloads_url)
         downloads_resp.raise_for_status()
         weekly_downloads = downloads_resp.json().get("downloads", 0)
-    except httpx.HTTPStatusError:
-        logger.debug(f"Could not fetch download stats for {name}")
+    except httpx.HTTPStatusError as e:
+        logger.warning(f"Could not fetch download stats for {name}: HTTP {e.response.status_code}")
+        downloads_error = f"http_{e.response.status_code}"
+    except Exception as e:
+        logger.warning(f"Could not fetch download stats for {name}: {type(e).__name__}")
+        downloads_error = f"error_{type(e).__name__}"
 
-    return {
+    result = {
         "name": name,
         "latest_version": latest,
         "created_at": time_data.get("created"),
@@ -213,6 +218,9 @@ async def get_npm_metadata(name: str) -> dict:
         "engines": engines,
         "source": "npm",
     }
+    if downloads_error:
+        result["downloads_error"] = downloads_error
+    return result
 
 
 async def get_download_stats(name: str, period: str = "last-week") -> dict:

@@ -14,7 +14,7 @@ def get_assessment_category(data_status: str, has_repo: bool) -> str:
     Determine assessment category from data status.
 
     Args:
-        data_status: One of "complete", "partial", "minimal", or "abandoned_minimal"
+        data_status: One of "complete", "partial", "minimal", "abandoned_minimal", or "abandoned_partial"
         has_repo: Whether the package has a repository URL
 
     Returns:
@@ -24,7 +24,7 @@ def get_assessment_category(data_status: str, has_repo: bool) -> str:
         return "VERIFIED"
     elif data_status == "partial" and has_repo:
         return "PARTIAL"
-    elif data_status == "abandoned_minimal":
+    elif data_status in ("abandoned_minimal", "abandoned_partial"):
         return "UNAVAILABLE"
     return "UNVERIFIED"
 
@@ -36,7 +36,7 @@ def get_quality_explanation(
     Generate human-readable explanation of data quality.
 
     Args:
-        data_status: One of "complete", "partial", "minimal", or "abandoned_minimal"
+        data_status: One of "complete", "partial", "minimal", "abandoned_minimal", or "abandoned_partial"
         missing_sources: List of data sources that failed (e.g., ["github", "npm"])
         has_repo: Whether the package has a repository URL
 
@@ -46,7 +46,7 @@ def get_quality_explanation(
     if data_status == "complete":
         return "Complete data from all sources"
 
-    if data_status == "abandoned_minimal":
+    if data_status in ("abandoned_minimal", "abandoned_partial"):
         return "Package data unavailable after multiple collection attempts"
 
     explanations = []
