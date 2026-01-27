@@ -202,6 +202,7 @@ export class PipelineStack extends cdk.Stack {
       functionName: "pkgwatch-package-collector",
       handler: "package_collector.handler",
       code: collectorsCode,
+      memorySize: 1024, // Increased from 512 for faster processing and to avoid OOM with large package data
       timeout: cdk.Duration.minutes(5),
       description: "Collects data from deps.dev, npm, and GitHub",
       environment: {
