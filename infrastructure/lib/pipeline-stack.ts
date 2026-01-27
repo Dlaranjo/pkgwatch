@@ -400,6 +400,8 @@ export class PipelineStack extends cdk.Stack {
         DLQ_URL: dlq.queueUrl,
         MAIN_QUEUE_URL: packageQueue.queueUrl,
         MAX_DLQ_RETRIES: "5",
+        // Enable distributed circuit breaker to share state with package collector
+        USE_DISTRIBUTED_CIRCUIT_BREAKER: "true",
       },
     });
 
@@ -431,6 +433,9 @@ export class PipelineStack extends cdk.Stack {
         ...commonLambdaProps.environment,
         // Configurable for gradual rollout (default 300, start with 150 for safety)
         MAX_DISPATCH_PER_RUN: "300",
+        // Enable distributed circuit breaker to share state with package collector
+        // Without this, retry_dispatcher uses in-memory circuit breaker (separate state)
+        USE_DISTRIBUTED_CIRCUIT_BREAKER: "true",
       },
     });
 

@@ -430,7 +430,73 @@ async def _try_github_stale_fallback(
                 combined_data.setdefault("sources", []).append("github_stale")
 
 
-async def collect_package_data(ecosystem: str, name: str) -> dict:
+def _extract_cached_npm_fields(existing: dict) -> dict:
+    """Extract cached npm fields from existing data for selective retry."""
+    return {
+        "weekly_downloads": existing.get("weekly_downloads", 0),
+        "maintainers": existing.get("maintainers", []),
+        "maintainer_count": existing.get("maintainer_count", 0),
+        "is_deprecated": existing.get("is_deprecated", False),
+        "deprecation_message": existing.get("deprecation_message"),
+        "created_at": existing.get("created_at"),
+        "last_published": existing.get("last_published"),
+        "has_types": existing.get("has_types", False),
+        "module_type": existing.get("module_type", "commonjs"),
+        "has_exports": existing.get("has_exports", False),
+        "engines": existing.get("engines"),
+    }
+
+
+def _extract_cached_pypi_fields(existing: dict) -> dict:
+    """Extract cached PyPI fields from existing data for selective retry."""
+    return {
+        "weekly_downloads": existing.get("weekly_downloads", 0),
+        "maintainers": existing.get("maintainers", []),
+        "maintainer_count": existing.get("maintainer_count", 0),
+        "is_deprecated": existing.get("is_deprecated", False),
+        "created_at": existing.get("created_at"),
+        "last_published": existing.get("last_published"),
+        "requires_python": existing.get("requires_python"),
+        "development_status": existing.get("development_status"),
+        "python_versions": existing.get("python_versions", []),
+    }
+
+
+def _extract_cached_bundlephobia_fields(existing: dict) -> dict:
+    """Extract cached bundlephobia fields from existing data for selective retry."""
+    return {
+        "bundle_size": existing.get("bundle_size"),
+        "bundle_size_gzip": existing.get("bundle_size_gzip"),
+        "bundle_size_category": existing.get("bundle_size_category"),
+        "bundle_dependency_count": existing.get("bundle_dependency_count"),
+    }
+
+
+def _should_run_collector(source: str, retry_sources: list) -> bool:
+    """
+    Determine if a collector should run based on retry_sources.
+
+    Args:
+        source: The source name (e.g., "npm", "github", "bundlephobia")
+        retry_sources: List of sources that failed and need retry.
+                       Empty list means run all collectors (normal refresh).
+
+    Returns:
+        True if collector should run, False if it should be skipped.
+    """
+    # Empty retry_sources = normal refresh, run all collectors
+    if not retry_sources:
+        return True
+    # Run collector only if it's in the retry list
+    return source in retry_sources
+
+
+async def collect_package_data(
+    ecosystem: str,
+    name: str,
+    existing: dict = None,
+    retry_sources: list = None
+) -> dict:
     """
     Collect comprehensive package data from all sources with graceful degradation.
 
@@ -439,9 +505,17 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
     2. npm (supplementary) - always fetch for npm packages
     3. GitHub (secondary) - only if we have a repo URL and rate limit allows
 
+    Args:
+        ecosystem: Package ecosystem ("npm" or "pypi")
+        name: Package name
+        existing: Existing package data from DynamoDB (for selective retry)
+        retry_sources: List of sources that failed previously. If non-empty,
+                       only these sources will be fetched; others use cached data.
+
     Returns:
         Combined package data dictionary
     """
+    retry_sources = retry_sources or []
     combined_data = {
         "ecosystem": ecosystem,
         "name": name,
@@ -451,6 +525,8 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
     }
 
     # 1. deps.dev data (primary source)
+    # Note: deps.dev is always fetched (never skipped for selective retry)
+    # because it provides critical data like repository_url needed for GitHub
     try:
         depsdev_data = await get_depsdev_info(name, ecosystem)
         if depsdev_data:
@@ -474,11 +550,11 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
         logger.warning(f"deps.dev circuit open for {ecosystem}/{name}: {e}")
         combined_data["depsdev_error"] = "circuit_open"
 
-        # Try to use stale data as fallback
-        existing = await _get_existing_package_data(ecosystem, name)
-        if existing and _is_data_acceptable(existing, max_age_days=STALE_DATA_MAX_AGE_DAYS):
+        # Try to use stale/cached data as fallback
+        fallback_data = existing or await _get_existing_package_data(ecosystem, name)
+        if fallback_data and _is_data_acceptable(fallback_data, max_age_days=STALE_DATA_MAX_AGE_DAYS):
             logger.info(f"Using stale data for {ecosystem}/{name}")
-            combined_data.update(_extract_cached_fields(existing))
+            combined_data.update(_extract_cached_fields(fallback_data))
             combined_data["data_freshness"] = "stale"
             combined_data["stale_reason"] = "deps.dev_circuit_open"
 
@@ -486,19 +562,45 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
         logger.error(f"Failed to fetch deps.dev data for {ecosystem}/{name}: {e}")
         combined_data["depsdev_error"] = _sanitize_error(str(e))
 
-        # Try to use stale data as fallback
-        existing = await _get_existing_package_data(ecosystem, name)
-        if existing and _is_data_acceptable(existing, max_age_days=STALE_DATA_MAX_AGE_DAYS):
+        # Try to use stale/cached data as fallback
+        fallback_data = existing or await _get_existing_package_data(ecosystem, name)
+        if fallback_data and _is_data_acceptable(fallback_data, max_age_days=STALE_DATA_MAX_AGE_DAYS):
             logger.info(f"Using stale data for {ecosystem}/{name}")
-            combined_data.update(_extract_cached_fields(existing))
+            combined_data.update(_extract_cached_fields(fallback_data))
             combined_data["data_freshness"] = "stale"
             combined_data["stale_reason"] = "deps.dev_unavailable"
 
     # 2. npm and bundlephobia data (run in parallel - they don't depend on each other)
     if ecosystem == "npm":
+        # Determine which collectors to run (selective retry support)
+        should_fetch_npm = _should_run_collector("npm", retry_sources)
+        should_fetch_bundlephobia = _should_run_collector("bundlephobia", retry_sources)
+
+        # If skipping npm due to selective retry, use cached data
+        if not should_fetch_npm and existing:
+            logger.debug(f"Selective retry: using cached npm data for {name}")
+            cached_npm = _extract_cached_npm_fields(existing)
+            for key, value in cached_npm.items():
+                if value is not None:
+                    combined_data[key] = value
+            combined_data["sources"].append("npm_cached")
+            # Also copy repository_url from existing if we don't have it
+            if not combined_data.get("repository_url") and existing.get("repository_url"):
+                combined_data["repository_url"] = existing.get("repository_url")
+
+        # If skipping bundlephobia due to selective retry, use cached data
+        if not should_fetch_bundlephobia and existing:
+            logger.debug(f"Selective retry: using cached bundlephobia data for {name}")
+            cached_bundle = _extract_cached_bundlephobia_fields(existing)
+            for key, value in cached_bundle.items():
+                if value is not None:
+                    combined_data[key] = value
+            if any(v is not None for v in cached_bundle.values()):
+                combined_data["sources"].append("bundlephobia_cached")
+
         # Check rate limits before starting requests
-        npm_allowed = check_and_increment_external_rate_limit("npm", 800)  # 80% of 1000
-        bundle_allowed = check_and_increment_external_rate_limit("bundlephobia", 80)  # 80% of 100
+        npm_allowed = should_fetch_npm and check_and_increment_external_rate_limit("npm", 800)
+        bundle_allowed = should_fetch_bundlephobia and check_and_increment_external_rate_limit("bundlephobia", 80)
 
         # Only create tasks for allowed services
         tasks = []
@@ -507,7 +609,7 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
         if bundle_allowed:
             tasks.append(get_bundle_size(name))
 
-        # Gather results (may be empty if both rate limited)
+        # Gather results (may be empty if both rate limited or skipped)
         if tasks:
             results = await asyncio.gather(*tasks, return_exceptions=True)
         else:
@@ -518,17 +620,23 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
         if npm_allowed:
             npm_result = results[result_idx] if result_idx < len(results) else None
             result_idx += 1
-        else:
+        elif should_fetch_npm:
+            # Wanted to fetch but rate limited
             npm_result = None
             logger.warning(f"npm rate limit reached, skipping for {name}")
             combined_data["npm_error"] = "rate_limit_exceeded"
+        else:
+            npm_result = None  # Skipped due to selective retry
 
         if bundle_allowed:
             bundle_result = results[result_idx] if result_idx < len(results) else None
-        else:
+        elif should_fetch_bundlephobia:
+            # Wanted to fetch but rate limited
             bundle_result = None
             logger.warning(f"Bundlephobia rate limit reached, skipping for {name}")
             combined_data["bundlephobia_error"] = "rate_limit_exceeded"
+        else:
+            bundle_result = None  # Skipped due to selective retry
 
         # Process npm result (if we tried to fetch it)
         if npm_allowed and npm_result is not None:
@@ -583,7 +691,21 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
 
     # 2b. PyPI data (for pypi ecosystem)
     elif ecosystem == "pypi":
-        pypi_allowed = check_and_increment_external_rate_limit("pypi", 400)  # 80% of 500
+        should_fetch_pypi = _should_run_collector("pypi", retry_sources)
+
+        # If skipping PyPI due to selective retry, use cached data
+        if not should_fetch_pypi and existing:
+            logger.debug(f"Selective retry: using cached PyPI data for {name}")
+            cached_pypi = _extract_cached_pypi_fields(existing)
+            for key, value in cached_pypi.items():
+                if value is not None:
+                    combined_data[key] = value
+            combined_data["sources"].append("pypi_cached")
+            # Also copy repository_url from existing if we don't have it
+            if not combined_data.get("repository_url") and existing.get("repository_url"):
+                combined_data["repository_url"] = existing.get("repository_url")
+
+        pypi_allowed = should_fetch_pypi and check_and_increment_external_rate_limit("pypi", 400)
 
         if pypi_allowed:
             try:
@@ -616,13 +738,27 @@ async def collect_package_data(ecosystem: str, name: str) -> dict:
             except Exception as e:
                 logger.error(f"Failed to fetch PyPI data for {name}: {e}")
                 combined_data["pypi_error"] = _sanitize_error(str(e))
-        else:
+        elif should_fetch_pypi:
+            # Wanted to fetch but rate limited
             logger.warning(f"PyPI rate limit reached, skipping for {name}")
             combined_data["pypi_error"] = "rate_limit_exceeded"
+        # else: skipped due to selective retry, cached data already applied above
 
     # 3. GitHub data (secondary - rate limited, with circuit breaker)
+    should_fetch_github = _should_run_collector("github", retry_sources)
     repo_url = combined_data.get("repository_url")
-    if repo_url:
+
+    # If skipping GitHub due to selective retry, use cached data
+    if not should_fetch_github and existing and repo_url:
+        logger.debug(f"Selective retry: using cached GitHub data for {ecosystem}/{name}")
+        cached_github = _extract_cached_github_fields(existing)
+        for key, value in cached_github.items():
+            if value is not None:
+                combined_data[key] = value
+        if _has_github_data(cached_github):
+            combined_data["sources"].append("github_cached")
+
+    if should_fetch_github and repo_url:
         parsed = parse_github_url(repo_url)
         if parsed:
             owner, repo = parsed
@@ -925,6 +1061,7 @@ async def process_single_package(message: dict) -> tuple[bool, str, Optional[str
     tier = message.get("tier", 3)
     force_refresh = message.get("force_refresh", False)
     is_retry = message.get("reason") == "incomplete_data_retry"
+    retry_sources = message.get("retry_sources", [])
 
     # Get existing package data
     existing = await _get_existing_package_data(ecosystem, name)
@@ -957,11 +1094,17 @@ async def process_single_package(message: dict) -> tuple[bool, str, Optional[str
             except Exception as e:
                 logger.debug(f"Failed to parse last_updated: {e}")
 
-    logger.info(f"Collecting data for {ecosystem}/{name} (tier {tier}, force={force_refresh})")
+    # Log what we're about to do
+    if retry_sources:
+        logger.info(
+            f"Selective retry for {ecosystem}/{name} (tier {tier}, sources={retry_sources})"
+        )
+    else:
+        logger.info(f"Collecting data for {ecosystem}/{name} (tier {tier}, force={force_refresh})")
 
     try:
-        # Collect data from all sources
-        data = await collect_package_data(ecosystem, name)
+        # Collect data from all sources (or selectively for retries)
+        data = await collect_package_data(ecosystem, name, existing, retry_sources)
 
         # Pass existing retry_count to store_package_data for retry tracking
         # (used to calculate next_retry_at if collection is still incomplete)
@@ -972,6 +1115,9 @@ async def process_single_package(message: dict) -> tuple[bool, str, Optional[str
             base_retry_count = int(existing.get("retry_count", 0))
             # If this is a retry, the count was already incremented in DynamoDB
             data["_existing_retry_count"] = base_retry_count + 1 if is_retry else base_retry_count
+        else:
+            # Initialize for new packages (first collection attempt)
+            data["_existing_retry_count"] = 0
 
         # Store raw data in S3 for debugging
         store_raw_data(ecosystem, name, data)
