@@ -401,8 +401,6 @@ export class PipelineStack extends cdk.Stack {
         DLQ_URL: dlq.queueUrl,
         MAIN_QUEUE_URL: packageQueue.queueUrl,
         MAX_DLQ_RETRIES: "5",
-        // Enable distributed circuit breaker to share state with package collector
-        USE_DISTRIBUTED_CIRCUIT_BREAKER: "true",
       },
     });
 
@@ -443,6 +441,7 @@ export class PipelineStack extends cdk.Stack {
     // Grant permissions
     packagesTable.grantReadWriteData(retryDispatcher); // Read for query, write for retry_dispatched_at
     packageQueue.grantSendMessages(retryDispatcher);
+    apiKeysTable.grantReadWriteData(retryDispatcher); // For distributed circuit breaker state (read + write for state transitions)
 
     // Schedule retry dispatcher every 15 minutes (increased from 30 for faster backlog clearance)
     new events.Rule(this, "RetryDispatcherSchedule", {

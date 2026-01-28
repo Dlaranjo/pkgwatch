@@ -47,7 +47,7 @@ def handler(event, context):
     table = dynamodb.Table(PACKAGES_TABLE)
 
     counts = {}
-    for status in ["complete", "partial", "minimal", "abandoned_minimal"]:
+    for status in ["complete", "partial", "minimal", "pending", "abandoned_minimal", "abandoned_partial"]:
         try:
             counts[status] = count_by_status(table, status)
         except Exception as e:
@@ -65,9 +65,14 @@ def handler(event, context):
                 {"metric_name": "CompletePackages", "value": counts.get("complete", 0)},
                 {"metric_name": "PartialPackages", "value": counts.get("partial", 0)},
                 {"metric_name": "MinimalPackages", "value": counts.get("minimal", 0)},
+                {"metric_name": "PendingPackages", "value": counts.get("pending", 0)},
                 {
                     "metric_name": "AbandonedPackages",
                     "value": counts.get("abandoned_minimal", 0),
+                },
+                {
+                    "metric_name": "AbandonedPartialPackages",
+                    "value": counts.get("abandoned_partial", 0),
                 },
             ]
         )

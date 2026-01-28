@@ -934,8 +934,8 @@ def _calculate_data_status(data: dict, ecosystem: str) -> tuple[str, list]:
     if ecosystem == "npm":
         if data.get("npm_error"):
             missing.append("npm")
-        if data.get("bundlephobia_error"):
-            missing.append("bundlephobia")
+        # Note: bundlephobia is optional (DX metrics only, not used in health scoring).
+        # Errors from bundlephobia should not mark a package as "partial".
     elif ecosystem == "pypi":
         if data.get("pypi_error"):
             missing.append("pypi")

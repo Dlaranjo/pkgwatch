@@ -5171,8 +5171,8 @@ class TestDataStatusCalculation:
         assert status == "partial"
         assert "npm" in missing
 
-    def test_calculate_data_status_partial_bundlephobia_error(self):
-        """Test partial status when bundlephobia fails (lines 759-760)."""
+    def test_calculate_data_status_bundlephobia_error_not_partial(self):
+        """Test bundlephobia error does NOT cause partial status (optional source)."""
         from package_collector import _calculate_data_status
 
         data = {
@@ -5181,8 +5181,8 @@ class TestDataStatusCalculation:
         }
 
         status, missing = _calculate_data_status(data, "npm")
-        assert status == "partial"
-        assert "bundlephobia" in missing
+        assert status == "complete"  # bundlephobia is optional, not used in scoring
+        assert "bundlephobia" not in missing
 
     def test_calculate_data_status_partial_github_error(self):
         """Test partial status when github fails with repo_url (lines 766-767)."""
