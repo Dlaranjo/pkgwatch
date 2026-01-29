@@ -931,17 +931,22 @@ def _calculate_data_status(data: dict, ecosystem: str) -> tuple[str, list]:
     if data.get("depsdev_error"):
         missing.append("deps.dev")
 
+    sources = data.get("sources", [])
+
     if ecosystem == "npm":
-        if data.get("npm_error"):
+        # Don't mark as missing if stale fallback provided valid data
+        if data.get("npm_error") and "npm_stale" not in sources:
             missing.append("npm")
         # Note: bundlephobia is optional (DX metrics only, not used in health scoring).
         # Errors from bundlephobia should not mark a package as "partial".
     elif ecosystem == "pypi":
-        if data.get("pypi_error"):
+        # Don't mark as missing if stale fallback provided valid data
+        if data.get("pypi_error") and "pypi_stale" not in sources:
             missing.append("pypi")
 
     # GitHub is only expected if we have a repository_url
-    if data.get("repository_url") and data.get("github_error"):
+    # Don't mark as missing if stale fallback provided valid data
+    if data.get("repository_url") and data.get("github_error") and "github_stale" not in sources:
         missing.append("github")
 
     if not missing:

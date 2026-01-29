@@ -5211,6 +5211,46 @@ class TestDataStatusCalculation:
         assert status == "partial"
         assert "pypi" in missing
 
+    def test_calculate_data_status_github_stale_not_partial(self):
+        """Test github_stale fallback does NOT cause partial status."""
+        from package_collector import _calculate_data_status
+
+        data = {
+            "github_error": "rate_limit_exceeded",
+            "repository_url": "https://github.com/vuejs/core",
+            "sources": ["deps.dev", "npm", "github_stale"],  # stale fallback succeeded
+        }
+
+        status, missing = _calculate_data_status(data, "npm")
+        assert status == "complete"  # stale data is valid
+        assert "github" not in missing
+
+    def test_calculate_data_status_npm_stale_not_partial(self):
+        """Test npm_stale fallback does NOT cause partial status."""
+        from package_collector import _calculate_data_status
+
+        data = {
+            "npm_error": "circuit_open",
+            "sources": ["deps.dev", "npm_stale"],  # stale fallback succeeded
+        }
+
+        status, missing = _calculate_data_status(data, "npm")
+        assert status == "complete"  # stale data is valid
+        assert "npm" not in missing
+
+    def test_calculate_data_status_pypi_stale_not_partial(self):
+        """Test pypi_stale fallback does NOT cause partial status."""
+        from package_collector import _calculate_data_status
+
+        data = {
+            "pypi_error": "circuit_open",
+            "sources": ["deps.dev", "pypi_stale"],  # stale fallback succeeded
+        }
+
+        status, missing = _calculate_data_status(data, "pypi")
+        assert status == "complete"  # stale data is valid
+        assert "pypi" not in missing
+
 
 class TestRetryTracking:
     """Tests for retry tracking in process_single_package (lines 918-927)."""
