@@ -281,9 +281,17 @@ async def get_bulk_download_stats(packages: list[str], period: str = "last-week"
                 resp = await retry_with_backoff(client.get, url)
                 resp.raise_for_status()
                 data = resp.json()
-                for pkg_name, pkg_data in data.items():
-                    if pkg_data:
-                        results[pkg_name] = pkg_data.get("downloads", 0)
+                # npm returns different format for single vs multiple packages:
+                # Single: {"downloads": 1000, "package": "pkg"}
+                # Multiple: {"pkg1": {"downloads": 1000}, "pkg2": {"downloads": 2000}}
+                if len(unscoped) == 1 and "package" in data:
+                    # Single package response
+                    results[unscoped[0]] = data.get("downloads", 0)
+                else:
+                    # Multiple packages response
+                    for pkg_name, pkg_data in data.items():
+                        if pkg_data and isinstance(pkg_data, dict):
+                            results[pkg_name] = pkg_data.get("downloads", 0)
             except httpx.HTTPStatusError:
                 # Fall back to individual requests
                 for pkg in unscoped:

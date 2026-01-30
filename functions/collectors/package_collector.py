@@ -26,7 +26,7 @@ logger.setLevel(logging.INFO)
 
 # Import collectors (these will be bundled with the Lambda)
 from depsdev_collector import get_package_info as get_depsdev_info
-from npm_collector import get_npm_metadata
+from npm_collector import get_npm_metadata, get_bulk_download_stats
 from pypi_collector import get_pypi_metadata, PYPI_PACKAGE_PATTERN as PYPI_NAME_PATTERN
 from github_collector import GitHubCollector, parse_github_url
 from bundlephobia_collector import get_bundle_size
@@ -495,7 +495,8 @@ async def collect_package_data(
     ecosystem: str,
     name: str,
     existing: dict = None,
-    retry_sources: list = None
+    retry_sources: list = None,
+    bulk_downloads: dict = None
 ) -> dict:
     """
     Collect comprehensive package data from all sources with graceful degradation.
@@ -511,6 +512,7 @@ async def collect_package_data(
         existing: Existing package data from DynamoDB (for selective retry)
         retry_sources: List of sources that failed previously. If non-empty,
                        only these sources will be fetched; others use cached data.
+        bulk_downloads: Pre-fetched download stats from bulk API (reduces API calls)
 
     Returns:
         Combined package data dictionary
@@ -621,10 +623,22 @@ async def collect_package_data(
             npm_result = results[result_idx] if result_idx < len(results) else None
             result_idx += 1
         elif should_fetch_npm:
-            # Wanted to fetch but rate limited
+            # Wanted to fetch but rate limited - try stale fallback
             npm_result = None
             logger.warning(f"npm rate limit reached, skipping for {name}")
             combined_data["npm_error"] = "rate_limit_exceeded"
+            # Try stale data fallback (mirror circuit_open pattern at lines 643-655)
+            fallback_data = existing or await _get_existing_package_data(ecosystem, name)
+            threshold = STALE_DATA_THRESHOLDS.get("rate_limit_exceeded", 7)
+            if fallback_data and _is_data_acceptable(fallback_data, max_age_days=threshold):
+                logger.info(f"Using stale npm data for {name} (rate limited)")
+                cached = _extract_cached_npm_fields(fallback_data)
+                for key, value in cached.items():
+                    if value is not None:
+                        combined_data[key] = value
+                combined_data["sources"].append("npm_stale")
+                combined_data["npm_freshness"] = "stale"
+                combined_data["npm_stale_reason"] = "rate_limit_exceeded"
         else:
             npm_result = None  # Skipped due to selective retry
 
@@ -662,7 +676,12 @@ async def collect_package_data(
                 combined_data["sources"].append("npm")
 
                 # Supplement with npm-specific data
-                combined_data["weekly_downloads"] = npm_data.get("weekly_downloads", 0)
+                # Use bulk-fetched downloads if available (more efficient API usage)
+                if bulk_downloads and name in bulk_downloads:
+                    combined_data["weekly_downloads"] = bulk_downloads[name]
+                    combined_data["downloads_source"] = "bulk"
+                else:
+                    combined_data["weekly_downloads"] = npm_data.get("weekly_downloads", 0)
                 combined_data["maintainers"] = npm_data.get("maintainers", [])
                 combined_data["maintainer_count"] = npm_data.get("maintainer_count", 0)
                 combined_data["is_deprecated"] = npm_data.get("is_deprecated", False)
@@ -1080,8 +1099,15 @@ def store_package_data(ecosystem: str, name: str, data: dict, tier: int):
         raise
 
 
-async def process_single_package(message: dict) -> tuple[bool, str, Optional[str]]:
+async def process_single_package(
+    message: dict,
+    bulk_downloads: dict = None
+) -> tuple[bool, str, Optional[str]]:
     """Process a single package message with deduplication.
+
+    Args:
+        message: SQS message containing package info
+        bulk_downloads: Pre-fetched download stats from bulk API (optional)
 
     Returns:
         Tuple of (success: bool, package_name: str, error_reason: Optional[str])
@@ -1140,7 +1166,7 @@ async def process_single_package(message: dict) -> tuple[bool, str, Optional[str
 
     try:
         # Collect data from all sources (or selectively for retries)
-        data = await collect_package_data(ecosystem, name, existing, retry_sources)
+        data = await collect_package_data(ecosystem, name, existing, retry_sources, bulk_downloads)
 
         # Pass existing retry_count to store_package_data for retry tracking
         # (used to calculate next_retry_at if collection is still incomplete)
@@ -1186,16 +1212,37 @@ async def process_batch(records: list) -> tuple[int, list[str]]:
     # Track messageIds for records that failed to parse
     failed_message_ids = []
 
+    # Parse all messages first to extract npm package names
+    parsed_messages = []
     for record in records:
         message_id = record.get("messageId", "")
         try:
             message = json.loads(record["body"])
-            record_info.append((message, message_id))
-            tasks.append(process_single_package(message))
+            parsed_messages.append((message, message_id))
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse message {message_id}: {e}")
             emit_metric("MessageParseError")
             failed_message_ids.append(message_id)
+
+    # Pre-fetch download stats in bulk for npm packages (reduces API calls by ~127x)
+    # Only fetch for unscoped packages - scoped packages (@scope/name) must be fetched individually
+    npm_packages = [
+        msg["name"] for msg, _ in parsed_messages
+        if msg.get("ecosystem") == "npm" and not msg["name"].startswith("@")
+    ]
+    bulk_downloads = {}
+    if npm_packages:
+        try:
+            logger.info(f"Bulk fetching download stats for {len(npm_packages)} npm packages")
+            bulk_downloads = await get_bulk_download_stats(npm_packages, "last-week")
+            logger.info(f"Bulk fetch returned stats for {len(bulk_downloads)} packages")
+        except Exception as e:
+            logger.warning(f"Bulk download fetch failed, will fall back to individual: {e}")
+
+    # Create tasks with bulk downloads passed through
+    for message, message_id in parsed_messages:
+        record_info.append((message, message_id))
+        tasks.append(process_single_package(message, bulk_downloads=bulk_downloads))
 
     # Process all packages in parallel with return_exceptions=True
     # to prevent one failure from canceling others

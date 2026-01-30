@@ -2692,6 +2692,80 @@ class TestCollectPackageData:
                 assert "deps.dev" in result["sources"]
                 assert result["latest_version"] == "1.0.0"
 
+    def test_collect_package_data_uses_bulk_downloads(self):
+        """Test that bulk_downloads parameter overrides individual npm download fetch."""
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+
+            # deps.dev
+            if "api.deps.dev/v3/systems/npm/packages/test-pkg:dependents" in url:
+                return httpx.Response(200, json={"dependentCount": 100})
+            elif "api.deps.dev/v3/systems/npm/packages/test-pkg/versions" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "publishedAt": "2023-01-01T00:00:00Z",
+                        "licenses": ["MIT"],
+                        "relations": {},
+                        "advisories": [],
+                        "links": [],
+                    },
+                )
+            elif "api.deps.dev/v3/systems/npm/packages/test-pkg" in url:
+                return httpx.Response(200, json={"defaultVersion": "1.0.0"})
+
+            # npm registry metadata
+            elif "registry.npmjs.org/test-pkg" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "dist-tags": {"latest": "1.0.0"},
+                        "time": {"created": "2023-01-01T00:00:00.000Z", "1.0.0": "2023-01-01T00:00:00.000Z"},
+                        "versions": {"1.0.0": {}},
+                        "maintainers": [{"name": "test"}],
+                    },
+                )
+
+            # npm downloads - this should NOT be called when bulk_downloads is provided
+            elif "api.npmjs.org/downloads" in url:
+                # Return a different value to detect if individual fetch was used
+                return httpx.Response(200, json={"downloads": 999})
+
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            with patch.object(httpx.AsyncClient, "__init__", patched_init), \
+                 patch.object(package_collector, "check_and_increment_external_rate_limit", return_value=True):
+
+                # Pre-fetched bulk downloads (simulating batch processing)
+                bulk_downloads = {"test-pkg": 12345}
+
+                result = run_async(package_collector.collect_package_data(
+                    "npm", "test-pkg", existing=None, retry_sources=None, bulk_downloads=bulk_downloads
+                ))
+
+                # Should use bulk-fetched downloads instead of individual fetch
+                assert result["weekly_downloads"] == 12345
+                assert result.get("downloads_source") == "bulk"
+
 
 class TestStorePackageData:
     """Tests for store_package_data function."""
@@ -4742,6 +4816,69 @@ class TestPartialCollectionFailures:
                 assert result.get("npm_error") == "rate_limit_exceeded"
 
     @mock_aws
+    def test_npm_rate_limit_uses_stale_fallback(self):
+        """Test npm rate limit uses stale data fallback when available."""
+        from datetime import datetime, timezone
+
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        # Insert existing package with npm data
+        table = dynamodb.Table("pkgwatch-packages")
+        table.put_item(Item={
+            "pk": "npm#test-pkg",
+            "sk": "LATEST",
+            "weekly_downloads": 50000,
+            "maintainer_count": 3,
+            "has_types": True,
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+        })
+
+        with patch.dict(os.environ, {
+            "PACKAGES_TABLE": "pkgwatch-packages",
+            "API_KEYS_TABLE": "pkgwatch-api-keys",
+        }):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            mock_depsdev_data = {"latest_version": "1.0.0"}
+            existing = {
+                "weekly_downloads": 50000,
+                "maintainer_count": 3,
+                "has_types": True,
+                "last_updated": datetime.now(timezone.utc).isoformat(),
+            }
+
+            def rate_limit_check(service, limit):
+                # npm rate limited
+                return service != "npm"
+
+            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
+                 patch("package_collector.check_and_increment_external_rate_limit", side_effect=rate_limit_check), \
+                 patch("package_collector._get_existing_package_data", return_value=existing), \
+                 patch("package_collector._is_data_acceptable", return_value=True):
+
+                result = run_async(package_collector.collect_package_data("npm", "test-pkg"))
+
+                # Should have stale data with npm_stale in sources
+                assert result.get("weekly_downloads") == 50000
+                assert "npm_stale" in result.get("sources", [])
+                assert result.get("npm_freshness") == "stale"
+                assert result.get("npm_stale_reason") == "rate_limit_exceeded"
+
+    @mock_aws
     def test_bundlephobia_rate_limit_records_error(self):
         """Test bundlephobia rate limit sets error (lines 529-531)."""
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
@@ -5443,7 +5580,7 @@ class TestProcessBatchExceptions:
 
             call_count = [0]
 
-            async def mock_process(message):
+            async def mock_process(message, bulk_downloads=None):
                 call_count[0] += 1
                 if call_count[0] == 1:
                     return (True, "npm/pkg1", None)  # Success
