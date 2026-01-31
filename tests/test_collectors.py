@@ -5818,6 +5818,71 @@ class TestValidationError:
 
 
 # =============================================================================
+# OpenSSF Helper Functions (Phase 8)
+# =============================================================================
+
+
+class TestOpenSSFHelperFunctions:
+    """Tests for OpenSSF helper functions added in Phase 8."""
+
+    def test_has_openssf_data_with_score(self):
+        """Test _has_openssf_data returns True when score is present."""
+        from package_collector import _has_openssf_data
+
+        data = {"openssf_score": 5.7}
+        assert _has_openssf_data(data) is True
+
+    def test_has_openssf_data_with_zero_score(self):
+        """Test _has_openssf_data returns True when score is 0 (valid score)."""
+        from package_collector import _has_openssf_data
+
+        data = {"openssf_score": 0}
+        assert _has_openssf_data(data) is True
+
+    def test_has_openssf_data_with_none_score(self):
+        """Test _has_openssf_data returns False when score is None."""
+        from package_collector import _has_openssf_data
+
+        data = {"openssf_score": None}
+        assert _has_openssf_data(data) is False
+
+    def test_has_openssf_data_missing_key(self):
+        """Test _has_openssf_data returns False when key is missing."""
+        from package_collector import _has_openssf_data
+
+        data = {"other_field": "value"}
+        assert _has_openssf_data(data) is False
+
+    def test_extract_cached_openssf_fields_complete(self):
+        """Test _extract_cached_openssf_fields extracts all fields."""
+        from package_collector import _extract_cached_openssf_fields
+
+        existing = {
+            "openssf_score": 6.8,
+            "openssf_checks": [{"name": "Code-Review", "score": 9}],
+            "openssf_date": "2025-01-30T00:00:00+00:00",
+            "other_field": "ignored",
+        }
+        result = _extract_cached_openssf_fields(existing)
+
+        assert result["openssf_score"] == 6.8
+        assert result["openssf_checks"] == [{"name": "Code-Review", "score": 9}]
+        assert result["openssf_date"] == "2025-01-30T00:00:00+00:00"
+        assert "other_field" not in result
+
+    def test_extract_cached_openssf_fields_partial(self):
+        """Test _extract_cached_openssf_fields with missing fields."""
+        from package_collector import _extract_cached_openssf_fields
+
+        existing = {"openssf_score": 5.0}
+        result = _extract_cached_openssf_fields(existing)
+
+        assert result["openssf_score"] == 5.0
+        assert result["openssf_checks"] == []  # Default empty list
+        assert result["openssf_date"] is None
+
+
+# =============================================================================
 # Pytest Fixtures
 # =============================================================================
 
