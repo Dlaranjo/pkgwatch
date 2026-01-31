@@ -30,12 +30,13 @@ from npm_collector import get_npm_metadata, get_bulk_download_stats
 from pypi_collector import get_pypi_metadata, PYPI_PACKAGE_PATTERN as PYPI_NAME_PATTERN
 from github_collector import GitHubCollector, parse_github_url
 from bundlephobia_collector import get_bundle_size
+from openssf_collector import get_openssf_scorecard
 
 # Import shared utilities
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
 from metrics import emit_metric, emit_batch_metrics
-from circuit_breaker import CircuitOpenError, GITHUB_CIRCUIT
+from circuit_breaker import CircuitOpenError, GITHUB_CIRCUIT, OPENSSF_CIRCUIT
 from rate_limit_utils import check_and_increment_external_rate_limit
 from package_validation import validate_npm_package_name, validate_pypi_package_name
 from error_classification import classify_error as _classify_error
@@ -914,6 +915,50 @@ async def collect_package_data(
 
     # Note: Bundlephobia is now fetched in parallel with npm data in section 2
 
+    # 4. OpenSSF Scorecard (fallback when deps.dev has no data)
+    # OpenSSF is a FALLBACK source, not a primary source - always attempt when:
+    # deps.dev didn't provide data AND we have a GitHub repo
+    repo_url = combined_data.get("repository_url")
+
+    # Only fetch if deps.dev didn't provide OpenSSF data (score is None, not 0)
+    if combined_data.get("openssf_score") is None and repo_url:
+        parsed = parse_github_url(repo_url)  # Reuse existing parser from github_collector
+        if parsed:
+            owner, repo = parsed
+            # Check circuit breaker first
+            if not await OPENSSF_CIRCUIT.can_execute_async():
+                logger.warning(f"OpenSSF circuit open, skipping for {ecosystem}/{name}")
+                combined_data["openssf_error"] = "circuit_open"
+                # Try cached data as fallback
+                if existing and existing.get("openssf_score") is not None:
+                    combined_data["openssf_score"] = existing.get("openssf_score")
+                    combined_data["openssf_checks"] = existing.get("openssf_checks", [])
+                    combined_data["openssf_date"] = existing.get("openssf_date")
+                    combined_data["openssf_source"] = "cached"
+            else:
+                # Check rate limit (500/hour - API has no documented limits)
+                if check_and_increment_external_rate_limit("openssf", 500):
+                    try:
+                        openssf_data = await get_openssf_scorecard(owner, repo)
+                        if openssf_data:
+                            await OPENSSF_CIRCUIT.record_success_async()
+                            combined_data["openssf_score"] = openssf_data.get("openssf_score")
+                            combined_data["openssf_checks"] = openssf_data.get("openssf_checks", [])
+                            combined_data["openssf_date"] = openssf_data.get("openssf_date")
+                            combined_data["openssf_source"] = "direct"
+                            combined_data.setdefault("sources", []).append("openssf")
+                            logger.info(f"Got OpenSSF score {openssf_data['openssf_score']} from direct API for {name}")
+                        else:
+                            # 404 or parse error - not a failure, just no data available
+                            await OPENSSF_CIRCUIT.record_success_async()
+                    except Exception as e:
+                        await OPENSSF_CIRCUIT.record_failure_async(e)
+                        logger.warning(f"OpenSSF fetch failed for {name}: {e}")
+                        combined_data["openssf_error"] = str(e)[:100]
+                else:
+                    logger.debug(f"OpenSSF rate limit reached, skipping for {name}")
+                    combined_data["openssf_error"] = "rate_limit_exceeded"
+
     return combined_data
 
 
@@ -1026,6 +1071,8 @@ def store_package_data(ecosystem: str, name: str, data: dict, tier: int):
         "advisories": data.get("advisories", []),
         "openssf_score": data.get("openssf_score"),
         "openssf_checks": data.get("openssf_checks", []),
+        "openssf_source": data.get("openssf_source"),  # "deps.dev", "direct", or "cached"
+        "openssf_date": data.get("openssf_date"),      # Date the scorecard was generated
         # Status flags
         "is_deprecated": data.get("is_deprecated", False),
         "archived": data.get("archived", False),

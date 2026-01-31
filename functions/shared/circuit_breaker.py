@@ -814,6 +814,16 @@ PYPI_CIRCUIT = _create_circuit_breaker(
     )
 )
 
+OPENSSF_CIRCUIT = _create_circuit_breaker(
+    "openssf",
+    CircuitBreakerConfig(
+        failure_threshold=5,
+        timeout_seconds=120,
+        half_open_max_calls=3,
+        success_threshold=2,
+    )
+)
+
 # DynamoDB circuit breaker - for protecting against throttling cascades
 # Wired to auth.py functions (validate_api_key, check_and_increment_usage, etc.)
 # to prevent cascade failures during throttling events or capacity issues.
