@@ -91,7 +91,34 @@ STALE_DATA_THRESHOLDS = {
 # Semaphore to limit concurrent GitHub API calls per Lambda instance
 # With maxConcurrency=10 Lambdas * 5 = max 50 concurrent GitHub calls
 # GitHub allows 5000/hour = ~83/minute, so this keeps us well under the limit
-GITHUB_SEMAPHORE = asyncio.Semaphore(5)
+# NOTE: Lazy initialization to handle Lambda event loop changes
+_github_semaphore: Optional[asyncio.Semaphore] = None
+_github_semaphore_loop_id: Optional[int] = None
+
+
+def get_github_semaphore() -> asyncio.Semaphore:
+    """
+    Get GitHub semaphore, recreating if event loop changed.
+
+    Lambda can reuse containers but create new event loops. An asyncio.Semaphore
+    bound to an old event loop causes "attached to different loop" errors.
+    """
+    global _github_semaphore, _github_semaphore_loop_id
+
+    try:
+        current_loop_id = id(asyncio.get_running_loop())
+    except RuntimeError:
+        current_loop_id = None
+
+    if _github_semaphore is not None and _github_semaphore_loop_id != current_loop_id:
+        logger.debug("Event loop changed, recreating GitHub semaphore")
+        _github_semaphore = None
+
+    if _github_semaphore is None:
+        _github_semaphore = asyncio.Semaphore(5)
+        _github_semaphore_loop_id = current_loop_id
+
+    return _github_semaphore
 
 # Global rate limiting with sharded counters
 # Distributes writes across 10 partitions to avoid hot partition issues
@@ -660,10 +687,23 @@ async def collect_package_data(
         if bundle_allowed:
             bundle_result = results[result_idx] if result_idx < len(results) else None
         elif should_fetch_bundlephobia:
-            # Wanted to fetch but rate limited
+            # Wanted to fetch but rate limited - try stale fallback (Fix 3c)
             bundle_result = None
             logger.warning(f"Bundlephobia rate limit reached, skipping for {name}")
             combined_data["bundlephobia_error"] = "rate_limit_exceeded"
+            fallback_data = existing or await _get_existing_package_data(ecosystem, name)
+            if fallback_data:
+                threshold = _get_stale_threshold_days("rate_limit_exceeded")
+                if _is_data_acceptable(fallback_data, max_age_days=threshold):
+                    logger.info(f"Using stale bundlephobia data for {name} (rate limited)")
+                    cached = _extract_cached_bundlephobia_fields(fallback_data)
+                    for key, value in cached.items():
+                        if value is not None:
+                            combined_data[key] = value
+                    if any(v is not None for v in cached.values()):
+                        combined_data["sources"].append("bundlephobia_stale")
+                    combined_data["bundlephobia_freshness"] = "stale"
+                    combined_data["bundlephobia_stale_reason"] = "rate_limit_exceeded"
         else:
             bundle_result = None  # Skipped due to selective retry
 
@@ -682,9 +722,23 @@ async def collect_package_data(
                             combined_data[key] = value
                     combined_data["sources"].append("npm_stale")
                     combined_data["npm_freshness"] = "stale"
+                    combined_data["npm_stale_reason"] = "circuit_open"
             elif isinstance(npm_result, Exception):
                 logger.error(f"Failed to fetch npm data for {name}: {npm_result}")
                 combined_data["npm_error"] = _sanitize_error(str(npm_result))
+                # Try stale data fallback (Fix 3a)
+                fallback_data = existing or await _get_existing_package_data(ecosystem, name)
+                if fallback_data:
+                    threshold = _get_stale_threshold_days("exception")
+                    if _is_data_acceptable(fallback_data, max_age_days=threshold):
+                        logger.info(f"Using stale npm data for {name} (exception)")
+                        cached = _extract_cached_npm_fields(fallback_data)
+                        for key, value in cached.items():
+                            if value is not None:
+                                combined_data[key] = value
+                        combined_data["sources"].append("npm_stale")
+                        combined_data["npm_freshness"] = "stale"
+                        combined_data["npm_stale_reason"] = str(npm_result)[:50]
             else:
                 npm_data = npm_result
                 combined_data["npm"] = npm_data
@@ -729,9 +783,21 @@ async def collect_package_data(
                     if any(v is not None for v in cached.values()):
                         combined_data["sources"].append("bundlephobia_stale")
                     combined_data["bundlephobia_freshness"] = "stale"
+                    combined_data["bundlephobia_stale_reason"] = "circuit_open"
             elif isinstance(bundle_result, Exception):
                 logger.warning(f"Failed to fetch bundle size for {name}: {bundle_result}")
                 combined_data["bundlephobia_error"] = _sanitize_error(str(bundle_result))
+                # Try stale data fallback (Fix 3d)
+                fallback_data = existing or await _get_existing_package_data(ecosystem, name)
+                if fallback_data:
+                    cached = _extract_cached_bundlephobia_fields(fallback_data)
+                    for key, value in cached.items():
+                        if value is not None:
+                            combined_data[key] = value
+                    if any(v is not None for v in cached.values()):
+                        combined_data["sources"].append("bundlephobia_stale")
+                    combined_data["bundlephobia_freshness"] = "stale"
+                    combined_data["bundlephobia_stale_reason"] = str(bundle_result)[:50]
             elif "error" not in bundle_result:
                 combined_data["bundlephobia"] = bundle_result
                 combined_data["sources"].append("bundlephobia")
@@ -792,7 +858,8 @@ async def collect_package_data(
                 combined_data["pypi_error"] = "circuit_open"
                 # Try stale data fallback
                 fallback_data = existing or await _get_existing_package_data(ecosystem, name)
-                if fallback_data and _is_data_acceptable(fallback_data, max_age_days=STALE_DATA_MAX_AGE_DAYS):
+                threshold = _get_stale_threshold_days("circuit_open")
+                if fallback_data and _is_data_acceptable(fallback_data, max_age_days=threshold):
                     logger.info(f"Using stale PyPI data for {name} (circuit open)")
                     cached = _extract_cached_pypi_fields(fallback_data)
                     for key, value in cached.items():
@@ -800,13 +867,37 @@ async def collect_package_data(
                             combined_data[key] = value
                     combined_data["sources"].append("pypi_stale")
                     combined_data["pypi_freshness"] = "stale"
+                    combined_data["pypi_stale_reason"] = "circuit_open"
             except Exception as e:
                 logger.error(f"Failed to fetch PyPI data for {name}: {e}")
                 combined_data["pypi_error"] = _sanitize_error(str(e))
+                # Try stale data fallback
+                fallback_data = existing or await _get_existing_package_data(ecosystem, name)
+                threshold = _get_stale_threshold_days("exception")
+                if fallback_data and _is_data_acceptable(fallback_data, max_age_days=threshold):
+                    logger.info(f"Using stale PyPI data for {name} (exception)")
+                    cached = _extract_cached_pypi_fields(fallback_data)
+                    for key, value in cached.items():
+                        if value is not None:
+                            combined_data[key] = value
+                    combined_data["sources"].append("pypi_stale")
+                    combined_data["pypi_freshness"] = "stale"
+                    combined_data["pypi_stale_reason"] = "exception"
         elif should_fetch_pypi:
-            # Wanted to fetch but rate limited
+            # Wanted to fetch but rate limited - try stale fallback
             logger.warning(f"PyPI rate limit reached, skipping for {name}")
             combined_data["pypi_error"] = "rate_limit_exceeded"
+            fallback_data = existing or await _get_existing_package_data(ecosystem, name)
+            threshold = _get_stale_threshold_days("rate_limit_exceeded")
+            if fallback_data and _is_data_acceptable(fallback_data, max_age_days=threshold):
+                logger.info(f"Using stale PyPI data for {name} (rate limited)")
+                cached = _extract_cached_pypi_fields(fallback_data)
+                for key, value in cached.items():
+                    if value is not None:
+                        combined_data[key] = value
+                combined_data["sources"].append("pypi_stale")
+                combined_data["pypi_freshness"] = "stale"
+                combined_data["pypi_stale_reason"] = "rate_limit_exceeded"
         # else: skipped due to selective retry, cached data already applied above
 
     # 3. GitHub data (secondary - rate limited, with circuit breaker)
@@ -841,7 +932,7 @@ async def collect_package_data(
                 try:
                     # Use semaphore to limit concurrent GitHub API calls per Lambda instance
                     # AND global rate limiter to coordinate across all Lambda instances
-                    async with GITHUB_SEMAPHORE:
+                    async with get_github_semaphore():
                         # Check global rate limit before making GitHub API call
                         if not _check_and_increment_github_rate_limit():
                             logger.warning(
@@ -1112,6 +1203,15 @@ def store_package_data(ecosystem: str, name: str, data: dict, tier: int):
         "openssf_date": data.get("openssf_date"),      # Date the scorecard was generated
         "openssf_freshness": data.get("openssf_freshness"),      # "fresh", "stale", or None
         "openssf_stale_reason": data.get("openssf_stale_reason"),  # Error that triggered stale fallback
+        # Source-specific freshness tracking (Fix 4)
+        "npm_freshness": data.get("npm_freshness"),
+        "npm_stale_reason": data.get("npm_stale_reason"),
+        "github_freshness": data.get("github_freshness"),
+        "github_stale_reason": data.get("github_stale_reason"),
+        "pypi_freshness": data.get("pypi_freshness"),
+        "pypi_stale_reason": data.get("pypi_stale_reason"),
+        "bundlephobia_freshness": data.get("bundlephobia_freshness"),
+        "bundlephobia_stale_reason": data.get("bundlephobia_stale_reason"),
         # Status flags
         "is_deprecated": data.get("is_deprecated", False),
         "archived": data.get("archived", False),

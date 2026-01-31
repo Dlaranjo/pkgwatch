@@ -47,13 +47,14 @@ class CircuitBreakerConfig:
 
 @dataclass
 class CircuitBreakerState:
-    """Current state of a circuit breaker with async lock for thread safety."""
+    """Current state of a circuit breaker."""
     state: CircuitState = CircuitState.CLOSED
     failure_count: int = 0
     success_count: int = 0
     last_failure_time: Optional[float] = None
     half_open_calls: int = 0
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # NOTE: Lock removed from dataclass - see InMemoryCircuitBreaker._get_lock()
+    # for lazy initialization that handles Lambda event loop changes
 
 
 class InMemoryCircuitBreaker:
@@ -73,6 +74,26 @@ class InMemoryCircuitBreaker:
         self.name = name
         self.config = config or CircuitBreakerConfig()
         self._state = CircuitBreakerState()
+        # Lazy-initialized lock with event loop tracking
+        # Lambda can reuse containers but create new event loops
+        self._lock: Optional[asyncio.Lock] = None
+        self._lock_loop_id: Optional[int] = None
+
+    def _get_lock(self) -> asyncio.Lock:
+        """Get asyncio.Lock, recreating if event loop changed."""
+        try:
+            current_loop_id = id(asyncio.get_running_loop())
+        except RuntimeError:
+            current_loop_id = None
+
+        if self._lock is not None and self._lock_loop_id != current_loop_id:
+            self._lock = None
+
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+            self._lock_loop_id = current_loop_id
+
+        return self._lock
 
     def _check_timeout_transition(self) -> CircuitState:
         """Check for OPEN -> HALF_OPEN transition (internal, not thread-safe)."""
@@ -122,7 +143,7 @@ class InMemoryCircuitBreaker:
         Uses asyncio.Lock to prevent race conditions in half-open state
         when multiple coroutines check simultaneously.
         """
-        async with self._state.lock:
+        async with self._get_lock():
             current_state = self._check_timeout_transition()
 
             if current_state == CircuitState.CLOSED:
@@ -158,7 +179,7 @@ class InMemoryCircuitBreaker:
 
     async def record_success_async(self) -> None:
         """Record a successful request (thread-safe for async)."""
-        async with self._state.lock:
+        async with self._get_lock():
             if self._state.state == CircuitState.HALF_OPEN:
                 self._state.success_count += 1
                 if self._state.success_count >= self.config.success_threshold:
@@ -193,7 +214,7 @@ class InMemoryCircuitBreaker:
 
     async def record_failure_async(self, error: Optional[Exception] = None) -> None:
         """Record a failed request (thread-safe for async)."""
-        async with self._state.lock:
+        async with self._get_lock():
             self._state.failure_count += 1
             self._state.last_failure_time = time.time()
 
