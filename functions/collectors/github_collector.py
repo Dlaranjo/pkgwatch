@@ -139,18 +139,64 @@ class GitHubCollector:
                     return None
 
                 elif resp.status_code == 403:
-                    if self._rate_limit_remaining == 0:
-                        # Rate limited - calculate wait time
-                        now = int(datetime.now(timezone.utc).timestamp())
-                        wait_time = max(0, (self._rate_limit_reset or now) - now)
-                        wait_time = min(wait_time, 60)  # Cap at 60 seconds
-                        logger.warning(f"Rate limited. Waiting {wait_time}s")
+                    # Determine if this is a rate limit error vs access denied
+                    # using multi-signal detection (not cached value)
+                    is_rate_limit = False
+                    wait_time = None
+
+                    # Signal 1: Check Retry-After header (works for secondary limits)
+                    retry_after = resp.headers.get("Retry-After")
+                    if retry_after:
+                        is_rate_limit = True
+                        try:
+                            wait_time = int(retry_after)
+                        except ValueError:
+                            wait_time = 60
+
+                    # Signal 2: Check X-RateLimit-Remaining from THIS response
+                    rate_limit_remaining = resp.headers.get("X-RateLimit-Remaining")
+                    if rate_limit_remaining is not None:
+                        try:
+                            if int(rate_limit_remaining) == 0:
+                                is_rate_limit = True
+                        except ValueError:
+                            pass
+
+                    # Signal 3: Check response body for rate limit message
+                    try:
+                        body = resp.json()
+                        message = body.get("message", "").lower()
+                        if "rate limit" in message:
+                            is_rate_limit = True
+                    except Exception:
+                        pass
+
+                    if is_rate_limit:
+                        if wait_time is None:
+                            now = int(datetime.now(timezone.utc).timestamp())
+                            if self._rate_limit_reset and self._rate_limit_reset > now:
+                                wait_time = self._rate_limit_reset - now
+                            else:
+                                wait_time = 60  # Default backoff when no timing info
+                        wait_time = min(wait_time, 60)
+                        logger.warning(f"GitHub rate limited (403). Waiting {wait_time}s")
                         await asyncio.sleep(wait_time)
                         continue
                     else:
-                        # Other 403 (e.g., blocked repo)
-                        logger.warning(f"Access forbidden: {url}")
+                        logger.warning(f"Access forbidden (not rate limit): {url}")
                         return None
+
+                elif resp.status_code == 429:
+                    # Explicit rate limit status
+                    retry_after = resp.headers.get("Retry-After")
+                    try:
+                        wait_time = int(retry_after) if retry_after else 60
+                    except ValueError:
+                        wait_time = 60
+                    wait_time = min(wait_time, 60)
+                    logger.warning(f"Rate limited (429). Waiting {wait_time}s")
+                    await asyncio.sleep(wait_time)
+                    continue
 
                 elif resp.status_code == 409:
                     # Empty repository (no commits)

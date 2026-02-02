@@ -23,7 +23,7 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))  # Add collectors directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))  # Add functions directory
 from shared.circuit_breaker import circuit_breaker, DEPSDEV_CIRCUIT
-from shared.constants import DEPSDEV_API, DEFAULT_TIMEOUT
+from shared.constants import DEPSDEV_API, DEPSDEV_API_ALPHA, DEFAULT_TIMEOUT
 from http_client import get_http_client
 
 # HTTP status codes that are safe to retry
@@ -187,11 +187,12 @@ async def get_package_info(name: str, ecosystem: str = "npm") -> Optional[dict]:
             logger.debug(f"Project not found for {name}: {clean_url}")
 
     # 4. Get dependents count (requires version in the endpoint)
+    # Note: Dependents endpoint only exists in v3alpha, not stable v3 API
     dependents_count = 0
     if latest_version:
         try:
             encoded_version = quote(latest_version, safe="")
-            dependents_url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}/versions/{encoded_version}:dependents"
+            dependents_url = f"{DEPSDEV_API_ALPHA}/systems/{ecosystem}/packages/{encoded_name}/versions/{encoded_version}:dependents"
             dependents_resp = await retry_with_backoff(client.get, dependents_url)
             dependents_resp.raise_for_status()
             dependents_data = dependents_resp.json()
@@ -201,8 +202,11 @@ async def get_package_info(name: str, ecosystem: str = "npm") -> Optional[dict]:
                 dependents_count = dependent_count_value
             elif isinstance(dependent_count_value, list):
                 dependents_count = len(dependent_count_value)
-        except httpx.HTTPStatusError:
-            logger.debug(f"Could not fetch dependents for {name}")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                logger.debug(f"No dependents data available for {name}@{latest_version}")
+            else:
+                logger.warning(f"Failed to fetch dependents for {name}: HTTP {e.response.status_code}")
 
     # Extract OpenSSF scorecard
     scorecard = project_data.get("scorecardV2", {})
@@ -228,11 +232,14 @@ async def get_package_info(name: str, ecosystem: str = "npm") -> Optional[dict]:
 
 
 async def get_dependents_count(name: str, ecosystem: str = "npm") -> int:
-    """Get count of packages that depend on this one."""
+    """Get count of packages that depend on this one.
+
+    Note: Uses v3alpha API as dependents endpoint doesn't exist in stable v3.
+    """
     encoded_name = encode_package_name(name)
 
     client = get_http_client()
-    url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}:dependents"
+    url = f"{DEPSDEV_API_ALPHA}/systems/{ecosystem}/packages/{encoded_name}:dependents"
     resp = await retry_with_backoff(client.get, url)
     resp.raise_for_status()
     data = resp.json()

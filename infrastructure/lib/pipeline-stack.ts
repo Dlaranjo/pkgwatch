@@ -434,6 +434,50 @@ export class PipelineStack extends cdk.Stack {
     );
 
     // ===========================================
+    // Lambda: OpenSSF Batch Collector
+    // ===========================================
+    // Batch fetches OpenSSF scorecards with tier prioritization
+    // Fixes data quality issue where deps.dev lacks OpenSSF data for some packages
+    const openssfCollector = new lambda.Function(this, "OpenSSFCollector", {
+      ...commonLambdaProps,
+      functionName: "pkgwatch-openssf-collector",
+      handler: "openssf_collector_batch.handler",
+      code: collectorsCode,
+      timeout: cdk.Duration.minutes(10), // Allow time for API calls + delays
+      memorySize: 512,
+      description: "Fetches OpenSSF scorecards with tier prioritization",
+    });
+
+    // Permissions - read packages list, write OpenSSF data
+    packagesTable.grantReadWriteData(openssfCollector);
+
+    // Schedule: Every 2 hours
+    new events.Rule(this, "OpenSSFCollectorSchedule", {
+      ruleName: "pkgwatch-openssf-collector",
+      schedule: events.Schedule.rate(cdk.Duration.hours(2)),
+      description: "Fetches OpenSSF scorecards every 2 hours",
+      targets: [new targets.LambdaFunction(openssfCollector)],
+    });
+
+    // CloudWatch alarm for failures (action added later after alertTopic is defined)
+    const openssfErrorAlarm = new cloudwatch.Alarm(
+      this,
+      "OpenSSFCollectorErrorAlarm",
+      {
+        alarmName: "pkgwatch-openssf-collector-errors",
+        alarmDescription: "OpenSSF collector failing",
+        metric: openssfCollector.metricErrors({
+          period: cdk.Duration.minutes(5),
+        }),
+        threshold: 1,
+        evaluationPeriods: 2,
+        comparisonOperator:
+          cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }
+    );
+
+    // ===========================================
     // Lambda: DLQ Processor
     // ===========================================
     // Reprocesses failed messages with exponential backoff and retry tracking
@@ -690,6 +734,11 @@ export class PipelineStack extends cdk.Stack {
 
     // PyPI Downloads alarm (defined earlier, action added here after alertTopic exists)
     pypiDownloadsErrorAlarm.addAlarmAction(
+      new cloudwatchActions.SnsAction(this.alertTopic)
+    );
+
+    // OpenSSF Collector alarm (defined earlier, action added here after alertTopic exists)
+    openssfErrorAlarm.addAlarmAction(
       new cloudwatchActions.SnsAction(this.alertTopic)
     );
 

@@ -34,6 +34,10 @@ SCORE_COMPONENTS = [
 
 # External APIs
 DEPSDEV_API = "https://api.deps.dev/v3"
+# Dependents endpoint only exists in v3alpha, not in stable v3 API
+# See: https://docs.deps.dev/api/v3alpha/ (has GetDependents)
+# vs:  https://docs.deps.dev/api/v3/      (no GetDependents)
+DEPSDEV_API_ALPHA = "https://api.deps.dev/v3alpha"
 NPM_REGISTRY = "https://registry.npmjs.org"
 PYPI_API = "https://pypi.org/pypi"
 PYPISTATS_API = "https://pypistats.org/api"
