@@ -251,14 +251,14 @@ class TestStoreCollectionError:
     @patch("package_collector._get_dynamodb")
     def test_store_collection_error_success(self, mock_get_db):
         """Test successful storage of collection error."""
-        from package_collector import _store_collection_error
+        from package_collector import _store_collection_error_sync
 
         mock_table = MagicMock()
         mock_db = MagicMock()
         mock_db.Table.return_value = mock_table
         mock_get_db.return_value = mock_db
 
-        _store_collection_error("npm", "lodash", "Connection timeout")
+        _store_collection_error_sync("npm", "lodash", "Connection timeout")
 
         mock_table.update_item.assert_called_once()
         call_args = mock_table.update_item.call_args
@@ -269,7 +269,7 @@ class TestStoreCollectionError:
     @patch("package_collector._get_dynamodb")
     def test_store_collection_error_handles_failure(self, mock_get_db):
         """Test that storage failures don't raise exceptions."""
-        from package_collector import _store_collection_error
+        from package_collector import _store_collection_error_sync
 
         mock_table = MagicMock()
         mock_table.update_item.side_effect = Exception("DynamoDB error")
@@ -278,4 +278,4 @@ class TestStoreCollectionError:
         mock_get_db.return_value = mock_db
 
         # Should not raise
-        _store_collection_error("npm", "lodash", "Some error")
+        _store_collection_error_sync("npm", "lodash", "Some error")

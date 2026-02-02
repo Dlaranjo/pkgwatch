@@ -16,7 +16,8 @@ import random
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Tuple
+from enum import Enum
+from typing import Callable, Optional, Tuple
 
 import boto3
 from botocore.exceptions import ClientError
@@ -248,9 +249,9 @@ def _get_total_github_calls(window_key: str) -> int:
     return total
 
 
-def _check_and_increment_github_rate_limit() -> bool:
+def _check_and_increment_github_rate_limit_sync() -> bool:
     """
-    Atomically check and increment GitHub rate limit.
+    Atomically check and increment GitHub rate limit (synchronous).
 
     Uses conditional expression to prevent race conditions.
     Each shard has its own limit to distribute load.
@@ -263,8 +264,10 @@ def _check_and_increment_github_rate_limit() -> bool:
     window_key = _get_rate_limit_window_key()
     shard_id = random.randint(0, RATE_LIMIT_SHARDS - 1)
 
-    # Per-shard limit with buffer for edge cases
-    per_shard_limit = (GITHUB_HOURLY_LIMIT // RATE_LIMIT_SHARDS) + 50
+    # Per-shard limit with small buffer for in-flight requests
+    # 10 Lambdas × 5 semaphore = 50 concurrent, so +5 per shard = 50 total buffer
+    # Results in 4050 total capacity (1.25% over 4000 budget, well under GitHub's 5000 limit)
+    per_shard_limit = (GITHUB_HOURLY_LIMIT // RATE_LIMIT_SHARDS) + 5
 
     ttl = int(now.timestamp()) + 7200  # 2 hour TTL
 
@@ -305,8 +308,13 @@ def _check_and_increment_github_rate_limit() -> bool:
         return False
 
 
-async def _get_existing_package_data(ecosystem: str, name: str) -> Optional[dict]:
-    """Get existing package data from DynamoDB."""
+async def _check_and_increment_github_rate_limit() -> bool:
+    """Check and increment GitHub rate limit (non-blocking)."""
+    return await asyncio.to_thread(_check_and_increment_github_rate_limit_sync)
+
+
+def _get_existing_package_data_sync(ecosystem: str, name: str) -> Optional[dict]:
+    """Get existing package data from DynamoDB (synchronous)."""
     table = _get_dynamodb().Table(PACKAGES_TABLE)
     try:
         response = table.get_item(Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"})
@@ -316,9 +324,14 @@ async def _get_existing_package_data(ecosystem: str, name: str) -> Optional[dict
         return None
 
 
-def _store_collection_error(ecosystem: str, name: str, error_msg: str) -> None:
+async def _get_existing_package_data(ecosystem: str, name: str) -> Optional[dict]:
+    """Get existing package data from DynamoDB (non-blocking)."""
+    return await asyncio.to_thread(_get_existing_package_data_sync, ecosystem, name)
+
+
+def _store_collection_error_sync(ecosystem: str, name: str, error_msg: str) -> None:
     """
-    Store collection error in package record for DLQ processor.
+    Store collection error in package record for DLQ processor (synchronous).
 
     This allows the DLQ processor to classify errors and make intelligent
     retry decisions. The error is stored with a timestamp so we can track
@@ -347,6 +360,30 @@ def _store_collection_error(ecosystem: str, name: str, error_msg: str) -> None:
     except Exception as e:
         # Don't fail the whole operation if we can't store the error
         logger.warning(f"Failed to store collection error for {ecosystem}/{name}: {e}")
+
+
+async def _store_collection_error(ecosystem: str, name: str, error_msg: str) -> None:
+    """Store collection error in package record (non-blocking)."""
+    await asyncio.to_thread(_store_collection_error_sync, ecosystem, name, error_msg)
+
+
+def _increment_retry_count_sync(ecosystem: str, name: str) -> None:
+    """Increment retry_count for a package (synchronous)."""
+    table = _get_dynamodb().Table(PACKAGES_TABLE)
+    try:
+        table.update_item(
+            Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"},
+            UpdateExpression="SET retry_count = if_not_exists(retry_count, :zero) + :one",
+            ExpressionAttributeValues={":zero": 0, ":one": 1},
+        )
+        logger.debug(f"Incremented retry_count for {ecosystem}/{name}")
+    except Exception as e:
+        logger.warning(f"Failed to increment retry_count: {e}")
+
+
+async def _increment_retry_count(ecosystem: str, name: str) -> None:
+    """Increment retry_count for a package (non-blocking)."""
+    await asyncio.to_thread(_increment_retry_count_sync, ecosystem, name)
 
 
 def _is_data_acceptable(data: dict, max_age_days: int) -> bool:
@@ -427,6 +464,79 @@ def _get_stale_threshold_days(error_reason: str) -> int:
     if "rate_limit" in error_lower:
         return STALE_DATA_THRESHOLDS["rate_limit_exceeded"]
     return STALE_DATA_THRESHOLDS["default"]
+
+
+class FallbackMode(Enum):
+    """Fallback mode for stale data handling."""
+    STANDARD = "standard"  # {source}_freshness pattern
+    GLOBAL = "global"      # data_freshness pattern (deps.dev)
+
+
+async def _try_stale_fallback(
+    combined_data: dict,
+    ecosystem: str,
+    name: str,
+    source: str,
+    error_reason: str,
+    extractor: Callable[[dict], dict],
+    existing: Optional[dict] = None,
+    has_data_check: Optional[Callable[[dict], bool]] = None,
+    require_any_cached_value: bool = False,
+    mode: FallbackMode = FallbackMode.STANDARD,
+    reason_prefix: str = "",
+) -> bool:
+    """
+    Generic stale data fallback handler.
+
+    Args:
+        combined_data: The data dictionary to update (modified in place)
+        ecosystem: Package ecosystem (npm/pypi)
+        name: Package name
+        source: Source name for tracking (e.g., "npm", "bundlephobia", "pypi")
+        error_reason: The error that triggered the fallback
+        extractor: Function to extract relevant fields from cached data
+        existing: Pre-fetched existing data (optional, will fetch if None)
+        has_data_check: Optional function to check if cached data has relevant fields
+        require_any_cached_value: If True, only add to sources if any cached value is non-None
+        mode: STANDARD for source-specific freshness, GLOBAL for data-level freshness
+        reason_prefix: Prefix for stale_reason in GLOBAL mode (e.g., "deps.dev_")
+
+    Returns:
+        True if stale fallback was used, False otherwise
+    """
+    fallback_data = existing or await _get_existing_package_data(ecosystem, name)
+    if not fallback_data:
+        return False
+    if has_data_check and not has_data_check(fallback_data):
+        return False
+
+    threshold = _get_stale_threshold_days(error_reason)
+    if not _is_data_acceptable(fallback_data, max_age_days=threshold):
+        return False
+
+    cached = extractor(fallback_data)
+
+    if mode == FallbackMode.GLOBAL:
+        combined_data.update(cached)
+        combined_data["data_freshness"] = "stale"
+        combined_data["stale_reason"] = f"{reason_prefix}{error_reason}"
+    else:
+        for key, value in cached.items():
+            if value is not None:
+                combined_data[key] = value
+
+        stale_source = f"{source}_stale"
+        if require_any_cached_value:
+            if any(v is not None for v in cached.values()):
+                combined_data.setdefault("sources", []).append(stale_source)
+        else:
+            combined_data.setdefault("sources", []).append(stale_source)
+
+        combined_data[f"{source}_freshness"] = "stale"
+        combined_data[f"{source}_stale_reason"] = error_reason
+
+    logger.info(f"Using stale {source} data for {ecosystem}/{name} (reason={error_reason})")
+    return True
 
 
 async def _try_github_stale_fallback(
@@ -600,24 +710,22 @@ async def collect_package_data(
         combined_data["depsdev_error"] = "circuit_open"
 
         # Try to use stale/cached data as fallback
-        fallback_data = existing or await _get_existing_package_data(ecosystem, name)
-        if fallback_data and _is_data_acceptable(fallback_data, max_age_days=STALE_DATA_MAX_AGE_DAYS):
-            logger.info(f"Using stale data for {ecosystem}/{name}")
-            combined_data.update(_extract_cached_fields(fallback_data))
-            combined_data["data_freshness"] = "stale"
-            combined_data["stale_reason"] = "deps.dev_circuit_open"
+        await _try_stale_fallback(
+            combined_data, ecosystem, name, "deps.dev", "circuit_open",
+            _extract_cached_fields, existing,
+            mode=FallbackMode.GLOBAL, reason_prefix="deps.dev_"
+        )
 
     except Exception as e:
         logger.error(f"Failed to fetch deps.dev data for {ecosystem}/{name}: {e}")
         combined_data["depsdev_error"] = _sanitize_error(str(e))
 
         # Try to use stale/cached data as fallback
-        fallback_data = existing or await _get_existing_package_data(ecosystem, name)
-        if fallback_data and _is_data_acceptable(fallback_data, max_age_days=STALE_DATA_MAX_AGE_DAYS):
-            logger.info(f"Using stale data for {ecosystem}/{name}")
-            combined_data.update(_extract_cached_fields(fallback_data))
-            combined_data["data_freshness"] = "stale"
-            combined_data["stale_reason"] = "deps.dev_unavailable"
+        await _try_stale_fallback(
+            combined_data, ecosystem, name, "deps.dev", "unavailable",
+            _extract_cached_fields, existing,
+            mode=FallbackMode.GLOBAL, reason_prefix="deps.dev_"
+        )
 
     # 2. npm and bundlephobia data (run in parallel - they don't depend on each other)
     if ecosystem == "npm":
@@ -674,18 +782,10 @@ async def collect_package_data(
             npm_result = None
             logger.warning(f"npm rate limit reached, skipping for {name}")
             combined_data["npm_error"] = "rate_limit_exceeded"
-            # Try stale data fallback (mirror circuit_open pattern at lines 643-655)
-            fallback_data = existing or await _get_existing_package_data(ecosystem, name)
-            threshold = STALE_DATA_THRESHOLDS.get("rate_limit_exceeded", 7)
-            if fallback_data and _is_data_acceptable(fallback_data, max_age_days=threshold):
-                logger.info(f"Using stale npm data for {name} (rate limited)")
-                cached = _extract_cached_npm_fields(fallback_data)
-                for key, value in cached.items():
-                    if value is not None:
-                        combined_data[key] = value
-                combined_data["sources"].append("npm_stale")
-                combined_data["npm_freshness"] = "stale"
-                combined_data["npm_stale_reason"] = "rate_limit_exceeded"
+            await _try_stale_fallback(
+                combined_data, ecosystem, name, "npm", "rate_limit_exceeded",
+                _extract_cached_npm_fields, existing
+            )
         else:
             npm_result = None  # Skipped due to selective retry
 
@@ -696,19 +796,11 @@ async def collect_package_data(
             bundle_result = None
             logger.warning(f"Bundlephobia rate limit reached, skipping for {name}")
             combined_data["bundlephobia_error"] = "rate_limit_exceeded"
-            fallback_data = existing or await _get_existing_package_data(ecosystem, name)
-            if fallback_data:
-                threshold = _get_stale_threshold_days("rate_limit_exceeded")
-                if _is_data_acceptable(fallback_data, max_age_days=threshold):
-                    logger.info(f"Using stale bundlephobia data for {name} (rate limited)")
-                    cached = _extract_cached_bundlephobia_fields(fallback_data)
-                    for key, value in cached.items():
-                        if value is not None:
-                            combined_data[key] = value
-                    if any(v is not None for v in cached.values()):
-                        combined_data["sources"].append("bundlephobia_stale")
-                    combined_data["bundlephobia_freshness"] = "stale"
-                    combined_data["bundlephobia_stale_reason"] = "rate_limit_exceeded"
+            await _try_stale_fallback(
+                combined_data, ecosystem, name, "bundlephobia", "rate_limit_exceeded",
+                _extract_cached_bundlephobia_fields, existing,
+                require_any_cached_value=True
+            )
         else:
             bundle_result = None  # Skipped due to selective retry
 
@@ -717,33 +809,17 @@ async def collect_package_data(
             if isinstance(npm_result, CircuitOpenError):
                 logger.warning(f"npm circuit open for {name}")
                 combined_data["npm_error"] = "circuit_open"
-                # Try stale data fallback
-                fallback_data = existing or await _get_existing_package_data(ecosystem, name)
-                if fallback_data and _is_data_acceptable(fallback_data, max_age_days=STALE_DATA_MAX_AGE_DAYS):
-                    logger.info(f"Using stale npm data for {name} (circuit open)")
-                    cached = _extract_cached_npm_fields(fallback_data)
-                    for key, value in cached.items():
-                        if value is not None:
-                            combined_data[key] = value
-                    combined_data["sources"].append("npm_stale")
-                    combined_data["npm_freshness"] = "stale"
-                    combined_data["npm_stale_reason"] = "circuit_open"
+                await _try_stale_fallback(
+                    combined_data, ecosystem, name, "npm", "circuit_open",
+                    _extract_cached_npm_fields, existing
+                )
             elif isinstance(npm_result, Exception):
                 logger.error(f"Failed to fetch npm data for {name}: {npm_result}")
                 combined_data["npm_error"] = _sanitize_error(str(npm_result))
-                # Try stale data fallback (Fix 3a)
-                fallback_data = existing or await _get_existing_package_data(ecosystem, name)
-                if fallback_data:
-                    threshold = _get_stale_threshold_days("exception")
-                    if _is_data_acceptable(fallback_data, max_age_days=threshold):
-                        logger.info(f"Using stale npm data for {name} (exception)")
-                        cached = _extract_cached_npm_fields(fallback_data)
-                        for key, value in cached.items():
-                            if value is not None:
-                                combined_data[key] = value
-                        combined_data["sources"].append("npm_stale")
-                        combined_data["npm_freshness"] = "stale"
-                        combined_data["npm_stale_reason"] = str(npm_result)[:50]
+                await _try_stale_fallback(
+                    combined_data, ecosystem, name, "npm", str(npm_result)[:50],
+                    _extract_cached_npm_fields, existing
+                )
             else:
                 npm_data = npm_result
                 combined_data["npm"] = npm_data
@@ -777,32 +853,19 @@ async def collect_package_data(
             if isinstance(bundle_result, CircuitOpenError):
                 logger.warning(f"Bundlephobia circuit open for {name}")
                 combined_data["bundlephobia_error"] = "circuit_open"
-                # Try stale data fallback
-                fallback_data = existing or await _get_existing_package_data(ecosystem, name)
-                if fallback_data and _is_data_acceptable(fallback_data, max_age_days=STALE_DATA_MAX_AGE_DAYS):
-                    logger.info(f"Using stale bundlephobia data for {name} (circuit open)")
-                    cached = _extract_cached_bundlephobia_fields(fallback_data)
-                    for key, value in cached.items():
-                        if value is not None:
-                            combined_data[key] = value
-                    if any(v is not None for v in cached.values()):
-                        combined_data["sources"].append("bundlephobia_stale")
-                    combined_data["bundlephobia_freshness"] = "stale"
-                    combined_data["bundlephobia_stale_reason"] = "circuit_open"
+                await _try_stale_fallback(
+                    combined_data, ecosystem, name, "bundlephobia", "circuit_open",
+                    _extract_cached_bundlephobia_fields, existing,
+                    require_any_cached_value=True
+                )
             elif isinstance(bundle_result, Exception):
                 logger.warning(f"Failed to fetch bundle size for {name}: {bundle_result}")
                 combined_data["bundlephobia_error"] = _sanitize_error(str(bundle_result))
-                # Try stale data fallback (Fix 3d)
-                fallback_data = existing or await _get_existing_package_data(ecosystem, name)
-                if fallback_data:
-                    cached = _extract_cached_bundlephobia_fields(fallback_data)
-                    for key, value in cached.items():
-                        if value is not None:
-                            combined_data[key] = value
-                    if any(v is not None for v in cached.values()):
-                        combined_data["sources"].append("bundlephobia_stale")
-                    combined_data["bundlephobia_freshness"] = "stale"
-                    combined_data["bundlephobia_stale_reason"] = str(bundle_result)[:50]
+                await _try_stale_fallback(
+                    combined_data, ecosystem, name, "bundlephobia", str(bundle_result)[:50],
+                    _extract_cached_bundlephobia_fields, existing,
+                    require_any_cached_value=True
+                )
             elif "error" not in bundle_result:
                 combined_data["bundlephobia"] = bundle_result
                 combined_data["sources"].append("bundlephobia")
@@ -881,48 +944,25 @@ async def collect_package_data(
             except CircuitOpenError:
                 logger.warning(f"PyPI circuit open for {name}")
                 combined_data["pypi_error"] = "circuit_open"
-                # Try stale data fallback
-                fallback_data = existing or await _get_existing_package_data(ecosystem, name)
-                threshold = _get_stale_threshold_days("circuit_open")
-                if fallback_data and _is_data_acceptable(fallback_data, max_age_days=threshold):
-                    logger.info(f"Using stale PyPI data for {name} (circuit open)")
-                    cached = _extract_cached_pypi_fields(fallback_data)
-                    for key, value in cached.items():
-                        if value is not None:
-                            combined_data[key] = value
-                    combined_data["sources"].append("pypi_stale")
-                    combined_data["pypi_freshness"] = "stale"
-                    combined_data["pypi_stale_reason"] = "circuit_open"
+                await _try_stale_fallback(
+                    combined_data, ecosystem, name, "pypi", "circuit_open",
+                    _extract_cached_pypi_fields, existing
+                )
             except Exception as e:
                 logger.error(f"Failed to fetch PyPI data for {name}: {e}")
                 combined_data["pypi_error"] = _sanitize_error(str(e))
-                # Try stale data fallback
-                fallback_data = existing or await _get_existing_package_data(ecosystem, name)
-                threshold = _get_stale_threshold_days("exception")
-                if fallback_data and _is_data_acceptable(fallback_data, max_age_days=threshold):
-                    logger.info(f"Using stale PyPI data for {name} (exception)")
-                    cached = _extract_cached_pypi_fields(fallback_data)
-                    for key, value in cached.items():
-                        if value is not None:
-                            combined_data[key] = value
-                    combined_data["sources"].append("pypi_stale")
-                    combined_data["pypi_freshness"] = "stale"
-                    combined_data["pypi_stale_reason"] = "exception"
+                await _try_stale_fallback(
+                    combined_data, ecosystem, name, "pypi", "exception",
+                    _extract_cached_pypi_fields, existing
+                )
         elif should_fetch_pypi:
             # Wanted to fetch but rate limited - try stale fallback
             logger.warning(f"PyPI rate limit reached, skipping for {name}")
             combined_data["pypi_error"] = "rate_limit_exceeded"
-            fallback_data = existing or await _get_existing_package_data(ecosystem, name)
-            threshold = _get_stale_threshold_days("rate_limit_exceeded")
-            if fallback_data and _is_data_acceptable(fallback_data, max_age_days=threshold):
-                logger.info(f"Using stale PyPI data for {name} (rate limited)")
-                cached = _extract_cached_pypi_fields(fallback_data)
-                for key, value in cached.items():
-                    if value is not None:
-                        combined_data[key] = value
-                combined_data["sources"].append("pypi_stale")
-                combined_data["pypi_freshness"] = "stale"
-                combined_data["pypi_stale_reason"] = "rate_limit_exceeded"
+            await _try_stale_fallback(
+                combined_data, ecosystem, name, "pypi", "rate_limit_exceeded",
+                _extract_cached_pypi_fields, existing
+            )
         # else: skipped due to selective retry, cached data already applied above
 
     # 3. GitHub data (secondary - rate limited, with circuit breaker)
@@ -959,7 +999,7 @@ async def collect_package_data(
                     # AND global rate limiter to coordinate across all Lambda instances
                     async with get_github_semaphore():
                         # Check global rate limit before making GitHub API call
-                        if not _check_and_increment_github_rate_limit():
+                        if not await _check_and_increment_github_rate_limit():
                             logger.warning(
                                 f"Skipping GitHub for {ecosystem}/{name} - global rate limit"
                             )
@@ -1188,8 +1228,8 @@ def _calculate_next_retry_at(retry_count: int) -> str | None:
     return (datetime.now(timezone.utc) + timedelta(hours=delay)).isoformat()
 
 
-def store_package_data(ecosystem: str, name: str, data: dict, tier: int):
-    """Store processed package data in DynamoDB."""
+def store_package_data_sync(ecosystem: str, name: str, data: dict, tier: int):
+    """Store processed package data in DynamoDB (synchronous)."""
     table = _get_dynamodb().Table(PACKAGES_TABLE)
 
     now = datetime.now(timezone.utc).isoformat()
@@ -1310,6 +1350,11 @@ def store_package_data(ecosystem: str, name: str, data: dict, tier: int):
         raise
 
 
+async def store_package_data(ecosystem: str, name: str, data: dict, tier: int):
+    """Store processed package data in DynamoDB (non-blocking)."""
+    await asyncio.to_thread(store_package_data_sync, ecosystem, name, data, tier)
+
+
 async def process_single_package(
     message: dict,
     bulk_downloads: dict = None
@@ -1342,16 +1387,7 @@ async def process_single_package(
     # For incomplete data retries, increment retry_count BEFORE collection
     # This prevents infinite loops if the Lambda crashes before storing
     if is_retry and existing:
-        table = _get_dynamodb().Table(PACKAGES_TABLE)
-        try:
-            table.update_item(
-                Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"},
-                UpdateExpression="SET retry_count = if_not_exists(retry_count, :zero) + :one",
-                ExpressionAttributeValues={":zero": 0, ":one": 1},
-            )
-            logger.debug(f"Incremented retry_count for {ecosystem}/{name}")
-        except Exception as e:
-            logger.warning(f"Failed to increment retry_count: {e}")
+        await _increment_retry_count(ecosystem, name)
 
     # Check if recently collected (deduplication) - skip if force_refresh
     if not force_refresh and existing:
@@ -1396,7 +1432,7 @@ async def process_single_package(
         store_raw_data(ecosystem, name, data)
 
         # Store processed data in DynamoDB
-        store_package_data(ecosystem, name, data, tier)
+        await store_package_data(ecosystem, name, data, tier)
 
         return (True, f"{ecosystem}/{name}", None)
     except Exception as e:
@@ -1405,7 +1441,7 @@ async def process_single_package(
         error_msg = _sanitize_error(str(e))
 
         # Store error in package record for DLQ processor to read
-        _store_collection_error(ecosystem, name, error_msg)
+        await _store_collection_error(ecosystem, name, error_msg)
 
         return (False, f"{ecosystem}/{name}", error_type)
 

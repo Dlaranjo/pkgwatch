@@ -835,6 +835,17 @@ PYPI_CIRCUIT = _create_circuit_breaker(
     )
 )
 
+# pypistats.org is a separate third-party service from PyPI registry
+# Needs independent circuit breaker to prevent pypistats outages from blocking PyPI metadata
+PYPISTATS_CIRCUIT = _create_circuit_breaker(
+    "pypistats",
+    CircuitBreakerConfig(
+        failure_threshold=5,      # Conservative - undocumented rate limits
+        timeout_seconds=120,      # Give time to recover
+        success_threshold=2,      # Quick recovery once healthy
+    )
+)
+
 OPENSSF_CIRCUIT = _create_circuit_breaker(
     "openssf",
     CircuitBreakerConfig(

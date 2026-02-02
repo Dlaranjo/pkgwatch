@@ -25,7 +25,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))  # Add collectors directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))  # Add functions directory
-from shared.circuit_breaker import circuit_breaker, PYPI_CIRCUIT
+from shared.circuit_breaker import circuit_breaker, PYPI_CIRCUIT, PYPISTATS_CIRCUIT
 from shared.constants import PYPI_API, PYPISTATS_API, DEFAULT_TIMEOUT
 from shared.rate_limit_utils import check_and_increment_external_rate_limit
 from http_client import get_http_client
@@ -295,24 +295,45 @@ async def get_pypi_metadata(name: str) -> dict:
         if not any(host in repository_url for host in ["github.com", "gitlab.com", "bitbucket.org"]):
             repository_url = None
 
-    # 2. Download statistics from pypistats.org (separate rate limit from PyPI registry)
+    # 2. Download statistics from pypistats.org (separate rate limit AND circuit breaker from PyPI registry)
     weekly_downloads = 0
     downloads_error = None
 
-    # Check pypistats-specific rate limit (100/hr, separate from PyPI registry at 400/hr)
-    if check_and_increment_external_rate_limit("pypistats", 100):
+    # Check pypistats circuit breaker FIRST (before consuming rate limit)
+    pypistats_circuit_open = False
+    try:
+        pypistats_circuit_open = not await PYPISTATS_CIRCUIT.can_execute_async()
+    except Exception:
+        pypistats_circuit_open = False  # Fail-open on circuit check errors
+
+    if pypistats_circuit_open:
+        downloads_error = "circuit_open"
+        logger.debug(f"pypistats circuit open, skipping downloads for {name}")
+    elif check_and_increment_external_rate_limit("pypistats", 100):
         try:
             stats_url = f"{PYPISTATS_API}/packages/{normalized_name}/recent?period=week"
             stats_resp = await retry_with_backoff(client.get, stats_url)
             stats_resp.raise_for_status()
             stats_data = stats_resp.json()
             weekly_downloads = stats_data.get("data", {}).get("last_week", 0)
+            # Record success for circuit breaker
+            await PYPISTATS_CIRCUIT.record_success_async()
         except httpx.HTTPStatusError as e:
             logger.warning(f"Could not fetch download stats for {name}: HTTP {e.response.status_code}")
-            downloads_error = f"http_{e.response.status_code}"
+            if e.response.status_code == 404:
+                # Package may exist in PyPI but have no stats yet - not a service failure
+                downloads_error = "no_stats_available"
+                # Do NOT record as circuit failure
+            elif e.response.status_code in RETRYABLE_STATUS_CODES:
+                downloads_error = f"http_{e.response.status_code}"
+                await PYPISTATS_CIRCUIT.record_failure_async(e)
+            else:
+                # Client errors (400, 401, 403) - don't trip circuit
+                downloads_error = f"http_{e.response.status_code}"
         except Exception as e:
             logger.warning(f"Error fetching pypistats for {name}: {type(e).__name__}")
             downloads_error = f"error_{type(e).__name__}"
+            await PYPISTATS_CIRCUIT.record_failure_async(e)
     else:
         downloads_error = "rate_limit_exceeded"
         logger.debug(f"pypistats rate limit reached, skipping downloads for {name}")

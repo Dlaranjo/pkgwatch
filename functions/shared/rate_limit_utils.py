@@ -113,8 +113,9 @@ def check_and_increment_external_rate_limit(
     window_key = now.strftime("%Y-%m-%d-%H")
     shard_id = random.randint(0, RATE_LIMIT_SHARDS - 1)
 
-    # Per-shard limit (distribute evenly + buffer)
-    shard_limit = (hourly_limit // RATE_LIMIT_SHARDS) + 1
+    # Per-shard limit (distribute evenly, no buffer to avoid exceeding limit)
+    # For hourly_limit=100 with 10 shards: 10 per shard = 100 total (exact)
+    shard_limit = hourly_limit // RATE_LIMIT_SHARDS
 
     try:
         # ATOMIC check-and-increment using conditional expression

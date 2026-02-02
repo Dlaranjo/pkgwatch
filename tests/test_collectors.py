@@ -2803,7 +2803,7 @@ class TestStorePackageData:
                 "sources": ["deps.dev", "npm"],
             }
 
-            package_collector.store_package_data("npm", "test-pkg", data, tier=2)
+            package_collector.store_package_data_sync("npm", "test-pkg", data, tier=2)
 
             # Verify data was stored
             table = dynamodb.Table("pkgwatch-packages")
@@ -2847,7 +2847,7 @@ class TestStorePackageData:
                 "sources": ["deps.dev"],
             }
 
-            package_collector.store_package_data("npm", "test-pkg", data, tier=3)
+            package_collector.store_package_data_sync("npm", "test-pkg", data, tier=3)
 
             table = dynamodb.Table("pkgwatch-packages")
             response = table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})
@@ -2900,7 +2900,7 @@ class TestStorePackageData:
                 "_existing_retry_count": 5,  # Signal that we're at max retries
             }
 
-            package_collector.store_package_data("npm", "abandoned-test", data, tier=3)
+            package_collector.store_package_data_sync("npm", "abandoned-test", data, tier=3)
 
             response = table.get_item(Key={"pk": "npm#abandoned-test", "sk": "LATEST"})
 
@@ -2943,7 +2943,7 @@ class TestStorePackageData:
                 "_existing_retry_count": 3,  # Below max (5)
             }
 
-            package_collector.store_package_data("npm", "retry-test", data, tier=3)
+            package_collector.store_package_data_sync("npm", "retry-test", data, tier=3)
 
             table = dynamodb.Table("pkgwatch-packages")
             response = table.get_item(Key={"pk": "npm#retry-test", "sk": "LATEST"})
@@ -3676,7 +3676,7 @@ class TestRateLimitAtomicOperation:
             reload(package_collector)
 
             # First call should succeed
-            result = package_collector._check_and_increment_github_rate_limit()
+            result = package_collector._check_and_increment_github_rate_limit_sync()
             assert result is True
 
     @mock_aws
@@ -3722,7 +3722,7 @@ class TestRateLimitAtomicOperation:
                 )
 
             # Next call should be rejected
-            result = package_collector._check_and_increment_github_rate_limit()
+            result = package_collector._check_and_increment_github_rate_limit_sync()
             assert result is False
 
 
@@ -4127,7 +4127,7 @@ class TestHelperFunctions:
             reload(package_collector)
 
             # Should return False (fail closed) on error
-            result = package_collector._check_and_increment_github_rate_limit()
+            result = package_collector._check_and_increment_github_rate_limit_sync()
             assert result is False
 
 
@@ -4226,7 +4226,7 @@ class TestErrorRecoveryFlows:
             import package_collector
             reload(package_collector)
 
-            package_collector._store_collection_error("npm", "test-pkg", "Test error message")
+            package_collector._store_collection_error_sync("npm", "test-pkg", "Test error message")
 
             # Verify error was stored
             response = table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})
@@ -4251,7 +4251,7 @@ class TestErrorRecoveryFlows:
                 mock_get_ddb.return_value = mock_resource
 
                 # Should not raise exception
-                package_collector._store_collection_error("npm", "test-pkg", "Error")
+                package_collector._store_collection_error_sync("npm", "test-pkg", "Error")
 
     def test_is_data_acceptable_returns_false_for_none_data(self):
         """Test _is_data_acceptable returns False for None data (line 327)."""
@@ -5262,7 +5262,7 @@ class TestDatabaseWriteErrors:
                 mock_get_ddb.return_value = mock_resource
 
                 with pytest.raises(Exception) as exc_info:
-                    package_collector.store_package_data("npm", "test-pkg", {"latest_version": "1.0.0"}, tier=2)
+                    package_collector.store_package_data_sync("npm", "test-pkg", {"latest_version": "1.0.0"}, tier=2)
 
                 assert "DynamoDB write failed" in str(exc_info.value)
 
