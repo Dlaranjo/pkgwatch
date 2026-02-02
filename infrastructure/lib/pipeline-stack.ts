@@ -386,6 +386,54 @@ export class PipelineStack extends cdk.Stack {
     });
 
     // ===========================================
+    // Lambda: PyPI Downloads Collector
+    // ===========================================
+    // Batch fetches download stats from pypistats.org every 6 hours
+    // Fixes data quality issue where 56% of PyPI packages had 0 downloads
+    const pypiDownloadsCollector = new lambda.Function(
+      this,
+      "PyPIDownloadsCollector",
+      {
+        ...commonLambdaProps,
+        functionName: "pkgwatch-pypi-downloads-collector",
+        handler: "pypi_downloads_collector.handler",
+        code: collectorsCode,
+        timeout: cdk.Duration.minutes(10), // Allow time for 100 API calls + delays
+        memorySize: 512,
+        description: "Fetches PyPI download statistics every 6 hours",
+      }
+    );
+
+    // Permissions - read packages list, write download stats
+    packagesTable.grantReadWriteData(pypiDownloadsCollector);
+
+    // Schedule: Every 6 hours
+    new events.Rule(this, "PyPIDownloadsSchedule", {
+      ruleName: "pkgwatch-pypi-downloads",
+      schedule: events.Schedule.rate(cdk.Duration.hours(6)),
+      description: "Fetches PyPI download statistics every 6 hours",
+      targets: [new targets.LambdaFunction(pypiDownloadsCollector)],
+    });
+
+    // CloudWatch alarm for failures (action added later after alertTopic is defined)
+    const pypiDownloadsErrorAlarm = new cloudwatch.Alarm(
+      this,
+      "PyPIDownloadsErrorAlarm",
+      {
+        alarmName: "pkgwatch-pypi-downloads-errors",
+        alarmDescription: "PyPI downloads collector failing",
+        metric: pypiDownloadsCollector.metricErrors({
+          period: cdk.Duration.minutes(5),
+        }),
+        threshold: 1,
+        evaluationPeriods: 2,
+        comparisonOperator:
+          cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }
+    );
+
+    // ===========================================
     // Lambda: DLQ Processor
     // ===========================================
     // Reprocesses failed messages with exponential backoff and retry tracking
@@ -639,6 +687,11 @@ export class PipelineStack extends cdk.Stack {
     // Streams DLQ alarm (defined earlier, action added here after alertTopic exists)
     streamsDlqAlarm.addAlarmAction(new cloudwatchActions.SnsAction(this.alertTopic));
     streamsDlqAlarm.addOkAction(new cloudwatchActions.SnsAction(this.alertTopic));
+
+    // PyPI Downloads alarm (defined earlier, action added here after alertTopic exists)
+    pypiDownloadsErrorAlarm.addAlarmAction(
+      new cloudwatchActions.SnsAction(this.alertTopic)
+    );
 
     // Discovery DLQ alarm - alerts when graph expansion is failing
     const discoveryDlqAlarm = new cloudwatch.Alarm(this, "DiscoveryDlqAlarm", {

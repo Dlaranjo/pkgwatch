@@ -283,6 +283,12 @@ class TestParseKeywords:
 class TestGetPyPIMetadata:
     """Tests for get_pypi_metadata function with mocked HTTP."""
 
+    @pytest.fixture(autouse=True)
+    def mock_rate_limit(self):
+        """Mock rate limit check to always allow requests."""
+        with patch("pypi_collector.check_and_increment_external_rate_limit", return_value=True):
+            yield
+
     def _create_pypi_response(self, name="requests", version="2.31.0"):
         """Create a mock PyPI JSON response."""
         return {
@@ -745,6 +751,12 @@ class TestRetryWithBackoff:
 
 class TestPyPIMetadataEdgeCases:
     """Tests for edge cases in PyPI metadata parsing."""
+
+    @pytest.fixture(autouse=True)
+    def mock_rate_limit(self):
+        """Mock rate limit check to always allow requests."""
+        with patch("pypi_collector.check_and_increment_external_rate_limit", return_value=True):
+            yield
 
     def _create_pypi_response(self, **overrides):
         """Create a mock PyPI JSON response with optional overrides."""

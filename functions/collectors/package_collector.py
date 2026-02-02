@@ -465,8 +465,10 @@ async def _try_github_stale_fallback(
 
 def _extract_cached_npm_fields(existing: dict) -> dict:
     """Extract cached npm fields from existing data for selective retry."""
+    # Don't preserve 0 downloads - return None to allow fresh fetch
+    downloads = existing.get("weekly_downloads")
     return {
-        "weekly_downloads": existing.get("weekly_downloads", 0),
+        "weekly_downloads": downloads if downloads and downloads > 0 else None,
         "maintainers": existing.get("maintainers", []),
         "maintainer_count": existing.get("maintainer_count", 0),
         "is_deprecated": existing.get("is_deprecated", False),
@@ -482,8 +484,11 @@ def _extract_cached_npm_fields(existing: dict) -> dict:
 
 def _extract_cached_pypi_fields(existing: dict) -> dict:
     """Extract cached PyPI fields from existing data for selective retry."""
+    # CRITICAL: Don't preserve 0 downloads - return None to trigger fresh fetch
+    # This prevents overwriting good data with 0 when pypistats.org was rate limited
+    downloads = existing.get("weekly_downloads")
     return {
-        "weekly_downloads": existing.get("weekly_downloads", 0),
+        "weekly_downloads": downloads if downloads and downloads > 0 else None,
         "maintainers": existing.get("maintainers", []),
         "maintainer_count": existing.get("maintainer_count", 0),
         "is_deprecated": existing.get("is_deprecated", False),
@@ -836,7 +841,27 @@ async def collect_package_data(
                     combined_data["sources"].append("pypi")
 
                     # Map PyPI data to common fields
-                    combined_data["weekly_downloads"] = pypi_data.get("weekly_downloads", 0)
+                    # Check if batch collector has fresh downloads (prefer over inline pypistats)
+                    pypi_downloads = pypi_data.get("weekly_downloads", 0)
+                    if existing and existing.get("downloads_fetched_at"):
+                        try:
+                            fetched_at = existing.get("downloads_fetched_at", "")
+                            fetched_time = datetime.fromisoformat(
+                                fetched_at.replace("Z", "+00:00")
+                            )
+                            age_hours = (
+                                datetime.now(timezone.utc) - fetched_time
+                            ).total_seconds() / 3600
+                            if age_hours < 168:  # 7 days
+                                batch_downloads = existing.get("weekly_downloads", 0)
+                                # Use batch downloads if they're better than inline
+                                if batch_downloads > 0 and (pypi_downloads == 0 or pypi_data.get("downloads_error")):
+                                    pypi_downloads = batch_downloads
+                                    combined_data["downloads_source"] = existing.get("downloads_source", "batch")
+                                    logger.debug(f"Using batch downloads for {name}: {batch_downloads}")
+                        except (ValueError, TypeError):
+                            pass
+                    combined_data["weekly_downloads"] = pypi_downloads
                     combined_data["maintainers"] = pypi_data.get("maintainers", [])
                     combined_data["maintainer_count"] = pypi_data.get("maintainer_count", 0)
                     combined_data["is_deprecated"] = pypi_data.get("is_deprecated", False)
