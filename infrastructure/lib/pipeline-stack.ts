@@ -401,6 +401,7 @@ export class PipelineStack extends cdk.Stack {
         timeout: cdk.Duration.minutes(10), // Allow time for 100 API calls + delays
         memorySize: 512,
         description: "Fetches PyPI download statistics every 6 hours",
+        reservedConcurrentExecutions: 1, // Prevent overlapping invocations
       }
     );
 
@@ -429,6 +430,25 @@ export class PipelineStack extends cdk.Stack {
         evaluationPeriods: 2,
         comparisonOperator:
           cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }
+    );
+
+    // Duration alarm - detect executions approaching timeout
+    const pypiDownloadsDurationAlarm = new cloudwatch.Alarm(
+      this,
+      "PyPIDownloadsDurationAlarm",
+      {
+        alarmName: "pkgwatch-pypi-downloads-duration",
+        alarmDescription: "PyPI downloads collector approaching timeout",
+        metric: pypiDownloadsCollector.metricDuration({
+          statistic: "p95",
+          period: cdk.Duration.hours(6),
+        }),
+        threshold: 540000, // 9 minutes (90% of 10-minute timeout)
+        evaluationPeriods: 1,
+        comparisonOperator:
+          cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
       }
     );
@@ -734,6 +754,9 @@ export class PipelineStack extends cdk.Stack {
 
     // PyPI Downloads alarm (defined earlier, action added here after alertTopic exists)
     pypiDownloadsErrorAlarm.addAlarmAction(
+      new cloudwatchActions.SnsAction(this.alertTopic)
+    );
+    pypiDownloadsDurationAlarm.addAlarmAction(
       new cloudwatchActions.SnsAction(this.alertTopic)
     );
 

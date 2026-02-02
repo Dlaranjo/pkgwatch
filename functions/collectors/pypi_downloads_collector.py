@@ -36,8 +36,8 @@ def handler(event, context):
     dynamodb = boto3.resource("dynamodb")
     packages_table = dynamodb.Table(os.environ["PACKAGES_TABLE"])
 
-    # 1. Get PyPI packages needing refresh (prioritize 0 downloads)
-    packages_to_fetch = _get_packages_needing_refresh(packages_table, BATCH_SIZE)
+    # 1. Get PyPI packages needing refresh (prioritize unfetched, then oldest)
+    packages_to_fetch = _get_packages_needing_refresh(packages_table, BATCH_SIZE, context)
 
     if not packages_to_fetch:
         logger.info("No packages need download refresh")
@@ -105,47 +105,91 @@ def handler(event, context):
     return {"packages_updated": updated, "total_processed": processed}
 
 
-def _get_packages_needing_refresh(table, limit: int) -> list:
-    """Get PyPI packages that need download refresh, prioritizing 0 downloads."""
-    # Prioritize packages with 0 downloads or missing downloads_fetched_at
-    # This ensures we fix the data quality issue first
+def _get_packages_needing_refresh(table, limit: int, context=None) -> list:
+    """Get PyPI packages needing download refresh with proper pagination.
+
+    Priority 1: Packages missing downloads_fetched_at (never fetched from pypistats)
+    Priority 2: Packages with stale data (oldest downloads_fetched_at)
+
+    Note: We do NOT filter on weekly_downloads=0 because pypistats confirmed
+    those packages have 0 downloads - refetching would waste API calls.
+    """
+    MAX_PAGES = 50  # Safety valve (50 pages × ~1MB = covers 12K items)
+    MIN_REMAINING_MS = 120_000  # 2 minutes buffer for HTTP calls
+
+    packages = []
+    pages_scanned = 0
+
+    # Phase 1: Get packages that have NEVER been fetched from pypistats
+    # (missing downloads_fetched_at attribute)
+    scan_kwargs = {
+        "FilterExpression": "ecosystem = :eco AND attribute_not_exists(downloads_fetched_at)",
+        "ExpressionAttributeValues": {":eco": "pypi"},
+        "ProjectionExpression": "#n",
+        "ExpressionAttributeNames": {"#n": "name"},
+    }
+
     try:
-        response = table.scan(
-            FilterExpression="ecosystem = :eco AND (weekly_downloads = :zero OR attribute_not_exists(downloads_fetched_at))",
-            ExpressionAttributeValues={
-                ":eco": "pypi",
-                ":zero": 0
-            },
-            ProjectionExpression="#n",
-            ExpressionAttributeNames={"#n": "name"},
-            Limit=limit * 3  # Over-scan to account for filtering
-        )
+        while len(packages) < limit and pages_scanned < MAX_PAGES:
+            # Check Lambda timeout if context provided
+            if context:
+                remaining_time = context.get_remaining_time_in_millis()
+                if remaining_time < MIN_REMAINING_MS:
+                    logger.warning(f"Stopping scan early ({remaining_time}ms remaining)")
+                    break
 
-        packages = [item["name"] for item in response.get("Items", [])[:limit]]
+            response = table.scan(**scan_kwargs)
+            items = response.get("Items", [])
+            pages_scanned += 1
 
-        # If we don't have enough packages with 0 downloads, get older ones
+            for item in items:
+                if len(packages) >= limit:
+                    break
+                packages.append(item["name"])
+
+            if "LastEvaluatedKey" not in response:
+                break
+            scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+
+        # Phase 2: If not enough unfetched packages, get packages with OLDEST data
         if len(packages) < limit:
             remaining = limit - len(packages)
             already_fetched = set(packages)
 
-            # Get packages with oldest downloads_fetched_at
-            response = table.scan(
-                FilterExpression="ecosystem = :eco AND attribute_exists(downloads_fetched_at)",
-                ExpressionAttributeValues={":eco": "pypi"},
-                ProjectionExpression="#n, downloads_fetched_at",
-                ExpressionAttributeNames={"#n": "name"},
-                Limit=remaining * 2
-            )
+            logger.info(f"Phase 1 found {len(packages)}, fetching {remaining} oldest for Phase 2")
 
-            # Sort by oldest first and filter out already selected
-            items = [
-                item for item in response.get("Items", [])
-                if item["name"] not in already_fetched
-            ]
-            items.sort(key=lambda x: x.get("downloads_fetched_at", ""))
+            oldest_scan_kwargs = {
+                "FilterExpression": "ecosystem = :eco AND attribute_exists(downloads_fetched_at)",
+                "ExpressionAttributeValues": {":eco": "pypi"},
+                "ProjectionExpression": "#n, downloads_fetched_at",
+                "ExpressionAttributeNames": {"#n": "name"},
+            }
 
-            packages.extend([item["name"] for item in items[:remaining]])
+            oldest_packages = []
+            oldest_pages = 0
 
+            # Proper pagination for Phase 2
+            while oldest_pages < MAX_PAGES:
+                if context and context.get_remaining_time_in_millis() < MIN_REMAINING_MS:
+                    logger.warning("Stopping Phase 2 scan early due to timeout")
+                    break
+
+                response = table.scan(**oldest_scan_kwargs)
+                oldest_pages += 1
+
+                for item in response.get("Items", []):
+                    if item["name"] not in already_fetched:
+                        oldest_packages.append(item)
+
+                if "LastEvaluatedKey" not in response:
+                    break
+                oldest_scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+
+            # Sort by oldest downloads_fetched_at first
+            oldest_packages.sort(key=lambda x: x.get("downloads_fetched_at", ""))
+            packages.extend([item["name"] for item in oldest_packages[:remaining]])
+
+        logger.info(f"Found {len(packages)} packages after {pages_scanned} pages")
         return packages
 
     except ClientError as e:
