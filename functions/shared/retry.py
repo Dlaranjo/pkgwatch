@@ -6,6 +6,25 @@ Features:
 - Exponential backoff with jitter (prevents thundering herd)
 - Retryable exception filtering
 - Structured logging for observability
+
+USAGE NOTE
+----------
+This module provides GENERIC retry logic. The HTTP collectors (npm_collector,
+pypi_collector, depsdev_collector, bundlephobia_collector) have their own
+`retry_with_backoff()` implementations with HTTP-specific semantics:
+
+  - Built-in RETRYABLE_STATUS_CODES filtering (429, 500, 502, 503, 504)
+  - httpx.HTTPStatusError and httpx.RequestError handling
+  - "Equal jitter" algorithm (50% fixed + 50% random)
+
+Use this shared module for:
+  - Non-HTTP retries (DynamoDB, S3, etc.)
+  - New code where HTTP-specific logic isn't needed
+
+The collector-specific implementations remain because:
+  1. Different jitter algorithm (equal jitter vs additive jitter)
+  2. Different retry count semantics (max_retries=3 means 3 vs 4 attempts)
+  3. Migration risk outweighs consolidation benefit for stable code
 """
 
 import asyncio

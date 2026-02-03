@@ -231,7 +231,11 @@ def _get_rate_limit_window_key() -> str:
 
 
 def _get_total_github_calls(window_key: str) -> int:
-    """Sum calls across all shards for the window."""
+    """
+    Sum calls across all shards for the window.
+
+    Used by pipeline_health.py to report GitHub API usage status.
+    """
     table = _get_dynamodb().Table(API_KEYS_TABLE)
     total = 0
 
