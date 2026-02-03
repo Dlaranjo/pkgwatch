@@ -401,7 +401,8 @@ export class PipelineStack extends cdk.Stack {
         timeout: cdk.Duration.minutes(10), // Allow time for 100 API calls + delays
         memorySize: 512,
         description: "Fetches PyPI download statistics every 6 hours",
-        reservedConcurrentExecutions: 1, // Prevent overlapping invocations
+        // Note: Removed reservedConcurrentExecutions to avoid account limit issues
+        // Overlapping prevented by 6-hour schedule + 10-minute timeout
       }
     );
 
