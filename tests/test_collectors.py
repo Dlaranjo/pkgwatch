@@ -5883,6 +5883,462 @@ class TestOpenSSFHelperFunctions:
 
 
 # =============================================================================
+# SELECTIVE RETRY TESTS (Task #15 - Lines 738-756, 887-895, 974-980)
+# =============================================================================
+
+
+class TestSelectiveRetry:
+    """Tests for selective retry with cached data."""
+
+    def test_should_run_collector_empty_list_runs_all(self):
+        """Empty retry_sources means run all collectors."""
+        from package_collector import _should_run_collector
+
+        assert _should_run_collector("npm", []) is True
+        assert _should_run_collector("github", []) is True
+        assert _should_run_collector("bundlephobia", []) is True
+
+    def test_should_run_collector_only_specified(self):
+        """Only run collectors in retry_sources list."""
+        from package_collector import _should_run_collector
+
+        retry_sources = ["npm", "github"]
+        assert _should_run_collector("npm", retry_sources) is True
+        assert _should_run_collector("github", retry_sources) is True
+        assert _should_run_collector("bundlephobia", retry_sources) is False
+        assert _should_run_collector("pypi", retry_sources) is False
+
+    def test_npm_selective_retry_uses_cached_when_skipped(self):
+        """When retry_sources excludes npm, cached npm fields are extracted."""
+        # Setup existing data with npm fields
+        existing = {
+            "pk": "npm#lodash",
+            "sk": "LATEST",
+            "weekly_downloads": 50000000,
+            "maintainers": [{"name": "jdalton"}],
+            "maintainer_count": 1,
+            "is_deprecated": False,
+            "created_at": "2012-04-01T00:00:00Z",
+            "last_published": "2024-01-01T00:00:00Z",
+            "has_types": True,
+            "module_type": "commonjs",
+            "has_exports": False,
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+        }
+
+        from package_collector import _should_run_collector, _extract_cached_npm_fields
+
+        # Verify skipping behavior
+        assert _should_run_collector("npm", ["github"]) is False
+
+        # Verify cached extraction
+        cached = _extract_cached_npm_fields(existing)
+        assert cached["weekly_downloads"] == 50000000
+        assert cached["maintainer_count"] == 1
+        assert cached["has_types"] is True
+
+    def test_bundlephobia_selective_retry_uses_cached(self):
+        """When retry_sources excludes bundlephobia, use cached data."""
+        existing = {
+            "bundle_size": 72000,
+            "bundle_size_gzip": 25000,
+            "bundle_size_category": "medium",
+            "bundle_dependency_count": 3,
+        }
+
+        from package_collector import _should_run_collector, _extract_cached_bundlephobia_fields
+
+        # Verify skipping behavior
+        assert _should_run_collector("bundlephobia", ["npm"]) is False
+
+        # Verify cached extraction
+        cached = _extract_cached_bundlephobia_fields(existing)
+        assert cached["bundle_size"] == 72000
+        assert cached["bundle_size_gzip"] == 25000
+        assert cached["bundle_size_category"] == "medium"
+
+    def test_pypi_selective_retry_uses_cached(self):
+        """When retry_sources excludes pypi, use cached pypi data."""
+        existing = {
+            "weekly_downloads": 10000000,
+            "maintainers": [{"name": "kennethreitz"}],
+            "maintainer_count": 1,
+            "is_deprecated": False,
+            "created_at": "2011-02-13T00:00:00Z",
+            "last_published": "2024-06-01T00:00:00Z",
+            "requires_python": ">=3.7",
+            "development_status": "5 - Production/Stable",
+            "python_versions": ["3.8", "3.9", "3.10", "3.11", "3.12"],
+        }
+
+        from package_collector import _should_run_collector, _extract_cached_pypi_fields
+
+        # Verify skipping behavior
+        assert _should_run_collector("pypi", ["github"]) is False
+
+        # Verify cached extraction
+        cached = _extract_cached_pypi_fields(existing)
+        assert cached["weekly_downloads"] == 10000000
+        assert cached["requires_python"] == ">=3.7"
+
+    def test_github_selective_retry_uses_cached(self):
+        """When retry_sources excludes github, use cached github data."""
+        existing = {
+            "stars": 50000,
+            "forks": 5000,
+            "open_issues": 100,
+            "days_since_last_commit": 3,
+            "commits_90d": 150,
+            "active_contributors_90d": 25,
+            "total_contributors": 500,
+            "true_bus_factor": 8,
+            "bus_factor_confidence": "HIGH",
+            "contribution_distribution": [0.15, 0.12, 0.10],
+            "archived": False,
+        }
+
+        from package_collector import _should_run_collector, _extract_cached_github_fields
+
+        # Verify skipping behavior
+        assert _should_run_collector("github", ["npm"]) is False
+
+        # Verify cached extraction
+        cached = _extract_cached_github_fields(existing)
+        assert cached["stars"] == 50000
+        assert cached["days_since_last_commit"] == 3
+        assert cached["true_bus_factor"] == 8
+
+
+# =============================================================================
+# OPENSSF CACHING TESTS (Task #16 - Lines 1096-1153)
+# =============================================================================
+
+
+class TestOpenSSFCachingLogic:
+    """Tests for OpenSSF caching logic in collect_package_data."""
+
+    def test_is_data_acceptable_fresh_data(self):
+        """Test _is_data_acceptable returns True for fresh data."""
+        from package_collector import _is_data_acceptable
+
+        now = datetime.now(timezone.utc)
+        data = {"last_updated": (now - timedelta(days=3)).isoformat()}
+
+        assert _is_data_acceptable(data, max_age_days=7) is True
+
+    def test_is_data_acceptable_stale_data(self):
+        """Test _is_data_acceptable returns False for stale data."""
+        from package_collector import _is_data_acceptable
+
+        now = datetime.now(timezone.utc)
+        data = {"last_updated": (now - timedelta(days=10)).isoformat()}
+
+        assert _is_data_acceptable(data, max_age_days=7) is False
+
+    def test_is_data_acceptable_missing_last_updated(self):
+        """Test _is_data_acceptable returns False when last_updated missing."""
+        from package_collector import _is_data_acceptable
+
+        data = {"other_field": "value"}
+        assert _is_data_acceptable(data, max_age_days=7) is False
+
+    def test_is_data_acceptable_empty_data(self):
+        """Test _is_data_acceptable returns False for empty data."""
+        from package_collector import _is_data_acceptable
+
+        assert _is_data_acceptable({}, max_age_days=7) is False
+        assert _is_data_acceptable(None, max_age_days=7) is False
+
+    def test_get_stale_threshold_circuit_open(self):
+        """Test circuit open errors get 14-day threshold."""
+        from package_collector import _get_stale_threshold_days
+
+        assert _get_stale_threshold_days("circuit_open") == 14
+        assert _get_stale_threshold_days("Circuit breaker open") == 14
+
+    def test_get_stale_threshold_rate_limit(self):
+        """Test rate limit errors get 7-day threshold."""
+        from package_collector import _get_stale_threshold_days
+
+        assert _get_stale_threshold_days("rate_limit_exceeded") == 7
+        assert _get_stale_threshold_days("Rate limit hit") == 7
+
+    def test_get_stale_threshold_default(self):
+        """Test other errors get default 7-day threshold."""
+        from package_collector import _get_stale_threshold_days
+
+        assert _get_stale_threshold_days("timeout") == 7
+        assert _get_stale_threshold_days("unknown_error") == 7
+        assert _get_stale_threshold_days("") == 7
+        assert _get_stale_threshold_days(None) == 7
+
+
+# =============================================================================
+# RATE LIMIT FALLBACK TESTS (Task #17 - Lines 790, 805, 958-965)
+# =============================================================================
+
+
+class TestRateLimitFallback:
+    """Tests for rate limit triggering stale fallback."""
+
+    @mock_aws
+    def test_try_stale_fallback_success(self):
+        """Test _try_stale_fallback returns True when valid cached data exists."""
+        from conftest import create_dynamodb_tables
+
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        create_dynamodb_tables(dynamodb)
+
+        now = datetime.now(timezone.utc)
+        existing = {
+            "weekly_downloads": 50000000,
+            "last_updated": (now - timedelta(days=3)).isoformat(),
+        }
+
+        with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            combined_data = {"sources": []}
+
+            result = run_async(package_collector._try_stale_fallback(
+                combined_data,
+                "npm", "lodash", "npm", "rate_limit_exceeded",
+                package_collector._extract_cached_npm_fields,
+                existing=existing,
+            ))
+
+            assert result is True
+            assert combined_data["weekly_downloads"] == 50000000
+            assert "npm_stale" in combined_data["sources"]
+            assert combined_data["npm_freshness"] == "stale"
+            assert combined_data["npm_stale_reason"] == "rate_limit_exceeded"
+
+    def test_try_stale_fallback_no_existing_data(self):
+        """Test _try_stale_fallback returns False when no cached data."""
+        with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            combined_data = {"sources": []}
+
+            result = run_async(package_collector._try_stale_fallback(
+                combined_data,
+                "npm", "nonexistent", "npm", "rate_limit_exceeded",
+                package_collector._extract_cached_npm_fields,
+                existing=None,
+            ))
+
+            assert result is False
+            assert "npm_stale" not in combined_data.get("sources", [])
+
+    def test_try_stale_fallback_data_too_old(self):
+        """Test _try_stale_fallback returns False when data exceeds threshold."""
+        now = datetime.now(timezone.utc)
+        existing = {
+            "weekly_downloads": 50000000,
+            "last_updated": (now - timedelta(days=30)).isoformat(),  # 30 days old
+        }
+
+        with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
+            from importlib import reload
+            import package_collector
+            reload(package_collector)
+
+            combined_data = {"sources": []}
+
+            result = run_async(package_collector._try_stale_fallback(
+                combined_data,
+                "npm", "lodash", "npm", "rate_limit_exceeded",  # 7 day threshold
+                package_collector._extract_cached_npm_fields,
+                existing=existing,
+            ))
+
+            assert result is False
+
+
+# =============================================================================
+# GITHUB ERROR CLASSIFICATION TESTS (Lines 1056-1070)
+# =============================================================================
+
+
+class TestGitHubErrorClassification:
+    """Tests for GitHub transient vs non-transient error handling."""
+
+    def test_has_github_data_with_stars(self):
+        """Test _has_github_data returns True when stars present."""
+        from package_collector import _has_github_data
+
+        data = {"stars": 1000}
+        assert _has_github_data(data) is True
+
+    def test_has_github_data_with_commits(self):
+        """Test _has_github_data returns True when commits_90d present."""
+        from package_collector import _has_github_data
+
+        data = {"commits_90d": 50}
+        assert _has_github_data(data) is True
+
+    def test_has_github_data_with_days_since_commit(self):
+        """Test _has_github_data returns True when days_since_last_commit present."""
+        from package_collector import _has_github_data
+
+        data = {"days_since_last_commit": 5}
+        assert _has_github_data(data) is True
+
+    def test_has_github_data_empty(self):
+        """Test _has_github_data returns False for empty data."""
+        from package_collector import _has_github_data
+
+        data = {}
+        assert _has_github_data(data) is False
+
+    def test_has_github_data_with_none_values(self):
+        """Test _has_github_data returns False when all values are None."""
+        from package_collector import _has_github_data
+
+        data = {"stars": None, "commits_90d": None, "days_since_last_commit": None}
+        assert _has_github_data(data) is False
+
+
+# =============================================================================
+# EDGE CASE TESTS (Lines 111-116, 1318-1323, 1403-1408, 1486-1539)
+# =============================================================================
+
+
+class TestEdgeCases:
+    """Tests for edge cases and error paths."""
+
+    def test_calculate_data_status_complete(self):
+        """Test _calculate_data_status returns complete when all sources succeed."""
+        from package_collector import _calculate_data_status
+
+        data = {"sources": ["deps.dev", "npm", "github"]}
+        status, missing = _calculate_data_status(data, "npm")
+
+        assert status == "complete"
+        assert missing == []
+
+    def test_calculate_data_status_partial_npm_error(self):
+        """Test _calculate_data_status returns partial when npm fails."""
+        from package_collector import _calculate_data_status
+
+        data = {
+            "sources": ["deps.dev", "github"],
+            "npm_error": "timeout",
+        }
+        status, missing = _calculate_data_status(data, "npm")
+
+        assert status == "partial"
+        assert "npm" in missing
+
+    def test_calculate_data_status_partial_with_stale_fallback(self):
+        """Test _calculate_data_status treats stale fallback as success."""
+        from package_collector import _calculate_data_status
+
+        data = {
+            "sources": ["deps.dev", "npm_stale", "github"],
+            "npm_error": "rate_limit_exceeded",
+        }
+        status, missing = _calculate_data_status(data, "npm")
+
+        # npm_stale in sources means we have data, so not missing
+        assert status == "complete"
+        assert "npm" not in missing
+
+    def test_calculate_data_status_minimal_depsdev_error(self):
+        """Test _calculate_data_status returns minimal when deps.dev fails."""
+        from package_collector import _calculate_data_status
+
+        data = {
+            "sources": ["npm"],
+            "depsdev_error": "circuit_open",
+        }
+        status, missing = _calculate_data_status(data, "npm")
+
+        assert status == "minimal"
+        assert "deps.dev" in missing
+
+    def test_calculate_data_status_github_optional(self):
+        """Test GitHub is only expected when repository_url exists."""
+        from package_collector import _calculate_data_status
+
+        # No repository_url = GitHub not expected
+        data = {
+            "sources": ["deps.dev", "npm"],
+            # No repository_url
+        }
+        status, missing = _calculate_data_status(data, "npm")
+
+        assert status == "complete"
+        assert "github" not in missing
+
+        # With repository_url but GitHub error = partial
+        data_with_repo = {
+            "sources": ["deps.dev", "npm"],
+            "repository_url": "https://github.com/owner/repo",
+            "github_error": "rate_limit",
+        }
+        status, missing = _calculate_data_status(data_with_repo, "npm")
+
+        assert status == "partial"
+        assert "github" in missing
+
+    def test_calculate_next_retry_at_exponential_backoff(self):
+        """Test _calculate_next_retry_at uses exponential backoff."""
+        from package_collector import _calculate_next_retry_at
+
+        # First retry: 1 hour
+        result = _calculate_next_retry_at(0)
+        assert result is not None
+
+        # Parse and check it's roughly 1 hour from now
+        retry_time = datetime.fromisoformat(result.replace("Z", "+00:00"))
+        expected_delta = timedelta(hours=1)
+        actual_delta = retry_time - datetime.now(timezone.utc)
+
+        # Allow 1 minute tolerance
+        assert abs(actual_delta.total_seconds() - expected_delta.total_seconds()) < 60
+
+    def test_calculate_next_retry_at_max_retries(self):
+        """Test _calculate_next_retry_at returns None after max retries."""
+        from package_collector import _calculate_next_retry_at, MAX_RETRY_COUNT
+
+        result = _calculate_next_retry_at(MAX_RETRY_COUNT)
+        assert result is None
+
+        result = _calculate_next_retry_at(MAX_RETRY_COUNT + 1)
+        assert result is None
+
+    def test_sanitize_error_redacts_secrets(self):
+        """Test _sanitize_error redacts sensitive patterns."""
+        from package_collector import _sanitize_error
+
+        # GitHub token
+        error = "Auth failed with token ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+        result = _sanitize_error(error)
+        assert "ghp_***" in result
+        assert "1234567890" not in result
+
+        # AWS ARN
+        error = "Failed to access arn:aws:dynamodb:us-east-1:123456789012:table/test"
+        result = _sanitize_error(error)
+        assert "arn:aws:***" in result
+
+    def test_sanitize_error_truncates_long_strings(self):
+        """Test _sanitize_error truncates very long error messages."""
+        from package_collector import _sanitize_error
+
+        long_error = "x" * 1000
+        result = _sanitize_error(long_error)
+
+        assert len(result) <= 520  # 500 + "[truncated]"
+        assert "[truncated]" in result
+
+
+# =============================================================================
 # Pytest Fixtures
 # =============================================================================
 
