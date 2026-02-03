@@ -16,6 +16,7 @@ import random
 import re
 import time
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from enum import Enum
 from typing import Callable, Optional, Tuple
 
@@ -157,6 +158,17 @@ def _sanitize_error(error_str: str) -> str:
         result = result[:max_length] + "...[truncated]"
 
     return result
+
+
+def _convert_floats_to_decimal(obj):
+    """Recursively convert floats to Decimals for DynamoDB compatibility."""
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    elif isinstance(obj, dict):
+        return {k: _convert_floats_to_decimal(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_convert_floats_to_decimal(item) for item in obj]
+    return obj
 
 
 def validate_message(body: dict) -> Tuple[bool, Optional[str]]:
@@ -1345,6 +1357,9 @@ def store_package_data_sync(ecosystem: str, name: str, data: dict, tier: int):
 
     # Remove None values and empty strings (DynamoDB rejects both by default)
     item = {k: v for k, v in item.items() if v is not None and v != ""}
+
+    # Convert floats to Decimals (DynamoDB doesn't accept Python floats)
+    item = _convert_floats_to_decimal(item)
 
     try:
         table.put_item(Item=item)

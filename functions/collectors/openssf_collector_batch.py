@@ -14,6 +14,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone, timedelta
+from decimal import Decimal
 
 import boto3
 import httpx
@@ -159,6 +160,17 @@ def _get_packages_needing_openssf(table, limit: int) -> list:
     return packages
 
 
+def _convert_floats_to_decimal(obj):
+    """Recursively convert floats to Decimals for DynamoDB compatibility."""
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    elif isinstance(obj, dict):
+        return {k: _convert_floats_to_decimal(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_convert_floats_to_decimal(item) for item in obj]
+    return obj
+
+
 def _write_openssf_updates(table, updates: list):
     """Write OpenSSF updates to DynamoDB."""
     now = datetime.now(timezone.utc).isoformat()
@@ -167,12 +179,16 @@ def _write_openssf_updates(table, updates: list):
         try:
             # Only update score/checks if we got actual data
             if update["openssf_score"] is not None:
+                # Convert floats to Decimals for DynamoDB
+                score = Decimal(str(update["openssf_score"]))
+                checks = _convert_floats_to_decimal(update["openssf_checks"])
+
                 table.update_item(
                     Key={"pk": update["pk"], "sk": "LATEST"},
                     UpdateExpression="SET openssf_score = :s, openssf_checks = :c, openssf_source = :src, openssf_date = :d",
                     ExpressionAttributeValues={
-                        ":s": update["openssf_score"],
-                        ":c": update["openssf_checks"],
+                        ":s": score,
+                        ":c": checks,
                         ":src": update["openssf_source"],
                         ":d": now
                     }
