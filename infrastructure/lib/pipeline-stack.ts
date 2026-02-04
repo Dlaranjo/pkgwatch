@@ -217,6 +217,13 @@ export class PipelineStack extends cdk.Stack {
     rawDataBucket.grantWrite(packageCollector);
     githubTokenSecret.grantRead(packageCollector);
     apiKeysTable.grantReadWriteData(packageCollector); // For global GitHub rate limiting
+    packageCollector.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudwatch:PutMetricData"],
+        resources: ["*"],
+        conditions: { StringEquals: { "cloudwatch:namespace": "PkgWatch" } },
+      })
+    );
 
     // Connect collector to SQS queue
     // Increased from maxConcurrency=2 to improve throughput
@@ -300,6 +307,13 @@ export class PipelineStack extends cdk.Stack {
     });
 
     packagesTable.grantReadWriteData(streamsDlqProcessor);
+    streamsDlqProcessor.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudwatch:PutMetricData"],
+        resources: ["*"],
+        conditions: { StringEquals: { "cloudwatch:namespace": "PkgWatch" } },
+      })
+    );
 
     // Connect to streams DLQ - process messages as they arrive
     streamsDlqProcessor.addEventSource(
@@ -521,6 +535,13 @@ export class PipelineStack extends cdk.Stack {
     dlq.grantConsumeMessages(dlqProcessor);
     packageQueue.grantSendMessages(dlqProcessor);
     packagesTable.grantWriteData(dlqProcessor); // For storing permanent failures
+    dlqProcessor.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudwatch:PutMetricData"],
+        resources: ["*"],
+        conditions: { StringEquals: { "cloudwatch:namespace": "PkgWatch" } },
+      })
+    );
 
     // Schedule to run every 15 minutes
     new events.Rule(this, "DLQProcessorSchedule", {
@@ -555,6 +576,13 @@ export class PipelineStack extends cdk.Stack {
     packagesTable.grantReadWriteData(retryDispatcher); // Read for query, write for retry_dispatched_at
     packageQueue.grantSendMessages(retryDispatcher);
     apiKeysTable.grantReadWriteData(retryDispatcher); // For distributed circuit breaker state (read + write for state transitions)
+    retryDispatcher.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudwatch:PutMetricData"],
+        resources: ["*"],
+        conditions: { StringEquals: { "cloudwatch:namespace": "PkgWatch" } },
+      })
+    );
 
     // Schedule retry dispatcher every 15 minutes (increased from 30 for faster backlog clearance)
     new events.Rule(this, "RetryDispatcherSchedule", {
@@ -583,6 +611,13 @@ export class PipelineStack extends cdk.Stack {
 
     packagesTable.grantReadData(graphExpanderDispatcher);
     discoveryQueue.grantSendMessages(graphExpanderDispatcher);
+    graphExpanderDispatcher.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudwatch:PutMetricData"],
+        resources: ["*"],
+        conditions: { StringEquals: { "cloudwatch:namespace": "PkgWatch" } },
+      })
+    );
 
     // Tuesday 1:00 AM UTC (weekly) - Moved from Sunday to avoid collision with weekly refresh
     new events.Rule(this, "GraphExpanderDispatcherSchedule", {
@@ -612,6 +647,13 @@ export class PipelineStack extends cdk.Stack {
     packagesTable.grantReadWriteData(graphExpanderWorker);
     rawDataBucket.grantReadWrite(graphExpanderWorker); // For deps cache
     packageQueue.grantSendMessages(graphExpanderWorker);
+    graphExpanderWorker.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudwatch:PutMetricData"],
+        resources: ["*"],
+        conditions: { StringEquals: { "cloudwatch:namespace": "PkgWatch" } },
+      })
+    );
 
     // Connect worker to discovery queue
     graphExpanderWorker.addEventSource(
@@ -640,6 +682,13 @@ export class PipelineStack extends cdk.Stack {
 
     packagesTable.grantReadData(publishTopPackages);
     publicDataBucket.grantWrite(publishTopPackages, "data/*");
+    publishTopPackages.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudwatch:PutMetricData"],
+        resources: ["*"],
+        conditions: { StringEquals: { "cloudwatch:namespace": "PkgWatch" } },
+      })
+    );
 
     // Monday 5:00 AM UTC (weekly)
     new events.Rule(this, "PublishTopPackagesSchedule", {
@@ -665,6 +714,13 @@ export class PipelineStack extends cdk.Stack {
 
     packagesTable.grantReadWriteData(npmsioAudit);
     packageQueue.grantSendMessages(npmsioAudit);
+    npmsioAudit.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudwatch:PutMetricData"],
+        resources: ["*"],
+        conditions: { StringEquals: { "cloudwatch:namespace": "PkgWatch" } },
+      })
+    );
 
     // Quarterly: 1st of Jan, Apr, Jul, Oct at 2:00 AM UTC
     new events.Rule(this, "NpmsioAuditSchedule", {

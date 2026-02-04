@@ -1,11 +1,11 @@
 """
 PyPI Downloads Collector - Batch fetch weekly downloads from pypistats.org.
 
-Runs every 6 hours via EventBridge, fetches 100 packages per invocation.
+Runs every 6 hours via EventBridge, fetches 150 packages per invocation.
 Stores results directly in DynamoDB packages table.
 
-Rate: 100 packages/6hr = 400/day
-Full refresh: 5,350 packages / 400 per day = ~14 days
+Rate: 150 packages/6hr = 600/day
+Full refresh: 5,350 packages / 600 per day = ~9 days
 
 This collector is separate from the main package_collector to:
 1. Avoid hitting pypistats.org rate limits during normal collection
@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 PYPISTATS_API = "https://pypistats.org/api"
-BATCH_SIZE = 100  # Packages per invocation
-REQUEST_DELAY = 0.5  # Seconds between requests (be nice to pypistats.org)
+BATCH_SIZE = 150  # Packages per invocation (conservative - stays under pypistats 30 req/min)
+REQUEST_DELAY = 0.4  # Seconds between requests (pypistats.org rate limit ~30 req/min)
 WRITE_BATCH_SIZE = 10  # Write to DynamoDB every N packages
 
 
