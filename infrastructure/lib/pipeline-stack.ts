@@ -509,7 +509,8 @@ export class PipelineStack extends cdk.Stack {
         timeout: cdk.Duration.minutes(10), // Allow time for BigQuery query + DynamoDB writes
         memorySize: 1024, // BigQuery client needs headroom
         description: "Fetches PyPI download statistics from BigQuery daily",
-        reservedConcurrentExecutions: 1, // Prevent concurrent BigQuery queries
+        // Note: Removed reservedConcurrentExecutions to avoid account limit issues
+        // EventBridge schedule (daily) naturally prevents concurrent queries
         environment: {
           ...commonLambdaProps.environment,
           GCP_CREDENTIALS_SECRET: gcpCredentialsSecret.secretName,
