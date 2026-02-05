@@ -184,6 +184,8 @@ def packages_table_with_data(mock_aws_services):
             "latest_version": "4.17.21",
             "last_published": "2024-01-15T00:00:00Z",
             "last_updated": "2024-01-15T00:00:00Z",
+            "data_status": "complete",
+            "queryable": True,
         },
         {
             "pk": "npm#express",
@@ -206,6 +208,8 @@ def packages_table_with_data(mock_aws_services):
             "latest_version": "4.18.2",
             "last_published": "2024-01-20T00:00:00Z",
             "last_updated": "2024-01-20T00:00:00Z",
+            "data_status": "complete",
+            "queryable": True,
         },
         {
             "pk": "npm#abandoned-pkg",
@@ -228,6 +232,8 @@ def packages_table_with_data(mock_aws_services):
             "latest_version": "1.0.0",
             "last_published": "2022-01-01T00:00:00Z",
             "last_updated": "2024-01-01T00:00:00Z",
+            "data_status": "complete",
+            "queryable": True,
         },
         {
             "pk": "npm#react",
@@ -250,6 +256,8 @@ def packages_table_with_data(mock_aws_services):
             "latest_version": "18.2.0",
             "last_published": "2024-01-25T00:00:00Z",
             "last_updated": "2024-01-25T00:00:00Z",
+            "data_status": "complete",
+            "queryable": True,
         },
     ]
 
