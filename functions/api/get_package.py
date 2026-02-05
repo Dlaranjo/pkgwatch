@@ -19,7 +19,7 @@ logger.setLevel(logging.INFO)
 from shared.auth import validate_api_key, check_and_increment_usage_with_bonus
 from shared.response_utils import decimal_default, error_response
 from shared.rate_limit_utils import check_usage_alerts, get_reset_timestamp
-from shared.data_quality import build_data_quality_full
+from shared.data_quality import build_data_quality_full, is_queryable
 from shared.package_validation import normalize_npm_name
 
 # Demo mode settings
@@ -274,7 +274,10 @@ def handler(event, context):
     query_params = event.get("queryStringParameters") or {}
     include_incomplete = query_params.get("include_incomplete") == "true"
 
-    if not include_incomplete and not item.get("queryable", False):
+    # Use stored queryable flag, falling back to computed value for pre-migration packages
+    queryable = item.get("queryable") if item.get("queryable") is not None else is_queryable(item)
+
+    if not include_incomplete and not queryable:
         data_status = item.get("data_status", "pending")
         # Pending = short retry (data collection in progress)
         # Other statuses = longer retry (may need manual intervention)
