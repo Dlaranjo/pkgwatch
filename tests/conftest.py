@@ -328,6 +328,9 @@ def seeded_packages_table(mock_dynamodb, sample_healthy_package):
             "risk_level": "LOW",
             "abandonment_risk": {"probability": 15, "risk_level": "LOW"},
             "last_updated": "2024-01-01T00:00:00Z",
+            "latest_version": "4.17.21",
+            "data_status": "complete",
+            "queryable": True,  # Required for API to return 200
             **sample_healthy_package,
         }
     )
@@ -346,6 +349,9 @@ def seeded_packages_table(mock_dynamodb, sample_healthy_package):
             "days_since_last_commit": 400,
             "active_contributors_90d": 0,
             "weekly_downloads": 50,
+            "latest_version": "1.0.0",
+            "data_status": "complete",
+            "queryable": True,  # Required for API to return 200
         }
     )
 
@@ -363,6 +369,9 @@ def seeded_packages_table(mock_dynamodb, sample_healthy_package):
             "days_since_last_commit": 14,
             "active_contributors_90d": 8,
             "weekly_downloads": 5_000_000,
+            "latest_version": "2.31.0",
+            "data_status": "complete",
+            "queryable": True,  # Required for API to return 200
         }
     )
 
@@ -380,6 +389,9 @@ def seeded_packages_table(mock_dynamodb, sample_healthy_package):
             "days_since_last_commit": 500,
             "active_contributors_90d": 0,
             "weekly_downloads": 100,
+            "latest_version": "0.9.0",
+            "data_status": "complete",
+            "queryable": True,  # Required for API to return 200
         }
     )
 

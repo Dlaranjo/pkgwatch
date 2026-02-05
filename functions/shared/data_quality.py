@@ -109,3 +109,38 @@ def build_data_quality_compact(item: dict) -> dict:
         "assessment": get_assessment_category(data_status, has_repo),
         "has_repository": has_repo,
     }
+
+
+def is_queryable(data: dict) -> bool:
+    """
+    Determine if a package has minimum viable data for API queries.
+
+    A package is queryable when it has:
+    1. A latest_version (we know something about it)
+    2. A health_score (scoring has run)
+    3. Either: downloads > 0, dependents > 0, OR data_status is "complete"
+
+    The escape hatch (data_status == "complete") allows packages with
+    genuinely zero usage to still be queryable once fully collected.
+
+    Args:
+        data: Package data dictionary (from DynamoDB or collection)
+
+    Returns:
+        True if package has minimum viable data for API queries
+    """
+    latest_version = data.get("latest_version")
+    health_score = data.get("health_score")
+    weekly_downloads = data.get("weekly_downloads", 0)
+    dependents_count = data.get("dependents_count", 0)
+    data_status = data.get("data_status")
+
+    has_version = latest_version is not None
+    has_score = health_score is not None
+    has_usage_signal = (
+        weekly_downloads > 0 or
+        dependents_count > 0 or
+        data_status == "complete"
+    )
+
+    return has_version and has_score and has_usage_signal

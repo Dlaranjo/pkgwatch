@@ -408,11 +408,21 @@ export class PkgWatchClient {
 
   /**
    * Get health score for a single package.
+   *
+   * @param name - Package name
+   * @param ecosystem - Package ecosystem: "npm" (default) or "pypi"
+   * @param options - Additional options
+   * @param options.includeIncomplete - Return partial data for packages still being collected (bypasses 202 gate)
    */
-  async getPackage(name: string, ecosystem = "npm"): Promise<PackageHealthFull> {
+  async getPackage(
+    name: string,
+    ecosystem = "npm",
+    options: { includeIncomplete?: boolean } = {}
+  ): Promise<PackageHealthFull> {
     const encodedEcosystem = encodeURIComponent(ecosystem);
     const encodedName = encodeURIComponent(name);
-    return this.request<PackageHealthFull>(`/packages/${encodedEcosystem}/${encodedName}`);
+    const queryParams = options.includeIncomplete ? "?include_incomplete=true" : "";
+    return this.request<PackageHealthFull>(`/packages/${encodedEcosystem}/${encodedName}${queryParams}`);
   }
 
   /**

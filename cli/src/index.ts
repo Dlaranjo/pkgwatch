@@ -29,6 +29,9 @@ const EXIT_SUCCESS = 0;
 const EXIT_RISK_EXCEEDED = 1;
 const EXIT_CLI_ERROR = 2;
 
+// Sleep helper for retry delays
+const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+
 // GitHub repo URL for feedback links
 const GITHUB_REPO = "https://github.com/Dlaranjo/pkgwatch";
 
@@ -320,20 +323,113 @@ program
 // ------------------------------------------------------------
 // check <package>
 // ------------------------------------------------------------
+
+/**
+ * Check if response is a 202 "collecting" status.
+ */
+function isCollectingResponse(data: unknown): data is { status: "collecting"; message: string; retry_after_seconds: number; data_status: string } {
+  return typeof data === "object" && data !== null && (data as Record<string, unknown>).status === "collecting";
+}
+
 program
   .command("check <package>")
   .alias("c")
   .description("Check health score for a single package")
   .option("--json", "Output as JSON")
+  .option("--include-incomplete", "Return partial data for packages still being collected")
+  .option("--max-retries <n>", "Max retries for packages being collected (default: 3)", "3")
+  .option("--max-wait <seconds>", "Max total wait time in seconds (default: 600)", "600")
+  .option("--no-retry", "Disable automatic retry for 202 responses")
   .addOption(new Option("-e, --ecosystem <name>", "Package ecosystem").choices(["npm", "pypi"]).default("npm"))
-  .action(async (packageName: string, options: { json?: boolean; ecosystem: string }) => {
+  .action(async (packageName: string, options: {
+    json?: boolean;
+    ecosystem: string;
+    includeIncomplete?: boolean;
+    maxRetries?: string;
+    maxWait?: string;
+    retry?: boolean;  // Commander sets to false with --no-retry
+  }) => {
     const client = getClient();
-    const spinner = createSpinner(`Checking ${packageName} (${options.ecosystem})...`);
+    let spinner = createSpinner(`Checking ${packageName} (${options.ecosystem})...`);
     logVerbose(`Fetching package data from API`);
 
     try {
-      const pkg = await client.getPackage(packageName, options.ecosystem);
+      // Fetch package data, with optional bypass for incomplete data
+      let pkg = await client.getPackage(
+        packageName,
+        options.ecosystem,
+        { includeIncomplete: options.includeIncomplete }
+      );
       spinner?.stop();
+
+      // Handle 202 "collecting" response - package data not yet ready
+      if (isCollectingResponse(pkg)) {
+        // Handle --no-retry flag
+        if (options.retry === false) {
+          if (options.json) {
+            console.log(JSON.stringify(pkg, null, 2));
+          } else {
+            console.log(pc.yellow(`Package data is being collected for ${packageName}`));
+            console.log(pc.dim(`Retry disabled. Use --include-incomplete to get partial data.`));
+          }
+          process.exit(EXIT_CLI_ERROR);
+        }
+
+        const maxRetries = parseInt(options.maxRetries || "3", 10);
+        const maxWait = parseInt(options.maxWait || "600", 10);
+        let retryCount = 0;
+        let totalWaited = 0;
+        // Result can be either a collecting response or package data
+        let result: typeof pkg | { status: "collecting"; message: string; retry_after_seconds: number; data_status: string } = pkg;
+
+        while (isCollectingResponse(result) && retryCount < maxRetries && totalWaited < maxWait) {
+          const waitTime = Math.min(result.retry_after_seconds, maxWait - totalWaited);
+          retryCount++;
+
+          spinner = createSpinner(
+            `Package data being collected (attempt ${retryCount}/${maxRetries}), waiting ${waitTime}s...`
+          );
+
+          await sleep(waitTime * 1000);
+          totalWaited += waitTime;
+          spinner?.stop();
+
+          try {
+            // getPackage returns PackageHealthFull but can also return 202 collecting response
+            result = await client.getPackage(
+              packageName,
+              options.ecosystem,
+              { includeIncomplete: options.includeIncomplete }
+            ) as typeof result;
+          } catch (retryError) {
+            // Handle errors during retry (404, rate limit, etc.)
+            if (retryError instanceof ApiClientError) {
+              if (retryError.status === 404) {
+                console.error(pc.red(`Package not found: ${packageName}`));
+              } else {
+                console.error(pc.red(`API Error during retry: ${retryError.message}`));
+              }
+            } else {
+              console.error(pc.red(`Error during retry: ${String(retryError)}`));
+            }
+            process.exit(EXIT_CLI_ERROR);
+          }
+        }
+
+        // After retries exhausted or data ready
+        if (isCollectingResponse(result)) {
+          if (options.json) {
+            console.log(JSON.stringify(result, null, 2));
+          } else {
+            console.log(pc.yellow(`Package data still being collected after ${retryCount} retries.`));
+            console.log(pc.dim(`Use --include-incomplete to get partial data.`));
+          }
+          process.exit(EXIT_CLI_ERROR);
+        }
+
+        // Data is ready - continue to normal output
+        pkg = result;
+      }
 
       if (options.json) {
         console.log(JSON.stringify(pkg, null, 2));

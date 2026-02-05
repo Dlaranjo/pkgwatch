@@ -27,13 +27,19 @@ try:
     from health_score import calculate_health_score
     from abandonment_risk import calculate_abandonment_risk
     from shared.logging_utils import configure_structured_logging, set_request_id
+    from shared.data_quality import is_queryable
 except ImportError:
     # pytest environment - functions dir added to sys.path
     from scoring.health_score import calculate_health_score
     from scoring.abandonment_risk import calculate_abandonment_risk
     from shared.logging_utils import configure_structured_logging, set_request_id
+    from shared.data_quality import is_queryable
+
+# Backward compatibility alias for tests
+_is_queryable = is_queryable
 
 logger = logging.getLogger(__name__)
+
 
 # Defense in depth: skip scoring if package was scored recently
 # This prevents infinite loops if the DynamoDB Streams filter doesn't work as expected
@@ -250,6 +256,12 @@ def _score_single_package(event: dict) -> dict:
 
     # Update package with scores (with retry)
     now = datetime.now(timezone.utc).isoformat()
+
+    # Compute queryable with the new health_score
+    # item already has latest_version, weekly_downloads, dependents_count, data_status
+    item_with_score = {**item, "health_score": health_result["health_score"]}
+    queryable = _is_queryable(item_with_score)
+
     try:
         _retry_sync(
             table.update_item,
@@ -261,7 +273,8 @@ def _score_single_package(event: dict) -> dict:
                     confidence = :conf,
                     confidence_interval = :ci,
                     abandonment_risk = :ar,
-                    scored_at = :now
+                    scored_at = :now,
+                    queryable = :q
                 REMOVE force_rescore
             """,
             ExpressionAttributeValues={
@@ -272,6 +285,7 @@ def _score_single_package(event: dict) -> dict:
                 ":ci": to_decimal(health_result["confidence_interval"]),
                 ":ar": to_decimal(abandonment_result),
                 ":now": now,
+                ":q": queryable,
             },
         )
     except ClientError as e:

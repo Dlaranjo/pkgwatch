@@ -598,6 +598,10 @@ class TestGetPackageEdgeCases:
                 "health_score": 80,
                 "risk_level": "LOW",
                 "last_updated": "2024-01-01T00:00:00Z",
+                "latest_version": "1.0.0",
+                "weekly_downloads": 1000,
+                "data_status": "complete",
+                "queryable": True,
             }
         )
 

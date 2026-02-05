@@ -707,13 +707,27 @@ class TestDataQualityInScan:
 
     @mock_aws
     def test_scan_data_quality_unverified_for_legacy_package(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
     ):
         """Should return UNVERIFIED for packages without data_status field."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        # seeded_packages_table adds lodash without data_status field
+        # Create a legacy package WITHOUT data_status field to test legacy behavior
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
+        packages_table.put_item(
+            Item={
+                "pk": "npm#legacy-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "legacy-pkg",
+                "health_score": 70,
+                "risk_level": "LOW",
+                "last_updated": "2024-01-01T00:00:00Z",
+                "latest_version": "1.0.0",
+                # NOTE: No data_status or queryable fields - legacy package
+            }
+        )
 
         from api.post_scan import handler
 
@@ -722,7 +736,7 @@ class TestDataQualityInScan:
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
         api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21"},
+            "dependencies": {"legacy-pkg": "^1.0.0"},
         })
 
         result = handler(api_gateway_event, {})

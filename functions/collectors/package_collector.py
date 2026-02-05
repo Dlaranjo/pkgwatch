@@ -42,6 +42,10 @@ from circuit_breaker import CircuitOpenError, GITHUB_CIRCUIT, OPENSSF_CIRCUIT
 from rate_limit_utils import check_and_increment_external_rate_limit
 from package_validation import validate_npm_package_name, validate_pypi_package_name
 from error_classification import classify_error as _classify_error
+from data_quality import is_queryable
+
+# Backward compatibility alias for tests
+_is_queryable = is_queryable
 
 # Lazy initialization for boto3 clients (reduces cold start time)
 _dynamodb = None
@@ -1340,6 +1344,11 @@ def store_package_data_sync(ecosystem: str, name: str, data: dict, tier: int):
 
     item["data_status"] = data_status
     item["missing_sources"] = missing_sources
+
+    # Calculate queryable field (will be updated again by score_package.py after scoring)
+    # At collection time, health_score is not yet computed, so this will be False
+    # unless the package already had a health_score from a previous collection
+    item["queryable"] = _is_queryable({**data, "data_status": data_status})
 
     # Handle retry tracking based on data completeness
     if data_status == "complete":

@@ -269,6 +269,34 @@ def handler(event, context):
             headers=cors_headers,
         )
 
+    # Data quality gate - return 202 for packages still being collected
+    # Use ?include_incomplete=true to bypass for power users/debugging
+    query_params = event.get("queryStringParameters") or {}
+    include_incomplete = query_params.get("include_incomplete") == "true"
+
+    if not include_incomplete and not item.get("queryable", False):
+        data_status = item.get("data_status", "pending")
+        # Pending = short retry (data collection in progress)
+        # Other statuses = longer retry (may need manual intervention)
+        retry_after = 60 if data_status == "pending" else 300
+
+        return {
+            "statusCode": 202,
+            "headers": {
+                "Content-Type": "application/json",
+                "Retry-After": str(retry_after),
+                **cors_headers,
+            },
+            "body": json.dumps({
+                "status": "collecting",
+                "package": name,
+                "ecosystem": ecosystem,
+                "data_status": data_status,
+                "message": "Package data is being collected. Retry after the specified interval or use ?include_incomplete=true to get partial data.",
+                "retry_after_seconds": retry_after,
+            }),
+        }
+
     # Note: Usage counter already incremented atomically in check_and_increment_usage
 
     # Format response

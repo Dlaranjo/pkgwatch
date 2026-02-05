@@ -243,6 +243,10 @@ def batch_write_packages(
                         "seeded_rank": pkg["rank"],
                         # Mark as needing collection
                         "needs_collection": True,
+                        # Initial data quality state - ensures retry system can find this package
+                        "data_status": "pending",
+                        # Not queryable until data is collected and scored
+                        "queryable": False,
                     }
 
                     writer.put_item(Item=item)

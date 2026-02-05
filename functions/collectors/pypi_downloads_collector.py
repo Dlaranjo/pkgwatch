@@ -25,6 +25,8 @@ import boto3
 import httpx
 from botocore.exceptions import ClientError
 
+from shared.circuit_breaker import PYPISTATS_CIRCUIT
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -36,6 +38,11 @@ WRITE_BATCH_SIZE = 10  # Write to DynamoDB every N packages
 
 def handler(event, context):
     """Fetch PyPI download stats and update DynamoDB directly."""
+    # Check circuit breaker before starting batch
+    if not PYPISTATS_CIRCUIT.can_execute():
+        logger.warning("pypistats circuit breaker is open, skipping batch")
+        return {"packages_updated": 0, "total_processed": 0, "circuit_open": True}
+
     dynamodb = boto3.resource("dynamodb")
     packages_table = dynamodb.Table(os.environ["PACKAGES_TABLE"])
 
@@ -61,26 +68,38 @@ def handler(event, context):
                 resp = client.get(url)
 
                 if resp.status_code == 404:
-                    # Package doesn't exist in pypistats - mark as checked with 0
+                    # Package doesn't exist in pypistats - mark as unavailable
+                    # 404 is not a failure of pypistats.org, record success
+                    PYPISTATS_CIRCUIT.record_success()
                     pending_updates.append({
                         "name": pkg_name,
                         "weekly_downloads": 0,
-                        "downloads_source": "pypistats_404"
+                        "downloads_source": "pypistats_404",
+                        "downloads_status": "unavailable",
                     })
                     processed += 1
                 elif resp.status_code == 429:
-                    # Rate limited - stop the batch
+                    # Rate limited - record failure and stop the batch
+                    PYPISTATS_CIRCUIT.record_failure()
                     logger.warning("pypistats.org rate limited (429), stopping batch")
+                    # Mark this package as rate_limited for tracking
+                    pending_updates.append({
+                        "name": pkg_name,
+                        "downloads_status": "rate_limited",
+                        "downloads_source": "pypistats_429",
+                    })
                     break
                 else:
                     resp.raise_for_status()
+                    PYPISTATS_CIRCUIT.record_success()
                     data = resp.json()
                     downloads = data.get("data", {}).get("last_week", 0)
 
                     pending_updates.append({
                         "name": pkg_name,
                         "weekly_downloads": downloads,
-                        "downloads_source": "pypistats"
+                        "downloads_source": "pypistats",
+                        "downloads_status": "collected",
                     })
                     if downloads > 0:
                         updated += 1
@@ -89,10 +108,22 @@ def handler(event, context):
                 time.sleep(REQUEST_DELAY)
 
             except httpx.HTTPStatusError as e:
+                PYPISTATS_CIRCUIT.record_failure()
                 logger.warning(f"HTTP error for {pkg_name}: {e.response.status_code}")
+                pending_updates.append({
+                    "name": pkg_name,
+                    "downloads_status": "error",
+                    "downloads_source": f"pypistats_http_{e.response.status_code}",
+                })
                 processed += 1
             except Exception as e:
+                PYPISTATS_CIRCUIT.record_failure()
                 logger.warning(f"Failed to fetch downloads for {pkg_name}: {e}")
+                pending_updates.append({
+                    "name": pkg_name,
+                    "downloads_status": "error",
+                    "downloads_source": f"pypistats_{type(e).__name__}",
+                })
                 processed += 1
 
             # Incremental write every WRITE_BATCH_SIZE packages
@@ -201,20 +232,41 @@ def _get_packages_needing_refresh(table, limit: int, context=None) -> list:
 
 
 def _write_updates(table, updates: list):
-    """Write download updates to DynamoDB."""
+    """Write download updates to DynamoDB.
+
+    Handles different update types:
+    - collected/unavailable: Updates weekly_downloads, downloads_status, and timestamp
+    - rate_limited/error: Only updates downloads_status (preserves existing weekly_downloads)
+    """
     now = datetime.now(timezone.utc).isoformat()
 
     for update in updates:
         try:
-            table.update_item(
-                Key={"pk": f"pypi#{update['name']}", "sk": "LATEST"},
-                UpdateExpression="SET weekly_downloads = :d, downloads_source = :s, downloads_fetched_at = :t",
-                ExpressionAttributeValues={
-                    ":d": update["weekly_downloads"],
-                    ":s": update["downloads_source"],
-                    ":t": now
-                }
-            )
+            downloads_status = update.get("downloads_status", "collected")
+
+            # For rate_limited or error status, only update status fields (preserve existing downloads)
+            if downloads_status in ("rate_limited", "error"):
+                table.update_item(
+                    Key={"pk": f"pypi#{update['name']}", "sk": "LATEST"},
+                    UpdateExpression="SET downloads_status = :ds, downloads_source = :s, downloads_fetched_at = :t",
+                    ExpressionAttributeValues={
+                        ":ds": downloads_status,
+                        ":s": update.get("downloads_source", "unknown"),
+                        ":t": now,
+                    }
+                )
+            else:
+                # Full update for collected/unavailable status
+                table.update_item(
+                    Key={"pk": f"pypi#{update['name']}", "sk": "LATEST"},
+                    UpdateExpression="SET weekly_downloads = :d, downloads_source = :s, downloads_status = :ds, downloads_fetched_at = :t",
+                    ExpressionAttributeValues={
+                        ":d": update["weekly_downloads"],
+                        ":s": update["downloads_source"],
+                        ":ds": downloads_status,
+                        ":t": now,
+                    }
+                )
         except ClientError as e:
             logger.warning(f"Failed to update {update['name']}: {e}")
 

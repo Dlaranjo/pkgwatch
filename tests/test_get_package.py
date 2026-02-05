@@ -135,6 +135,10 @@ class TestGetPackageHandler:
                 "health_score": 90,
                 "risk_level": "LOW",
                 "last_updated": "2024-01-01T00:00:00Z",
+                "latest_version": "7.23.0",
+                "weekly_downloads": 10000000,
+                "data_status": "complete",
+                "queryable": True,
             }
         )
 
@@ -337,6 +341,9 @@ class TestDataQualityInGetPackage:
                 "missing_sources": [],
                 "repository_url": "https://github.com/owner/repo",
                 "last_updated": "2024-01-01T00:00:00Z",
+                "latest_version": "1.0.0",
+                "weekly_downloads": 1000,
+                "queryable": True,
             }
         )
 
@@ -377,6 +384,8 @@ class TestDataQualityInGetPackage:
                 "missing_sources": ["github", "depsdev"],
                 "repository_url": None,
                 "last_updated": "2024-01-01T00:00:00Z",
+                "latest_version": "1.0.0",
+                # queryable=False by default since downloads=0 and status!=complete
             }
         )
 
@@ -385,6 +394,8 @@ class TestDataQualityInGetPackage:
         table, test_key = seeded_api_keys_table
         api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "minimal-pkg"}
         api_gateway_event["headers"]["x-api-key"] = test_key
+        # Use include_incomplete to bypass 202 gate for data quality testing
+        api_gateway_event["queryStringParameters"] = {"include_incomplete": "true"}
 
         result = handler(api_gateway_event, {})
 
@@ -415,6 +426,7 @@ class TestDataQualityInGetPackage:
                 "risk_level": "MEDIUM",
                 # No data_status, no missing_sources, no repository_url
                 "last_updated": "2024-01-01T00:00:00Z",
+                # queryable not set - defaults to False
             }
         )
 
@@ -423,6 +435,8 @@ class TestDataQualityInGetPackage:
         table, test_key = seeded_api_keys_table
         api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "legacy-pkg"}
         api_gateway_event["headers"]["x-api-key"] = test_key
+        # Use include_incomplete to bypass 202 gate for data quality testing
+        api_gateway_event["queryStringParameters"] = {"include_incomplete": "true"}
 
         result = handler(api_gateway_event, {})
 
@@ -432,3 +446,149 @@ class TestDataQualityInGetPackage:
         assert body["data_quality"]["status"] == "minimal"
         assert body["data_quality"]["assessment"] == "UNVERIFIED"
         assert body["data_quality"]["has_repository"] is False
+
+
+class TestDataQualityGate:
+    """Tests for the 202 data quality gate (queryable field)."""
+
+    @mock_aws
+    def test_returns_202_for_non_queryable_package(
+        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
+    ):
+        """Should return 202 for packages with queryable=False."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        # Seed a package that is not queryable (no downloads, no dependents, status=pending)
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
+        packages_table.put_item(
+            Item={
+                "pk": "npm#new-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "new-pkg",
+                "latest_version": "1.0.0",
+                "health_score": 50,
+                "data_status": "pending",
+                "queryable": False,  # Explicitly not queryable
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "new-pkg"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 202
+        body = json.loads(result["body"])
+        assert body["status"] == "collecting"
+        assert body["package"] == "new-pkg"
+        assert body["data_status"] == "pending"
+        assert "Retry-After" in result["headers"]
+        # Pending status = short retry (60s) because collection is in progress
+        assert result["headers"]["Retry-After"] == "60"
+        assert body["retry_after_seconds"] == 60
+
+    @mock_aws
+    def test_returns_200_with_include_incomplete_bypass(
+        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
+    ):
+        """Should return 200 with include_incomplete=true even for non-queryable packages."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        # Seed a package that is not queryable
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
+        packages_table.put_item(
+            Item={
+                "pk": "npm#partial-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "partial-pkg",
+                "latest_version": "1.0.0",
+                "health_score": 60,
+                "risk_level": "MEDIUM",
+                "data_status": "partial",
+                "queryable": False,
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "partial-pkg"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["queryStringParameters"] = {"include_incomplete": "true"}
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["package"] == "partial-pkg"
+        assert body["health_score"] == 60
+
+    @mock_aws
+    def test_returns_200_for_queryable_package(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """Should return 200 for packages with queryable=True."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        # lodash in seeded_packages_table has queryable=True
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["package"] == "lodash"
+
+    @mock_aws
+    def test_returns_202_with_longer_retry_for_non_pending_status(
+        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
+    ):
+        """Should return 202 with longer retry for non-pending statuses."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        # Seed a package with partial status (not pending)
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
+        packages_table.put_item(
+            Item={
+                "pk": "npm#error-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "error-pkg",
+                "latest_version": "1.0.0",
+                "health_score": 40,
+                "data_status": "partial",  # Non-pending status
+                "queryable": False,
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "error-pkg"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 202
+        body = json.loads(result["body"])
+        assert body["status"] == "collecting"
+        assert body["data_status"] == "partial"
+        # Non-pending status = longer retry (300s) - may need manual intervention
+        assert result["headers"]["Retry-After"] == "300"
+        assert body["retry_after_seconds"] == 300

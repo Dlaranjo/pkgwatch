@@ -469,8 +469,95 @@ export class PipelineStack extends cdk.Stack {
     );
 
     // ===========================================
-    // Lambda: OpenSSF Batch Collector
+    // Lambda: PyPI Downloads BigQuery Collector
     // ===========================================
+    // Fetches weekly downloads from Google BigQuery (official PyPI data source)
+    // Separate bundle to avoid bloating other collectors with google-cloud-bigquery
+
+    // Reference GCP credentials secret (created manually before deployment)
+    const gcpCredentialsSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "GCPBigQueryCredentialsSecret",
+      "pkgwatch/gcp-bigquery-credentials"
+    );
+
+    // Separate bundle for BigQuery collector (google-cloud-bigquery is large)
+    const bigqueryCollectorCode = lambda.Code.fromAsset(functionsDir, {
+      bundling: {
+        image: lambda.Runtime.PYTHON_3_12.bundlingImage,
+        command: [
+          "bash",
+          "-c",
+          [
+            "cp /asset-input/collectors/pypi_downloads_bigquery_collector.py /asset-output/",
+            "cp -r /asset-input/shared/* /asset-output/",
+            "cp -r /asset-input/shared /asset-output/",
+            "pip install google-cloud-bigquery boto3 -t /asset-output/ --quiet",
+          ].join(" && "),
+        ],
+      },
+    });
+
+    const pypiDownloadsBigQueryCollector = new lambda.Function(
+      this,
+      "PyPIDownloadsBigQueryCollector",
+      {
+        ...commonLambdaProps,
+        functionName: "pkgwatch-pypi-bigquery-collector",
+        handler: "pypi_downloads_bigquery_collector.handler",
+        code: bigqueryCollectorCode,
+        timeout: cdk.Duration.minutes(10), // Allow time for BigQuery query + DynamoDB writes
+        memorySize: 1024, // BigQuery client needs headroom
+        description: "Fetches PyPI download statistics from BigQuery daily",
+        reservedConcurrentExecutions: 1, // Prevent concurrent BigQuery queries
+        environment: {
+          ...commonLambdaProps.environment,
+          GCP_CREDENTIALS_SECRET: gcpCredentialsSecret.secretName,
+          BIGQUERY_WRITE_BATCH_SIZE: "100",
+        },
+      }
+    );
+
+    // Permissions
+    packagesTable.grantReadWriteData(pypiDownloadsBigQueryCollector);
+    gcpCredentialsSecret.grantRead(pypiDownloadsBigQueryCollector);
+    pypiDownloadsBigQueryCollector.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudwatch:PutMetricData"],
+        resources: ["*"],
+        conditions: { StringEquals: { "cloudwatch:namespace": "PkgWatch" } },
+      })
+    );
+
+    // Schedule: Daily at 1:00 AM UTC (before other refresh jobs)
+    new events.Rule(this, "PyPIBigQuerySchedule", {
+      ruleName: "pkgwatch-pypi-bigquery-downloads",
+      schedule: events.Schedule.cron({ hour: "1", minute: "0" }),
+      description: "Fetches PyPI download statistics from BigQuery daily",
+      targets: [new targets.LambdaFunction(pypiDownloadsBigQueryCollector)],
+    });
+
+    // CloudWatch alarm for failures
+    const bigqueryErrorAlarm = new cloudwatch.Alarm(
+      this,
+      "PyPIBigQueryErrorAlarm",
+      {
+        alarmName: "pkgwatch-pypi-bigquery-errors",
+        alarmDescription: "BigQuery PyPI downloads collector failing",
+        metric: pypiDownloadsBigQueryCollector.metricErrors({
+          period: cdk.Duration.minutes(5),
+        }),
+        threshold: 1,
+        evaluationPeriods: 2,
+        comparisonOperator:
+          cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }
+    );
+
+    // ===========================================
+    // Lambda: OpenSSF Batch Collector
+    // ============================================
     // Batch fetches OpenSSF scorecards with tier prioritization
     // Fixes data quality issue where deps.dev lacks OpenSSF data for some packages
     const openssfCollector = new lambda.Function(this, "OpenSSFCollector", {
@@ -819,6 +906,11 @@ export class PipelineStack extends cdk.Stack {
 
     // OpenSSF Collector alarm (defined earlier, action added here after alertTopic exists)
     openssfErrorAlarm.addAlarmAction(
+      new cloudwatchActions.SnsAction(this.alertTopic)
+    );
+
+    // BigQuery PyPI Downloads alarm (defined earlier, action added here after alertTopic exists)
+    bigqueryErrorAlarm.addAlarmAction(
       new cloudwatchActions.SnsAction(this.alertTopic)
     );
 
