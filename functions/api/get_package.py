@@ -12,6 +12,8 @@ import os
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from shared.logging_utils import configure_structured_logging, set_request_id
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -193,6 +195,9 @@ def handler(event, context):
     Returns package health score and related data.
     Supports both authenticated (API key) and demo mode (IP rate-limited).
     """
+    configure_structured_logging()
+    set_request_id(event)
+
     headers = event.get("headers", {})
     origin = headers.get("origin") or headers.get("Origin") or ""
     cors_headers = _get_cors_headers(origin)

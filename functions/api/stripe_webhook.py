@@ -16,6 +16,8 @@ from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 from datetime import datetime, timezone, timedelta
 
+from shared.logging_utils import configure_structured_logging, set_request_id
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -211,6 +213,9 @@ def handler(event, context):
     - customer.subscription.deleted: Downgrade to free
     - invoice.payment_failed: Handle failed payments
     """
+    configure_structured_logging()
+    set_request_id(event)
+
     stripe_api_key, webhook_secret = get_stripe_secrets()
 
     if not stripe_api_key or not webhook_secret:
@@ -645,6 +650,7 @@ def _handle_subscription_deleted(subscription: dict):
         tier="free",
         cancellation_pending=False,
         cancellation_date=None,
+        remove_attributes=["stripe_subscription_id"],
     )
 
 
@@ -1218,6 +1224,7 @@ def _update_user_subscription_state(
     cancellation_date: int | None = None,
     current_period_start: int | None = None,
     current_period_end: int | None = None,
+    remove_attributes: list[str] | None = None,
 ):
     """Update user subscription state including tier and cancellation status.
 
@@ -1230,6 +1237,7 @@ def _update_user_subscription_state(
         cancellation_date: Unix timestamp of when subscription will end (if canceling)
         current_period_start: Unix timestamp of billing period start
         current_period_end: Unix timestamp of billing period end
+        remove_attributes: Attribute names to REMOVE from API key records (e.g. on cancellation)
     """
     if not customer_id:
         logger.error("Cannot update subscription state: no customer_id provided")
@@ -1311,6 +1319,8 @@ def _update_user_subscription_state(
 
         if update_expr_parts:
             update_expr = "SET " + ", ".join(update_expr_parts)
+            if remove_attributes:
+                update_expr += " REMOVE " + ", ".join(remove_attributes)
             table.update_item(
                 Key={"pk": item["pk"], "sk": item["sk"]},
                 UpdateExpression=update_expr,

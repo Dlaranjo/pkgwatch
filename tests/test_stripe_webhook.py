@@ -441,6 +441,77 @@ class TestHandleSubscriptionDeleted:
         assert item["cancellation_pending"] == False
         assert item.get("cancellation_date") is None
 
+    @mock_aws
+    def test_removes_stripe_subscription_id(self, mock_dynamodb):
+        """Should remove stripe_subscription_id so user can re-subscribe via checkout."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_resub_test").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_resub",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "resub@example.com",
+                "tier": "pro",
+                "stripe_customer_id": "cus_resub",
+                "stripe_subscription_id": "sub_to_delete",
+                "email_verified": True,
+            }
+        )
+
+        from api.stripe_webhook import _handle_subscription_deleted
+
+        subscription = {"customer": "cus_resub"}
+        _handle_subscription_deleted(subscription)
+
+        response = table.get_item(Key={"pk": "user_resub", "sk": key_hash})
+        item = response.get("Item")
+        assert item["tier"] == "free"
+        # stripe_subscription_id should be fully removed, not just set to None
+        assert "stripe_subscription_id" not in item
+        # stripe_customer_id should be preserved for re-subscription
+        assert item["stripe_customer_id"] == "cus_resub"
+
+    @mock_aws
+    def test_removes_subscription_id_from_all_keys(self, mock_dynamodb):
+        """Should remove stripe_subscription_id from ALL API key records for the user."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash_1 = hashlib.sha256(b"pw_multikey_1").hexdigest()
+        key_hash_2 = hashlib.sha256(b"pw_multikey_2").hexdigest()
+        for key_hash in [key_hash_1, key_hash_2]:
+            table.put_item(
+                Item={
+                    "pk": "user_multikey",
+                    "sk": key_hash,
+                    "key_hash": key_hash,
+                    "email": "multikey@example.com",
+                    "tier": "pro",
+                    "stripe_customer_id": "cus_multikey",
+                    "stripe_subscription_id": "sub_multikey",
+                    "email_verified": True,
+                }
+            )
+
+        from api.stripe_webhook import _handle_subscription_deleted
+
+        subscription = {"customer": "cus_multikey"}
+        _handle_subscription_deleted(subscription)
+
+        for key_hash in [key_hash_1, key_hash_2]:
+            response = table.get_item(
+                Key={"pk": "user_multikey", "sk": key_hash}
+            )
+            item = response.get("Item")
+            assert item["tier"] == "free"
+            assert "stripe_subscription_id" not in item
+            assert item["stripe_customer_id"] == "cus_multikey"
+
 
 class TestHandleSubscriptionUpdatedCancellation:
     """Tests for cancellation pending state tracking in _handle_subscription_updated."""

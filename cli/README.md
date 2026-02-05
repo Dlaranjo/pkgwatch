@@ -1,7 +1,7 @@
 # @pkgwatch/cli
 
 [![npm version](https://img.shields.io/npm/v/@pkgwatch/cli.svg)](https://www.npmjs.com/package/@pkgwatch/cli)
-[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 
 Keep watch over your npm and Python dependencies. Monitor package health and detect risks before they become problems.

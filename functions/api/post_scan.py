@@ -16,6 +16,8 @@ from decimal import Decimal
 from typing import Optional
 import boto3
 
+from shared.logging_utils import configure_structured_logging, set_request_id
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -178,6 +180,9 @@ def handler(event, context):
 
     Returns health scores for all dependencies.
     """
+    configure_structured_logging()
+    set_request_id(event)
+
     # Extract API key and origin for CORS
     headers = event.get("headers", {})
     api_key = headers.get("x-api-key") or headers.get("X-API-Key")

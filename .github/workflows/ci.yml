@@ -30,10 +30,14 @@ jobs:
           pip install -r functions/requirements.txt
           pip install -r tests/requirements.txt
 
+      - name: Lint with ruff
+        run: |
+          pip install ruff
+          ruff check functions/ --output-format github
+        continue-on-error: true
+
       - name: Run tests with coverage
-        # Note: Temporarily lowered from 80% to 78% after adding referral program.
-        # TODO: Restore to 80% after adding more tests for referral handlers.
-        run: pytest tests/ -v --tb=short --cov=functions --cov-report=xml --cov-report=term-missing --cov-fail-under=78
+        run: pytest tests/ -v --tb=short --cov=functions --cov-report=xml --cov-report=term-missing --cov-fail-under=80
         env:
           PYTHONPATH: ${{ github.workspace }}/functions:${{ github.workspace }}
 
@@ -83,6 +87,11 @@ jobs:
           npm run build -w @pkgwatch/action
           grep -q "DependencyParseError" action/dist/index.js || (echo "ERROR: DependencyParseError missing from action bundle" && exit 1)
           echo "Action bundle verified"
+
+      - name: Build CLI and run TypeScript tests
+        run: |
+          npm run build -w @pkgwatch/cli
+          npm test --workspaces --if-present
 
   web:
     runs-on: ubuntu-latest

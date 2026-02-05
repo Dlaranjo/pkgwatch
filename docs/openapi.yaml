@@ -3,7 +3,7 @@ info:
   title: PkgWatch API
   version: 1.0.0
   description: |
-    Dependency Health Intelligence API for predicting npm package abandonment risk.
+    Dependency Health Intelligence API for predicting npm and Python package abandonment risk.
 
     ## Authentication
     Most endpoints require an API key passed via the `X-API-Key` header.
@@ -103,6 +103,47 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PackageHealth'
+        '202':
+          description: |
+            Package data is being collected. Retry after the specified interval.
+            Use `?include_incomplete=true` query parameter to get partial data immediately.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: string
+              example: "60"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    description: Always "collecting" for this response
+                    example: collecting
+                  package:
+                    type: string
+                    description: The requested package name
+                    example: my-package
+                  ecosystem:
+                    type: string
+                    description: The package ecosystem
+                    enum: [npm, pypi]
+                    example: npm
+                  data_status:
+                    type: string
+                    description: Current data collection status
+                    enum: [pending, partial, minimal]
+                    example: pending
+                  message:
+                    type: string
+                    description: Human-readable status message
+                    example: "Package data is being collected. Retry after the specified interval or use ?include_incomplete=true to get partial data."
+                  retry_after_seconds:
+                    type: integer
+                    description: Suggested wait time in seconds before retrying
+                    example: 60
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':

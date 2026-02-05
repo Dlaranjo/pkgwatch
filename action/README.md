@@ -1,7 +1,7 @@
 # PkgWatch GitHub Action
 
 [![GitHub Action](https://img.shields.io/badge/GitHub-Action-blue.svg)](https://github.com/features/actions)
-[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 Scan your npm and Python dependencies for health risks and security issues in CI/CD.
 
@@ -222,4 +222,4 @@ The action automatically creates GitHub annotations for all CRITICAL and HIGH ri
 
 ## License
 
-Proprietary - All rights reserved
+MIT License - See [LICENSE](LICENSE) for details

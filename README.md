@@ -3,7 +3,7 @@
 [![Website](https://img.shields.io/badge/Website-pkgwatch.dev-blue?style=flat-square)](https://pkgwatch.dev)
 [![npm](https://img.shields.io/npm/v/@pkgwatch/cli?style=flat-square&label=CLI)](https://www.npmjs.com/package/@pkgwatch/cli)
 [![Documentation](https://img.shields.io/badge/Docs-API%20Reference-green?style=flat-square)](https://pkgwatch.dev/docs)
-[![License](https://img.shields.io/badge/License-Proprietary-red?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/License-See%20LICENSE-lightgrey?style=flat-square)](LICENSE)
 
 > **Predict which npm and Python packages are at risk of abandonment, maintenance decline, or security issues — BEFORE problems occur.**
 

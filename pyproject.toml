@@ -1,0 +1,17 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"functions/collectors/*.py" = ["E402"]
+"functions/api/*.py" = ["E402"]
+"functions/scoring/*.py" = ["E402"]
+"functions/discovery/*.py" = ["E402"]
+"functions/admin/*.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["shared", "api", "collectors", "scoring", "discovery", "admin"]
