@@ -232,6 +232,8 @@ describe("PkgWatchClient retry behavior", () => {
 
     const client = createClient();
     const resultPromise = client.getPackage("lodash");
+    // Prevent unhandled rejection while timers advance
+    resultPromise.catch(() => {});
 
     // Advance through all retry delays (1s + 2s + 4s + margin for jitter)
     await vi.advanceTimersByTimeAsync(10000);
@@ -275,6 +277,7 @@ describe("PkgWatchClient retry behavior", () => {
 
     const client = createClient();
     const resultPromise = client.getPackage("lodash");
+    resultPromise.catch(() => {});
 
     await vi.advanceTimersByTimeAsync(10000);
 
@@ -299,6 +302,7 @@ describe("PkgWatchClient retry behavior", () => {
 
     const client = createClient();
     const resultPromise = client.getPackage("lodash");
+    resultPromise.catch(() => {});
 
     await vi.advanceTimersByTimeAsync(10000);
 
@@ -382,6 +386,7 @@ describe("PkgWatchClient retry behavior", () => {
 
     const client = createClient();
     const resultPromise = client.getPackage("test");
+    resultPromise.catch(() => {});
 
     await vi.advanceTimersByTimeAsync(10000);
 
@@ -405,6 +410,7 @@ describe("PkgWatchClient retry behavior", () => {
 
     const client = createClient();
     const resultPromise = client.getPackage("test");
+    resultPromise.catch(() => {});
 
     await vi.advanceTimersByTimeAsync(10000);
 
