@@ -72,28 +72,27 @@ def handler(event, context):
     # Collect items to update
     updates_pending = []
 
-    # Scan all packages
+    # Scan all packages using high-level resource API
     scan_kwargs = {
         "ProjectionExpression": "pk, sk, latest_version, health_score, "
         "weekly_downloads, dependents_count, data_status, queryable",
     }
 
     try:
-        paginator = table.meta.client.get_paginator("scan")
-        page_iterator = paginator.paginate(TableName=PACKAGES_TABLE, **scan_kwargs)
+        done = False
+        while not done:
+            response = table.scan(**scan_kwargs)
 
-        for page in page_iterator:
-            for item in page.get("Items", []):
+            for item in response.get("Items", []):
                 stats["scanned"] += 1
 
                 # Only process LATEST records
-                if item.get("sk", {}).get("S") != "LATEST":
+                if item.get("sk") != "LATEST":
                     continue
 
-                # Convert DynamoDB format to regular dict
-                pk = item.get("pk", {}).get("S", "")
-                current_queryable = item.get("queryable", {}).get("BOOL")
-                data_status = item.get("data_status", {}).get("S")
+                pk = item.get("pk", "")
+                current_queryable = item.get("queryable")
+                data_status = item.get("data_status")
 
                 # Track packages missing data_status
                 if data_status is None:
@@ -101,19 +100,15 @@ def handler(event, context):
 
                 # Build simplified dict for _is_queryable
                 simple_item = {
-                    "latest_version": item.get("latest_version", {}).get("S"),
-                    "health_score": item.get("health_score", {}).get("N"),
-                    "weekly_downloads": int(
-                        item.get("weekly_downloads", {}).get("N", 0)
-                    ),
-                    "dependents_count": int(
-                        item.get("dependents_count", {}).get("N", 0)
-                    ),
+                    "latest_version": item.get("latest_version"),
+                    "health_score": item.get("health_score"),
+                    "weekly_downloads": int(item.get("weekly_downloads", 0)),
+                    "dependents_count": int(item.get("dependents_count", 0)),
                     "data_status": data_status,
                 }
 
-                # Convert health_score from string to float if present
-                if simple_item["health_score"]:
+                # Convert health_score to float if present (DynamoDB stores as Decimal)
+                if simple_item["health_score"] is not None:
                     simple_item["health_score"] = float(simple_item["health_score"])
 
                 computed_queryable = _is_queryable(simple_item)
@@ -144,9 +139,16 @@ def handler(event, context):
                     logger.info(f"Reached max_items limit ({max_items})")
                     break
 
-            # Check max_items limit (outer loop)
+            # Check max_items limit or if no more pages
             if max_items > 0 and stats["scanned"] >= max_items:
                 break
+
+            # Handle pagination
+            last_evaluated_key = response.get("LastEvaluatedKey")
+            if last_evaluated_key:
+                scan_kwargs["ExclusiveStartKey"] = last_evaluated_key
+            else:
+                done = True
 
         # Write remaining updates
         if not dry_run and updates_pending:
@@ -193,7 +195,7 @@ def _write_batch(table, updates: list, stats: dict):
                 },
             )
             stats["updated"] += 1
-        except ClientError as e:
+        except Exception as e:
             logger.warning(f"Failed to update {update['pk']}: {e}")
             stats["errors"] += 1
 

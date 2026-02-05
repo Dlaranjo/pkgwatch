@@ -2134,3 +2134,619 @@ class TestEnhancedScoringIntegration:
 
         # Filtered data should have lower evolution score (fewer real commits)
         assert result_filtered["components"]["evolution_health"] < result_with_bots["components"]["evolution_health"]
+
+
+# =============================================================================
+# Abandonment Risk - Uncovered Line Tests
+# =============================================================================
+
+
+class TestAbandonmentRiskBaseRiskClamping:
+    """Tests for base_risk clamping in _calculate_time_adjusted_risk (lines 34-35)."""
+
+    def test_base_risk_above_one_is_clamped(self):
+        """base_risk > 1.0 should be clamped to 1.0 and still produce valid result."""
+        result = _calculate_time_adjusted_risk(1.5, 12)
+        # Should clamp to 1.0 and return a valid risk probability
+        assert 0 <= result <= 0.95
+
+    def test_base_risk_below_zero_is_clamped(self):
+        """base_risk < 0.0 should be clamped to 0.0 and still produce valid result."""
+        result = _calculate_time_adjusted_risk(-0.5, 12)
+        # Should clamp to 0.0 and return a valid risk probability
+        assert 0 <= result <= 0.95
+
+    def test_base_risk_far_above_one(self):
+        """Extremely high base_risk should be clamped and not crash."""
+        result = _calculate_time_adjusted_risk(100.0, 12)
+        assert 0 <= result <= 0.95
+
+    def test_base_risk_far_below_zero(self):
+        """Extremely low base_risk should be clamped and not crash."""
+        result = _calculate_time_adjusted_risk(-100.0, 12)
+        assert 0 <= result <= 0.95
+
+
+class TestAbandonmentRiskNoneAndNegativeFields:
+    """Tests for None and negative field handling in calculate_abandonment_risk."""
+
+    def test_none_days_since_last_commit_defaults_to_365(self):
+        """None days_since_last_commit should default to 365 (line 96)."""
+        result = calculate_abandonment_risk({"days_since_last_commit": None})
+        # Default 365 days -> high inactivity risk
+        assert result["components"]["inactivity_risk"] > 80
+
+    def test_negative_days_since_last_commit_clamped_to_zero(self):
+        """Negative days_since_last_commit should be clamped to 0 (lines 99-102)."""
+        result = calculate_abandonment_risk({"days_since_last_commit": -50})
+        # Clamped to 0 -> minimal inactivity risk
+        # inactivity_risk = 1 - exp(-0/180) = 1 - 1 = 0
+        assert result["components"]["inactivity_risk"] == 0.0
+
+    def test_none_active_contributors_defaults_to_one(self):
+        """None active_contributors_90d should default to 1 (line 109)."""
+        result = calculate_abandonment_risk({"active_contributors_90d": None})
+        # Default 1 contributor -> bus_factor_risk = exp(-1/2) ~= 0.607
+        assert 55 < result["components"]["bus_factor_risk"] < 65
+
+    def test_negative_active_contributors_clamped_to_one(self):
+        """Negative active_contributors_90d should be clamped to 1 (lines 112-113)."""
+        result = calculate_abandonment_risk({"active_contributors_90d": -5})
+        # Clamped to 1 -> bus_factor_risk = exp(-1/2) ~= 0.607 -> 60.7%
+        assert 55 < result["components"]["bus_factor_risk"] < 65
+
+    def test_months_below_one_clamped(self):
+        """months < 1 should be clamped to 1 (lines 88-89)."""
+        result = calculate_abandonment_risk({}, months=0)
+        assert result["time_horizon_months"] == 1
+
+        result_neg = calculate_abandonment_risk({}, months=-5)
+        assert result_neg["time_horizon_months"] == 1
+
+
+class TestAbandonmentRiskLastPublishedEdgeCases:
+    """Tests for last_published parsing edge cases in calculate_abandonment_risk."""
+
+    @freeze_time("2026-01-07")
+    def test_last_published_as_datetime_object(self):
+        """last_published as datetime object should work (line 137)."""
+        from datetime import datetime, timezone
+
+        data = {
+            "last_published": datetime(2025, 12, 1, tzinfo=timezone.utc),
+            "days_since_last_commit": 7,
+            "active_contributors_90d": 5,
+        }
+        result = calculate_abandonment_risk(data)
+        # 37 days since release -> low release_risk
+        assert result["components"]["release_risk"] < 20
+
+    @freeze_time("2026-01-07")
+    def test_last_published_naive_datetime(self):
+        """Naive datetime (no tzinfo) should get UTC assumed (line 141)."""
+        from datetime import datetime
+
+        data = {
+            "last_published": datetime(2025, 12, 1),  # No timezone
+            "days_since_last_commit": 7,
+            "active_contributors_90d": 5,
+        }
+        result = calculate_abandonment_risk(data)
+        # Should not crash and should produce valid release_risk
+        assert 0 <= result["components"]["release_risk"] <= 100
+
+    @freeze_time("2026-01-07")
+    def test_last_published_future_date_clamped(self):
+        """Future last_published should clamp days_since_release to 0 (lines 146-149)."""
+        data = {
+            "last_published": "2027-06-01T00:00:00Z",  # 1.5 years in future
+            "days_since_last_commit": 7,
+            "active_contributors_90d": 5,
+        }
+        result = calculate_abandonment_risk(data)
+        # Clamped to 0 days since release -> release_risk = 1 - exp(0) = 0
+        assert result["components"]["release_risk"] == 0.0
+
+    def test_last_published_invalid_string_uses_default(self):
+        """Invalid date string should use default 365 days (lines 151-152)."""
+        data = {
+            "last_published": "January 1st, 2025",  # fromisoformat raises ValueError
+            "days_since_last_commit": 7,
+            "active_contributors_90d": 5,
+        }
+        result = calculate_abandonment_risk(data)
+        # Should use default 365 days -> release_risk ~= 63%
+        assert result["components"]["release_risk"] > 50
+
+    def test_last_published_partial_iso_string_uses_default(self):
+        """Partial ISO date that fails fromisoformat should use default."""
+        data = {
+            "last_published": "2025-13-45T99:99:99",  # Invalid ISO values
+            "days_since_last_commit": 7,
+            "active_contributors_90d": 5,
+        }
+        result = calculate_abandonment_risk(data)
+        # Should catch ValueError and use default 365 days
+        assert result["components"]["release_risk"] > 50
+
+
+class TestAbandonmentRiskFactorMessages:
+    """Tests for risk factor message generation (lines 174, 179)."""
+
+    def test_moderate_inactivity_factor_message(self):
+        """91-180 days should produce 'Low commit activity' factor (line 174)."""
+        data = {
+            "days_since_last_commit": 120,  # Between 90 and 180
+            "active_contributors_90d": 5,
+            "weekly_downloads": 100_000,
+        }
+        result = calculate_abandonment_risk(data)
+        assert any("Low commit activity" in f for f in result["risk_factors"])
+
+    def test_small_maintainer_pool_factor_message(self):
+        """2 contributors should produce 'Small maintainer pool' factor (line 179)."""
+        data = {
+            "days_since_last_commit": 7,
+            "active_contributors_90d": 2,
+            "weekly_downloads": 100_000,
+        }
+        result = calculate_abandonment_risk(data)
+        assert any("Small maintainer pool" in f for f in result["risk_factors"])
+
+    def test_no_inactivity_factor_when_recent(self):
+        """Recent commits (< 90 days) should produce no inactivity factor."""
+        data = {
+            "days_since_last_commit": 30,
+            "active_contributors_90d": 5,
+            "weekly_downloads": 100_000,
+        }
+        result = calculate_abandonment_risk(data)
+        assert not any("commit" in f.lower() for f in result["risk_factors"])
+
+    @freeze_time("2026-01-07")
+    def test_infrequent_release_factor_message(self):
+        """Release 180-365 days ago should produce 'Infrequent releases' factor."""
+        data = {
+            "days_since_last_commit": 7,
+            "active_contributors_90d": 5,
+            "weekly_downloads": 100_000,
+            "last_published": "2025-05-01T00:00:00Z",  # ~250 days ago
+        }
+        result = calculate_abandonment_risk(data)
+        assert any("Infrequent releases" in f for f in result["risk_factors"])
+
+
+class TestGetRiskTrendEdgeCases:
+    """Tests for get_risk_trend with invalid/edge case values (lines 244-246)."""
+
+    def test_nan_in_historical_scores_returns_stable(self):
+        """NaN values should return STABLE trend (lines 241-243)."""
+        result = get_risk_trend([50.0, float("nan")])
+        assert result["trend"] == "STABLE"
+        assert result["change"] == 0.0
+
+    def test_nan_in_previous_returns_stable(self):
+        """NaN in previous position should return STABLE."""
+        result = get_risk_trend([float("nan"), 50.0])
+        assert result["trend"] == "STABLE"
+        assert result["change"] == 0.0
+
+    def test_none_in_historical_scores_returns_stable(self):
+        """None values should be handled and default to 0.0."""
+        result = get_risk_trend([50.0, None])
+        # None -> 0.0, so change = 0.0 - 50.0 = -50.0
+        assert result["trend"] == "DECREASING"
+        assert result["change"] == -50.0
+
+    def test_non_numeric_string_in_scores_returns_stable(self):
+        """Non-numeric string values should return STABLE (lines 244-246)."""
+        result = get_risk_trend([50.0, "not_a_number"])
+        assert result["trend"] == "STABLE"
+        assert result["change"] == 0.0
+
+    def test_both_values_non_numeric_returns_stable(self):
+        """Two non-numeric values should return STABLE."""
+        result = get_risk_trend(["abc", "def"])
+        assert result["trend"] == "STABLE"
+        assert result["change"] == 0.0
+
+
+# =============================================================================
+# Health Score - Uncovered Line Tests
+# =============================================================================
+
+
+class TestIssueResponseScoreEdgeCases:
+    """Tests for _issue_response_score edge cases (lines 110-117)."""
+
+    def test_nan_response_hours_returns_neutral(self):
+        """NaN avg_issue_response_hours should return 0.5 (lines 110-111)."""
+        data = {"avg_issue_response_hours": float("nan")}
+        score = _issue_response_score(data)
+        assert score == 0.5
+
+    def test_infinity_response_hours_returns_neutral(self):
+        """Infinity avg_issue_response_hours should return 0.5 (lines 110-111)."""
+        data = {"avg_issue_response_hours": float("inf")}
+        score = _issue_response_score(data)
+        assert score == 0.5
+
+    def test_negative_infinity_response_hours_returns_neutral(self):
+        """Negative infinity should return 0.5."""
+        data = {"avg_issue_response_hours": float("-inf")}
+        score = _issue_response_score(data)
+        assert score == 0.5
+
+    def test_negative_response_hours_clamped_to_zero(self):
+        """Negative response hours should be clamped to 0 (lines 113-114)."""
+        data = {"avg_issue_response_hours": -10}
+        score = _issue_response_score(data)
+        # Clamped to 0 hours -> fast response -> 1.0
+        assert score == 1.0
+
+    def test_non_numeric_response_hours_returns_neutral(self):
+        """Non-numeric type should return 0.5 (lines 115-117)."""
+        data = {"avg_issue_response_hours": "not_a_number"}
+        score = _issue_response_score(data)
+        assert score == 0.5
+
+    def test_list_response_hours_returns_neutral(self):
+        """List type should return 0.5."""
+        data = {"avg_issue_response_hours": [24, 48]}
+        score = _issue_response_score(data)
+        assert score == 0.5
+
+    def test_dict_response_hours_returns_neutral(self):
+        """Dict type should return 0.5."""
+        data = {"avg_issue_response_hours": {"value": 24}}
+        score = _issue_response_score(data)
+        assert score == 0.5
+
+
+class TestPRVelocityScoreEdgeCases:
+    """Tests for _pr_velocity_score edge cases (lines 142, 144, 150-152)."""
+
+    def test_none_merged_defaults_to_zero(self):
+        """None prs_merged_90d should default to 0 (line 142)."""
+        data = {"prs_opened_90d": 100, "prs_merged_90d": None}
+        score = _pr_velocity_score(data)
+        # 0/100 velocity = 0.0 -> sigmoid(-2.5) ~= 0.076
+        assert score < 0.1
+
+    def test_none_opened_defaults_to_zero(self):
+        """None prs_opened_90d should default to 0 (line 144)."""
+        data = {"prs_opened_90d": None, "prs_merged_90d": 50}
+        score = _pr_velocity_score(data)
+        # opened=0 -> neutral 0.5
+        assert score == 0.5
+
+    def test_both_none_returns_neutral(self):
+        """Both None should default to 0 and return neutral 0.5."""
+        data = {"prs_opened_90d": None, "prs_merged_90d": None}
+        score = _pr_velocity_score(data)
+        assert score == 0.5
+
+    def test_non_numeric_pr_values_return_neutral(self):
+        """Non-numeric PR values should return 0.5 (lines 150-152)."""
+        data = {"prs_opened_90d": "many", "prs_merged_90d": "some"}
+        score = _pr_velocity_score(data)
+        assert score == 0.5
+
+    def test_dict_pr_values_return_neutral(self):
+        """Dict PR values should return 0.5."""
+        data = {"prs_opened_90d": {"count": 10}, "prs_merged_90d": {"count": 5}}
+        score = _pr_velocity_score(data)
+        assert score == 0.5
+
+    def test_negative_pr_values_clamped(self):
+        """Negative PR values should be clamped to 0."""
+        data = {"prs_opened_90d": -10, "prs_merged_90d": -5}
+        score = _pr_velocity_score(data)
+        # Both clamped to 0 -> opened=0 -> neutral 0.5
+        assert score == 0.5
+
+
+class TestConfidenceCreatedAtEdgeCases:
+    """Tests for _calculate_confidence created_at handling (lines 445, 449, 461-468)."""
+
+    @freeze_time("2026-01-07")
+    def test_created_at_as_datetime_object(self):
+        """created_at as datetime object should work (line 445)."""
+        from datetime import datetime, timezone
+
+        data = {
+            "created_at": datetime(2020, 1, 1, tzinfo=timezone.utc),
+            "days_since_last_commit": 7,
+            "weekly_downloads": 100_000,
+            "active_contributors_90d": 5,
+            "last_published": "2025-12-01T00:00:00Z",
+        }
+        result = _calculate_confidence(data)
+        # 6+ years old -> age_score = 1.0
+        assert result["level"] in ["HIGH", "MEDIUM"]
+
+    @freeze_time("2026-01-07")
+    def test_created_at_naive_datetime(self):
+        """Naive datetime created_at should get UTC assumed (line 449)."""
+        from datetime import datetime
+
+        data = {
+            "created_at": datetime(2020, 1, 1),  # No timezone
+            "days_since_last_commit": 7,
+            "weekly_downloads": 100_000,
+            "active_contributors_90d": 5,
+            "last_published": "2025-12-01T00:00:00Z",
+        }
+        result = _calculate_confidence(data)
+        # Should not crash and should produce valid confidence
+        assert "level" in result
+        assert result["level"] in ["HIGH", "MEDIUM", "LOW"]
+
+    @freeze_time("2026-01-07")
+    def test_created_at_90_to_180_days_age_score(self):
+        """Package 90-180 days old should get age_score = 0.5 (line 461)."""
+        data = {
+            "created_at": "2025-08-15T00:00:00Z",  # ~145 days old (between 90-180)
+            "days_since_last_commit": 7,
+            "weekly_downloads": 100_000,
+            "active_contributors_90d": 5,
+            "last_published": "2025-12-01T00:00:00Z",
+            "avg_issue_response_hours": 24,
+            "prs_merged_90d": 50,
+            "prs_opened_90d": 100,
+        }
+        result = _calculate_confidence(data)
+        # age_score = 0.5 (between 90 and 180 days), should still be MEDIUM confidence
+        assert result["level"] in ["HIGH", "MEDIUM"]
+
+    @freeze_time("2026-01-07")
+    def test_created_at_180_to_365_days_age_score(self):
+        """Package 180-365 days old should get age_score = 0.7 (lines 461-463)."""
+        data = {
+            "created_at": "2025-05-01T00:00:00Z",  # ~250 days old
+            "days_since_last_commit": 7,
+            "weekly_downloads": 100_000,
+            "active_contributors_90d": 5,
+            "last_published": "2025-12-01T00:00:00Z",
+            "avg_issue_response_hours": 24,
+            "prs_merged_90d": 50,
+            "prs_opened_90d": 100,
+        }
+        result = _calculate_confidence(data)
+        # age_score = 0.7 (between 180 and 365 days)
+        assert result["level"] in ["HIGH", "MEDIUM"]
+
+    @freeze_time("2026-01-07")
+    def test_created_at_invalid_string_uses_default(self):
+        """Invalid date string should not crash (lines 467-468)."""
+        data = {
+            "created_at": "not-a-date",
+            "days_since_last_commit": 7,
+            "weekly_downloads": 100_000,
+        }
+        result = _calculate_confidence(data)
+        assert "level" in result
+
+    @freeze_time("2026-01-07")
+    def test_created_at_invalid_iso_uses_default(self):
+        """Invalid ISO date string should be caught and use default (lines 467-468)."""
+        data = {
+            "created_at": "2025-13-45T00:00:00Z",  # Invalid month/day
+            "days_since_last_commit": 7,
+            "weekly_downloads": 100_000,
+        }
+        result = _calculate_confidence(data)
+        # Should catch ValueError and use default age_score = 0.5
+        assert "level" in result
+
+
+class TestConfidenceLastUpdatedEdgeCases:
+    """Tests for _calculate_confidence last_updated handling (lines 481, 485, 492-494)."""
+
+    @freeze_time("2026-01-07")
+    def test_last_updated_as_datetime_object(self):
+        """last_updated as datetime object should work (line 481)."""
+        from datetime import datetime, timezone
+
+        data = {
+            "created_at": "2020-01-01T00:00:00Z",
+            "last_updated": datetime(2026, 1, 6, tzinfo=timezone.utc),  # Yesterday
+            "days_since_last_commit": 7,
+            "weekly_downloads": 100_000,
+            "active_contributors_90d": 5,
+            "last_published": "2025-12-01T00:00:00Z",
+            "avg_issue_response_hours": 24,
+            "prs_merged_90d": 50,
+            "prs_opened_90d": 100,
+        }
+        result = _calculate_confidence(data)
+        # Recent update -> freshness_score = 1.0
+        assert result["level"] in ["HIGH", "MEDIUM"]
+
+    @freeze_time("2026-01-07")
+    def test_last_updated_naive_datetime(self):
+        """Naive datetime last_updated should get UTC assumed (line 485)."""
+        from datetime import datetime
+
+        data = {
+            "created_at": "2020-01-01T00:00:00Z",
+            "last_updated": datetime(2026, 1, 6),  # No timezone
+            "days_since_last_commit": 7,
+            "weekly_downloads": 100_000,
+            "active_contributors_90d": 5,
+            "last_published": "2025-12-01T00:00:00Z",
+        }
+        result = _calculate_confidence(data)
+        assert "level" in result
+
+    @freeze_time("2026-01-07")
+    def test_last_updated_stale_48_to_168_hours(self):
+        """last_updated 48-168 hours ago should get freshness_score = 0.9."""
+        data = {
+            "created_at": "2020-01-01T00:00:00Z",
+            "last_updated": "2026-01-04T00:00:00Z",  # 3 days ago (72 hours)
+            "days_since_last_commit": 7,
+            "weekly_downloads": 100_000,
+            "active_contributors_90d": 5,
+            "last_published": "2025-12-01T00:00:00Z",
+        }
+        result = _calculate_confidence(data)
+        assert "level" in result
+
+    @freeze_time("2026-01-07")
+    def test_last_updated_very_stale_over_168_hours(self):
+        """last_updated > 168 hours ago should get freshness_score = 0.7."""
+        data = {
+            "created_at": "2020-01-01T00:00:00Z",
+            "last_updated": "2025-12-20T00:00:00Z",  # ~18 days ago
+            "days_since_last_commit": 7,
+            "weekly_downloads": 100_000,
+            "active_contributors_90d": 5,
+            "last_published": "2025-12-01T00:00:00Z",
+        }
+        result = _calculate_confidence(data)
+        assert "level" in result
+
+    @freeze_time("2026-01-07")
+    def test_last_updated_invalid_string_uses_default(self):
+        """Invalid last_updated string should not crash (lines 492-494)."""
+        data = {
+            "created_at": "2020-01-01T00:00:00Z",
+            "last_updated": "not-a-date",
+            "days_since_last_commit": 7,
+            "weekly_downloads": 100_000,
+        }
+        result = _calculate_confidence(data)
+        assert "level" in result
+
+    @freeze_time("2026-01-07")
+    def test_last_updated_invalid_iso_uses_default(self):
+        """Invalid ISO date for last_updated should not crash (lines 492-494)."""
+        data = {
+            "created_at": "2020-01-01T00:00:00Z",
+            "last_updated": "2026-13-45T00:00:00Z",  # Invalid month/day
+            "days_since_last_commit": 7,
+            "weekly_downloads": 100_000,
+        }
+        result = _calculate_confidence(data)
+        # Should catch ValueError and use default freshness_score = 1.0
+        assert "level" in result
+
+
+class TestEvolutionHealthEdgeCases:
+    """Tests for _evolution_health edge cases (line 282)."""
+
+    @freeze_time("2026-01-07")
+    def test_last_published_as_datetime_object_in_evolution(self):
+        """last_published as datetime object in _evolution_health (line 282)."""
+        from datetime import datetime, timezone
+
+        data = {
+            "last_published": datetime(2025, 12, 15, tzinfo=timezone.utc),
+            "commits_90d": 30,
+        }
+        score = _evolution_health(data)
+        assert score > 0.7
+
+    @freeze_time("2026-01-07")
+    def test_last_published_naive_datetime_in_evolution(self):
+        """Naive datetime for last_published in _evolution_health."""
+        from datetime import datetime
+
+        data = {
+            "last_published": datetime(2025, 12, 15),  # No timezone
+            "commits_90d": 30,
+        }
+        score = _evolution_health(data)
+        assert 0 <= score <= 1
+
+
+class TestSecurityHealthEdgeCases:
+    """Tests for _security_health edge cases (lines 364-367, 370-372, 391)."""
+
+    def test_openssf_score_nan_uses_default(self):
+        """NaN openssf_score should use default 0.3 (lines 364-367)."""
+        data = {
+            "openssf_score": float("nan"),
+            "advisories": [],
+            "openssf_checks": [],
+        }
+        score = _security_health(data)
+        # Should use default 0.3 for openssf_score
+        assert 0 <= score <= 1
+
+    def test_openssf_score_infinity_uses_default(self):
+        """Infinity openssf_score should use default 0.3."""
+        data = {
+            "openssf_score": float("inf"),
+            "advisories": [],
+            "openssf_checks": [],
+        }
+        score = _security_health(data)
+        assert 0 <= score <= 1
+
+    def test_openssf_score_non_convertible_type_uses_default(self):
+        """Non-convertible type should use default 0.3 (lines 370-372)."""
+        data = {
+            "openssf_score": [1, 2, 3],  # List - can't convert to float
+            "advisories": [],
+            "openssf_checks": [],
+        }
+        score = _security_health(data)
+        assert 0 <= score <= 1
+
+    def test_openssf_checks_with_low_security_policy_score(self):
+        """Security-Policy check with score < 5 should not count (line 391+)."""
+        data = {
+            "openssf_score": 5.0,
+            "advisories": [],
+            "openssf_checks": [
+                {"name": "Security-Policy", "score": 3},  # Below threshold
+            ],
+        }
+        score = _security_health(data)
+
+        data_no_policy = {
+            "openssf_score": 5.0,
+            "advisories": [],
+            "openssf_checks": [],
+        }
+        score_no_policy = _security_health(data_no_policy)
+
+        # Low-score Security-Policy check should be treated same as no policy
+        assert score == score_no_policy
+
+    def test_openssf_checks_with_invalid_entries(self):
+        """Invalid entries in openssf_checks should be filtered out."""
+        data = {
+            "openssf_score": 5.0,
+            "advisories": [],
+            "openssf_checks": [
+                None,
+                "not-a-dict",
+                {"name": "Security-Policy", "score": 10},  # Valid
+            ],
+        }
+        score = _security_health(data)
+        # Should still detect the valid Security-Policy check
+        assert 0 <= score <= 1
+
+    def test_medium_severity_advisory_counted(self):
+        """MEDIUM severity advisory should be counted in vulnerability score (line 391)."""
+        data_no_vulns = {
+            "openssf_score": 7.0,
+            "advisories": [],
+            "openssf_checks": [],
+        }
+        data_medium = {
+            "openssf_score": 7.0,
+            "advisories": [
+                {"severity": "MEDIUM"},
+                {"severity": "MEDIUM"},
+            ],
+            "openssf_checks": [],
+        }
+        score_no_vulns = _security_health(data_no_vulns)
+        score_medium = _security_health(data_medium)
+        # Medium vulns should reduce score
+        assert score_medium < score_no_vulns

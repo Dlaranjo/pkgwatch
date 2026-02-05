@@ -201,3 +201,218 @@ def test_circuit_timeout_transitions_to_half_open():
     # Should transition to HALF_OPEN after timeout
     time.sleep(0.6)  # Total > 1 second
     assert breaker.state == CircuitState.HALF_OPEN
+
+
+def test_get_lock_no_running_loop():
+    """_get_lock should handle case where no event loop is running."""
+    breaker = InMemoryCircuitBreaker("test-lock")
+    # When called outside async context, there is no running loop
+    lock = breaker._get_lock()
+    assert isinstance(lock, asyncio.Lock)
+    # current_loop_id should be None
+    assert breaker._lock_loop_id is None
+
+
+def test_get_lock_recreated_on_loop_change():
+    """_get_lock should recreate lock when event loop changes."""
+    breaker = InMemoryCircuitBreaker("test-lock-change")
+
+    # First: get lock outside any event loop
+    lock1 = breaker._get_lock()
+    assert lock1 is not None
+    assert breaker._lock_loop_id is None
+
+    # Simulate being in an event loop by setting the loop id
+    breaker._lock_loop_id = 12345  # Fake loop id
+
+    # Getting lock again - loop id is still None (no running loop), so it differs from 12345
+    lock2 = breaker._get_lock()
+    # Lock should be recreated since loop id changed
+    assert lock2 is not lock1
+
+
+@pytest.mark.asyncio
+async def test_can_execute_async_half_open_limit():
+    """Async can_execute should respect half_open_max_calls."""
+    config = CircuitBreakerConfig(
+        failure_threshold=2,
+        timeout_seconds=0,
+        half_open_max_calls=2,
+        success_threshold=3,
+    )
+    breaker = InMemoryCircuitBreaker("test-async-half-open", config)
+
+    # Open the circuit
+    breaker.record_failure()
+    breaker.record_failure()
+    time.sleep(0.1)  # Trigger HALF_OPEN transition
+
+    # Should allow configured number
+    assert await breaker.can_execute_async() is True
+    assert await breaker.can_execute_async() is True
+    # Should block after limit
+    assert await breaker.can_execute_async() is False
+
+
+@pytest.mark.asyncio
+async def test_record_success_async_half_open_to_closed():
+    """Async record_success should transition HALF_OPEN to CLOSED after threshold."""
+    config = CircuitBreakerConfig(
+        failure_threshold=1,
+        success_threshold=2,
+        timeout_seconds=0,
+    )
+    breaker = InMemoryCircuitBreaker("test-async-success", config)
+
+    # Open then transition to half-open
+    breaker.record_failure()
+    time.sleep(0.1)
+    assert breaker.state == CircuitState.HALF_OPEN
+
+    # Record successes via async method
+    await breaker.record_success_async()
+    assert breaker._state.state == CircuitState.HALF_OPEN  # Not yet
+    await breaker.record_success_async()
+    assert breaker._state.state == CircuitState.CLOSED  # Now closed
+
+    # Verify all counters are reset
+    assert breaker._state.failure_count == 0
+    assert breaker._state.half_open_calls == 0
+    assert breaker._state.success_count == 0
+
+
+@pytest.mark.asyncio
+async def test_record_success_async_closed_resets_failures():
+    """Async record_success in CLOSED state should reset failure count."""
+    config = CircuitBreakerConfig(failure_threshold=5)
+    breaker = InMemoryCircuitBreaker("test-async-closed-success", config)
+
+    # Record some failures
+    breaker.record_failure()
+    breaker.record_failure()
+    assert breaker._state.failure_count == 2
+
+    # Success resets failure count
+    await breaker.record_success_async()
+    assert breaker._state.failure_count == 0
+
+
+@pytest.mark.asyncio
+async def test_record_failure_async_half_open_to_open():
+    """Async record_failure in HALF_OPEN state should reopen circuit."""
+    config = CircuitBreakerConfig(
+        failure_threshold=1,
+        timeout_seconds=0,
+    )
+    breaker = InMemoryCircuitBreaker("test-async-fail-half-open", config)
+
+    # Open then transition to half-open
+    breaker.record_failure()
+    time.sleep(0.1)
+    assert breaker.state == CircuitState.HALF_OPEN
+
+    # Failure in half-open should reopen
+    await breaker.record_failure_async()
+    assert breaker._state.state == CircuitState.OPEN
+
+
+@pytest.mark.asyncio
+async def test_record_failure_async_closed_to_open():
+    """Async record_failure in CLOSED state should open circuit at threshold."""
+    config = CircuitBreakerConfig(failure_threshold=2)
+    breaker = InMemoryCircuitBreaker("test-async-fail-closed", config)
+
+    # First failure
+    await breaker.record_failure_async()
+    assert breaker._state.state == CircuitState.CLOSED
+
+    # Second failure reaches threshold
+    await breaker.record_failure_async()
+    assert breaker._state.state == CircuitState.OPEN
+
+
+def test_circuit_open_error_attributes():
+    """CircuitOpenError should carry circuit_name and retry_after."""
+    error = CircuitOpenError("test-circuit", 60)
+    assert error.circuit_name == "test-circuit"
+    assert error.retry_after == 60
+    assert "test-circuit" in str(error)
+    assert "60" in str(error)
+
+
+def test_success_in_open_state_is_noop():
+    """Recording success in OPEN state should do nothing."""
+    config = CircuitBreakerConfig(failure_threshold=1)
+    breaker = InMemoryCircuitBreaker("test-open-success", config)
+
+    # Open the circuit
+    breaker.record_failure()
+    assert breaker._state.state == CircuitState.OPEN
+
+    # Success in OPEN state should not change state
+    breaker.record_success()
+    assert breaker._state.state == CircuitState.OPEN
+
+
+def test_failure_in_open_state_updates_counters():
+    """Recording failure in OPEN state should update counters but state stays OPEN."""
+    config = CircuitBreakerConfig(failure_threshold=1)
+    breaker = InMemoryCircuitBreaker("test-open-failure", config)
+
+    # Open the circuit
+    breaker.record_failure()
+    assert breaker._state.state == CircuitState.OPEN
+    assert breaker._state.failure_count == 1
+
+    # Another failure - state stays OPEN, count increments
+    breaker.record_failure()
+    assert breaker._state.state == CircuitState.OPEN
+    assert breaker._state.failure_count == 2
+
+
+def test_check_timeout_transition_no_failure_time():
+    """OPEN state with no last_failure_time should not transition."""
+    config = CircuitBreakerConfig(failure_threshold=1, timeout_seconds=0)
+    breaker = InMemoryCircuitBreaker("test-no-failure-time", config)
+
+    # Manually set to OPEN without failure time
+    breaker._state.state = CircuitState.OPEN
+    breaker._state.last_failure_time = None
+
+    # Should stay OPEN since there's no failure time to check against
+    result = breaker._check_timeout_transition()
+    assert result == CircuitState.OPEN
+
+
+def test_full_lifecycle_closed_open_halfopen_closed():
+    """Test the complete circuit breaker lifecycle."""
+    config = CircuitBreakerConfig(
+        failure_threshold=2,
+        success_threshold=2,
+        timeout_seconds=0.1,
+        half_open_max_calls=3,
+    )
+    breaker = InMemoryCircuitBreaker("lifecycle", config)
+
+    # 1. Start CLOSED
+    assert breaker.state == CircuitState.CLOSED
+    assert breaker.can_execute() is True
+
+    # 2. Failures open the circuit
+    breaker.record_failure()
+    breaker.record_failure()
+    assert breaker._state.state == CircuitState.OPEN
+
+    # 3. After timeout, transitions to HALF_OPEN
+    time.sleep(0.15)
+    assert breaker.state == CircuitState.HALF_OPEN
+
+    # 4. Allow limited requests in HALF_OPEN
+    assert breaker.can_execute() is True  # Call 1
+    breaker.record_success()
+    assert breaker.can_execute() is True  # Call 2
+    breaker.record_success()
+
+    # 5. After success_threshold successes, back to CLOSED
+    assert breaker.state == CircuitState.CLOSED
+    assert breaker._state.failure_count == 0

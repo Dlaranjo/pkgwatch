@@ -2392,3 +2392,484 @@ class TestErrorMessageQuality:
         error_msg = body["error"]["message"].lower()
         # Message format: "Scanning N packages would exceed your remaining X requests."
         assert "exceed" in error_msg or "remaining" in error_msg
+
+
+class TestUnprocessedKeysRetry:
+    """Tests for UnprocessedKeys retry with exponential backoff (lines 298-307)."""
+
+    @mock_aws
+    def test_retries_unprocessed_keys(
+        self, mock_dynamodb, seeded_packages_table, api_gateway_event
+    ):
+        """Should retry when DynamoDB returns UnprocessedKeys (lines 298-304)."""
+        import hashlib
+        from unittest.mock import patch, MagicMock, call
+
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_test_unprocessed"
+        key_hash = hashlib.sha256(test_key.encode()).hexdigest()
+
+        table.put_item(
+            Item={
+                "pk": "user_unprocessed",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "unprocessed@example.com",
+                "tier": "free",
+                "created_at": "2024-01-01T00:00:00Z",
+                "email_verified": True,
+            }
+        )
+
+        from api.post_scan import handler
+
+        # Simulate DynamoDB returning UnprocessedKeys on first call, then succeeding
+        first_response = {
+            "Responses": {
+                "pkgwatch-packages": [
+                    {
+                        "pk": "npm#lodash",
+                        "sk": "LATEST",
+                        "health_score": 85,
+                        "risk_level": "LOW",
+                        "last_updated": "2024-01-01T00:00:00Z",
+                    }
+                ]
+            },
+            "UnprocessedKeys": {
+                "pkgwatch-packages": {
+                    "Keys": [{"pk": {"S": "npm#abandoned-pkg"}, "sk": {"S": "LATEST"}}]
+                }
+            },
+        }
+
+        second_response = {
+            "Responses": {
+                "pkgwatch-packages": [
+                    {
+                        "pk": "npm#abandoned-pkg",
+                        "sk": "LATEST",
+                        "health_score": 25,
+                        "risk_level": "HIGH",
+                        "last_updated": "2024-01-01T00:00:00Z",
+                    }
+                ]
+            },
+            "UnprocessedKeys": {},
+        }
+
+        with patch("api.post_scan.dynamodb") as mock_ddb, \
+             patch("api.post_scan.time.sleep"):  # Speed up test
+            mock_ddb.batch_get_item.side_effect = [first_response, second_response]
+
+            api_gateway_event["httpMethod"] = "POST"
+            api_gateway_event["headers"]["x-api-key"] = test_key
+            api_gateway_event["body"] = json.dumps({
+                "dependencies": {"lodash": "^4.17.21", "abandoned-pkg": "^1.0.0"},
+            })
+
+            result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        # Both packages should have been retrieved
+        assert len(body["packages"]) == 2
+        assert body["total"] == 2
+        # batch_get_item should have been called twice
+        assert mock_ddb.batch_get_item.call_count == 2
+
+    @mock_aws
+    def test_max_retries_exceeded_logs_error(
+        self, mock_dynamodb, api_gateway_event
+    ):
+        """Should log error and continue when max retries exceeded (lines 305-307)."""
+        import hashlib
+        from unittest.mock import patch, MagicMock
+
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_test_maxretry"
+        key_hash = hashlib.sha256(test_key.encode()).hexdigest()
+
+        table.put_item(
+            Item={
+                "pk": "user_maxretry",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "maxretry@example.com",
+                "tier": "free",
+                "created_at": "2024-01-01T00:00:00Z",
+                "email_verified": True,
+            }
+        )
+
+        from api.post_scan import handler
+
+        # Every response returns UnprocessedKeys - never resolves
+        persistent_unprocessed = {
+            "Responses": {"pkgwatch-packages": []},
+            "UnprocessedKeys": {
+                "pkgwatch-packages": {
+                    "Keys": [{"pk": {"S": "npm#stubborn-pkg"}, "sk": {"S": "LATEST"}}]
+                }
+            },
+        }
+
+        with patch("api.post_scan.dynamodb") as mock_ddb, \
+             patch("api.post_scan.time.sleep"):
+            mock_ddb.batch_get_item.return_value = persistent_unprocessed
+
+            api_gateway_event["httpMethod"] = "POST"
+            api_gateway_event["headers"]["x-api-key"] = test_key
+            api_gateway_event["body"] = json.dumps({
+                "dependencies": {"stubborn-pkg": "^1.0.0"},
+            })
+
+            result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        # Package should be in not_found since it was never resolved
+        assert "stubborn-pkg" in body["not_found"]
+        # Should have been called 4 times (initial + 3 retries)
+        assert mock_ddb.batch_get_item.call_count == 4
+
+    @mock_aws
+    def test_exponential_backoff_timing(
+        self, mock_dynamodb, api_gateway_event
+    ):
+        """Should use exponential backoff between retries."""
+        import hashlib
+        from unittest.mock import patch, MagicMock, call
+
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_test_backoff"
+        key_hash = hashlib.sha256(test_key.encode()).hexdigest()
+
+        table.put_item(
+            Item={
+                "pk": "user_backoff",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "backoff@example.com",
+                "tier": "free",
+                "created_at": "2024-01-01T00:00:00Z",
+                "email_verified": True,
+            }
+        )
+
+        from api.post_scan import handler
+
+        # Return unprocessed on first 2 calls, then succeed
+        unprocessed_response = {
+            "Responses": {"pkgwatch-packages": []},
+            "UnprocessedKeys": {
+                "pkgwatch-packages": {
+                    "Keys": [{"pk": {"S": "npm#retry-pkg"}, "sk": {"S": "LATEST"}}]
+                }
+            },
+        }
+        final_response = {
+            "Responses": {
+                "pkgwatch-packages": [
+                    {
+                        "pk": "npm#retry-pkg",
+                        "sk": "LATEST",
+                        "health_score": 70,
+                        "risk_level": "MEDIUM",
+                        "last_updated": "2024-01-01T00:00:00Z",
+                    }
+                ]
+            },
+            "UnprocessedKeys": {},
+        }
+
+        with patch("api.post_scan.dynamodb") as mock_ddb, \
+             patch("api.post_scan.time.sleep") as mock_sleep, \
+             patch("api.post_scan.random.uniform", return_value=0.005):  # Fixed jitter
+            mock_ddb.batch_get_item.side_effect = [
+                unprocessed_response, unprocessed_response, final_response
+            ]
+
+            api_gateway_event["httpMethod"] = "POST"
+            api_gateway_event["headers"]["x-api-key"] = test_key
+            api_gateway_event["body"] = json.dumps({
+                "dependencies": {"retry-pkg": "^1.0.0"},
+            })
+
+            result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        # Should have called sleep twice (between retries)
+        assert mock_sleep.call_count == 2
+        # First sleep: 0.1 + 0.005 (jitter) = 0.105
+        # Second sleep: 0.2 + 0.005 (jitter) = 0.205
+        sleep_values = [call_args[0][0] for call_args in mock_sleep.call_args_list]
+        assert sleep_values[0] < sleep_values[1]  # Exponential increase
+
+
+class TestPartialRiskCounting:
+    """Tests for PARTIAL assessment with HIGH/CRITICAL risk (line 347)."""
+
+    @mock_aws
+    def test_partial_high_risk_counts_as_unverified_risk(
+        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
+    ):
+        """Should count PARTIAL packages with HIGH risk as unverified risk (line 347)."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
+
+        # PARTIAL data with HIGH risk
+        packages_table.put_item(
+            Item={
+                "pk": "npm#partial-high",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "partial-high",
+                "health_score": 30,
+                "risk_level": "HIGH",
+                "data_status": "partial",
+                "repository_url": "https://github.com/owner/partial-high",
+                "missing_sources": ["github"],
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": {"partial-high": "^1.0.0"},
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+
+        # PARTIAL + HIGH risk should count as unverified risk
+        assert body["unverified_risk_count"] == 1
+        assert body["verified_risk_count"] == 0
+
+        # Package data quality should be PARTIAL
+        pkg = body["packages"][0]
+        assert pkg["data_quality"]["assessment"] == "PARTIAL"
+        assert pkg["risk_level"] == "HIGH"
+
+    @mock_aws
+    def test_partial_critical_risk_counts_as_unverified_risk(
+        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
+    ):
+        """Should count PARTIAL packages with CRITICAL risk as unverified risk."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
+
+        packages_table.put_item(
+            Item={
+                "pk": "npm#partial-crit",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "partial-crit",
+                "health_score": 15,
+                "risk_level": "CRITICAL",
+                "data_status": "partial",
+                "repository_url": "https://github.com/owner/partial-crit",
+                "missing_sources": ["github"],
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": {"partial-crit": "^1.0.0"},
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["unverified_risk_count"] == 1
+        assert body["verified_risk_count"] == 0
+
+    @mock_aws
+    def test_partial_low_risk_not_counted_as_unverified_risk(
+        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
+    ):
+        """Should NOT count PARTIAL packages with LOW risk in unverified risk count."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
+
+        packages_table.put_item(
+            Item={
+                "pk": "npm#partial-low",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "partial-low",
+                "health_score": 80,
+                "risk_level": "LOW",
+                "data_status": "partial",
+                "repository_url": "https://github.com/owner/partial-low",
+                "missing_sources": ["github"],
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": {"partial-low": "^1.0.0"},
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        # LOW risk should not be in either risk count
+        assert body["unverified_risk_count"] == 0
+        assert body["verified_risk_count"] == 0
+
+    @mock_aws
+    def test_mixed_assessment_risk_counting(
+        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
+    ):
+        """Should correctly count verified vs unverified risk across all assessment types."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
+
+        # VERIFIED + HIGH -> verified_risk
+        packages_table.put_item(
+            Item={
+                "pk": "npm#v-high",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "v-high",
+                "health_score": 30,
+                "risk_level": "HIGH",
+                "data_status": "complete",
+                "repository_url": "https://github.com/owner/v-high",
+                "missing_sources": [],
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        # PARTIAL + CRITICAL -> unverified_risk
+        packages_table.put_item(
+            Item={
+                "pk": "npm#p-crit",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "p-crit",
+                "health_score": 10,
+                "risk_level": "CRITICAL",
+                "data_status": "partial",
+                "repository_url": "https://github.com/owner/p-crit",
+                "missing_sources": ["github"],
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        # UNVERIFIED + HIGH -> unverified_risk
+        packages_table.put_item(
+            Item={
+                "pk": "npm#u-high",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "u-high",
+                "health_score": 25,
+                "risk_level": "HIGH",
+                "data_status": "minimal",
+                "missing_sources": ["github", "depsdev"],
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        # UNAVAILABLE + CRITICAL -> unverified_risk
+        packages_table.put_item(
+            Item={
+                "pk": "npm#ua-crit",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "ua-crit",
+                "health_score": 5,
+                "risk_level": "CRITICAL",
+                "data_status": "abandoned_minimal",
+                "missing_sources": ["github", "depsdev", "npm"],
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        # VERIFIED + LOW -> neither
+        packages_table.put_item(
+            Item={
+                "pk": "npm#v-low",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "v-low",
+                "health_score": 90,
+                "risk_level": "LOW",
+                "data_status": "complete",
+                "repository_url": "https://github.com/owner/v-low",
+                "missing_sources": [],
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps({
+            "dependencies": {
+                "v-high": "^1.0.0",
+                "p-crit": "^1.0.0",
+                "u-high": "^1.0.0",
+                "ua-crit": "^1.0.0",
+                "v-low": "^1.0.0",
+            },
+        })
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+
+        # 1 VERIFIED HIGH
+        assert body["verified_risk_count"] == 1
+        # 3 unverified: PARTIAL+CRITICAL, UNVERIFIED+HIGH, UNAVAILABLE+CRITICAL
+        assert body["unverified_risk_count"] == 3
+
+        # Data quality counts
+        assert body["data_quality"]["verified_count"] == 2   # v-high + v-low
+        assert body["data_quality"]["partial_count"] == 1     # p-crit
+        assert body["data_quality"]["unverified_count"] == 1  # u-high
+        assert body["data_quality"]["unavailable_count"] == 1  # ua-crit

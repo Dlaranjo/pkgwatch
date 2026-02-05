@@ -685,3 +685,160 @@ class TestEventLoopEdgeCases:
 
             # Should have created new client since loop_id is None
             assert isinstance(client2, httpx.AsyncClient)
+
+
+# =============================================================================
+# GITHUB CLIENT CACHING TESTS (lines 203-232)
+# =============================================================================
+
+
+class TestGetGitHubClient:
+    """Tests for get_github_client with connection pooling enabled."""
+
+    def setup_method(self):
+        """Reset GitHub client cache state before each test."""
+        import http_client
+        http_client._github_clients.clear()
+        http_client._github_client_loop_ids.clear()
+
+    def teardown_method(self):
+        """Clean up GitHub client cache state after each test."""
+        import http_client
+        http_client._github_clients.clear()
+        http_client._github_client_loop_ids.clear()
+
+    def test_creates_new_client_when_pooling_disabled(self):
+        """When pooling disabled, always creates new client."""
+        from http_client import get_github_client
+
+        with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "false"}):
+            headers = {"Authorization": "Bearer ghp_test_token"}
+            client1 = get_github_client(headers)
+            client2 = get_github_client(headers)
+
+            # Different instances when pooling disabled
+            assert client1 is not client2
+            assert isinstance(client1, httpx.AsyncClient)
+
+    def test_caches_client_by_token_hash_when_pooling_enabled(self):
+        """Same token should return same cached client when pooling enabled."""
+        import http_client
+
+        async def test_coro():
+            with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "true"}):
+                headers = {"Authorization": "Bearer ghp_test_token_123"}
+                client1 = http_client.get_github_client(headers)
+                client2 = http_client.get_github_client(headers)
+                return client1, client2
+
+        client1, client2 = run_async(test_coro())
+        assert client1 is client2
+
+    def test_different_tokens_get_different_clients(self):
+        """Different tokens should produce different cached clients."""
+        import http_client
+
+        async def test_coro():
+            with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "true"}):
+                headers1 = {"Authorization": "Bearer ghp_token_aaa"}
+                headers2 = {"Authorization": "Bearer ghp_token_bbb"}
+                client1 = http_client.get_github_client(headers1)
+                client2 = http_client.get_github_client(headers2)
+                return client1, client2
+
+        client1, client2 = run_async(test_coro())
+        assert client1 is not client2
+
+    def test_no_auth_header_uses_empty_string_hash(self):
+        """Headers without Authorization should use empty string for token hash."""
+        import http_client
+
+        async def test_coro():
+            with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "true"}):
+                headers = {"Accept": "application/json"}
+                client1 = http_client.get_github_client(headers)
+                client2 = http_client.get_github_client(headers)
+                return client1, client2
+
+        client1, client2 = run_async(test_coro())
+        assert client1 is client2
+
+    def test_recreates_client_on_event_loop_change(self):
+        """Client should be recreated when event loop changes (Lambda reuse)."""
+        import http_client
+
+        with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "true"}):
+            headers = {"Authorization": "Bearer ghp_test_reuse"}
+
+            # First event loop
+            async def first_loop():
+                return http_client.get_github_client(headers)
+
+            client1 = run_async(first_loop())
+            first_client_id = id(client1)
+
+            # Manually force loop ID mismatch for all cached entries
+            for key in list(http_client._github_client_loop_ids.keys()):
+                http_client._github_client_loop_ids[key] = (
+                    http_client._github_client_loop_ids[key] + 99999
+                    if http_client._github_client_loop_ids[key] is not None
+                    else 99999
+                )
+
+            # Second event loop
+            async def second_loop():
+                return http_client.get_github_client(headers)
+
+            client2 = run_async(second_loop())
+            second_client_id = id(client2)
+
+            # Client should be different due to loop change
+            assert first_client_id != second_client_id
+
+    def test_handles_no_running_loop(self):
+        """Should handle RuntimeError when no event loop is running."""
+        import http_client
+
+        with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "true"}):
+            headers = {"Authorization": "Bearer ghp_test_no_loop"}
+            # Called outside async context
+            client = http_client.get_github_client(headers)
+            assert isinstance(client, httpx.AsyncClient)
+
+    def test_client_has_correct_config(self):
+        """Cached GitHub client should have correct config (timeout, limits, headers)."""
+        import http_client
+        from http_client import DEFAULT_TIMEOUT
+
+        async def test_coro():
+            with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "true"}):
+                headers = {
+                    "Authorization": "Bearer ghp_test",
+                    "Accept": "application/vnd.github.v3+json",
+                }
+                client = http_client.get_github_client(headers)
+                return client
+
+        client = run_async(test_coro())
+        assert client.timeout.read == DEFAULT_TIMEOUT.read
+        assert client.timeout.connect == DEFAULT_TIMEOUT.connect
+        assert client.headers.get("Authorization") == "Bearer ghp_test"
+        assert client.headers.get("Accept") == "application/vnd.github.v3+json"
+
+    def test_token_hash_is_deterministic(self):
+        """Same token always produces the same cache key."""
+        import http_client
+
+        async def test_coro():
+            with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "true"}):
+                headers = {"Authorization": "Bearer ghp_deterministic_test"}
+                client1 = http_client.get_github_client(headers)
+                # Verify only one entry in cache
+                assert len(http_client._github_clients) == 1
+                # Get again - still one entry
+                client2 = http_client.get_github_client(headers)
+                assert len(http_client._github_clients) == 1
+                return client1, client2
+
+        client1, client2 = run_async(test_coro())
+        assert client1 is client2

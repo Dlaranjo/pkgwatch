@@ -330,3 +330,277 @@ class TestRateLimitHelpers:
         }
         ip = module.get_client_ip(event)
         assert ip == "unknown"
+
+
+class TestRequestPackageErrorPaths:
+    """Tests for error handling and edge cases in request_package."""
+
+    @mock_aws
+    def test_package_exists_check_error_continues_to_validation(self, mock_dynamodb, api_gateway_event):
+        """Should continue to registry validation when DynamoDB get_item fails (lines 104-105)."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+        import api.request_package as module
+
+        importlib.reload(module)
+
+        # Mock _get_dynamodb to return a resource where the packages table raises on get_item
+        mock_packages_table = MagicMock()
+        mock_packages_table.get_item.side_effect = Exception("DynamoDB unavailable")
+        mock_packages_table.put_item.return_value = {}
+
+        mock_api_keys_table = MagicMock()
+        mock_api_keys_table.get_item.return_value = {}  # No rate limit record
+
+        def mock_table_factory(table_name):
+            if table_name == "pkgwatch-packages":
+                return mock_packages_table
+            return mock_api_keys_table
+
+        mock_db = MagicMock()
+        mock_db.Table.side_effect = mock_table_factory
+
+        with patch.object(module, "_get_dynamodb", return_value=mock_db):
+            with patch.object(module, "validate_package_exists", new_callable=AsyncMock) as mock_validate:
+                mock_validate.return_value = True
+                with patch.object(module, "_get_sqs", return_value=MagicMock()):
+                    event = {**api_gateway_event, "body": json.dumps({"name": "test-pkg"})}
+                    result = module.handler(event, None)
+
+                    # Should still succeed since the error is caught and processing continues
+                    assert result["statusCode"] == 200
+                    body = json.loads(result["body"])
+                    assert body["status"] == "queued"
+
+    @mock_aws
+    def test_conditional_check_failed_returns_exists(self, mock_dynamodb, api_gateway_event):
+        """Should return exists when put_item hits ConditionalCheckFailedException (lines 134-144)."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+        import api.request_package as module
+        from botocore.exceptions import ClientError
+
+        importlib.reload(module)
+
+        # Mock _get_dynamodb so put_item raises ConditionalCheckFailedException
+        mock_packages_table = MagicMock()
+        mock_packages_table.get_item.return_value = {}  # Package not found initially
+        mock_packages_table.put_item.side_effect = ClientError(
+            {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Already exists"}},
+            "PutItem",
+        )
+
+        mock_api_keys_table = MagicMock()
+        mock_api_keys_table.get_item.return_value = {}  # No rate limit
+
+        def mock_table_factory(table_name):
+            if table_name == "pkgwatch-packages":
+                return mock_packages_table
+            return mock_api_keys_table
+
+        mock_db = MagicMock()
+        mock_db.Table.side_effect = mock_table_factory
+
+        with patch.object(module, "_get_dynamodb", return_value=mock_db):
+            with patch.object(module, "validate_package_exists", new_callable=AsyncMock) as mock_validate:
+                mock_validate.return_value = True
+
+                event = {**api_gateway_event, "body": json.dumps({"name": "race-pkg"})}
+                result = module.handler(event, None)
+
+                assert result["statusCode"] == 200
+                body = json.loads(result["body"])
+                assert body["status"] == "exists"
+                assert "another request" in body["message"]
+
+    @mock_aws
+    def test_put_item_generic_error_returns_500(self, mock_dynamodb, api_gateway_event):
+        """Should return 500 when put_item raises a non-conditional error (lines 146-148)."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+        import api.request_package as module
+
+        importlib.reload(module)
+
+        mock_packages_table = MagicMock()
+        mock_packages_table.get_item.return_value = {}  # Package not found
+        mock_packages_table.put_item.side_effect = Exception("Generic DB failure")
+
+        mock_api_keys_table = MagicMock()
+        mock_api_keys_table.get_item.return_value = {}  # No rate limit
+
+        def mock_table_factory(table_name):
+            if table_name == "pkgwatch-packages":
+                return mock_packages_table
+            return mock_api_keys_table
+
+        mock_db = MagicMock()
+        mock_db.Table.side_effect = mock_table_factory
+
+        with patch.object(module, "_get_dynamodb", return_value=mock_db):
+            with patch.object(module, "validate_package_exists", new_callable=AsyncMock) as mock_validate:
+                mock_validate.return_value = True
+
+                event = {**api_gateway_event, "body": json.dumps({"name": "fail-pkg"})}
+                result = module.handler(event, None)
+
+                assert result["statusCode"] == 500
+                body = json.loads(result["body"])
+                assert body["error"]["code"] == "db_error"
+
+    @mock_aws
+    def test_sqs_send_failure_does_not_block_response(self, mock_dynamodb, api_gateway_event):
+        """Should return success even when SQS send_message fails (lines 166-167)."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+        import api.request_package as module
+
+        importlib.reload(module)
+
+        mock_sqs = MagicMock()
+        mock_sqs.send_message.side_effect = Exception("SQS unavailable")
+
+        with patch.object(module, "validate_package_exists", new_callable=AsyncMock) as mock_validate:
+            mock_validate.return_value = True
+            with patch.object(module, "_get_sqs", return_value=mock_sqs):
+                event = {**api_gateway_event, "body": json.dumps({"name": "sqs-fail-pkg"})}
+                result = module.handler(event, None)
+
+                # Should still return 200 - SQS failure is non-fatal
+                assert result["statusCode"] == 200
+                body = json.loads(result["body"])
+                assert body["status"] == "queued"
+
+    @mock_aws
+    def test_rate_limit_check_error_returns_false(self, mock_dynamodb):
+        """Should return False (not rate limited) when rate limit check fails (lines 216-217)."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        import importlib
+        import api.request_package as module
+
+        importlib.reload(module)
+
+        # Mock _get_dynamodb so the rate limit table raises an error
+        mock_table = MagicMock()
+        mock_table.get_item.side_effect = Exception("DynamoDB timeout")
+
+        mock_db = MagicMock()
+        mock_db.Table.return_value = mock_table
+
+        with patch.object(module, "_get_dynamodb", return_value=mock_db):
+            result = module.rate_limit_exceeded("192.168.1.1")
+            assert result is False
+
+    @mock_aws
+    def test_record_rate_limit_error_does_not_raise(self, mock_dynamodb):
+        """Should silently handle errors when recording rate limit usage (lines 245-246)."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        import importlib
+        import api.request_package as module
+
+        importlib.reload(module)
+
+        mock_table = MagicMock()
+        mock_table.update_item.side_effect = Exception("DynamoDB write failure")
+
+        mock_db = MagicMock()
+        mock_db.Table.return_value = mock_table
+
+        with patch.object(module, "_get_dynamodb", return_value=mock_db):
+            # Should not raise
+            module.record_rate_limit_usage("192.168.1.1")
+
+    def test_validate_package_exists_returns_false_on_exception(self):
+        """Should return False when deps.dev lookup raises an exception (lines 251-258)."""
+        import importlib
+        import api.request_package as module
+        import asyncio
+
+        importlib.reload(module)
+
+        with patch("collectors.depsdev_collector.get_package_info", new_callable=AsyncMock) as mock_get:
+            mock_get.side_effect = Exception("Network error")
+
+            result = asyncio.run(module.validate_package_exists("some-pkg", "npm"))
+            assert result is False
+
+    def test_validate_package_exists_returns_true_when_found(self):
+        """Should return True when deps.dev lookup returns package info."""
+        import importlib
+        import api.request_package as module
+        import asyncio
+
+        importlib.reload(module)
+
+        with patch("collectors.depsdev_collector.get_package_info", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = {"name": "lodash", "version": "4.17.21"}
+
+            result = asyncio.run(module.validate_package_exists("lodash", "npm"))
+            assert result is True
+
+    def test_validate_package_exists_returns_false_when_not_found(self):
+        """Should return False when deps.dev lookup returns None."""
+        import importlib
+        import api.request_package as module
+        import asyncio
+
+        importlib.reload(module)
+
+        with patch("collectors.depsdev_collector.get_package_info", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = None
+
+            result = asyncio.run(module.validate_package_exists("nonexistent", "npm"))
+            assert result is False
+
+    @mock_aws
+    def test_put_item_reraises_non_conditional_client_error(self, mock_dynamodb, api_gateway_event):
+        """Should re-raise ClientErrors that are not ConditionalCheckFailedException (line 145)."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+        import api.request_package as module
+        from botocore.exceptions import ClientError
+
+        importlib.reload(module)
+
+        mock_packages_table = MagicMock()
+        mock_packages_table.get_item.return_value = {}  # Package not found
+        mock_packages_table.put_item.side_effect = ClientError(
+            {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Rate exceeded"}},
+            "PutItem",
+        )
+
+        mock_api_keys_table = MagicMock()
+        mock_api_keys_table.get_item.return_value = {}
+
+        def mock_table_factory(table_name):
+            if table_name == "pkgwatch-packages":
+                return mock_packages_table
+            return mock_api_keys_table
+
+        mock_db = MagicMock()
+        mock_db.Table.side_effect = mock_table_factory
+
+        with patch.object(module, "_get_dynamodb", return_value=mock_db):
+            with patch.object(module, "validate_package_exists", new_callable=AsyncMock) as mock_validate:
+                mock_validate.return_value = True
+
+                event = {**api_gateway_event, "body": json.dumps({"name": "throttled-pkg"})}
+                with pytest.raises(ClientError):
+                    module.handler(event, None)

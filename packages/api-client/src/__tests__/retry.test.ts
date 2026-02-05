@@ -11,8 +11,9 @@ describe("PkgWatchClient retry behavior", () => {
     mockFetch.mockReset();
   });
 
-  afterEach(() => {
-    vi.clearAllTimers();
+  afterEach(async () => {
+    // Drain any remaining timers to prevent leaked promises/unhandled errors
+    await vi.runAllTimersAsync();
     vi.useRealTimers();
   });
 
@@ -235,8 +236,8 @@ describe("PkgWatchClient retry behavior", () => {
     // Prevent unhandled rejection while timers advance
     resultPromise.catch(() => {});
 
-    // Advance through all retry delays (1s + 2s + 4s + margin for jitter)
-    await vi.advanceTimersByTimeAsync(10000);
+    // Run all pending timers (retry delays with random jitter)
+    await vi.runAllTimersAsync();
 
     await expect(resultPromise).rejects.toThrow(ApiClientError);
     // Initial attempt + 3 retries = 4 total calls
@@ -279,7 +280,7 @@ describe("PkgWatchClient retry behavior", () => {
     const resultPromise = client.getPackage("lodash");
     resultPromise.catch(() => {});
 
-    await vi.advanceTimersByTimeAsync(10000);
+    await vi.runAllTimersAsync();
 
     await expect(resultPromise).rejects.toMatchObject({
       code: "network_error",
@@ -304,7 +305,7 @@ describe("PkgWatchClient retry behavior", () => {
     const resultPromise = client.getPackage("lodash");
     resultPromise.catch(() => {});
 
-    await vi.advanceTimersByTimeAsync(10000);
+    await vi.runAllTimersAsync();
 
     await expect(resultPromise).rejects.toMatchObject({
       code: "timeout",
@@ -388,7 +389,7 @@ describe("PkgWatchClient retry behavior", () => {
     const resultPromise = client.getPackage("test");
     resultPromise.catch(() => {});
 
-    await vi.advanceTimersByTimeAsync(10000);
+    await vi.runAllTimersAsync();
 
     await expect(resultPromise).rejects.toMatchObject({
       code: "rate_limited",
@@ -412,7 +413,7 @@ describe("PkgWatchClient retry behavior", () => {
     const resultPromise = client.getPackage("test");
     resultPromise.catch(() => {});
 
-    await vi.advanceTimersByTimeAsync(10000);
+    await vi.runAllTimersAsync();
 
     await expect(resultPromise).rejects.toMatchObject({
       code: "server_error",

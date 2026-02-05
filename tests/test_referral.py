@@ -184,6 +184,34 @@ class TestConstants:
         assert PENDING_TIMEOUT_DAYS == 90
 
 
+class TestReferralCodeValidation:
+    """Test backwards-compatible referral code validation."""
+
+    def test_valid_code_with_underscore(self):
+        """Codes with underscores should be valid (backwards compat)."""
+        assert is_valid_referral_code("abc_1234") is True
+
+    def test_valid_code_with_hyphen(self):
+        """Codes with hyphens should be valid (backwards compat)."""
+        assert is_valid_referral_code("abc-1234") is True
+
+    def test_none_code_is_invalid(self):
+        """None should be treated as invalid."""
+        assert is_valid_referral_code(None) is False
+
+    def test_min_length_boundary(self):
+        """Exactly 6 characters should pass."""
+        assert is_valid_referral_code("abcdef") is True
+
+    def test_max_length_boundary(self):
+        """Exactly 12 characters should pass."""
+        assert is_valid_referral_code("abcdefghijkl") is True
+
+    def test_13_chars_is_too_long(self):
+        """13 characters should fail."""
+        assert is_valid_referral_code("abcdefghijklm") is False
+
+
 class TestBonusCredits:
     """Test bonus credit management with mocked DynamoDB."""
 
@@ -695,3 +723,517 @@ class TestLateEntry:
         can_add, deadline = can_add_late_referral("user_referred")
 
         assert can_add is False
+
+
+# ==========================================================================
+# Tests for uncovered lines in referral_utils.py
+# ==========================================================================
+
+
+class TestLookupReferrerByCodeClientError:
+    """Test lookup_referrer_by_code ClientError handling (lines 214-216)."""
+
+    @patch("shared.referral_utils._get_dynamodb")
+    def test_returns_none_on_client_error(self, mock_get_dynamodb):
+        """Should return None when DynamoDB query raises ClientError."""
+        from botocore.exceptions import ClientError
+        from shared.referral_utils import lookup_referrer_by_code
+
+        mock_table = MagicMock()
+        mock_table.query.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "Service unavailable"}},
+            "Query",
+        )
+        mock_dynamodb_resource = MagicMock()
+        mock_dynamodb_resource.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        result = lookup_referrer_by_code("validcde")
+
+        assert result is None
+
+
+class TestGenerateUniqueReferralCodeExhaustion:
+    """Test generate_unique_referral_code RuntimeError (line 251)."""
+
+    @patch("shared.referral_utils.code_exists")
+    def test_raises_runtime_error_after_max_attempts(self, mock_code_exists):
+        """Should raise RuntimeError when all attempts produce existing codes."""
+        from shared.referral_utils import generate_unique_referral_code
+
+        # Every generated code already exists
+        mock_code_exists.return_value = True
+
+        with pytest.raises(RuntimeError, match="Failed to generate unique referral code"):
+            generate_unique_referral_code(max_attempts=5)
+
+        # Verify it tried exactly 5 times
+        assert mock_code_exists.call_count == 5
+
+
+class TestAddBonusWithCapEdgeCases:
+    """Test add_bonus_with_cap edge cases (lines 273, 300-301, 324, 347-352)."""
+
+    def test_zero_amount_returns_zero(self, mock_dynamodb):
+        """Adding 0 bonus should return 0 immediately (line 273)."""
+        from shared.referral_utils import add_bonus_with_cap
+
+        result = add_bonus_with_cap("user_test", 0)
+        assert result == 0
+
+    def test_negative_amount_returns_zero(self, mock_dynamodb):
+        """Adding negative bonus should return 0 immediately (line 273)."""
+        from shared.referral_utils import add_bonus_with_cap
+
+        result = add_bonus_with_cap("user_test", -100)
+        assert result == 0
+
+    @patch("shared.referral_utils._get_dynamodb")
+    def test_non_conditional_client_error_is_reraised(self, mock_get_dynamodb):
+        """Non-ConditionalCheckFailedException should be re-raised (lines 300-301)."""
+        from botocore.exceptions import ClientError
+        from shared.referral_utils import add_bonus_with_cap
+
+        mock_table = MagicMock()
+        mock_table.update_item.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "Service unavailable"}},
+            "UpdateItem",
+        )
+        mock_dynamodb_resource = MagicMock()
+        mock_dynamodb_resource.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        with pytest.raises(ClientError) as exc_info:
+            add_bonus_with_cap("user_test", 5000)
+
+        assert exc_info.value.response["Error"]["Code"] == "InternalServerError"
+
+    @patch("shared.referral_utils._get_dynamodb")
+    def test_concurrent_cap_fill_returns_zero(self, mock_get_dynamodb):
+        """Should return 0 when a concurrent request fills the cap (lines 347-352)."""
+        from botocore.exceptions import ClientError
+        from shared.referral_utils import add_bonus_with_cap
+
+        mock_table = MagicMock()
+
+        # First update_item: ConditionalCheckFailedException (near cap)
+        # get_item: user has 490K lifetime
+        # Second update_item: ConditionalCheckFailedException (concurrent fill)
+        conditional_error = ClientError(
+            {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Condition not met"}},
+            "UpdateItem",
+        )
+        mock_table.update_item.side_effect = [conditional_error, conditional_error]
+        mock_table.get_item.return_value = {
+            "Item": {"bonus_requests_lifetime": 490000}
+        }
+
+        mock_dynamodb_resource = MagicMock()
+        mock_dynamodb_resource.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        result = add_bonus_with_cap("user_test", 25000)
+        assert result == 0
+
+    @patch("shared.referral_utils._get_dynamodb")
+    def test_partial_amount_zero_returns_zero(self, mock_get_dynamodb):
+        """Should return 0 when remaining cap is exactly zero (line 324)."""
+        from botocore.exceptions import ClientError
+        from shared.referral_utils import add_bonus_with_cap, BONUS_CAP
+
+        mock_table = MagicMock()
+
+        # First update: ConditionalCheckFailedException
+        conditional_error = ClientError(
+            {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Condition not met"}},
+            "UpdateItem",
+        )
+        mock_table.update_item.side_effect = conditional_error
+        # get_item: user is exactly at cap
+        mock_table.get_item.return_value = {
+            "Item": {"bonus_requests_lifetime": BONUS_CAP}
+        }
+
+        mock_dynamodb_resource = MagicMock()
+        mock_dynamodb_resource.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        result = add_bonus_with_cap("user_test", 5000)
+        assert result == 0
+
+    @patch("shared.referral_utils._get_dynamodb")
+    def test_retry_non_conditional_error_is_reraised(self, mock_get_dynamodb):
+        """Non-ConditionalCheckFailed on retry should be re-raised (line 352)."""
+        from botocore.exceptions import ClientError
+        from shared.referral_utils import add_bonus_with_cap
+
+        mock_table = MagicMock()
+
+        conditional_error = ClientError(
+            {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Condition not met"}},
+            "UpdateItem",
+        )
+        internal_error = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "Service error"}},
+            "UpdateItem",
+        )
+        # First update: conditional fail; retry update: internal error
+        mock_table.update_item.side_effect = [conditional_error, internal_error]
+        mock_table.get_item.return_value = {
+            "Item": {"bonus_requests_lifetime": 490000}
+        }
+
+        mock_dynamodb_resource = MagicMock()
+        mock_dynamodb_resource.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        with pytest.raises(ClientError) as exc_info:
+            add_bonus_with_cap("user_test", 25000)
+
+        assert exc_info.value.response["Error"]["Code"] == "InternalServerError"
+
+
+class TestConsumeBonusCredits:
+    """Test consume_bonus_credits function (lines 369-385)."""
+
+    @pytest.fixture
+    def user_with_bonus(self, mock_dynamodb):
+        """Create a user with bonus credits."""
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        table.put_item(
+            Item={
+                "pk": "user_consume",
+                "sk": "USER_META",
+                "bonus_requests": 10000,
+                "bonus_requests_lifetime": 20000,
+            }
+        )
+        return table
+
+    def test_zero_amount_returns_true(self, mock_dynamodb):
+        """Consuming 0 credits should return True (line 369-370)."""
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+        from shared.referral_utils import consume_bonus_credits
+
+        result = consume_bonus_credits("user_any", 0)
+        assert result is True
+
+    def test_negative_amount_returns_true(self, mock_dynamodb):
+        """Consuming negative credits should return True (line 369-370)."""
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+        from shared.referral_utils import consume_bonus_credits
+
+        result = consume_bonus_credits("user_any", -5)
+        assert result is True
+
+    def test_successful_consumption(self, user_with_bonus):
+        """Should consume credits and return True (lines 374-381)."""
+        from shared.referral_utils import consume_bonus_credits
+
+        result = consume_bonus_credits("user_consume", 5000)
+        assert result is True
+
+        # Verify balance was reduced
+        response = user_with_bonus.get_item(Key={"pk": "user_consume", "sk": "USER_META"})
+        item = response["Item"]
+        assert item["bonus_requests"] == 5000
+
+    def test_insufficient_credits_returns_false(self, user_with_bonus):
+        """Should return False when insufficient credits (lines 382-384)."""
+        from shared.referral_utils import consume_bonus_credits
+
+        # Try to consume more than available
+        result = consume_bonus_credits("user_consume", 50000)
+        assert result is False
+
+        # Verify balance unchanged
+        response = user_with_bonus.get_item(Key={"pk": "user_consume", "sk": "USER_META"})
+        item = response["Item"]
+        assert item["bonus_requests"] == 10000
+
+    def test_no_bonus_attribute_returns_false(self, mock_dynamodb):
+        """Should return False when user has no bonus_requests attribute."""
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+        from shared.referral_utils import consume_bonus_credits
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        table.put_item(Item={"pk": "user_no_bonus", "sk": "USER_META"})
+
+        result = consume_bonus_credits("user_no_bonus", 1000)
+        assert result is False
+
+    @patch("shared.referral_utils._get_dynamodb")
+    def test_non_conditional_error_is_reraised(self, mock_get_dynamodb):
+        """Non-ConditionalCheckFailed errors should be re-raised (line 385)."""
+        from botocore.exceptions import ClientError
+        from shared.referral_utils import consume_bonus_credits
+
+        mock_table = MagicMock()
+        mock_table.update_item.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "Service unavailable"}},
+            "UpdateItem",
+        )
+        mock_dynamodb_resource = MagicMock()
+        mock_dynamodb_resource.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        with pytest.raises(ClientError) as exc_info:
+            consume_bonus_credits("user_test", 1000)
+
+        assert exc_info.value.response["Error"]["Code"] == "InternalServerError"
+
+
+class TestRecordReferralEventClientError:
+    """Test record_referral_event ClientError handling (lines 476-478)."""
+
+    @patch("shared.referral_utils._get_dynamodb")
+    def test_returns_false_on_client_error(self, mock_get_dynamodb):
+        """Should return False when DynamoDB put_item raises ClientError."""
+        from botocore.exceptions import ClientError
+        from shared.referral_utils import record_referral_event
+
+        mock_table = MagicMock()
+        mock_table.put_item.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "Service unavailable"}},
+            "PutItem",
+        )
+        mock_dynamodb_resource = MagicMock()
+        mock_dynamodb_resource.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        result = record_referral_event(
+            referrer_id="user_ref",
+            referred_id="user_new",
+            event_type="pending",
+        )
+
+        assert result is False
+
+
+class TestUpdateReferralEventToCreditedClientError:
+    """Test update_referral_event_to_credited ClientError handling (lines 521-523)."""
+
+    @patch("shared.referral_utils._get_dynamodb")
+    def test_returns_false_on_client_error(self, mock_get_dynamodb):
+        """Should return False when DynamoDB operations raise ClientError."""
+        from botocore.exceptions import ClientError
+        from shared.referral_utils import update_referral_event_to_credited
+
+        mock_table = MagicMock()
+        mock_table.delete_item.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "Service unavailable"}},
+            "DeleteItem",
+        )
+        mock_dynamodb_resource = MagicMock()
+        mock_dynamodb_resource.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        result = update_referral_event_to_credited(
+            referrer_id="user_ref",
+            referred_id="user_new",
+            reward_amount=5000,
+        )
+
+        assert result is False
+
+
+class TestMarkRetentionCheckedClientError:
+    """Test mark_retention_checked ClientError handling (lines 545-547)."""
+
+    @patch("shared.referral_utils._get_dynamodb")
+    def test_returns_false_on_client_error(self, mock_get_dynamodb):
+        """Should return False when DynamoDB update_item raises ClientError."""
+        from botocore.exceptions import ClientError
+        from shared.referral_utils import mark_retention_checked
+
+        mock_table = MagicMock()
+        mock_table.update_item.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "Service unavailable"}},
+            "UpdateItem",
+        )
+        mock_dynamodb_resource = MagicMock()
+        mock_dynamodb_resource.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        result = mark_retention_checked("user_ref", "user_referred")
+
+        assert result is False
+
+
+class TestUpdateReferrerStatsEdgeCases:
+    """Test update_referrer_stats edge cases (lines 592-593, 604, 615-617)."""
+
+    def test_no_deltas_returns_true(self, mock_dynamodb):
+        """Calling with no deltas should return True early (line 604)."""
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+        from shared.referral_utils import update_referrer_stats
+
+        # All deltas default to 0, so no update should happen
+        result = update_referrer_stats("user_test")
+        assert result is True
+
+    def test_paid_delta_increments(self, mock_dynamodb):
+        """Should update paid count when paid_delta is non-zero (lines 591-593)."""
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+        from shared.referral_utils import update_referrer_stats
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        table.put_item(
+            Item={
+                "pk": "user_paid_stat",
+                "sk": "USER_META",
+                "referral_paid": 1,
+            }
+        )
+
+        result = update_referrer_stats("user_paid_stat", paid_delta=1)
+        assert result is True
+
+        response = table.get_item(Key={"pk": "user_paid_stat", "sk": "USER_META"})
+        item = response["Item"]
+        assert item["referral_paid"] == 2
+
+    def test_retained_delta_increments(self, mock_dynamodb):
+        """Should update retained count when retained_delta is non-zero (lines 595-596)."""
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+        from shared.referral_utils import update_referrer_stats
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        table.put_item(
+            Item={
+                "pk": "user_retained_stat",
+                "sk": "USER_META",
+                "referral_retained": 0,
+            }
+        )
+
+        result = update_referrer_stats("user_retained_stat", retained_delta=1)
+        assert result is True
+
+        response = table.get_item(Key={"pk": "user_retained_stat", "sk": "USER_META"})
+        item = response["Item"]
+        assert item["referral_retained"] == 1
+
+    def test_rewards_delta_increments(self, mock_dynamodb):
+        """Should update rewards earned when rewards_delta is non-zero (lines 599-601)."""
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+        from shared.referral_utils import update_referrer_stats
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        table.put_item(
+            Item={
+                "pk": "user_rewards_stat",
+                "sk": "USER_META",
+                "referral_rewards_earned": 5000,
+            }
+        )
+
+        result = update_referrer_stats("user_rewards_stat", rewards_delta=25000)
+        assert result is True
+
+        response = table.get_item(Key={"pk": "user_rewards_stat", "sk": "USER_META"})
+        item = response["Item"]
+        assert item["referral_rewards_earned"] == 30000
+
+    @patch("shared.referral_utils._get_dynamodb")
+    def test_returns_false_on_client_error(self, mock_get_dynamodb):
+        """Should return False when DynamoDB update_item raises ClientError (lines 615-617)."""
+        from botocore.exceptions import ClientError
+        from shared.referral_utils import update_referrer_stats
+
+        mock_table = MagicMock()
+        mock_table.update_item.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "Service unavailable"}},
+            "UpdateItem",
+        )
+        mock_dynamodb_resource = MagicMock()
+        mock_dynamodb_resource.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        result = update_referrer_stats("user_test", total_delta=1)
+        assert result is False
+
+
+class TestCanAddLateReferralEdgeCases:
+    """Test can_add_late_referral edge cases (lines 729, 741-742)."""
+
+    def test_missing_created_at_returns_false(self, mock_dynamodb):
+        """Should return (False, None) when created_at is missing (line 729)."""
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+        from shared.referral_utils import can_add_late_referral
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        table.put_item(
+            Item={
+                "pk": "user_no_created_at",
+                "sk": "USER_META",
+                # No created_at field
+            }
+        )
+
+        can_add, deadline = can_add_late_referral("user_no_created_at")
+        assert can_add is False
+        assert deadline is None
+
+    def test_invalid_date_format_returns_false(self, mock_dynamodb):
+        """Should return (False, None) when created_at has invalid format (lines 741-742)."""
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+        from shared.referral_utils import can_add_late_referral
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        table.put_item(
+            Item={
+                "pk": "user_bad_date",
+                "sk": "USER_META",
+                "created_at": "not-a-valid-date-format",
+            }
+        )
+
+        can_add, deadline = can_add_late_referral("user_bad_date")
+        assert can_add is False
+        assert deadline is None
+
+    def test_nonexistent_user_returns_false(self, mock_dynamodb):
+        """Should return (False, None) for user that doesn't exist."""
+        import shared.referral_utils as referral_utils_module
+        referral_utils_module._dynamodb = None
+        from shared.referral_utils import can_add_late_referral
+
+        can_add, deadline = can_add_late_referral("user_nonexistent")
+        assert can_add is False
+        assert deadline is None
+
+
+class TestGetReferralEventsClientError:
+    """Test get_referral_events ClientError handling (lines 767-769)."""
+
+    @patch("shared.referral_utils._get_dynamodb")
+    def test_returns_empty_list_on_client_error(self, mock_get_dynamodb):
+        """Should return empty list when DynamoDB query raises ClientError."""
+        from botocore.exceptions import ClientError
+        from shared.referral_utils import get_referral_events
+
+        mock_table = MagicMock()
+        mock_table.query.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "Service unavailable"}},
+            "Query",
+        )
+        mock_dynamodb_resource = MagicMock()
+        mock_dynamodb_resource.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        result = get_referral_events("user_ref")
+
+        assert result == []

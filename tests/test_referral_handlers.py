@@ -500,6 +500,444 @@ class TestReferralCleanupHandler:
         assert result["cleaned"] == 0
         assert result["errors"] == 0
 
+    def test_handles_conditional_check_failed_in_cleanup(self, mock_dynamodb):
+        """Should handle ConditionalCheckFailedException when pending flag already cleared (lines 101-104)."""
+        from botocore.exceptions import ClientError
+
+        import api.referral_cleanup as cleanup_module
+        cleanup_module._dynamodb = None
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create expired pending referral
+        expired_date = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        table.put_item(
+            Item={
+                "pk": "user_race_condition",
+                "sk": "USER_META",
+                "referral_pending": True,
+                "referral_pending_expires": expired_date,
+                "referred_by": "user_referrer_race",
+            }
+        )
+
+        # Create referrer
+        table.put_item(
+            Item={
+                "pk": "user_referrer_race",
+                "sk": "USER_META",
+                "referral_pending_count": 1,
+            }
+        )
+
+        from api.referral_cleanup import handler
+
+        # Now clear the pending flag manually to simulate a race condition
+        table.update_item(
+            Key={"pk": "user_race_condition", "sk": "USER_META"},
+            UpdateExpression="REMOVE referral_pending, referral_pending_expires",
+        )
+
+        result = handler({}, {})
+
+        # Should not count as an error - the ConditionalCheckFailedException is expected
+        assert result["errors"] == 0
+
+    def test_handles_generic_exception_in_cleanup_loop(self, mock_dynamodb):
+        """Should count errors when unexpected exceptions occur during cleanup (lines 109-111)."""
+        import api.referral_cleanup as cleanup_module
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create expired pending referral
+        expired_date = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        table.put_item(
+            Item={
+                "pk": "user_cleanup_err",
+                "sk": "USER_META",
+                "referral_pending": True,
+                "referral_pending_expires": expired_date,
+                "referred_by": "user_referrer_err",
+            }
+        )
+
+        # Create a mock table that wraps the real one but fails on update_item
+        mock_table = MagicMock()
+        mock_table.scan.side_effect = table.scan
+        mock_table.update_item.side_effect = Exception("Unexpected error")
+
+        mock_db = MagicMock()
+        mock_db.Table.return_value = mock_table
+        cleanup_module._dynamodb = mock_db
+
+        from api.referral_cleanup import handler
+
+        result = handler({}, {})
+
+        assert result["errors"] >= 1
+
+        # Reset
+        cleanup_module._dynamodb = None
+
+    def test_handles_scan_level_exception(self, mock_dynamodb):
+        """Should return error result when the scan itself fails (lines 119-121)."""
+        import api.referral_cleanup as cleanup_module
+
+        # Use a mock that raises on scan
+        mock_table = MagicMock()
+        mock_table.scan.side_effect = Exception("DynamoDB scan failure")
+
+        mock_db = MagicMock()
+        mock_db.Table.return_value = mock_table
+        cleanup_module._dynamodb = mock_db
+
+        from api.referral_cleanup import handler
+
+        result = handler({}, {})
+
+        assert result["processed"] == 0
+        assert result["cleaned"] == 0
+        assert "error" in result
+        assert "DynamoDB scan failure" in result["error"]
+
+        # Reset
+        cleanup_module._dynamodb = None
+
+    def test_pagination_processes_multiple_pages(self, mock_dynamodb):
+        """Should paginate through multiple scan pages (lines 114-117)."""
+        import api.referral_cleanup as cleanup_module
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create referrer
+        table.put_item(
+            Item={
+                "pk": "user_referrer_page",
+                "sk": "USER_META",
+                "referral_pending_count": 3,
+            }
+        )
+
+        # Create multiple expired pending referrals
+        expired_date = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        for i in range(3):
+            table.put_item(
+                Item={
+                    "pk": f"user_page_{i}",
+                    "sk": "USER_META",
+                    "referral_pending": True,
+                    "referral_pending_expires": expired_date,
+                    "referred_by": "user_referrer_page",
+                }
+            )
+
+        # Use a mock that simulates pagination
+        original_scan = table.scan
+
+        call_count = [0]
+
+        def paginated_scan(**kwargs):
+            call_count[0] += 1
+            result = original_scan(**kwargs)
+            # On first call, simulate there being another page
+            if call_count[0] == 1 and result.get("Items"):
+                # Keep only first item and pretend there's more
+                first_item = result["Items"][0]
+                result["Items"] = [first_item]
+                result["LastEvaluatedKey"] = {"pk": {"S": first_item["pk"]}, "sk": {"S": "USER_META"}}
+            return result
+
+        cleanup_module._dynamodb = None
+
+        from api.referral_cleanup import handler
+
+        with patch.object(table, "scan", side_effect=paginated_scan):
+            result = handler({}, {})
+
+        # Should have cleaned at least 1 item across pages
+        assert result["cleaned"] >= 1
+        assert result["errors"] == 0
+
+
+class TestReferralStatusErrorPaths:
+    """Tests for referral_status.py error handling and edge cases."""
+
+    @patch("api.auth_callback._get_session_secret")
+    def test_returns_401_for_expired_session(self, mock_secret, mock_dynamodb):
+        """Should return 401 when session token is expired (line 65)."""
+        mock_secret.return_value = "test-secret-key-for-signing-sessions-1234567890"
+
+        from api.referral_status import handler
+
+        # Create an expired session token
+        session_data = {
+            "user_id": "user_expired",
+            "email": "expired@example.com",
+            "tier": "free",
+            "exp": int((datetime.now(timezone.utc) - timedelta(days=1)).timestamp()),
+        }
+        payload = base64.urlsafe_b64encode(json.dumps(session_data).encode()).decode()
+        signature = hmac.new(
+            b"test-secret-key-for-signing-sessions-1234567890",
+            payload.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        expired_token = f"{payload}.{signature}"
+
+        event = {
+            "httpMethod": "GET",
+            "headers": {"cookie": f"session={expired_token}"},
+            "pathParameters": {},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = handler(event, {})
+
+        assert result["statusCode"] == 401
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "session_expired"
+
+    @patch("api.auth_callback._get_session_secret")
+    def test_generates_referral_code_for_legacy_user(self, mock_secret, mock_dynamodb):
+        """Should generate a referral code for legacy users without one (lines 93-101)."""
+        mock_secret.return_value = "test-secret-key-for-signing-sessions-1234567890"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        user_id = "user_legacy_nocode"
+
+        # Create user WITHOUT a referral code
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "email": "legacy@example.com",
+                "bonus_requests": 0,
+                "bonus_requests_lifetime": 0,
+            }
+        )
+
+        from api.referral_status import handler
+
+        session_token = create_session_token(user_id, "legacy@example.com")
+
+        event = {
+            "httpMethod": "GET",
+            "headers": {"cookie": f"session={session_token}"},
+            "pathParameters": {},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+
+        # Should have generated a referral code
+        assert body["referral_code"] is not None
+        assert len(body["referral_code"]) >= 6
+        assert body["referral_url"].startswith("https://pkgwatch.dev/r/")
+
+        # Verify it was persisted to DB
+        response = table.get_item(Key={"pk": user_id, "sk": "USER_META"})
+        assert response["Item"].get("referral_code") is not None
+
+    @patch("api.auth_callback._get_session_secret")
+    def test_returns_referral_events_with_pending_and_expiry(self, mock_secret, mock_dynamodb):
+        """Should return referral events including pending with expiry dates (lines 121-144)."""
+        mock_secret.return_value = "test-secret-key-for-signing-sessions-1234567890"
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+        user_id = "user_events_test"
+
+        # Create user with referral code
+        api_table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "referral_code": "evntcode",
+                "email": "events@example.com",
+                "bonus_requests": 5000,
+                "bonus_requests_lifetime": 10000,
+                "referral_total": 2,
+                "referral_pending_count": 1,
+                "referral_paid": 1,
+                "referral_retained": 0,
+                "referral_rewards_earned": 5000,
+            }
+        )
+
+        # Create a credited referral event
+        events_table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "user_ref1#signup",
+                "event_type": "signup",
+                "referred_id": "user_ref1",
+                "referred_email_masked": "te**@example.com",
+                "created_at": "2024-01-15T10:00:00Z",
+                "reward_amount": 5000,
+            }
+        )
+
+        # Create a pending referral event with TTL (expiry)
+        future_ttl = int((datetime.now(timezone.utc) + timedelta(days=30)).timestamp())
+        events_table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "user_ref2#pending",
+                "event_type": "pending",
+                "referred_id": "user_ref2",
+                "referred_email_masked": "pe**@example.com",
+                "created_at": "2024-01-20T10:00:00Z",
+                "reward_amount": 0,
+                "ttl": future_ttl,
+            }
+        )
+
+        from api.referral_status import handler
+
+        session_token = create_session_token(user_id, "events@example.com")
+
+        event = {
+            "httpMethod": "GET",
+            "headers": {"cookie": f"session={session_token}"},
+            "pathParameters": {},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+
+        # Check referrals list
+        assert len(body["referrals"]) == 2
+
+        # Find the pending referral
+        pending_referrals = [r for r in body["referrals"] if r["status"] == "pending"]
+        assert len(pending_referrals) == 1
+        assert "expires" in pending_referrals[0]
+
+        # Find the credited referral
+        credited_referrals = [r for r in body["referrals"] if r["status"] == "credited"]
+        assert len(credited_referrals) == 1
+        assert credited_referrals[0]["reward"] == 5000
+
+    @patch("api.auth_callback._get_session_secret")
+    def test_returns_500_on_internal_error(self, mock_secret, mock_dynamodb):
+        """Should return 500 when an unexpected error occurs (lines 167-169)."""
+        mock_secret.return_value = "test-secret-key-for-signing-sessions-1234567890"
+
+        from api.referral_status import handler
+
+        session_token = create_session_token("user_err_test", "err@example.com")
+
+        event = {
+            "httpMethod": "GET",
+            "headers": {"cookie": f"session={session_token}"},
+            "pathParameters": {},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        # Patch dynamodb.Table to raise an exception
+        import api.referral_status as status_module
+        with patch.object(status_module.dynamodb, "Table", side_effect=Exception("DB connection failed")):
+            result = handler(event, {})
+
+        assert result["statusCode"] == 500
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "internal_error"
+
+    @patch("api.auth_callback._get_session_secret")
+    def test_deduplicates_referral_events_by_referred_id(self, mock_secret, mock_dynamodb):
+        """Should only show one entry per referred user even with multiple events."""
+        mock_secret.return_value = "test-secret-key-for-signing-sessions-1234567890"
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+        user_id = "user_dedup_test"
+
+        api_table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "referral_code": "dedupcd1",
+                "email": "dedup@example.com",
+                "bonus_requests": 0,
+                "bonus_requests_lifetime": 0,
+                "referral_total": 1,
+                "referral_pending_count": 0,
+                "referral_paid": 1,
+                "referral_retained": 0,
+                "referral_rewards_earned": 30000,
+            }
+        )
+
+        # Same referred_id but different event types (pending -> signup -> paid)
+        events_table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "user_same#pending",
+                "event_type": "pending",
+                "referred_id": "user_same",
+                "referred_email_masked": "sa**@example.com",
+                "created_at": "2024-01-10T10:00:00Z",
+                "reward_amount": 0,
+            }
+        )
+        events_table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "user_same#signup",
+                "event_type": "signup",
+                "referred_id": "user_same",
+                "referred_email_masked": "sa**@example.com",
+                "created_at": "2024-01-11T10:00:00Z",
+                "reward_amount": 5000,
+            }
+        )
+        events_table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "user_same#paid",
+                "event_type": "paid",
+                "referred_id": "user_same",
+                "referred_email_masked": "sa**@example.com",
+                "created_at": "2024-01-12T10:00:00Z",
+                "reward_amount": 25000,
+            }
+        )
+
+        from api.referral_status import handler
+
+        session_token = create_session_token(user_id, "dedup@example.com")
+
+        event = {
+            "httpMethod": "GET",
+            "headers": {"cookie": f"session={session_token}"},
+            "pathParameters": {},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+
+        # Should only have 1 referral entry despite 3 events for same user
+        assert len(body["referrals"]) == 1
+
 
 class TestReferralRetentionCheckHandler:
     """Tests for scheduled retention check handler."""
