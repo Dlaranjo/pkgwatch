@@ -37,7 +37,7 @@ jobs:
         continue-on-error: true
 
       - name: Run tests with coverage
-        run: pytest tests/ -v --tb=short --cov=functions --cov-report=xml --cov-report=term-missing --cov-fail-under=80
+        run: pytest -n auto --dist loadfile --tb=short --cov=functions --cov-report=xml --cov-report=term-missing --cov-fail-under=80
         env:
           PYTHONPATH: ${{ github.workspace }}/functions:${{ github.workspace }}
 

@@ -10,17 +10,20 @@ PkgWatch is a dependency health intelligence platform that predicts npm and Pyth
 
 ### Python (Lambda functions)
 ```bash
-# Run all tests with coverage (from repo root)
-PYTHONPATH=functions:. pytest tests/ -v --cov=functions --cov-report=term-missing
+# Run all tests (sequential, default for local dev)
+PYTHONPATH=functions:. pytest tests/ -v --ignore=tests/integration
+
+# Run all tests in parallel (~3x faster, matches CI)
+PYTHONPATH=functions:. pytest -n auto --dist loadfile --ignore=tests/integration
+
+# Run with coverage
+PYTHONPATH=functions:. pytest -n auto --dist loadfile --cov=functions --cov-report=term-missing
 
 # Run specific test file
 PYTHONPATH=functions:. pytest tests/test_scoring.py -v
 
 # Run specific test
 PYTHONPATH=functions:. pytest tests/test_scoring.py::TestHealthScore::test_healthy_package -v
-
-# Run excluding integration tests
-PYTHONPATH=functions:. pytest tests/ -v --ignore=tests/integration
 ```
 
 ### TypeScript (CLI, Action, API Client)
