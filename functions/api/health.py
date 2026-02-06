@@ -34,11 +34,13 @@ def handler(event, context):
             "Content-Type": "application/json",
             "Cache-Control": "no-cache",
         },
-        "body": json.dumps({
-            "status": "healthy",
-            "version": "1.0.0",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }),
+        "body": json.dumps(
+            {
+                "status": "healthy",
+                "version": "1.0.0",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        ),
     }
 
     # Log the request

@@ -52,10 +52,12 @@ class TestRecoveryVerifyApiKeyValidFlow:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "api_key": test_key,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "api_key": test_key,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -89,10 +91,12 @@ class TestRecoveryVerifyApiKeyValidFlow:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "api_key": test_key,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "api_key": test_key,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -130,10 +134,12 @@ class TestRecoveryVerifyApiKeyValidFlow:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "api_key": test_key,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "api_key": test_key,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -172,9 +178,11 @@ class TestRecoveryVerifyApiKeyInputValidation:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "api_key": "pw_test_key",
-            }),
+            "body": json.dumps(
+                {
+                    "api_key": "pw_test_key",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -190,9 +198,11 @@ class TestRecoveryVerifyApiKeyInputValidation:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": "test-session",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": "test-session",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -208,10 +218,12 @@ class TestRecoveryVerifyApiKeyInputValidation:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": "test-session",
-                "api_key": "invalid_key_format",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": "test-session",
+                    "api_key": "invalid_key_format",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -247,10 +259,12 @@ class TestRecoveryVerifyApiKeySecurityChecks:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "api_key": "pw_invalid_key_12345678",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "api_key": "pw_invalid_key_12345678",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -283,10 +297,12 @@ class TestRecoveryVerifyApiKeySecurityChecks:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "api_key": test_key,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "api_key": test_key,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -305,10 +321,12 @@ class TestRecoveryVerifyApiKeySecurityChecks:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": "nonexistent-session",
-                "api_key": test_key,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": "nonexistent-session",
+                    "api_key": test_key,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -340,10 +358,12 @@ class TestRecoveryVerifyApiKeySecurityChecks:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "api_key": test_key,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "api_key": test_key,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -389,10 +409,12 @@ class TestRecoveryVerifyApiKeySecurityChecks:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "api_key": test_key,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "api_key": test_key,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -413,20 +435,20 @@ class TestRecoveryVerifyApiKeyErrorHandling:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": "test-session",
-                "api_key": "pw_test_key_12345",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": "test-session",
+                    "api_key": "pw_test_key_12345",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), \
-             patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.query.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test"}},
-                "Query"
+                {"Error": {"Code": "InternalServerError", "Message": "Test"}}, "Query"
             )
             response = handler(event, None)
 
@@ -443,28 +465,30 @@ class TestRecoveryVerifyApiKeyErrorHandling:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": "test-session",
-                "api_key": test_key,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": "test-session",
+                    "api_key": test_key,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), \
-             patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.query.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": key_hash,
-                    "key_hash": key_hash,
-                    "email": "test@example.com",
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": key_hash,
+                        "key_hash": key_hash,
+                        "email": "test@example.com",
+                    }
+                ]
             }
             mock_table.get_item.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test"}},
-                "GetItem"
+                {"Error": {"Code": "InternalServerError", "Message": "Test"}}, "GetItem"
             )
             response = handler(event, None)
 
@@ -484,24 +508,27 @@ class TestRecoveryVerifyApiKeyErrorHandling:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "api_key": test_key,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "api_key": test_key,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), \
-             patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.query.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": key_hash,
-                    "key_hash": key_hash,
-                    "email": "test@example.com",
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": key_hash,
+                        "key_hash": key_hash,
+                        "email": "test@example.com",
+                    }
+                ]
             }
             mock_table.get_item.return_value = {
                 "Item": {
@@ -512,8 +539,7 @@ class TestRecoveryVerifyApiKeyErrorHandling:
                 }
             }
             mock_table.update_item.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test"}},
-                "UpdateItem"
+                {"Error": {"Code": "InternalServerError", "Message": "Test"}}, "UpdateItem"
             )
             response = handler(event, None)
 
@@ -542,10 +568,12 @@ class TestRecoveryVerifyApiKeyErrorHandling:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "api_key": test_key,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "api_key": test_key,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -566,6 +594,7 @@ class TestRecoveryVerifyCodeValidFlow:
         table, test_key = seeded_api_keys_table
 
         from shared.recovery_utils import generate_recovery_codes
+
         plaintext_codes, hashed_codes = generate_recovery_codes(count=8)
 
         table.put_item(
@@ -592,10 +621,12 @@ class TestRecoveryVerifyCodeValidFlow:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": plaintext_codes[0],
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": plaintext_codes[0],
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -613,6 +644,7 @@ class TestRecoveryVerifyCodeValidFlow:
         table, test_key = seeded_api_keys_table
 
         from shared.recovery_utils import generate_recovery_codes
+
         plaintext_codes, hashed_codes = generate_recovery_codes(count=4)
 
         table.put_item(
@@ -639,10 +671,12 @@ class TestRecoveryVerifyCodeValidFlow:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": plaintext_codes[2],  # Use middle code
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": plaintext_codes[2],  # Use middle code
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -661,6 +695,7 @@ class TestRecoveryVerifyCodeValidFlow:
         table, test_key = seeded_api_keys_table
 
         from shared.recovery_utils import generate_recovery_codes
+
         plaintext_codes, hashed_codes = generate_recovery_codes(count=2)
 
         table.put_item(
@@ -687,10 +722,12 @@ class TestRecoveryVerifyCodeValidFlow:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": plaintext_codes[0],
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": plaintext_codes[0],
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -731,9 +768,11 @@ class TestRecoveryVerifyCodeInputValidation:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_code": "AAAA-BBBB-CCCC-DDDD",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_code": "AAAA-BBBB-CCCC-DDDD",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -749,9 +788,11 @@ class TestRecoveryVerifyCodeInputValidation:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": "test-session",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": "test-session",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -767,10 +808,12 @@ class TestRecoveryVerifyCodeInputValidation:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": "test-session",
-                "recovery_code": "invalid-format",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": "test-session",
+                    "recovery_code": "invalid-format",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -791,6 +834,7 @@ class TestRecoveryVerifyCodeSecurityChecks:
         table, test_key = seeded_api_keys_table
 
         from shared.recovery_utils import generate_recovery_codes
+
         _, hashed_codes = generate_recovery_codes(count=4)
 
         table.put_item(
@@ -817,10 +861,12 @@ class TestRecoveryVerifyCodeSecurityChecks:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": "1111-2222-3333-4444",  # Wrong code
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": "1111-2222-3333-4444",  # Wrong code
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -837,6 +883,7 @@ class TestRecoveryVerifyCodeSecurityChecks:
         table, test_key = seeded_api_keys_table
 
         from shared.recovery_utils import generate_recovery_codes
+
         plaintext_codes, hashed_codes = generate_recovery_codes(count=4)
 
         table.put_item(
@@ -863,10 +910,12 @@ class TestRecoveryVerifyCodeSecurityChecks:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": plaintext_codes[0],
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": plaintext_codes[0],
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -883,10 +932,12 @@ class TestRecoveryVerifyCodeSecurityChecks:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": "nonexistent-session",
-                "recovery_code": "AAAA-BBBB-CCCC-DDDD",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": "nonexistent-session",
+                    "recovery_code": "AAAA-BBBB-CCCC-DDDD",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -927,10 +978,12 @@ class TestRecoveryVerifyCodeSecurityChecks:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": "AAAA-BBBB-CCCC-DDDD",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": "AAAA-BBBB-CCCC-DDDD",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -951,6 +1004,7 @@ class TestRecoveryVerifyCodeRaceConditions:
         table, test_key = seeded_api_keys_table
 
         from shared.recovery_utils import generate_recovery_codes
+
         plaintext_codes, hashed_codes = generate_recovery_codes(count=4)
 
         table.put_item(
@@ -978,10 +1032,12 @@ class TestRecoveryVerifyCodeRaceConditions:
         from api.recovery_verify_code import handler
 
         event1 = {
-            "body": json.dumps({
-                "recovery_session_id": session_id1,
-                "recovery_code": plaintext_codes[0],
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id1,
+                    "recovery_code": plaintext_codes[0],
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -1004,10 +1060,12 @@ class TestRecoveryVerifyCodeRaceConditions:
         )
 
         event2 = {
-            "body": json.dumps({
-                "recovery_session_id": session_id2,
-                "recovery_code": plaintext_codes[0],  # Same code
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id2,
+                    "recovery_code": plaintext_codes[0],  # Same code
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -1022,6 +1080,7 @@ class TestRecoveryVerifyCodeRaceConditions:
         table, test_key = seeded_api_keys_table
 
         from shared.recovery_utils import generate_recovery_codes
+
         plaintext_codes, hashed_codes = generate_recovery_codes(count=4)
 
         session_id = "test-session-race"
@@ -1030,26 +1089,29 @@ class TestRecoveryVerifyCodeRaceConditions:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": plaintext_codes[0],
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": plaintext_codes[0],
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         # Mock update_item to raise ConditionalCheckFailedException
-        with patch("time.sleep"), \
-             patch("api.recovery_verify_code.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_verify_code.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.scan.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": f"RECOVERY_{session_id}",
-                    "email": "test@example.com",
-                    "ttl": int((now + timedelta(hours=1)).timestamp()),
-                    "verified": False,
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": f"RECOVERY_{session_id}",
+                        "email": "test@example.com",
+                        "ttl": int((now + timedelta(hours=1)).timestamp()),
+                        "verified": False,
+                    }
+                ]
             }
             mock_table.get_item.return_value = {
                 "Item": {
@@ -1059,8 +1121,7 @@ class TestRecoveryVerifyCodeRaceConditions:
                 }
             }
             mock_table.update_item.side_effect = ClientError(
-                {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Condition failed"}},
-                "UpdateItem"
+                {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Condition failed"}}, "UpdateItem"
             )
             response = handler(event, None)
 
@@ -1078,20 +1139,20 @@ class TestRecoveryVerifyCodeErrorHandling:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": "test-session",
-                "recovery_code": "AAAA-BBBB-CCCC-DDDD",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": "test-session",
+                    "recovery_code": "AAAA-BBBB-CCCC-DDDD",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), \
-             patch("api.recovery_verify_code.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_verify_code.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.scan.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test"}},
-                "Scan"
+                {"Error": {"Code": "InternalServerError", "Message": "Test"}}, "Scan"
             )
             response = handler(event, None)
 
@@ -1108,29 +1169,31 @@ class TestRecoveryVerifyCodeErrorHandling:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": "AAAA-BBBB-CCCC-DDDD",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": "AAAA-BBBB-CCCC-DDDD",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), \
-             patch("api.recovery_verify_code.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_verify_code.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.scan.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": f"RECOVERY_{session_id}",
-                    "email": "test@example.com",
-                    "ttl": int((now + timedelta(hours=1)).timestamp()),
-                    "verified": False,
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": f"RECOVERY_{session_id}",
+                        "email": "test@example.com",
+                        "ttl": int((now + timedelta(hours=1)).timestamp()),
+                        "verified": False,
+                    }
+                ]
             }
             mock_table.get_item.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test"}},
-                "GetItem"
+                {"Error": {"Code": "InternalServerError", "Message": "Test"}}, "GetItem"
             )
             response = handler(event, None)
 
@@ -1148,6 +1211,7 @@ class TestRecoveryCodeNormalization:
         table, test_key = seeded_api_keys_table
 
         from shared.recovery_utils import generate_recovery_codes
+
         plaintext_codes, hashed_codes = generate_recovery_codes(count=2)
 
         table.put_item(
@@ -1177,10 +1241,12 @@ class TestRecoveryCodeNormalization:
         code_without_dashes = plaintext_codes[0].replace("-", "")
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": code_without_dashes,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": code_without_dashes,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -1195,6 +1261,7 @@ class TestRecoveryCodeNormalization:
         table, test_key = seeded_api_keys_table
 
         from shared.recovery_utils import generate_recovery_codes
+
         plaintext_codes, hashed_codes = generate_recovery_codes(count=2)
 
         table.put_item(
@@ -1221,10 +1288,12 @@ class TestRecoveryCodeNormalization:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": plaintext_codes[0].lower(),
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": plaintext_codes[0].lower(),
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 

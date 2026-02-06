@@ -145,9 +145,7 @@ def handler(event, context):
 
     # Look up the recovery session
     try:
-        session_response = table.get_item(
-            Key={"pk": user_id, "sk": f"RECOVERY_{recovery_session_id}"}
-        )
+        session_response = table.get_item(Key={"pk": user_id, "sk": f"RECOVERY_{recovery_session_id}"})
         session_item = session_response.get("Item")
     except ClientError as e:
         logger.error(f"Error fetching recovery session: {e}")

@@ -40,8 +40,10 @@ def run_async(coro):
 
 def create_mock_transport(handler):
     """Create a mock transport for httpx that routes requests to handler."""
+
     async def mock_handler(request: httpx.Request) -> httpx.Response:
         return handler(request)
+
     return httpx.MockTransport(mock_handler)
 
 
@@ -201,10 +203,12 @@ class TestGetRepoMetrics:
         commits = []
         for i in range(count):
             commit_date = (datetime.now(timezone.utc) - timedelta(days=days_ago + i)).isoformat()
-            commits.append({
-                "author": {"login": f"contributor{i}"},
-                "commit": {"author": {"date": commit_date}},
-            })
+            commits.append(
+                {
+                    "author": {"login": f"contributor{i}"},
+                    "commit": {"author": {"date": commit_date}},
+                }
+            )
         return commits
 
     def test_successful_repo_metrics_fetch(self):
@@ -411,10 +415,15 @@ class TestDaysSinceCommit:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if "/commits" in url:
-                return httpx.Response(200, json=[{
-                    "author": {"login": "dev"},
-                    "commit": {"author": {"date": commit_date}},
-                }])
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "author": {"login": "dev"},
+                            "commit": {"author": {"date": commit_date}},
+                        }
+                    ],
+                )
             elif "/contributors" in url:
                 return httpx.Response(200, json=[{"login": "dev", "contributions": 100}])
             elif "/issues" in url:
@@ -422,10 +431,13 @@ class TestDaysSinceCommit:
             elif "/pulls" in url:
                 return httpx.Response(200, json=[])
             elif "/repos/active/repo" in url:
-                return httpx.Response(200, json=self._create_repo_response(
-                    pushed_at=pushed_at_date,
-                    updated_at=commit_date,
-                ))
+                return httpx.Response(
+                    200,
+                    json=self._create_repo_response(
+                        pushed_at=pushed_at_date,
+                        updated_at=commit_date,
+                    ),
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
@@ -458,10 +470,13 @@ class TestDaysSinceCommit:
             elif "/pulls" in url:
                 return httpx.Response(200, json=[])
             elif "/repos/stable/package" in url:
-                return httpx.Response(200, json=self._create_repo_response(
-                    pushed_at=pushed_at_date,
-                    updated_at=pushed_at_date,
-                ))
+                return httpx.Response(
+                    200,
+                    json=self._create_repo_response(
+                        pushed_at=pushed_at_date,
+                        updated_at=pushed_at_date,
+                    ),
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
@@ -526,9 +541,12 @@ class TestDaysSinceCommit:
             elif "/pulls" in url:
                 return httpx.Response(200, json=[])
             elif "/repos/future/repo" in url:
-                return httpx.Response(200, json=self._create_repo_response(
-                    pushed_at=future_date,
-                ))
+                return httpx.Response(
+                    200,
+                    json=self._create_repo_response(
+                        pushed_at=future_date,
+                    ),
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
@@ -577,11 +595,14 @@ class TestBusFactor:
             url = str(request.url)
             if "/commits" in url:
                 # Single contributor with all commits
-                return httpx.Response(200, json=[
-                    {"author": {"login": "solo_dev"}, "commit": {"author": {"date": commit_date}}},
-                    {"author": {"login": "solo_dev"}, "commit": {"author": {"date": commit_date}}},
-                    {"author": {"login": "solo_dev"}, "commit": {"author": {"date": commit_date}}},
-                ])
+                return httpx.Response(
+                    200,
+                    json=[
+                        {"author": {"login": "solo_dev"}, "commit": {"author": {"date": commit_date}}},
+                        {"author": {"login": "solo_dev"}, "commit": {"author": {"date": commit_date}}},
+                        {"author": {"login": "solo_dev"}, "commit": {"author": {"date": commit_date}}},
+                    ],
+                )
             elif "/contributors" in url:
                 return httpx.Response(200, json=[{"login": "solo_dev", "contributions": 100}])
             elif "/issues" in url:
@@ -618,19 +639,24 @@ class TestBusFactor:
                 commits = []
                 for i in range(30):
                     contributor = f"dev{i % 5}"  # 5 contributors, 6 commits each
-                    commits.append({
-                        "author": {"login": contributor},
-                        "commit": {"author": {"date": commit_date}},
-                    })
+                    commits.append(
+                        {
+                            "author": {"login": contributor},
+                            "commit": {"author": {"date": commit_date}},
+                        }
+                    )
                 return httpx.Response(200, json=commits)
             elif "/contributors" in url:
-                return httpx.Response(200, json=[
-                    {"login": "dev0", "contributions": 100},
-                    {"login": "dev1", "contributions": 100},
-                    {"login": "dev2", "contributions": 100},
-                    {"login": "dev3", "contributions": 100},
-                    {"login": "dev4", "contributions": 100},
-                ])
+                return httpx.Response(
+                    200,
+                    json=[
+                        {"login": "dev0", "contributions": 100},
+                        {"login": "dev1", "contributions": 100},
+                        {"login": "dev2", "contributions": 100},
+                        {"login": "dev3", "contributions": 100},
+                        {"login": "dev4", "contributions": 100},
+                    ],
+                )
             elif "/issues" in url:
                 return httpx.Response(200, json=[])
             elif "/pulls" in url:
@@ -666,10 +692,12 @@ class TestBusFactor:
                 # 100+ commits for HIGH confidence
                 commits = []
                 for i in range(100):
-                    commits.append({
-                        "author": {"login": f"dev{i % 10}"},
-                        "commit": {"author": {"date": commit_date}},
-                    })
+                    commits.append(
+                        {
+                            "author": {"login": f"dev{i % 10}"},
+                            "commit": {"author": {"date": commit_date}},
+                        }
+                    )
                 return httpx.Response(200, json=commits)
             elif "/contributors" in url:
                 return httpx.Response(200, json=[{"login": f"dev{i}", "contributions": 10} for i in range(10)])
@@ -725,11 +753,14 @@ class TestBotFiltering:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if "/commits" in url:
-                return httpx.Response(200, json=[
-                    {"author": {"login": "dependabot[bot]"}, "commit": {"author": {"date": commit_date}}},
-                    {"author": {"login": "dependabot"}, "commit": {"author": {"date": commit_date}}},
-                    {"author": {"login": "human_dev"}, "commit": {"author": {"date": commit_date}}},
-                ])
+                return httpx.Response(
+                    200,
+                    json=[
+                        {"author": {"login": "dependabot[bot]"}, "commit": {"author": {"date": commit_date}}},
+                        {"author": {"login": "dependabot"}, "commit": {"author": {"date": commit_date}}},
+                        {"author": {"login": "human_dev"}, "commit": {"author": {"date": commit_date}}},
+                    ],
+                )
             elif "/contributors" in url:
                 return httpx.Response(200, json=[])
             elif "/issues" in url:
@@ -762,15 +793,18 @@ class TestBotFiltering:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if "/commits" in url:
-                return httpx.Response(200, json=[
-                    {"author": {"login": "renovate[bot]"}, "commit": {"author": {"date": commit_date}}},
-                    {"author": {"login": "greenkeeper[bot]"}, "commit": {"author": {"date": commit_date}}},
-                    {"author": {"login": "snyk-bot"}, "commit": {"author": {"date": commit_date}}},
-                    {"author": {"login": "github-actions"}, "commit": {"author": {"date": commit_date}}},
-                    {"author": {"login": "semantic-release-bot"}, "commit": {"author": {"date": commit_date}}},
-                    {"author": {"login": "release-please[bot]"}, "commit": {"author": {"date": commit_date}}},
-                    {"author": {"login": "real_dev"}, "commit": {"author": {"date": commit_date}}},
-                ])
+                return httpx.Response(
+                    200,
+                    json=[
+                        {"author": {"login": "renovate[bot]"}, "commit": {"author": {"date": commit_date}}},
+                        {"author": {"login": "greenkeeper[bot]"}, "commit": {"author": {"date": commit_date}}},
+                        {"author": {"login": "snyk-bot"}, "commit": {"author": {"date": commit_date}}},
+                        {"author": {"login": "github-actions"}, "commit": {"author": {"date": commit_date}}},
+                        {"author": {"login": "semantic-release-bot"}, "commit": {"author": {"date": commit_date}}},
+                        {"author": {"login": "release-please[bot]"}, "commit": {"author": {"date": commit_date}}},
+                        {"author": {"login": "real_dev"}, "commit": {"author": {"date": commit_date}}},
+                    ],
+                )
             elif "/contributors" in url:
                 return httpx.Response(200, json=[])
             elif "/issues" in url:
@@ -888,11 +922,14 @@ class TestPRAndIssueMetrics:
             elif "/issues" in url:
                 return httpx.Response(200, json=[])
             elif "/pulls" in url:
-                return httpx.Response(200, json=[
-                    {"created_at": pr_created, "merged_at": pr_created, "state": "closed"},
-                    {"created_at": pr_created, "merged_at": pr_created, "state": "closed"},
-                    {"created_at": pr_created, "merged_at": None, "state": "open"},
-                ])
+                return httpx.Response(
+                    200,
+                    json=[
+                        {"created_at": pr_created, "merged_at": pr_created, "state": "closed"},
+                        {"created_at": pr_created, "merged_at": pr_created, "state": "closed"},
+                        {"created_at": pr_created, "merged_at": None, "state": "open"},
+                    ],
+                )
             elif "/repos/pr/repo" in url:
                 return httpx.Response(200, json=self._create_repo_response())
             return httpx.Response(404)
@@ -919,18 +956,27 @@ class TestPRAndIssueMetrics:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             # Check specific repo URL first (before /issues check)
-            if "/repos/issuetest/repo" in url and "/issues" not in url and "/commits" not in url and "/contributors" not in url and "/pulls" not in url:
+            if (
+                "/repos/issuetest/repo" in url
+                and "/issues" not in url
+                and "/commits" not in url
+                and "/contributors" not in url
+                and "/pulls" not in url
+            ):
                 return httpx.Response(200, json=self._create_repo_response())
             elif "/commits" in url:
                 return httpx.Response(200, json=[])
             elif "/contributors" in url:
                 return httpx.Response(200, json=[])
             elif "/issues" in url:
-                return httpx.Response(200, json=[
-                    {"created_at": issue_created, "comments": 5, "state": "closed"},
-                    {"created_at": issue_created, "comments": 2, "state": "open"},
-                    {"created_at": issue_created, "comments": 0, "state": "open"},  # No response
-                ])
+                return httpx.Response(
+                    200,
+                    json=[
+                        {"created_at": issue_created, "comments": 5, "state": "closed"},
+                        {"created_at": issue_created, "comments": 2, "state": "open"},
+                        {"created_at": issue_created, "comments": 0, "state": "open"},  # No response
+                    ],
+                )
             elif "/pulls" in url:
                 return httpx.Response(200, json=[])
             return httpx.Response(404)
@@ -974,16 +1020,19 @@ class TestGetRepoMetricsFromUrl:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if "/repos/facebook/react" in url:
-                return httpx.Response(200, json={
-                    "stargazers_count": 200000,
-                    "forks_count": 40000,
-                    "open_issues_count": 1000,
-                    "watchers_count": 200000,
-                    "pushed_at": datetime.now(timezone.utc).isoformat(),
-                    "archived": False,
-                    "disabled": False,
-                    "default_branch": "main",
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "stargazers_count": 200000,
+                        "forks_count": 40000,
+                        "open_issues_count": 1000,
+                        "watchers_count": 200000,
+                        "pushed_at": datetime.now(timezone.utc).isoformat(),
+                        "archived": False,
+                        "disabled": False,
+                        "default_branch": "main",
+                    },
+                )
             elif "/commits" in url:
                 return httpx.Response(200, json=[])
             elif "/contributors" in url:
@@ -1044,9 +1093,7 @@ class TestRateLimitEdgeCases:
         with patch.object(httpx.AsyncClient, "__init__", patched_init):
             collector = GitHubCollector(token="ghp_test")
             client = httpx.AsyncClient()
-            result = run_async(
-                collector._request_with_retry(client, "https://api.github.com/test")
-            )
+            result = run_async(collector._request_with_retry(client, "https://api.github.com/test"))
             assert result == {"result": "ok"}
             assert call_count[0] == 2
 
@@ -1080,9 +1127,7 @@ class TestRateLimitEdgeCases:
             with patch("asyncio.sleep", side_effect=mock_sleep):
                 collector = GitHubCollector(token="ghp_test")
                 client = httpx.AsyncClient()
-                result = run_async(
-                    collector._request_with_retry(client, "https://api.github.com/test")
-                )
+                result = run_async(collector._request_with_retry(client, "https://api.github.com/test"))
                 assert result == {"result": "ok"}
                 # Non-numeric Retry-After defaults to 60, capped at 60
                 assert sleep_times[0] == 60
@@ -1113,9 +1158,7 @@ class TestRateLimitEdgeCases:
             with patch.object(httpx.AsyncClient, "__init__", patched_init):
                 collector = GitHubCollector(token="ghp_test")
                 client = httpx.AsyncClient()
-                result = run_async(
-                    collector._request_with_retry(client, "https://api.github.com/test")
-                )
+                result = run_async(collector._request_with_retry(client, "https://api.github.com/test"))
                 assert result == {"result": "ok"}
                 assert call_count[0] == 2
 
@@ -1141,9 +1184,7 @@ class TestRateLimitEdgeCases:
             collector = GitHubCollector(token="ghp_test")
             client = httpx.AsyncClient()
             # Should return None since it's not a rate limit - it's access denied
-            result = run_async(
-                collector._request_with_retry(client, "https://api.github.com/test")
-            )
+            result = run_async(collector._request_with_retry(client, "https://api.github.com/test"))
             assert result is None
 
     def test_403_rate_limit_detected_via_response_body(self):
@@ -1172,9 +1213,7 @@ class TestRateLimitEdgeCases:
             with patch.object(httpx.AsyncClient, "__init__", patched_init):
                 collector = GitHubCollector(token="ghp_test")
                 client = httpx.AsyncClient()
-                result = run_async(
-                    collector._request_with_retry(client, "https://api.github.com/test")
-                )
+                result = run_async(collector._request_with_retry(client, "https://api.github.com/test"))
                 assert result == {"result": "ok"}
                 assert call_count[0] == 2
 
@@ -1210,9 +1249,7 @@ class TestRateLimitEdgeCases:
                 # Make sure no cached reset time
                 collector._rate_limit_reset = None
                 client = httpx.AsyncClient()
-                result = run_async(
-                    collector._request_with_retry(client, "https://api.github.com/test")
-                )
+                result = run_async(collector._request_with_retry(client, "https://api.github.com/test"))
                 assert result == {"result": "ok"}
                 # Should default to 60s (line 180)
                 assert sleep_times[0] == 60
@@ -1242,9 +1279,7 @@ class TestRateLimitEdgeCases:
             with patch.object(httpx.AsyncClient, "__init__", patched_init):
                 collector = GitHubCollector(token="ghp_test")
                 client = httpx.AsyncClient()
-                result = run_async(
-                    collector._request_with_retry(client, "https://api.github.com/test")
-                )
+                result = run_async(collector._request_with_retry(client, "https://api.github.com/test"))
                 assert result == {"result": "ok"}
                 assert call_count[0] == 2
 
@@ -1274,9 +1309,7 @@ class TestRateLimitEdgeCases:
             with patch("asyncio.sleep", side_effect=mock_sleep):
                 collector = GitHubCollector(token="ghp_test")
                 client = httpx.AsyncClient()
-                result = run_async(
-                    collector._request_with_retry(client, "https://api.github.com/test")
-                )
+                result = run_async(collector._request_with_retry(client, "https://api.github.com/test"))
                 assert result == {"result": "ok"}
                 assert sleep_times[0] == 60
 
@@ -1306,9 +1339,7 @@ class TestRateLimitEdgeCases:
             with patch("asyncio.sleep", side_effect=mock_sleep):
                 collector = GitHubCollector(token="ghp_test")
                 client = httpx.AsyncClient()
-                result = run_async(
-                    collector._request_with_retry(client, "https://api.github.com/test")
-                )
+                result = run_async(collector._request_with_retry(client, "https://api.github.com/test"))
                 assert result == {"result": "ok"}
                 assert sleep_times[0] == 60
 
@@ -1347,9 +1378,7 @@ class TestServerErrorRetry:
             with patch("asyncio.sleep", side_effect=mock_sleep):
                 collector = GitHubCollector(token="ghp_test")
                 client = httpx.AsyncClient()
-                result = run_async(
-                    collector._request_with_retry(client, "https://api.github.com/test")
-                )
+                result = run_async(collector._request_with_retry(client, "https://api.github.com/test"))
                 assert result == {"result": "ok"}
                 assert call_count[0] == 3
                 # Exponential backoff: 2^0=1, 2^1=2
@@ -1372,11 +1401,7 @@ class TestServerErrorRetry:
             with patch.object(httpx.AsyncClient, "__init__", patched_init):
                 collector = GitHubCollector(token="ghp_test")
                 client = httpx.AsyncClient()
-                result = run_async(
-                    collector._request_with_retry(
-                        client, "https://api.github.com/test", max_retries=3
-                    )
-                )
+                result = run_async(collector._request_with_retry(client, "https://api.github.com/test", max_retries=3))
                 assert result is None
 
     def test_request_error_retries_then_raises(self):
@@ -1397,11 +1422,7 @@ class TestServerErrorRetry:
                 collector = GitHubCollector(token="ghp_test")
                 client = httpx.AsyncClient()
                 with pytest.raises(httpx.ConnectError):
-                    run_async(
-                        collector._request_with_retry(
-                            client, "https://api.github.com/test", max_retries=2
-                        )
-                    )
+                    run_async(collector._request_with_retry(client, "https://api.github.com/test", max_retries=2))
 
     def test_unexpected_4xx_raises_http_status_error(self):
         """Unexpected 4xx status codes should call raise_for_status (line 210)."""
@@ -1421,11 +1442,7 @@ class TestServerErrorRetry:
                 collector = GitHubCollector(token="ghp_test")
                 client = httpx.AsyncClient()
                 with pytest.raises(httpx.HTTPStatusError):
-                    run_async(
-                        collector._request_with_retry(
-                            client, "https://api.github.com/test", max_retries=2
-                        )
-                    )
+                    run_async(collector._request_with_retry(client, "https://api.github.com/test", max_retries=2))
 
 
 # =============================================================================
@@ -1495,10 +1512,15 @@ class TestCommitDateEdgeCases:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if "/commits" in url:
-                return httpx.Response(200, json=[{
-                    "author": {"login": "dev"},
-                    "commit": {"author": {"date": "not-a-valid-date"}},
-                }])
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "author": {"login": "dev"},
+                            "commit": {"author": {"date": "not-a-valid-date"}},
+                        }
+                    ],
+                )
             elif "/contributors" in url:
                 return httpx.Response(200, json=[])
             elif "/issues" in url:
@@ -1506,9 +1528,12 @@ class TestCommitDateEdgeCases:
             elif "/pulls" in url:
                 return httpx.Response(200, json=[])
             elif "/repos/datetest/repo" in url:
-                return httpx.Response(200, json=self._create_repo_response(
-                    pushed_at=pushed_at_date,
-                ))
+                return httpx.Response(
+                    200,
+                    json=self._create_repo_response(
+                        pushed_at=pushed_at_date,
+                    ),
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
@@ -1541,9 +1566,12 @@ class TestCommitDateEdgeCases:
             elif "/pulls" in url:
                 return httpx.Response(200, json=[])
             elif "/repos/naivedate/repo" in url:
-                return httpx.Response(200, json=self._create_repo_response(
-                    pushed_at=naive_date,
-                ))
+                return httpx.Response(
+                    200,
+                    json=self._create_repo_response(
+                        pushed_at=naive_date,
+                    ),
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
@@ -1598,9 +1626,12 @@ class TestFundingDetection:
             elif "/pulls" in url:
                 return httpx.Response(200, json=[])
             elif "/repos/funded/repo" in url:
-                return httpx.Response(200, json=self._create_repo_response(
-                    has_sponsors_listing=True,
-                ))
+                return httpx.Response(
+                    200,
+                    json=self._create_repo_response(
+                        has_sponsors_listing=True,
+                    ),
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
@@ -1660,10 +1691,13 @@ class TestFundingDetection:
             elif "/pulls" in url:
                 return httpx.Response(200, json=[])
             elif "/repos/unfunded/repo" in url:
-                return httpx.Response(200, json=self._create_repo_response(
-                    has_sponsors_listing=False,
-                    has_discussions=False,
-                ))
+                return httpx.Response(
+                    200,
+                    json=self._create_repo_response(
+                        has_sponsors_listing=False,
+                        has_discussions=False,
+                    ),
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
@@ -1712,10 +1746,13 @@ class TestPRDateEdgeCases:
             elif "/issues" in url:
                 return httpx.Response(200, json=[])
             elif "/pulls" in url:
-                return httpx.Response(200, json=[
-                    {"created_at": "bad-date", "merged_at": None, "state": "open"},
-                    {"created_at": None, "merged_at": None, "state": "open"},
-                ])
+                return httpx.Response(
+                    200,
+                    json=[
+                        {"created_at": "bad-date", "merged_at": None, "state": "open"},
+                        {"created_at": None, "merged_at": None, "state": "open"},
+                    ],
+                )
             elif "/repos/prtest/repo" in url:
                 return httpx.Response(200, json=self._create_repo_response())
             return httpx.Response(404)
@@ -1739,16 +1776,25 @@ class TestPRDateEdgeCases:
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
-            if "/repos/issuedate/repo" in url and "/issues" not in url and "/commits" not in url and "/contributors" not in url and "/pulls" not in url:
+            if (
+                "/repos/issuedate/repo" in url
+                and "/issues" not in url
+                and "/commits" not in url
+                and "/contributors" not in url
+                and "/pulls" not in url
+            ):
                 return httpx.Response(200, json=self._create_repo_response())
             elif "/commits" in url:
                 return httpx.Response(200, json=[])
             elif "/contributors" in url:
                 return httpx.Response(200, json=[])
             elif "/issues" in url:
-                return httpx.Response(200, json=[
-                    {"created_at": "bad-date", "comments": 5, "state": "closed"},
-                ])
+                return httpx.Response(
+                    200,
+                    json=[
+                        {"created_at": "bad-date", "comments": 5, "state": "closed"},
+                    ],
+                )
             elif "/pulls" in url:
                 return httpx.Response(200, json=[])
             return httpx.Response(404)

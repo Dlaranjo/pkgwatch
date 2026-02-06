@@ -290,9 +290,7 @@ class TestRateLimitHelpers:
         # Verify count was incremented
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        item = table.get_item(
-            Key={"pk": f"RATE_LIMIT#192.168.1.2#{today}", "sk": "request_package"}
-        )
+        item = table.get_item(Key={"pk": f"RATE_LIMIT#192.168.1.2#{today}", "sk": "request_package"})
         assert item["Item"]["request_count"] == 1
 
     def test_get_client_ip_uses_source_ip_not_forwarded_header(self, api_gateway_event):

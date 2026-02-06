@@ -130,6 +130,7 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -171,6 +172,7 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -212,6 +214,7 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -253,6 +256,7 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -301,6 +305,7 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -348,6 +353,7 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -420,6 +426,7 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -476,6 +483,7 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -534,6 +542,7 @@ class TestUpgradePreviewHandler:
         import stripe as stripe_module
 
         import api.upgrade_preview as preview_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -612,6 +621,7 @@ class TestUpgradePreviewHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.upgrade_preview as preview_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         # Ensure price is NOT configured
@@ -676,6 +686,7 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -689,7 +700,15 @@ class TestUpgradePreviewHandler:
 
                     mock_stripe.Subscription.retrieve.return_value = {
                         "status": "active",
-                        "items": {"data": [{"id": "si_123", "price": {"id": "price_starter_123"}, "current_period_end": int(time.time()) + 86400 * 15}]},
+                        "items": {
+                            "data": [
+                                {
+                                    "id": "si_123",
+                                    "price": {"id": "price_starter_123"},
+                                    "current_period_end": int(time.time()) + 86400 * 15,
+                                }
+                            ]
+                        },
                         "cancel_at_period_end": False,
                     }
 
@@ -735,6 +754,7 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -748,7 +768,15 @@ class TestUpgradePreviewHandler:
 
                     mock_stripe.Subscription.retrieve.return_value = {
                         "status": "active",
-                        "items": {"data": [{"id": "si_123", "price": {"id": "price_starter_123"}, "current_period_end": int(time.time()) + 86400 * 15}]},
+                        "items": {
+                            "data": [
+                                {
+                                    "id": "si_123",
+                                    "price": {"id": "price_starter_123"},
+                                    "current_period_end": int(time.time()) + 86400 * 15,
+                                }
+                            ]
+                        },
                         "cancel_at_period_end": False,
                     }
 
@@ -796,6 +824,7 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -845,6 +874,7 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -886,6 +916,7 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["business"] = "price_business_123"
@@ -899,11 +930,15 @@ class TestUpgradePreviewHandler:
 
                     mock_stripe.Subscription.retrieve.return_value = {
                         "status": "active",
-                        "items": {"data": [{
-                            "id": "si_123",
-                            "price": {"id": "price_starter_123"},
-                            "current_period_end": int(time.time()) + 86400 * 30,
-                        }]},
+                        "items": {
+                            "data": [
+                                {
+                                    "id": "si_123",
+                                    "price": {"id": "price_starter_123"},
+                                    "current_period_end": int(time.time()) + 86400 * 30,
+                                }
+                            ]
+                        },
                         "cancel_at_period_end": False,
                     }
 
@@ -911,10 +946,12 @@ class TestUpgradePreviewHandler:
                     mock_stripe.Invoice.create_preview.return_value = {
                         "amount_due": 19900,
                         "currency": "usd",
-                        "lines": {"data": [
-                            {"amount": -900},    # Tiny credit for old plan
-                            {"amount": 20800},   # New plan charge
-                        ]},
+                        "lines": {
+                            "data": [
+                                {"amount": -900},  # Tiny credit for old plan
+                                {"amount": 20800},  # New plan charge
+                            ]
+                        },
                     }
 
                     from api.upgrade_preview import handler

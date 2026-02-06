@@ -64,6 +64,7 @@ def _reset_caches():
     # Reset auth_callback session secret cache
     try:
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
     except (ImportError, AttributeError):
         pass
@@ -71,6 +72,7 @@ def _reset_caches():
     # Reset stripe_webhook secrets cache, boto3 clients, and env-based constants
     try:
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = (None, None)
         webhook_module._stripe_secrets_cache_time = 0.0
         webhook_module._secretsmanager = None
@@ -90,6 +92,7 @@ def _reset_caches():
     # Reset auth module's DynamoDB resource
     try:
         import shared.auth as auth_module
+
         auth_module._dynamodb = None
     except (ImportError, AttributeError):
         pass
@@ -97,6 +100,7 @@ def _reset_caches():
     # Reset referral_utils module's DynamoDB resource
     try:
         import shared.referral_utils as referral_module
+
         referral_module._dynamodb = None
     except (ImportError, AttributeError):
         pass
@@ -121,8 +125,7 @@ def mock_aws_services():
         # Set up Secrets Manager for session secret
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-session-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions-1234567890"}'
+            Name="test-session-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions-1234567890"}'
         )
 
         # Set environment variables
@@ -276,11 +279,7 @@ def create_session_token(user_id: str, email: str, tier: str = "free") -> str:
         "exp": int(session_expires.timestamp()),
     }
     payload = base64.urlsafe_b64encode(json.dumps(session_data).encode()).decode()
-    signature = hmac.new(
-        session_secret.encode(),
-        payload.encode(),
-        hashlib.sha256
-    ).hexdigest()
+    signature = hmac.new(session_secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return f"{payload}.{signature}"
 
 
@@ -319,6 +318,7 @@ class TestNewUserSignupFlow:
         # Verify pending user was created
         table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
         from boto3.dynamodb.conditions import Key
+
         response = table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("newuser@example.com"),
@@ -354,9 +354,7 @@ class TestNewUserSignupFlow:
         assert "Secure" in cookie
 
         # API key is stored in PENDING_DISPLAY for one-time retrieval
-        pending_display = table.get_item(
-            Key={"pk": pending_user["pk"], "sk": "PENDING_DISPLAY"}
-        )
+        pending_display = table.get_item(Key={"pk": pending_user["pk"], "sk": "PENDING_DISPLAY"})
         assert "Item" in pending_display
         api_key = pending_display["Item"]["api_key"]
         assert api_key.startswith("pw_")
@@ -428,9 +426,7 @@ class TestNewUserSignupFlow:
         assert user1 is not None
         assert user2 is not None
 
-    def test_signup_prevents_email_enumeration_for_existing_user(
-        self, mock_aws_services, api_gateway_event
-    ):
+    def test_signup_prevents_email_enumeration_for_existing_user(self, mock_aws_services, api_gateway_event):
         """Test that signup returns same response for existing and new emails (security).
 
         Security: Returning different responses for existing vs non-existing emails
@@ -481,20 +477,14 @@ class TestPackageLookupFlow:
     4. Second request works (within limit)
     """
 
-    def test_complete_package_lookup_flow(
-        self, mock_aws_services, packages_table_with_data, api_gateway_event
-    ):
+    def test_complete_package_lookup_flow(self, mock_aws_services, packages_table_with_data, api_gateway_event):
         """Test the complete package lookup flow with API key."""
         # Create a user with API key
         table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
         from shared.auth import generate_api_key
 
-        api_key = generate_api_key(
-            user_id="user_lookup_test",
-            tier="free",
-            email="lookup@example.com"
-        )
+        api_key = generate_api_key(user_id="user_lookup_test", tier="free", email="lookup@example.com")
 
         # Reload the auth module to pick up new key
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
@@ -524,9 +514,7 @@ class TestPackageLookupFlow:
         assert result["headers"]["X-RateLimit-Limit"] == "5000"  # Free tier limit
 
         # Step 2: Verify usage counter incremented
-        response = table.get_item(
-            Key={"pk": "user_lookup_test", "sk": key_hash}
-        )
+        response = table.get_item(Key={"pk": "user_lookup_test", "sk": key_hash})
         assert response["Item"]["requests_this_month"] == 1
 
         # Step 3: Make a second request
@@ -540,27 +528,19 @@ class TestPackageLookupFlow:
         assert body["health_score"] == 90
 
         # Verify usage counter is now 2
-        response = table.get_item(
-            Key={"pk": "user_lookup_test", "sk": key_hash}
-        )
+        response = table.get_item(Key={"pk": "user_lookup_test", "sk": key_hash})
         assert response["Item"]["requests_this_month"] == 2
 
         # Verify remaining count in headers
         assert result["headers"]["X-RateLimit-Remaining"] == "4998"
 
-    def test_rate_limit_exceeded(
-        self, mock_aws_services, packages_table_with_data, api_gateway_event
-    ):
+    def test_rate_limit_exceeded(self, mock_aws_services, packages_table_with_data, api_gateway_event):
         """Test that requests are blocked when rate limit is exceeded."""
         table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
         from shared.auth import generate_api_key
 
-        api_key = generate_api_key(
-            user_id="user_rate_limited",
-            tier="free",
-            email="ratelimited@example.com"
-        )
+        api_key = generate_api_key(user_id="user_rate_limited", tier="free", email="ratelimited@example.com")
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
         # Set user to be at limit (per-key for analytics)
@@ -593,17 +573,11 @@ class TestPackageLookupFlow:
         assert body["error"]["code"] == "rate_limit_exceeded"
         assert "Retry-After" in result["headers"]
 
-    def test_package_not_found(
-        self, mock_aws_services, packages_table_with_data, api_gateway_event
-    ):
+    def test_package_not_found(self, mock_aws_services, packages_table_with_data, api_gateway_event):
         """Test response for non-existent package."""
         from shared.auth import generate_api_key
 
-        api_key = generate_api_key(
-            user_id="user_notfound_test",
-            tier="free",
-            email="notfound@example.com"
-        )
+        api_key = generate_api_key(user_id="user_notfound_test", tier="free", email="notfound@example.com")
 
         from api.get_package import handler as get_package_handler
 
@@ -631,9 +605,7 @@ class TestBulkScanFlow:
     3. Usage is tracked correctly
     """
 
-    def test_complete_bulk_scan_flow(
-        self, mock_aws_services, packages_table_with_data, api_gateway_event
-    ):
+    def test_complete_bulk_scan_flow(self, mock_aws_services, packages_table_with_data, api_gateway_event):
         """Test the complete bulk scan flow."""
         table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
@@ -642,7 +614,7 @@ class TestBulkScanFlow:
         api_key = generate_api_key(
             user_id="user_scan_test",
             tier="pro",  # Pro tier for higher limit
-            email="scan@example.com"
+            email="scan@example.com",
         )
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
@@ -651,13 +623,15 @@ class TestBulkScanFlow:
         # Scan multiple packages
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"] = {"x-api-key": api_key}
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {
-                "lodash": "^4.17.21",
-                "express": "^4.18.0",
-                "react": "^18.2.0",
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {
+                    "lodash": "^4.17.21",
+                    "express": "^4.18.0",
+                    "react": "^18.2.0",
+                }
             }
-        })
+        )
 
         result = scan_handler(api_gateway_event, {})
 
@@ -682,35 +656,29 @@ class TestBulkScanFlow:
         assert body["low"] == 3  # All three are LOW risk
 
         # Verify usage tracked correctly (3 packages = 3 requests)
-        response = table.get_item(
-            Key={"pk": "user_scan_test", "sk": key_hash}
-        )
+        response = table.get_item(Key={"pk": "user_scan_test", "sk": key_hash})
         assert response["Item"]["requests_this_month"] == 3
 
-    def test_bulk_scan_with_package_json_content(
-        self, mock_aws_services, packages_table_with_data, api_gateway_event
-    ):
+    def test_bulk_scan_with_package_json_content(self, mock_aws_services, packages_table_with_data, api_gateway_event):
         """Test bulk scan with package.json content string."""
         from shared.auth import generate_api_key
 
-        api_key = generate_api_key(
-            user_id="user_scan_json_test",
-            tier="free",
-            email="scanjson@example.com"
-        )
+        api_key = generate_api_key(user_id="user_scan_json_test", tier="free", email="scanjson@example.com")
 
         from api.post_scan import handler as scan_handler
 
-        package_json = json.dumps({
-            "name": "test-app",
-            "dependencies": {
-                "lodash": "^4.17.21",
-                "express": "^4.18.0",
-            },
-            "devDependencies": {
-                "react": "^18.2.0",
+        package_json = json.dumps(
+            {
+                "name": "test-app",
+                "dependencies": {
+                    "lodash": "^4.17.21",
+                    "express": "^4.18.0",
+                },
+                "devDependencies": {
+                    "react": "^18.2.0",
+                },
             }
-        })
+        )
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"] = {"x-api-key": api_key}
@@ -722,28 +690,24 @@ class TestBulkScanFlow:
         body = json.loads(result["body"])
         assert body["total"] == 3
 
-    def test_bulk_scan_handles_not_found_packages(
-        self, mock_aws_services, packages_table_with_data, api_gateway_event
-    ):
+    def test_bulk_scan_handles_not_found_packages(self, mock_aws_services, packages_table_with_data, api_gateway_event):
         """Test that bulk scan handles packages not in database."""
         from shared.auth import generate_api_key
 
-        api_key = generate_api_key(
-            user_id="user_scan_notfound_test",
-            tier="free",
-            email="scannotfound@example.com"
-        )
+        api_key = generate_api_key(user_id="user_scan_notfound_test", tier="free", email="scannotfound@example.com")
 
         from api.post_scan import handler as scan_handler
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"] = {"x-api-key": api_key}
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {
-                "lodash": "^4.17.21",
-                "unknown-package-xyz": "^1.0.0",
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {
+                    "lodash": "^4.17.21",
+                    "unknown-package-xyz": "^1.0.0",
+                }
             }
-        })
+        )
 
         result = scan_handler(api_gateway_event, {})
 
@@ -768,9 +732,7 @@ class TestBillingUpgradeFlow:
     4. Rate limits increased
     """
 
-    def test_complete_billing_upgrade_flow(
-        self, mock_aws_services, packages_table_with_data, api_gateway_event
-    ):
+    def test_complete_billing_upgrade_flow(self, mock_aws_services, packages_table_with_data, api_gateway_event):
         """Test the complete billing upgrade flow via Stripe webhook."""
         # Skip if stripe module is not installed
         pytest.importorskip("stripe")
@@ -780,15 +742,12 @@ class TestBillingUpgradeFlow:
         # Step 1: Create a free tier user
         from shared.auth import generate_api_key
 
-        api_key = generate_api_key(
-            user_id="user_upgrade_test",
-            tier="free",
-            email="upgrade@example.com"
-        )
+        api_key = generate_api_key(user_id="user_upgrade_test", tier="free", email="upgrade@example.com")
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
         # Verify user is on free tier
         from shared.auth import validate_api_key
+
         user = validate_api_key(api_key)
         assert user["tier"] == "free"
         assert user["monthly_limit"] == 5000
@@ -800,13 +759,9 @@ class TestBillingUpgradeFlow:
         webhook_secret = "whsec_test_secret_key_12345"
         secretsmanager = mock_aws_services["secretsmanager"]
         secretsmanager.create_secret(
-            Name="test-stripe-webhook-secret",
-            SecretString=json.dumps({"secret": webhook_secret})
+            Name="test-stripe-webhook-secret", SecretString=json.dumps({"secret": webhook_secret})
         )
-        secretsmanager.create_secret(
-            Name="test-stripe-api-key",
-            SecretString=json.dumps({"key": "sk_test_12345"})
-        )
+        secretsmanager.create_secret(Name="test-stripe-api-key", SecretString=json.dumps({"key": "sk_test_12345"}))
 
         os.environ["STRIPE_WEBHOOK_SECRET_ARN"] = "test-stripe-webhook-secret"
         os.environ["STRIPE_SECRET_ARN"] = "test-stripe-api-key"
@@ -835,9 +790,10 @@ class TestBillingUpgradeFlow:
         period_start = int(time.time())  # Now
         period_end = period_start + (30 * 24 * 60 * 60)  # 30 days later
 
-        with patch("stripe.Webhook.construct_event") as mock_construct, \
-             patch("stripe.Subscription.retrieve") as mock_sub_retrieve:
-
+        with (
+            patch("stripe.Webhook.construct_event") as mock_construct,
+            patch("stripe.Subscription.retrieve") as mock_sub_retrieve,
+        ):
             mock_construct.return_value = stripe_event
             mock_sub_retrieve.return_value = {
                 "id": "sub_test_123",
@@ -847,12 +803,14 @@ class TestBillingUpgradeFlow:
                 "current_period_start": period_start,
                 "current_period_end": period_end,
                 "items": {
-                    "data": [{
-                        "price": {"id": "price_pro_test"},
-                        "current_period_start": period_start,
-                        "current_period_end": period_end,
-                    }]
-                }
+                    "data": [
+                        {
+                            "price": {"id": "price_pro_test"},
+                            "current_period_start": period_start,
+                            "current_period_end": period_end,
+                        }
+                    ]
+                },
             }
 
             from api.stripe_webhook import handler as webhook_handler
@@ -870,9 +828,7 @@ class TestBillingUpgradeFlow:
             assert result["statusCode"] == 200
 
         # Step 3: Verify user tier was updated to pro
-        response = table.get_item(
-            Key={"pk": "user_upgrade_test", "sk": key_hash}
-        )
+        response = table.get_item(Key={"pk": "user_upgrade_test", "sk": key_hash})
         item = response["Item"]
         assert item["tier"] == "pro"
         assert item["stripe_customer_id"] == "cus_test_123"
@@ -893,11 +849,7 @@ class TestBillingUpgradeFlow:
         # Create a pro tier user with Stripe customer ID
         from shared.auth import generate_api_key
 
-        api_key = generate_api_key(
-            user_id="user_downgrade_test",
-            tier="pro",
-            email="downgrade@example.com"
-        )
+        api_key = generate_api_key(user_id="user_downgrade_test", tier="pro", email="downgrade@example.com")
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
         # Set the Stripe customer ID
@@ -917,16 +869,14 @@ class TestBillingUpgradeFlow:
         # Check if secrets already exist, if not create them
         try:
             secretsmanager.create_secret(
-                Name="test-stripe-webhook-secret-2",
-                SecretString=json.dumps({"secret": webhook_secret})
+                Name="test-stripe-webhook-secret-2", SecretString=json.dumps({"secret": webhook_secret})
             )
         except secretsmanager.exceptions.ResourceExistsException:
             pass
 
         try:
             secretsmanager.create_secret(
-                Name="test-stripe-api-key-2",
-                SecretString=json.dumps({"key": "sk_test_12345"})
+                Name="test-stripe-api-key-2", SecretString=json.dumps({"key": "sk_test_12345"})
             )
         except secretsmanager.exceptions.ResourceExistsException:
             pass
@@ -967,9 +917,7 @@ class TestBillingUpgradeFlow:
             assert result["statusCode"] == 200
 
         # Verify user was downgraded to free
-        response = table.get_item(
-            Key={"pk": "user_downgrade_test", "sk": key_hash}
-        )
+        response = table.get_item(Key={"pk": "user_downgrade_test", "sk": key_hash})
         assert response["Item"]["tier"] == "free"
 
 
@@ -987,9 +935,7 @@ class TestApiKeyLifecycle:
     4. Verify revoked key no longer works
     """
 
-    def test_complete_api_key_lifecycle(
-        self, mock_aws_services, packages_table_with_data, api_gateway_event
-    ):
+    def test_complete_api_key_lifecycle(self, mock_aws_services, packages_table_with_data, api_gateway_event):
         """Test the complete API key lifecycle."""
         table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
         user_id = "user_lifecycle_test"
@@ -1192,9 +1138,7 @@ class TestMonthlyResetFlow:
     4. User can make new requests
     """
 
-    def test_complete_monthly_reset_flow(
-        self, mock_aws_services, packages_table_with_data, api_gateway_event
-    ):
+    def test_complete_monthly_reset_flow(self, mock_aws_services, packages_table_with_data, api_gateway_event):
         """Test the complete monthly reset flow."""
         table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
@@ -1203,11 +1147,7 @@ class TestMonthlyResetFlow:
 
         users = []
         for i in range(3):
-            api_key = generate_api_key(
-                user_id=f"user_reset_test_{i}",
-                tier="free",
-                email=f"reset{i}@example.com"
-            )
+            api_key = generate_api_key(user_id=f"user_reset_test_{i}", tier="free", email=f"reset{i}@example.com")
             key_hash = hashlib.sha256(api_key.encode()).hexdigest()
             users.append({"api_key": api_key, "key_hash": key_hash, "user_id": f"user_reset_test_{i}"})
 
@@ -1220,9 +1160,7 @@ class TestMonthlyResetFlow:
 
         # Verify usage is set
         for user in users:
-            response = table.get_item(
-                Key={"pk": user["user_id"], "sk": user["key_hash"]}
-            )
+            response = table.get_item(Key={"pk": user["user_id"], "sk": user["key_hash"]})
             assert response["Item"]["requests_this_month"] > 0
 
         # Step 2: Run reset handler
@@ -1241,9 +1179,7 @@ class TestMonthlyResetFlow:
 
         # Step 3: Verify usage is 0 for all users
         for user in users:
-            response = table.get_item(
-                Key={"pk": user["user_id"], "sk": user["key_hash"]}
-            )
+            response = table.get_item(Key={"pk": user["user_id"], "sk": user["key_hash"]})
             assert response["Item"]["requests_this_month"] == 0
             assert "last_reset" in response["Item"]
 
@@ -1264,9 +1200,7 @@ class TestMonthlyResetFlow:
 
         # Verify usage is now 1 for each user
         for user in users:
-            response = table.get_item(
-                Key={"pk": user["user_id"], "sk": user["key_hash"]}
-            )
+            response = table.get_item(Key={"pk": user["user_id"], "sk": user["key_hash"]})
             assert response["Item"]["requests_this_month"] == 1
 
     def test_reset_skips_system_and_pending_records(self, mock_aws_services):
@@ -1295,11 +1229,7 @@ class TestMonthlyResetFlow:
         # Create a regular user
         from shared.auth import generate_api_key
 
-        api_key = generate_api_key(
-            user_id="user_skip_test",
-            tier="free",
-            email="skiptest@example.com"
-        )
+        api_key = generate_api_key(user_id="user_skip_test", tier="free", email="skiptest@example.com")
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
         table.update_item(
             Key={"pk": "user_skip_test", "sk": key_hash},
@@ -1318,22 +1248,16 @@ class TestMonthlyResetFlow:
         assert result["statusCode"] == 200
 
         # Regular user was reset
-        response = table.get_item(
-            Key={"pk": "user_skip_test", "sk": key_hash}
-        )
+        response = table.get_item(Key={"pk": "user_skip_test", "sk": key_hash})
         assert response["Item"]["requests_this_month"] == 0
 
         # PENDING record still exists unchanged
-        response = table.get_item(
-            Key={"pk": "user_pending_123", "sk": "PENDING"}
-        )
+        response = table.get_item(Key={"pk": "user_pending_123", "sk": "PENDING"})
         assert "Item" in response
         assert response["Item"]["verification_token"] == "abc123"
 
         # Demo record still exists unchanged
-        response = table.get_item(
-            Key={"pk": "demo#192.168.1.1", "sk": "hour#2024-01-15-10"}
-        )
+        response = table.get_item(Key={"pk": "demo#192.168.1.1", "sk": "hour#2024-01-15-10"})
         assert "Item" in response
         assert response["Item"]["requests"] == 5
 
@@ -1366,9 +1290,7 @@ class TestMonthlyResetFlow:
         assert result["statusCode"] == 200
 
         # State should be cleared after completion
-        response = table.get_item(
-            Key={"pk": "SYSTEM#RESET_STATE", "sk": "monthly_reset"}
-        )
+        response = table.get_item(Key={"pk": "SYSTEM#RESET_STATE", "sk": "monthly_reset"})
         assert "Item" not in response
 
 
@@ -1422,11 +1344,7 @@ class TestEdgeCases:
             "exp": int(expired_time.timestamp()),  # Expired
         }
         payload = base64.urlsafe_b64encode(json.dumps(session_data).encode()).decode()
-        signature = hmac.new(
-            session_secret.encode(),
-            payload.encode(),
-            hashlib.sha256
-        ).hexdigest()
+        signature = hmac.new(session_secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
         expired_token = f"{payload}.{signature}"
 
         from api.get_api_keys import handler as get_keys_handler
@@ -1449,11 +1367,7 @@ class TestEdgeCases:
 
         table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
-        api_key = generate_api_key(
-            user_id="user_atomic_test",
-            tier="free",
-            email="atomic@example.com"
-        )
+        api_key = generate_api_key(user_id="user_atomic_test", tier="free", email="atomic@example.com")
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
         # Initialize USER_META at limit - 1
@@ -1492,7 +1406,7 @@ class TestEdgeCases:
         # Make all allowed demo requests
         for i in range(DEMO_REQUESTS_PER_HOUR):
             result = get_package_handler(api_gateway_event, {})
-            assert result["statusCode"] == 200, f"Request {i+1} failed"
+            assert result["statusCode"] == 200, f"Request {i + 1} failed"
             assert result["headers"].get("X-Demo-Mode") == "true"
 
         # Next request should be rate limited
@@ -1521,19 +1435,11 @@ class TestSessionSecurity:
         table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
         # Create two users with different tiers
-        user1_key = generate_api_key(
-            user_id="user_isolation_1",
-            tier="free",
-            email="isolation1@example.com"
-        )
+        user1_key = generate_api_key(user_id="user_isolation_1", tier="free", email="isolation1@example.com")
         user1_key_hash = hashlib.sha256(user1_key.encode()).hexdigest()
         user1_key_id = user1_key_hash[:16]  # API returns first 16 chars as key_id
 
-        user2_key = generate_api_key(
-            user_id="user_isolation_2",
-            tier="pro",
-            email="isolation2@example.com"
-        )
+        user2_key = generate_api_key(user_id="user_isolation_2", tier="pro", email="isolation2@example.com")
         user2_key_hash = hashlib.sha256(user2_key.encode()).hexdigest()
         user2_key_id = user2_key_hash[:16]  # API returns first 16 chars as key_id
 
@@ -1588,11 +1494,7 @@ class TestWebhookSecurity:
         # Create a free tier user
         from shared.auth import generate_api_key
 
-        api_key = generate_api_key(
-            user_id="user_idempotent_test",
-            tier="free",
-            email="idempotent@example.com"
-        )
+        api_key = generate_api_key(user_id="user_idempotent_test", tier="free", email="idempotent@example.com")
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
         # Set up Stripe secrets
@@ -1600,16 +1502,14 @@ class TestWebhookSecurity:
         secretsmanager = mock_aws_services["secretsmanager"]
         try:
             secretsmanager.create_secret(
-                Name="test-stripe-webhook-idempotent",
-                SecretString=json.dumps({"secret": webhook_secret})
+                Name="test-stripe-webhook-idempotent", SecretString=json.dumps({"secret": webhook_secret})
             )
         except Exception:
             pass  # Secret may already exist
 
         try:
             secretsmanager.create_secret(
-                Name="test-stripe-api-key-idempotent",
-                SecretString=json.dumps({"key": "sk_test_idempotent"})
+                Name="test-stripe-api-key-idempotent", SecretString=json.dumps({"key": "sk_test_idempotent"})
             )
         except Exception:
             pass
@@ -1640,9 +1540,10 @@ class TestWebhookSecurity:
         period_start = int(time.time())
         period_end = period_start + (30 * 24 * 60 * 60)
 
-        with patch("stripe.Webhook.construct_event") as mock_construct, \
-             patch("stripe.Subscription.retrieve") as mock_sub_retrieve:
-
+        with (
+            patch("stripe.Webhook.construct_event") as mock_construct,
+            patch("stripe.Subscription.retrieve") as mock_sub_retrieve,
+        ):
             mock_construct.return_value = stripe_event
             mock_sub_retrieve.return_value = {
                 "id": "sub_idempotent_123",
@@ -1652,12 +1553,14 @@ class TestWebhookSecurity:
                 "current_period_start": period_start,
                 "current_period_end": period_end,
                 "items": {
-                    "data": [{
-                        "price": {"id": "price_pro_idempotent"},
-                        "current_period_start": period_start,
-                        "current_period_end": period_end,
-                    }]
-                }
+                    "data": [
+                        {
+                            "price": {"id": "price_pro_idempotent"},
+                            "current_period_start": period_start,
+                            "current_period_end": period_end,
+                        }
+                    ]
+                },
             }
 
             from api.stripe_webhook import handler as webhook_handler
@@ -1691,9 +1594,7 @@ class TestWebhookSecurity:
 
             # Verify billing event was recorded only once
             billing_table = mock_aws_services["dynamodb"].Table("pkgwatch-billing-events")
-            response = billing_table.get_item(
-                Key={"pk": "evt_idempotent_123", "sk": "checkout.session.completed"}
-            )
+            response = billing_table.get_item(Key={"pk": "evt_idempotent_123", "sk": "checkout.session.completed"})
             assert "Item" in response
 
 
@@ -1832,9 +1733,7 @@ class TestReferralProgramFlow:
         assert response["Item"]["referral_pending_count"] == 1
 
         # Verify pending event was recorded
-        response = referral_events_table.get_item(
-            Key={"pk": referrer_id, "sk": f"{referred_id}#pending"}
-        )
+        response = referral_events_table.get_item(Key={"pk": referrer_id, "sk": f"{referred_id}#pending"})
         assert "Item" in response
         assert response["Item"]["event_type"] == "pending"
 
@@ -1853,9 +1752,7 @@ class TestReferralProgramFlow:
         )
 
         # Now scan 1 more to hit threshold (100)
-        allowed, usage, bonus = check_and_increment_usage_with_bonus(
-            referred_id, key_hash, limit=5000, count=1
-        )
+        allowed, usage, bonus = check_and_increment_usage_with_bonus(referred_id, key_hash, limit=5000, count=1)
         assert allowed is True
 
         # Verify referrer was credited with signup bonus
@@ -2050,9 +1947,7 @@ class TestReferralProgramFlow:
             "exp": int(session_expires.timestamp()),
         }
         payload = base64.urlsafe_b64encode(json.dumps(session_data).encode()).decode()
-        signature = hmac.new(
-            session_secret.encode(), payload.encode(), hashlib.sha256
-        ).hexdigest()
+        signature = hmac.new(session_secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
         bad_session = f"{payload}.{signature}"
 
         event = {

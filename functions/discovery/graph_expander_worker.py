@@ -42,9 +42,7 @@ def handler(event, context):
             ecosystem = message.get("ecosystem", "npm")
 
             for pkg_name in packages:
-                discovered = asyncio.run(
-                    process_package(table, pkg_name, ecosystem)
-                )
+                discovered = asyncio.run(process_package(table, pkg_name, ecosystem))
                 total_discovered += discovered
                 total_processed += 1
 

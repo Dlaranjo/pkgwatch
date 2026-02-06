@@ -80,10 +80,7 @@ class TestDynamoDBCircuitBreaker:
     def test_get_state_fails_open(self, mock_get_table):
         """Test fail-open behavior when DynamoDB is unavailable."""
         mock_table = MagicMock()
-        mock_table.get_item.side_effect = ClientError(
-            {"Error": {"Code": "ServiceUnavailable"}},
-            "GetItem"
-        )
+        mock_table.get_item.side_effect = ClientError({"Error": {"Code": "ServiceUnavailable"}}, "GetItem")
         mock_get_table.return_value = mock_table
 
         # Clear cache to force DynamoDB call
@@ -228,9 +225,7 @@ class TestDynamoDBCircuitBreaker:
         }
         mock_table = MagicMock()
         # Mock update_item to return the new success_count (now 2, meeting threshold)
-        mock_table.update_item.return_value = {
-            "Attributes": {"success_count": 2}
-        }
+        mock_table.update_item.return_value = {"Attributes": {"success_count": 2}}
         mock_get_table.return_value = mock_table
 
         self.circuit.record_success()
@@ -292,6 +287,7 @@ class TestCircuitBreakerFactory:
         import importlib
 
         import circuit_breaker
+
         importlib.reload(circuit_breaker)
 
         from circuit_breaker import InMemoryCircuitBreaker, _create_circuit_breaker
@@ -305,6 +301,7 @@ class TestCircuitBreakerFactory:
         import importlib
 
         import circuit_breaker
+
         importlib.reload(circuit_breaker)
 
         from circuit_breaker import DynamoDBCircuitBreaker, _create_circuit_breaker
@@ -360,8 +357,7 @@ class TestDynamoDBCircuitBreakerAdvanced:
         """_create_initial_state should handle ConditionalCheckFailedException gracefully."""
         mock_table = MagicMock()
         mock_table.put_item.side_effect = ClientError(
-            {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Already exists"}},
-            "PutItem"
+            {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Already exists"}}, "PutItem"
         )
         mock_table.get_item.return_value = {}  # No item
         mock_get_table.return_value = mock_table
@@ -378,8 +374,7 @@ class TestDynamoDBCircuitBreakerAdvanced:
         """_create_initial_state with non-condition error should log warning but still return state."""
         mock_table = MagicMock()
         mock_table.put_item.side_effect = ClientError(
-            {"Error": {"Code": "InternalServerError", "Message": "DynamoDB error"}},
-            "PutItem"
+            {"Error": {"Code": "InternalServerError", "Message": "DynamoDB error"}}, "PutItem"
         )
         mock_table.get_item.return_value = {}  # No item
         mock_get_table.return_value = mock_table
@@ -429,8 +424,7 @@ class TestDynamoDBCircuitBreakerAdvanced:
         """_transition_to_half_open should handle race condition via recursive can_execute."""
         mock_table = MagicMock()
         mock_table.update_item.side_effect = ClientError(
-            {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Version mismatch"}},
-            "UpdateItem"
+            {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Version mismatch"}}, "UpdateItem"
         )
         mock_get_table.return_value = mock_table
 
@@ -448,8 +442,7 @@ class TestDynamoDBCircuitBreakerAdvanced:
         """_transition_to_half_open with non-condition error should fail-open (return True)."""
         mock_table = MagicMock()
         mock_table.update_item.side_effect = ClientError(
-            {"Error": {"Code": "InternalServerError", "Message": "DynamoDB down"}},
-            "UpdateItem"
+            {"Error": {"Code": "InternalServerError", "Message": "DynamoDB down"}}, "UpdateItem"
         )
         mock_get_table.return_value = mock_table
 
@@ -475,8 +468,7 @@ class TestDynamoDBCircuitBreakerAdvanced:
         """_increment_half_open_calls errors should be silently ignored."""
         mock_table = MagicMock()
         mock_table.update_item.side_effect = ClientError(
-            {"Error": {"Code": "ConditionalCheckFailedException", "Message": ""}},
-            "UpdateItem"
+            {"Error": {"Code": "ConditionalCheckFailedException", "Message": ""}}, "UpdateItem"
         )
         mock_get_table.return_value = mock_table
 
@@ -523,8 +515,7 @@ class TestDynamoDBCircuitBreakerAdvanced:
         """_reset_half_open_calls errors should be silently ignored."""
         mock_table = MagicMock()
         mock_table.update_item.side_effect = ClientError(
-            {"Error": {"Code": "ConditionalCheckFailedException", "Message": ""}},
-            "UpdateItem"
+            {"Error": {"Code": "ConditionalCheckFailedException", "Message": ""}}, "UpdateItem"
         )
         mock_get_table.return_value = mock_table
 
@@ -636,10 +627,7 @@ class TestDynamoDBCircuitBreakerAdvanced:
                 return {"Attributes": {"success_count": 2}}
             else:
                 # Second call: transition to CLOSED fails (another instance did it)
-                raise ClientError(
-                    {"Error": {"Code": "ConditionalCheckFailedException", "Message": ""}},
-                    "UpdateItem"
-                )
+                raise ClientError({"Error": {"Code": "ConditionalCheckFailedException", "Message": ""}}, "UpdateItem")
 
         mock_table.update_item.side_effect = mock_update
         mock_get_table.return_value = mock_table
@@ -667,10 +655,7 @@ class TestDynamoDBCircuitBreakerAdvanced:
                 return {"Attributes": {"success_count": 2}}
             else:
                 # Inner raise re-raises this, outer except catches it
-                raise ClientError(
-                    {"Error": {"Code": "InternalServerError", "Message": "DynamoDB down"}},
-                    "UpdateItem"
-                )
+                raise ClientError({"Error": {"Code": "InternalServerError", "Message": "DynamoDB down"}}, "UpdateItem")
 
         mock_table.update_item.side_effect = mock_update
         mock_get_table.return_value = mock_table
@@ -690,8 +675,7 @@ class TestDynamoDBCircuitBreakerAdvanced:
         }
         mock_table = MagicMock()
         mock_table.update_item.side_effect = ClientError(
-            {"Error": {"Code": "ServiceUnavailable", "Message": ""}},
-            "UpdateItem"
+            {"Error": {"Code": "ServiceUnavailable", "Message": ""}}, "UpdateItem"
         )
         mock_get_table.return_value = mock_table
 
@@ -740,8 +724,7 @@ class TestDynamoDBCircuitBreakerAdvanced:
         }
         mock_table = MagicMock()
         mock_table.update_item.side_effect = ClientError(
-            {"Error": {"Code": "ServiceUnavailable", "Message": ""}},
-            "UpdateItem"
+            {"Error": {"Code": "ServiceUnavailable", "Message": ""}}, "UpdateItem"
         )
         mock_get_table.return_value = mock_table
 
@@ -778,8 +761,7 @@ class TestDynamoDBCircuitBreakerAdvanced:
         }
         mock_table = MagicMock()
         mock_table.update_item.side_effect = ClientError(
-            {"Error": {"Code": "ServiceUnavailable", "Message": ""}},
-            "UpdateItem"
+            {"Error": {"Code": "ServiceUnavailable", "Message": ""}}, "UpdateItem"
         )
         mock_get_table.return_value = mock_table
 
@@ -797,8 +779,7 @@ class TestDynamoDBCircuitBreakerAdvanced:
         }
         mock_table = MagicMock()
         mock_table.update_item.side_effect = ClientError(
-            {"Error": {"Code": "ConditionalCheckFailedException", "Message": ""}},
-            "UpdateItem"
+            {"Error": {"Code": "ConditionalCheckFailedException", "Message": ""}}, "UpdateItem"
         )
         mock_get_table.return_value = mock_table
 

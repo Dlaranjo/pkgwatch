@@ -41,18 +41,22 @@ class TestHandler:
         table = dynamodb.Table("pkgwatch-packages")
 
         # Add packages needing refresh (no downloads_fetched_at)
-        table.put_item(Item={
-            "pk": "pypi#requests",
-            "sk": "LATEST",
-            "ecosystem": "pypi",
-            "name": "requests",
-        })
-        table.put_item(Item={
-            "pk": "pypi#flask",
-            "sk": "LATEST",
-            "ecosystem": "pypi",
-            "name": "flask",
-        })
+        table.put_item(
+            Item={
+                "pk": "pypi#requests",
+                "sk": "LATEST",
+                "ecosystem": "pypi",
+                "name": "requests",
+            }
+        )
+        table.put_item(
+            Item={
+                "pk": "pypi#flask",
+                "sk": "LATEST",
+                "ecosystem": "pypi",
+                "name": "flask",
+            }
+        )
 
         # Mock HTTP client
         def mock_handler(request: httpx.Request) -> httpx.Response:
@@ -73,6 +77,7 @@ class TestHandler:
         with patch.object(httpx.Client, "__init__", patched_init):
             with patch("collectors.pypi_downloads_collector.time.sleep"):
                 from collectors.pypi_downloads_collector import handler
+
                 result = handler({}, MockContext())
 
         assert result["packages_updated"] == 2
@@ -92,6 +97,7 @@ class TestHandler:
         create_dynamodb_tables(dynamodb)
 
         from collectors.pypi_downloads_collector import handler
+
         result = handler({}, MockContext())
 
         assert result["packages_updated"] == 0
@@ -106,12 +112,14 @@ class TestHandler:
         table = dynamodb.Table("pkgwatch-packages")
 
         # Add package that will 404
-        table.put_item(Item={
-            "pk": "pypi#nonexistent-pkg",
-            "sk": "LATEST",
-            "ecosystem": "pypi",
-            "name": "nonexistent-pkg",
-        })
+        table.put_item(
+            Item={
+                "pk": "pypi#nonexistent-pkg",
+                "sk": "LATEST",
+                "ecosystem": "pypi",
+                "name": "nonexistent-pkg",
+            }
+        )
 
         # Mock HTTP client to return 404
         def mock_handler(request: httpx.Request) -> httpx.Response:
@@ -127,6 +135,7 @@ class TestHandler:
         with patch.object(httpx.Client, "__init__", patched_init):
             with patch("collectors.pypi_downloads_collector.time.sleep"):
                 from collectors.pypi_downloads_collector import handler
+
                 result = handler({}, MockContext())
 
         assert result["total_processed"] == 1
@@ -147,12 +156,14 @@ class TestHandler:
 
         # Add multiple packages
         for i in range(5):
-            table.put_item(Item={
-                "pk": f"pypi#pkg{i}",
-                "sk": "LATEST",
-                "ecosystem": "pypi",
-                "name": f"pkg{i}",
-            })
+            table.put_item(
+                Item={
+                    "pk": f"pypi#pkg{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "pypi",
+                    "name": f"pkg{i}",
+                }
+            )
 
         # Mock HTTP client - 2 successes, then 429 (retry succeeds), then 2 more successes
         call_count = [0]
@@ -178,6 +189,7 @@ class TestHandler:
         with patch.object(httpx.Client, "__init__", patched_init):
             with patch("collectors.pypi_downloads_collector.time.sleep"):
                 from collectors.pypi_downloads_collector import handler
+
                 result = handler({}, MockContext())
 
         # All 5 packages should be processed (429 retried and succeeded)
@@ -195,12 +207,14 @@ class TestHandler:
 
         # Add 10 packages
         for i in range(10):
-            table.put_item(Item={
-                "pk": f"pypi#pkg{i}",
-                "sk": "LATEST",
-                "ecosystem": "pypi",
-                "name": f"pkg{i}",
-            })
+            table.put_item(
+                Item={
+                    "pk": f"pypi#pkg{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "pypi",
+                    "name": f"pkg{i}",
+                }
+            )
 
         # Mock HTTP client - 2 successes, then all 429s (retries also fail)
         call_count = [0]
@@ -221,6 +235,7 @@ class TestHandler:
         with patch.object(httpx.Client, "__init__", patched_init):
             with patch("collectors.pypi_downloads_collector.time.sleep"):
                 from collectors.pypi_downloads_collector import handler
+
                 result = handler({}, MockContext())
 
         # 2 successes + 3 rate-limited (abort on 3rd consecutive)
@@ -238,12 +253,14 @@ class TestHandler:
 
         # Add many packages
         for i in range(20):
-            table.put_item(Item={
-                "pk": f"pypi#pkg{i}",
-                "sk": "LATEST",
-                "ecosystem": "pypi",
-                "name": f"pkg{i}",
-            })
+            table.put_item(
+                Item={
+                    "pk": f"pypi#pkg{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "pypi",
+                    "name": f"pkg{i}",
+                }
+            )
 
         # Mock HTTP client
         def mock_handler(request: httpx.Request) -> httpx.Response:
@@ -262,6 +279,7 @@ class TestHandler:
         with patch.object(httpx.Client, "__init__", patched_init):
             with patch("collectors.pypi_downloads_collector.time.sleep"):
                 from collectors.pypi_downloads_collector import handler
+
                 result = handler({}, context)
 
         # Should have processed 0 because timeout guard fires at start of loop
@@ -276,18 +294,22 @@ class TestHandler:
         table = dynamodb.Table("pkgwatch-packages")
 
         # Add packages
-        table.put_item(Item={
-            "pk": "pypi#pkg1",
-            "sk": "LATEST",
-            "ecosystem": "pypi",
-            "name": "pkg1",
-        })
-        table.put_item(Item={
-            "pk": "pypi#pkg2",
-            "sk": "LATEST",
-            "ecosystem": "pypi",
-            "name": "pkg2",
-        })
+        table.put_item(
+            Item={
+                "pk": "pypi#pkg1",
+                "sk": "LATEST",
+                "ecosystem": "pypi",
+                "name": "pkg1",
+            }
+        )
+        table.put_item(
+            Item={
+                "pk": "pypi#pkg2",
+                "sk": "LATEST",
+                "ecosystem": "pypi",
+                "name": "pkg2",
+            }
+        )
 
         # Mock HTTP client - first fails, second succeeds
         def mock_handler(request: httpx.Request) -> httpx.Response:
@@ -306,6 +328,7 @@ class TestHandler:
         with patch.object(httpx.Client, "__init__", patched_init):
             with patch("collectors.pypi_downloads_collector.time.sleep"):
                 from collectors.pypi_downloads_collector import handler
+
                 result = handler({}, MockContext())
 
         # Both should be processed (one failed, one succeeded)
@@ -325,24 +348,29 @@ class TestGetPackagesNeedingRefresh:
 
         # Add unfetched packages (no downloads_fetched_at)
         for i in range(3):
-            table.put_item(Item={
-                "pk": f"pypi#unfetched{i}",
-                "sk": "LATEST",
-                "ecosystem": "pypi",
-                "name": f"unfetched{i}",
-            })
+            table.put_item(
+                Item={
+                    "pk": f"pypi#unfetched{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "pypi",
+                    "name": f"unfetched{i}",
+                }
+            )
 
         # Add already fetched packages
         for i in range(2):
-            table.put_item(Item={
-                "pk": f"pypi#fetched{i}",
-                "sk": "LATEST",
-                "ecosystem": "pypi",
-                "name": f"fetched{i}",
-                "downloads_fetched_at": datetime.now(timezone.utc).isoformat(),
-            })
+            table.put_item(
+                Item={
+                    "pk": f"pypi#fetched{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "pypi",
+                    "name": f"fetched{i}",
+                    "downloads_fetched_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
 
         from collectors.pypi_downloads_collector import _get_packages_needing_refresh
+
         # Request exactly 3 (same as unfetched count) - should only get unfetched
         packages = _get_packages_needing_refresh(table, limit=3, context=None)
 
@@ -359,25 +387,30 @@ class TestGetPackagesNeedingRefresh:
 
         # Add 2 unfetched packages (not enough for limit=5)
         for i in range(2):
-            table.put_item(Item={
-                "pk": f"pypi#unfetched{i}",
-                "sk": "LATEST",
-                "ecosystem": "pypi",
-                "name": f"unfetched{i}",
-            })
+            table.put_item(
+                Item={
+                    "pk": f"pypi#unfetched{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "pypi",
+                    "name": f"unfetched{i}",
+                }
+            )
 
         # Add fetched packages with varying ages
         now = datetime.now(timezone.utc)
         for i, days_ago in enumerate([30, 10, 20]):  # Various ages
-            table.put_item(Item={
-                "pk": f"pypi#old{i}",
-                "sk": "LATEST",
-                "ecosystem": "pypi",
-                "name": f"old{i}",
-                "downloads_fetched_at": (now - timedelta(days=days_ago)).isoformat(),
-            })
+            table.put_item(
+                Item={
+                    "pk": f"pypi#old{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "pypi",
+                    "name": f"old{i}",
+                    "downloads_fetched_at": (now - timedelta(days=days_ago)).isoformat(),
+                }
+            )
 
         from collectors.pypi_downloads_collector import _get_packages_needing_refresh
+
         packages = _get_packages_needing_refresh(table, limit=5, context=None)
 
         # Should get 2 unfetched + 3 oldest fetched = 5 total
@@ -395,17 +428,20 @@ class TestGetPackagesNeedingRefresh:
 
         # Add many packages
         for i in range(20):
-            table.put_item(Item={
-                "pk": f"pypi#pkg{i}",
-                "sk": "LATEST",
-                "ecosystem": "pypi",
-                "name": f"pkg{i}",
-            })
+            table.put_item(
+                Item={
+                    "pk": f"pypi#pkg{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "pypi",
+                    "name": f"pkg{i}",
+                }
+            )
 
         # Mock context with low remaining time (less than MIN_REMAINING_MS)
         context = MockContext(remaining_ms=100_000)  # 100s < 120s threshold
 
         from collectors.pypi_downloads_collector import _get_packages_needing_refresh
+
         packages = _get_packages_needing_refresh(table, limit=100, context=context)
 
         # Should have stopped early due to timeout
@@ -420,26 +456,31 @@ class TestGetPackagesNeedingRefresh:
         table = dynamodb.Table("pkgwatch-packages")
 
         # Add packages - some unfetched, some with downloads_fetched_at
-        table.put_item(Item={
-            "pk": "pypi#shared",
-            "sk": "LATEST",
-            "ecosystem": "pypi",
-            "name": "shared",
-            # No downloads_fetched_at - will be in Phase 1
-        })
+        table.put_item(
+            Item={
+                "pk": "pypi#shared",
+                "sk": "LATEST",
+                "ecosystem": "pypi",
+                "name": "shared",
+                # No downloads_fetched_at - will be in Phase 1
+            }
+        )
 
         # Add fetched packages for Phase 2
         now = datetime.now(timezone.utc)
         for i in range(3):
-            table.put_item(Item={
-                "pk": f"pypi#fetched{i}",
-                "sk": "LATEST",
-                "ecosystem": "pypi",
-                "name": f"fetched{i}",
-                "downloads_fetched_at": (now - timedelta(days=i+1)).isoformat(),
-            })
+            table.put_item(
+                Item={
+                    "pk": f"pypi#fetched{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "pypi",
+                    "name": f"fetched{i}",
+                    "downloads_fetched_at": (now - timedelta(days=i + 1)).isoformat(),
+                }
+            )
 
         from collectors.pypi_downloads_collector import _get_packages_needing_refresh
+
         packages = _get_packages_needing_refresh(table, limit=10, context=None)
 
         # Should have no duplicates
@@ -456,11 +497,15 @@ class TestGetPackagesNeedingRefresh:
         # Mock scan to raise ClientError
         from botocore.exceptions import ClientError
 
-        with patch.object(table, "scan", side_effect=ClientError(
-            {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Rate exceeded"}},
-            "Scan"
-        )):
+        with patch.object(
+            table,
+            "scan",
+            side_effect=ClientError(
+                {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Rate exceeded"}}, "Scan"
+            ),
+        ):
             from collectors.pypi_downloads_collector import _get_packages_needing_refresh
+
             packages = _get_packages_needing_refresh(table, limit=10, context=None)
 
         assert packages == []
@@ -477,18 +522,19 @@ class TestWriteUpdates:
         table = dynamodb.Table("pkgwatch-packages")
 
         # Add initial package
-        table.put_item(Item={
-            "pk": "pypi#requests",
-            "sk": "LATEST",
-            "ecosystem": "pypi",
-            "name": "requests",
-        })
+        table.put_item(
+            Item={
+                "pk": "pypi#requests",
+                "sk": "LATEST",
+                "ecosystem": "pypi",
+                "name": "requests",
+            }
+        )
 
-        updates = [
-            {"name": "requests", "weekly_downloads": 50000000, "downloads_source": "pypistats"}
-        ]
+        updates = [{"name": "requests", "weekly_downloads": 50000000, "downloads_source": "pypistats"}]
 
         from collectors.pypi_downloads_collector import _write_updates
+
         _write_updates(table, updates)
 
         # Verify update
@@ -505,12 +551,14 @@ class TestWriteUpdates:
         table = dynamodb.Table("pkgwatch-packages")
 
         # Add packages
-        table.put_item(Item={
-            "pk": "pypi#good",
-            "sk": "LATEST",
-            "ecosystem": "pypi",
-            "name": "good",
-        })
+        table.put_item(
+            Item={
+                "pk": "pypi#good",
+                "sk": "LATEST",
+                "ecosystem": "pypi",
+                "name": "good",
+            }
+        )
 
         updates = [
             {"name": "bad", "weekly_downloads": 1000, "downloads_source": "pypistats"},  # No existing item
@@ -518,6 +566,7 @@ class TestWriteUpdates:
         ]
 
         from collectors.pypi_downloads_collector import _write_updates
+
         # Should not raise - continues despite "bad" potentially failing
         _write_updates(table, updates)
 
@@ -538,12 +587,14 @@ class TestIncrementalWrites:
 
         # Add 15 packages (should trigger 2 incremental writes at 10 and 15)
         for i in range(15):
-            table.put_item(Item={
-                "pk": f"pypi#pkg{i}",
-                "sk": "LATEST",
-                "ecosystem": "pypi",
-                "name": f"pkg{i}",
-            })
+            table.put_item(
+                Item={
+                    "pk": f"pypi#pkg{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "pypi",
+                    "name": f"pkg{i}",
+                }
+            )
 
         # Mock HTTP client
         def mock_handler(request: httpx.Request) -> httpx.Response:
@@ -566,6 +617,7 @@ class TestIncrementalWrites:
         with patch.object(httpx.Client, "__init__", patched_init):
             with patch("collectors.pypi_downloads_collector.time.sleep"):
                 from collectors import pypi_downloads_collector
+
                 original_write_updates = pypi_downloads_collector._write_updates
 
                 with patch.object(pypi_downloads_collector, "_write_updates", mock_write_updates):

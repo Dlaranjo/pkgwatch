@@ -310,10 +310,12 @@ class TestGraphExpanderWorker:
         event = {
             "Records": [
                 {
-                    "body": json.dumps({
-                        "packages": ["lodash", "express"],
-                        "ecosystem": "npm",
-                    })
+                    "body": json.dumps(
+                        {
+                            "packages": ["lodash", "express"],
+                            "ecosystem": "npm",
+                        }
+                    )
                 }
             ]
         }
@@ -1010,11 +1012,7 @@ class TestGetDependencies:
         # Mock the API responses
         pkg_response = MagicMock()
         pkg_response.status_code = 200
-        pkg_response.json.return_value = {
-            "versions": [
-                {"versionKey": {"version": "1.0.0"}, "isDefault": True}
-            ]
-        }
+        pkg_response.json.return_value = {"versions": [{"versionKey": {"version": "1.0.0"}, "isDefault": True}]}
 
         deps_response = MagicMock()
         deps_response.status_code = 200

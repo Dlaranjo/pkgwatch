@@ -29,9 +29,7 @@ class TestDynamoDBFailures:
     """Tests for DynamoDB operation failures."""
 
     @mock_aws
-    def test_get_package_dynamodb_error_returns_500(
-        self, mock_dynamodb, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_get_package_dynamodb_error_returns_500(self, mock_dynamodb, seeded_api_keys_table, api_gateway_event):
         """Should return 500 when DynamoDB get_item fails."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -45,12 +43,12 @@ class TestDynamoDBFailures:
         mock_table = MagicMock()
         mock_dynamo.Table.return_value = mock_table
         mock_table.get_item.side_effect = ClientError(
-            {"Error": {"Code": "ServiceUnavailable", "Message": "Service unavailable"}},
-            "GetItem"
+            {"Error": {"Code": "ServiceUnavailable", "Message": "Service unavailable"}}, "GetItem"
         )
 
         with patch("api.get_package.get_dynamodb", return_value=mock_dynamo):
             from api.get_package import handler
+
             result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 500
@@ -69,19 +67,17 @@ class TestDynamoDBFailures:
             mock_table = MagicMock()
             mock_dynamo.Table.return_value = mock_table
             mock_table.query.side_effect = ClientError(
-                {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Rate exceeded"}},
-                "Query"
+                {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Rate exceeded"}}, "Query"
             )
 
             from shared.auth import validate_api_key
+
             result = validate_api_key("pw_test_key_12345")
 
         assert result is None
 
     @mock_aws
-    def test_check_and_increment_usage_propagates_non_conditional_errors(
-        self, seeded_api_keys_table
-    ):
+    def test_check_and_increment_usage_propagates_non_conditional_errors(self, seeded_api_keys_table):
         """Should propagate DynamoDB errors other than ConditionalCheckFailed."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
@@ -94,8 +90,7 @@ class TestDynamoDBFailures:
             mock_table = MagicMock()
             mock_dynamo.Table.return_value = mock_table
             mock_table.update_item.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "DynamoDB internal error"}},
-                "UpdateItem"
+                {"Error": {"Code": "InternalServerError", "Message": "DynamoDB internal error"}}, "UpdateItem"
             )
 
             from shared.auth import check_and_increment_usage
@@ -106,28 +101,24 @@ class TestDynamoDBFailures:
             assert "InternalServerError" in str(exc_info.value)
 
     @mock_aws
-    def test_batch_get_partial_failure_handling(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_batch_get_partial_failure_handling(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should handle batch operations with partial failures (UnprocessedKeys)."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         # Seed packages
         packages_table = mock_dynamodb.Table("pkgwatch-packages")
-        packages_table.put_item(Item={
-            "pk": "npm#lodash", "sk": "LATEST", "name": "lodash",
-            "health_score": 85, "risk_level": "LOW"
-        })
+        packages_table.put_item(
+            Item={"pk": "npm#lodash", "sk": "LATEST", "name": "lodash", "health_score": 85, "risk_level": "LOW"}
+        )
 
         table, test_key = seeded_api_keys_table
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21", "express": "^4.18.0"}
-        })
+        api_gateway_event["body"] = json.dumps({"dependencies": {"lodash": "^4.17.21", "express": "^4.18.0"}})
 
         from api.post_scan import handler
+
         result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 200
@@ -147,12 +138,14 @@ class TestDynamoDBFailures:
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         email = "test@example.com"
         user_id = f"user_{hashlib.sha256(email.encode()).hexdigest()[:16]}"
-        table.put_item(Item={
-            "pk": user_id,
-            "sk": "PENDING",
-            "email": email,
-            "email_verified": False,
-        })
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "PENDING",
+                "email": email,
+                "email_verified": False,
+            }
+        )
 
         from api.signup import handler
 
@@ -165,9 +158,7 @@ class TestDynamoDBFailures:
         assert result["statusCode"] in [200, 409]
 
     @mock_aws
-    def test_auth_me_dynamodb_error_returns_500(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_auth_me_dynamodb_error_returns_500(self, mock_dynamodb, api_gateway_event):
         """Should return 500 when DynamoDB fails during auth/me."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = ""
@@ -175,18 +166,17 @@ class TestDynamoDBFailures:
         # Create a valid session token
         import base64
         import hmac
+
         session_secret = "test-secret"
 
         with patch("api.auth_callback._get_session_secret", return_value=session_secret):
             session_data = {
                 "user_id": "user_123",
                 "email": "test@example.com",
-                "exp": int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp())
+                "exp": int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp()),
             }
             payload = base64.urlsafe_b64encode(json.dumps(session_data).encode()).decode()
-            signature = hmac.new(
-                session_secret.encode(), payload.encode(), "sha256"
-            ).hexdigest()
+            signature = hmac.new(session_secret.encode(), payload.encode(), "sha256").hexdigest()
             session_token = f"{payload}.{signature}"
 
         api_gateway_event["headers"]["cookie"] = f"session={session_token}"
@@ -198,11 +188,11 @@ class TestDynamoDBFailures:
                 mock_table = MagicMock()
                 mock_dynamo.Table.return_value = mock_table
                 mock_table.query.side_effect = ClientError(
-                    {"Error": {"Code": "ServiceUnavailable", "Message": "Service down"}},
-                    "Query"
+                    {"Error": {"Code": "ServiceUnavailable", "Message": "Service down"}}, "Query"
                 )
 
                 from api.auth_me import handler
+
                 result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 500
@@ -214,9 +204,7 @@ class TestDynamoDemoRateLimitFailures:
     """Tests for demo rate limit DynamoDB failures."""
 
     @mock_aws
-    def test_demo_rate_limit_dynamodb_error_fails_closed(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_demo_rate_limit_dynamodb_error_fails_closed(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Should fail closed (deny) when demo rate limit check fails."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -229,12 +217,12 @@ class TestDynamoDemoRateLimitFailures:
         mock_dynamo.Table.return_value = mock_table
         # First call for rate limit check fails
         mock_table.update_item.side_effect = ClientError(
-            {"Error": {"Code": "ThrottlingException", "Message": "Throttled"}},
-            "UpdateItem"
+            {"Error": {"Code": "ThrottlingException", "Message": "Throttled"}}, "UpdateItem"
         )
 
         with patch("api.get_package.get_dynamodb", return_value=mock_dynamo):
             from api.get_package import handler
+
             result = handler(api_gateway_event, {})
 
         # Should fail closed - return 429
@@ -257,8 +245,10 @@ class TestDepsDevFailures:
 
         def create_timeout_transport():
             """Create transport that always times out."""
+
             async def handler(request: httpx.Request) -> httpx.Response:
                 raise httpx.TimeoutException("Timeout")
+
             return httpx.MockTransport(handler)
 
         original_init = httpx.AsyncClient.__init__
@@ -282,8 +272,10 @@ class TestDepsDevFailures:
 
         def create_404_transport():
             """Create transport that returns 404."""
+
             async def handler(request: httpx.Request) -> httpx.Response:
                 return httpx.Response(404)
+
             return httpx.MockTransport(handler)
 
         original_init = httpx.AsyncClient.__init__
@@ -312,11 +304,7 @@ class TestDepsDevFailures:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
-                raise httpx.HTTPStatusError(
-                    "Server error",
-                    request=MagicMock(),
-                    response=MagicMock(status_code=500)
-                )
+                raise httpx.HTTPStatusError("Server error", request=MagicMock(), response=MagicMock(status_code=500))
             return {"success": True}
 
         async def run_test():
@@ -339,8 +327,10 @@ class TestNpmCollectorFailures:
 
         def create_404_transport():
             """Create transport that returns 404."""
+
             async def handler(request: httpx.Request) -> httpx.Response:
                 return httpx.Response(404)
+
             return httpx.MockTransport(handler)
 
         original_init = httpx.AsyncClient.__init__
@@ -366,22 +356,27 @@ class TestNpmCollectorFailures:
 
         def create_mixed_transport():
             """Create transport that succeeds on registry, fails on downloads."""
+
             async def handler(request: httpx.Request) -> httpx.Response:
                 nonlocal call_count
                 call_count += 1
                 url = str(request.url)
                 if "registry.npmjs.org" in url:
                     # Registry call succeeds
-                    return httpx.Response(200, json={
-                        "name": "test-pkg",
-                        "dist-tags": {"latest": "1.0.0"},
-                        "time": {"created": "2020-01-01"},
-                        "maintainers": [],
-                    })
+                    return httpx.Response(
+                        200,
+                        json={
+                            "name": "test-pkg",
+                            "dist-tags": {"latest": "1.0.0"},
+                            "time": {"created": "2020-01-01"},
+                            "maintainers": [],
+                        },
+                    )
                 elif "api.npmjs.org/downloads" in url:
                     # Downloads call fails
                     return httpx.Response(500)
                 return httpx.Response(404)
+
             return httpx.MockTransport(handler)
 
         original_init = httpx.AsyncClient.__init__
@@ -412,14 +407,10 @@ class TestGitHubCollectorFailures:
 
         def create_rate_limit_transport():
             """Create transport that returns rate limit response."""
+
             async def handler(request: httpx.Request) -> httpx.Response:
-                return httpx.Response(
-                    403,
-                    headers={
-                        "X-RateLimit-Remaining": "0",
-                        "X-RateLimit-Reset": reset_time
-                    }
-                )
+                return httpx.Response(403, headers={"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": reset_time})
+
             return httpx.MockTransport(handler)
 
         original_init = httpx.AsyncClient.__init__
@@ -446,8 +437,10 @@ class TestGitHubCollectorFailures:
 
         def create_404_transport():
             """Create transport that returns 404."""
+
             async def handler(request: httpx.Request) -> httpx.Response:
                 return httpx.Response(404, headers={})
+
             return httpx.MockTransport(handler)
 
         original_init = httpx.AsyncClient.__init__
@@ -472,11 +465,10 @@ class TestGitHubCollectorFailures:
 
         def create_403_transport():
             """Create transport that returns 403 without rate limit."""
+
             async def handler(request: httpx.Request) -> httpx.Response:
-                return httpx.Response(
-                    403,
-                    headers={"X-RateLimit-Remaining": "1000"}
-                )
+                return httpx.Response(403, headers={"X-RateLimit-Remaining": "1000"})
+
             return httpx.MockTransport(handler)
 
         original_init = httpx.AsyncClient.__init__
@@ -675,9 +667,7 @@ class TestInputValidationErrors:
         assert body["error"]["code"] == "no_dependencies"
 
     @mock_aws
-    def test_invalid_ecosystem_returns_400(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_invalid_ecosystem_returns_400(self, seeded_api_keys_table, api_gateway_event):
         """Should return 400 for unsupported ecosystem."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -697,9 +687,7 @@ class TestInputValidationErrors:
         assert "maven" in body["error"]["message"]
 
     @mock_aws
-    def test_missing_package_name_returns_400(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_missing_package_name_returns_400(self, seeded_api_keys_table, api_gateway_event):
         """Should return 400 when package name is missing."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -718,9 +706,7 @@ class TestInputValidationErrors:
         assert body["error"]["code"] == "missing_parameter"
 
     @mock_aws
-    def test_invalid_email_format_signup_returns_400(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_invalid_email_format_signup_returns_400(self, mock_dynamodb, api_gateway_event):
         """Should return 400 for invalid email in signup."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
@@ -736,9 +722,7 @@ class TestInputValidationErrors:
         assert body["error"]["code"] == "invalid_email"
 
     @mock_aws
-    def test_missing_email_signup_returns_400(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_missing_email_signup_returns_400(self, mock_dynamodb, api_gateway_event):
         """Should return 400 when email is missing from signup."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
@@ -754,9 +738,7 @@ class TestInputValidationErrors:
         assert body["error"]["code"] == "invalid_email"
 
     @mock_aws
-    def test_malformed_dependencies_handled(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_malformed_dependencies_handled(self, seeded_api_keys_table, api_gateway_event):
         """Should handle malformed dependencies object."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -864,7 +846,7 @@ class TestAuthErrors:
         session_data = {
             "user_id": "user_123",
             "email": "test@example.com",
-            "exp": int((datetime.now(timezone.utc) - timedelta(hours=1)).timestamp())
+            "exp": int((datetime.now(timezone.utc) - timedelta(hours=1)).timestamp()),
         }
         payload = base64.urlsafe_b64encode(json.dumps(session_data).encode()).decode()
         signature = hmac.new(session_secret.encode(), payload.encode(), "sha256").hexdigest()
@@ -874,6 +856,7 @@ class TestAuthErrors:
 
         with patch("api.auth_callback._get_session_secret", return_value=session_secret):
             from api.auth_me import handler
+
             result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 401
@@ -889,6 +872,7 @@ class TestAuthErrors:
         api_gateway_event["headers"]["cookie"] = "session=not.a.valid.token"
 
         from api.auth_me import handler
+
         result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 401
@@ -904,7 +888,7 @@ class TestAuthErrors:
         session_data = {
             "user_id": "user_123",
             "email": "test@example.com",
-            "exp": int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp())
+            "exp": int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp()),
         }
         payload = base64.urlsafe_b64encode(json.dumps(session_data).encode()).decode()
         # Wrong signature
@@ -915,6 +899,7 @@ class TestAuthErrors:
 
         with patch("api.auth_callback._get_session_secret", return_value="test-secret"):
             from api.auth_me import handler
+
             result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 401
@@ -930,15 +915,16 @@ class TestAuthErrors:
 
         with patch("api.auth_callback.secretsmanager") as mock_sm:
             mock_sm.get_secret_value.side_effect = ClientError(
-                {"Error": {"Code": "ResourceNotFoundException", "Message": "Secret not found"}},
-                "GetSecretValue"
+                {"Error": {"Code": "ResourceNotFoundException", "Message": "Secret not found"}}, "GetSecretValue"
             )
 
             # Clear the cache
             import api.auth_callback
+
             api.auth_callback._session_secret_cache = None
 
             from api.auth_callback import handler
+
             result = handler(api_gateway_event, {})
 
         # Should redirect with error
@@ -1003,9 +989,7 @@ class TestErrorResponseConsistency:
         self._verify_error_format(body)
 
     @mock_aws
-    def test_404_error_format(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_404_error_format(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """404 errors should follow standard format."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1024,9 +1008,7 @@ class TestErrorResponseConsistency:
         self._verify_error_format(body)
 
     @mock_aws
-    def test_429_error_format(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_429_error_format(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """429 errors should follow standard format with extra fields."""
         import hashlib
 
@@ -1038,22 +1020,26 @@ class TestErrorResponseConsistency:
         test_key = "pw_overlimit1234567890"
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
-        table.put_item(Item={
-            "pk": "user_overlimit",
-            "sk": key_hash,
-            "key_hash": key_hash,
-            "tier": "free",
-            "requests_this_month": 5000,
-            "email_verified": True,
-        })
+        table.put_item(
+            Item={
+                "pk": "user_overlimit",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "tier": "free",
+                "requests_this_month": 5000,
+                "email_verified": True,
+            }
+        )
 
         # Add USER_META with requests_this_month at limit (rate limiting is user-level)
-        table.put_item(Item={
-            "pk": "user_overlimit",
-            "sk": "USER_META",
-            "key_count": 1,
-            "requests_this_month": 5000,
-        })
+        table.put_item(
+            Item={
+                "pk": "user_overlimit",
+                "sk": "USER_META",
+                "key_count": 1,
+                "requests_this_month": 5000,
+            }
+        )
 
         from api.get_package import handler
 
@@ -1069,9 +1055,7 @@ class TestErrorResponseConsistency:
         assert "Retry-After" in result["headers"]
 
     @mock_aws
-    def test_500_error_format(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_500_error_format(self, seeded_api_keys_table, api_gateway_event):
         """500 errors should follow standard format."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1088,6 +1072,7 @@ class TestErrorResponseConsistency:
 
         with patch("api.get_package.get_dynamodb", return_value=mock_dynamo):
             from api.get_package import handler
+
             result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 500
@@ -1097,9 +1082,7 @@ class TestErrorResponseConsistency:
         assert "Unexpected error" not in body["error"]["message"]
 
     @mock_aws
-    def test_all_error_responses_have_content_type(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_all_error_responses_have_content_type(self, seeded_api_keys_table, api_gateway_event):
         """All error responses should have Content-Type header."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1123,12 +1106,7 @@ class TestErrorClasses:
         """APIError.to_response should produce valid format."""
         from shared.errors import APIError
 
-        error = APIError(
-            code="test_error",
-            message="Test error message",
-            status_code=400,
-            details={"field": "value"}
-        )
+        error = APIError(code="test_error", message="Test error message", status_code=400, details={"field": "value"})
 
         response = error.to_response()
 
@@ -1198,7 +1176,7 @@ class TestErrorClasses:
             status_code=422,
             code="validation_error",
             message="Field is invalid",
-            details={"field": "name", "reason": "too_long"}
+            details={"field": "name", "reason": "too_long"},
         )
 
         assert response["statusCode"] == 422
@@ -1246,9 +1224,7 @@ class TestRateLimitErrors:
     """Tests for rate limit error handling."""
 
     @mock_aws
-    def test_scan_rate_limit_exceeded_returns_429(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_scan_rate_limit_exceeded_returns_429(self, mock_dynamodb, api_gateway_event):
         """Should return 429 when scan would exceed remaining limit."""
         import hashlib
 
@@ -1260,37 +1236,43 @@ class TestRateLimitErrors:
         test_key = "pw_almostlimit12345"
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
-        table.put_item(Item={
-            "pk": "user_almost",
-            "sk": key_hash,
-            "key_hash": key_hash,
-            "tier": "free",
-            "requests_this_month": 4999,  # 1 remaining (per-key, for analytics)
-            "email_verified": True,
-        })
+        table.put_item(
+            Item={
+                "pk": "user_almost",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "tier": "free",
+                "requests_this_month": 4999,  # 1 remaining (per-key, for analytics)
+                "email_verified": True,
+            }
+        )
 
         # Add USER_META with requests_this_month at 4999 (rate limiting is user-level)
-        table.put_item(Item={
-            "pk": "user_almost",
-            "sk": "USER_META",
-            "key_count": 1,
-            "requests_this_month": 4999,  # 1 remaining
-        })
+        table.put_item(
+            Item={
+                "pk": "user_almost",
+                "sk": "USER_META",
+                "key_count": 1,
+                "requests_this_month": 4999,  # 1 remaining
+            }
+        )
 
         from api.post_scan import handler
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
         # Request scan of 5 packages - exceeds remaining
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {
-                "lodash": "^4.17.21",
-                "express": "^4.18.0",
-                "react": "^18.0.0",
-                "vue": "^3.0.0",
-                "angular": "^15.0.0",
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {
+                    "lodash": "^4.17.21",
+                    "express": "^4.18.0",
+                    "react": "^18.0.0",
+                    "vue": "^3.0.0",
+                    "angular": "^15.0.0",
+                }
             }
-        })
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -1300,9 +1282,7 @@ class TestRateLimitErrors:
         assert "5" in body["error"]["message"]  # Number of packages requested
 
     @mock_aws
-    def test_demo_rate_limit_includes_signup_url(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_demo_rate_limit_includes_signup_url(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Demo rate limit error should include signup URL."""
         from datetime import datetime, timezone
 
@@ -1315,12 +1295,14 @@ class TestRateLimitErrors:
         current_hour = now.strftime("%Y-%m-%d-%H")
         client_ip = "127.0.0.1"
 
-        table.put_item(Item={
-            "pk": f"demo#{client_ip}",
-            "sk": f"hour#{current_hour}",
-            "requests": 21,
-            "ttl": int(now.timestamp()) + 7200,
-        })
+        table.put_item(
+            Item={
+                "pk": f"demo#{client_ip}",
+                "sk": f"hour#{current_hour}",
+                "requests": 21,
+                "ttl": int(now.timestamp()) + 7200,
+            }
+        )
 
         from api.get_package import handler
 
@@ -1342,9 +1324,7 @@ class TestSecurityErrors:
     """Tests to ensure errors don't leak sensitive information."""
 
     @mock_aws
-    def test_dynamodb_error_does_not_leak_table_name(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_dynamodb_error_does_not_leak_table_name(self, seeded_api_keys_table, api_gateway_event):
         """DynamoDB errors should not expose table names."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1358,12 +1338,12 @@ class TestSecurityErrors:
         mock_table = MagicMock()
         mock_dynamo.Table.return_value = mock_table
         mock_table.get_item.side_effect = ClientError(
-            {"Error": {"Code": "ResourceNotFoundException", "Message": "Table pkgwatch-packages not found"}},
-            "GetItem"
+            {"Error": {"Code": "ResourceNotFoundException", "Message": "Table pkgwatch-packages not found"}}, "GetItem"
         )
 
         with patch("api.get_package.get_dynamodb", return_value=mock_dynamo):
             from api.get_package import handler
+
             result = handler(api_gateway_event, {})
 
         body = json.loads(result["body"])
@@ -1372,9 +1352,7 @@ class TestSecurityErrors:
         assert "pkgwatch-packages" not in str(body)
 
     @mock_aws
-    def test_email_enumeration_prevented_magic_link(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_email_enumeration_prevented_magic_link(self, mock_dynamodb, api_gateway_event):
         """Magic link should return same response for existing and non-existing emails."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BASE_URL"] = "https://test.example.com"

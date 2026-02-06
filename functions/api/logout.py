@@ -27,14 +27,7 @@ def handler(event, context):
     # Clear session cookie by setting Max-Age=0 and empty value
     # Cookie attributes must match the original cookie settings for proper clearing
     # Original cookie set in auth_callback.py: session=...; Path=/; HttpOnly; Secure; SameSite=Strict
-    cookie_header = (
-        "session=; "
-        "Max-Age=0; "
-        "Path=/; "
-        "HttpOnly; "
-        "Secure; "
-        "SameSite=Strict"
-    )
+    cookie_header = "session=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Strict"
 
     logger.info("User logged out - session cookie cleared")
 

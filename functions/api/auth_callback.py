@@ -34,6 +34,7 @@ SESSION_SECRET_CACHE_TTL = 300  # 5 minutes - allows secret rotation to take eff
 def _get_session_secret() -> str:
     """Retrieve session secret from Secrets Manager (cached with TTL)."""
     import time
+
     global _session_secret_cache, _session_secret_cache_time
 
     # Check if cache is still valid
@@ -62,6 +63,7 @@ def _get_session_secret() -> str:
     except ClientError as e:
         logger.error(f"Failed to retrieve session secret: {e}")
         return ""
+
 
 # Session TTL (7 days)
 SESSION_TTL_DAYS = 7
@@ -128,9 +130,7 @@ def handler(event, context):
             Key={"pk": user_id, "sk": user["sk"]},
             UpdateExpression="REMOVE magic_token, magic_expires SET last_login = :now",
             ConditionExpression=(
-                "attribute_exists(magic_token) AND "
-                "magic_token = :expected_token AND "
-                "magic_expires > :now_iso"
+                "attribute_exists(magic_token) AND magic_token = :expected_token AND magic_expires > :now_iso"
             ),
             ExpressionAttributeValues={
                 ":now": now_iso,
@@ -152,8 +152,7 @@ def handler(event, context):
                     # Token was already consumed
                     logger.warning(f"Magic token replay attempt for {user_id}")
                     return _redirect_with_error(
-                        "token_already_used",
-                        "This login link has already been used. Please request a new one."
+                        "token_already_used", "This login link has already been used. Please request a new one."
                     )
                 elif current_expires and current_expires <= now_iso:
                     # Token exists but is expired - clean it up
@@ -163,15 +162,12 @@ def handler(event, context):
                     )
                     return _redirect_with_error(
                         "token_expired",
-                        "Your sign-in link has expired (links are valid for 15 minutes). Please request a new one."
+                        "Your sign-in link has expired (links are valid for 15 minutes). Please request a new one.",
                     )
                 else:
                     # Token mismatch (shouldn't happen in normal flow)
                     logger.warning(f"Magic token mismatch for {user_id}")
-                    return _redirect_with_error(
-                        "invalid_token",
-                        "Invalid or expired login link"
-                    )
+                    return _redirect_with_error("invalid_token", "Invalid or expired login link")
             except Exception as recheck_error:
                 logger.error(f"Error rechecking user state: {recheck_error}")
                 return _redirect_with_error("internal_error", "Failed to verify token")
@@ -198,7 +194,9 @@ def handler(event, context):
     logger.info(f"Session created for {email_prefix}***@{email_domain}")
 
     # Set session cookie and redirect to dashboard
-    cookie_value = f"session={session_token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL_DAYS * 86400}"
+    cookie_value = (
+        f"session={session_token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL_DAYS * 86400}"
+    )
 
     return {
         "statusCode": 302,
@@ -216,11 +214,7 @@ def handler(event, context):
 def _create_session_token(data: dict, secret: str) -> str:
     """Create a signed session token."""
     payload = base64.urlsafe_b64encode(json.dumps(data).encode()).decode()
-    signature = hmac.new(
-        secret.encode(),
-        payload.encode(),
-        hashlib.sha256
-    ).hexdigest()
+    signature = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return f"{payload}.{signature}"
 
 
@@ -232,11 +226,7 @@ def verify_session_token(token: str) -> dict | None:
 
     try:
         payload, signature = token.rsplit(".", 1)
-        expected_sig = hmac.new(
-            session_secret.encode(),
-            payload.encode(),
-            hashlib.sha256
-        ).hexdigest()
+        expected_sig = hmac.new(session_secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
 
         if not hmac.compare_digest(signature, expected_sig):
             return None
@@ -255,10 +245,12 @@ def verify_session_token(token: str) -> dict | None:
 
 def _redirect_with_error(code: str, message: str) -> dict:
     """Redirect to login page with error message."""
-    redirect_params = urlencode({
-        "error": code,
-        "message": message,
-    })
+    redirect_params = urlencode(
+        {
+            "error": code,
+            "message": message,
+        }
+    )
     return {
         "statusCode": 302,
         "headers": {

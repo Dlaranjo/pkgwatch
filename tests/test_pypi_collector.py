@@ -36,8 +36,10 @@ def run_async(coro):
 
 def create_mock_transport(handler):
     """Create a mock transport for httpx that routes requests to handler."""
+
     async def mock_handler(request: httpx.Request) -> httpx.Response:
         return handler(request)
+
     return httpx.MockTransport(mock_handler)
 
 
@@ -52,6 +54,7 @@ class TestNormalizePackageName:
     def test_normalize_lowercase(self):
         """Normalize uppercase to lowercase."""
         from pypi_collector import normalize_package_name
+
         assert normalize_package_name("Django") == "django"
         assert normalize_package_name("Flask") == "flask"
         assert normalize_package_name("REQUESTS") == "requests"
@@ -59,18 +62,21 @@ class TestNormalizePackageName:
     def test_normalize_underscores(self):
         """Normalize underscores to hyphens."""
         from pypi_collector import normalize_package_name
+
         assert normalize_package_name("requests_oauthlib") == "requests-oauthlib"
         assert normalize_package_name("python_dateutil") == "python-dateutil"
 
     def test_normalize_periods(self):
         """Normalize periods to hyphens."""
         from pypi_collector import normalize_package_name
+
         assert normalize_package_name("Flask.WTF") == "flask-wtf"
         assert normalize_package_name("zope.interface") == "zope-interface"
 
     def test_normalize_consecutive_separators(self):
         """Collapse consecutive separators."""
         from pypi_collector import normalize_package_name
+
         assert normalize_package_name("foo__bar") == "foo-bar"
         assert normalize_package_name("foo--bar") == "foo-bar"
         assert normalize_package_name("foo..bar") == "foo-bar"
@@ -79,12 +85,14 @@ class TestNormalizePackageName:
     def test_normalize_mixed_case_and_separators(self):
         """Normalize mixed case and separators."""
         from pypi_collector import normalize_package_name
+
         assert normalize_package_name("Requests_OAuthlib") == "requests-oauthlib"
         assert normalize_package_name("FLASK.WTF") == "flask-wtf"
 
     def test_normalize_already_normalized(self):
         """Already normalized names remain unchanged."""
         from pypi_collector import normalize_package_name
+
         assert normalize_package_name("requests") == "requests"
         assert normalize_package_name("flask-wtf") == "flask-wtf"
 
@@ -100,6 +108,7 @@ class TestValidatePyPIPackageName:
     def test_valid_simple_name(self):
         """Valid simple package name."""
         from pypi_collector import validate_pypi_package_name
+
         is_valid, error = validate_pypi_package_name("requests")
         assert is_valid is True
         assert error is None
@@ -107,24 +116,28 @@ class TestValidatePyPIPackageName:
     def test_valid_with_hyphens(self):
         """Valid name with hyphens."""
         from pypi_collector import validate_pypi_package_name
+
         is_valid, error = validate_pypi_package_name("my-package")
         assert is_valid is True
 
     def test_valid_with_numbers(self):
         """Valid name with numbers."""
         from pypi_collector import validate_pypi_package_name
+
         is_valid, error = validate_pypi_package_name("oauth2")
         assert is_valid is True
 
     def test_valid_mixed_case(self):
         """Valid mixed case name (normalized during validation)."""
         from pypi_collector import validate_pypi_package_name
+
         is_valid, error = validate_pypi_package_name("Django")
         assert is_valid is True
 
     def test_invalid_empty(self):
         """Empty name is invalid."""
         from pypi_collector import validate_pypi_package_name
+
         is_valid, error = validate_pypi_package_name("")
         assert is_valid is False
         assert "Empty" in error
@@ -132,6 +145,7 @@ class TestValidatePyPIPackageName:
     def test_invalid_too_long(self):
         """Name exceeding max length is invalid."""
         from pypi_collector import validate_pypi_package_name
+
         long_name = "a" * 200
         is_valid, error = validate_pypi_package_name(long_name)
         assert is_valid is False
@@ -140,6 +154,7 @@ class TestValidatePyPIPackageName:
     def test_invalid_starts_with_hyphen(self):
         """Name starting with hyphen is invalid after normalization."""
         from pypi_collector import validate_pypi_package_name
+
         is_valid, error = validate_pypi_package_name("-foo")
         assert is_valid is False
 
@@ -155,6 +170,7 @@ class TestExtractDevelopmentStatus:
     def test_extract_stable(self):
         """Extract Production/Stable status."""
         from pypi_collector import _extract_development_status
+
         classifiers = [
             "Development Status :: 5 - Production/Stable",
             "Programming Language :: Python :: 3",
@@ -164,18 +180,21 @@ class TestExtractDevelopmentStatus:
     def test_extract_beta(self):
         """Extract Beta status."""
         from pypi_collector import _extract_development_status
+
         classifiers = ["Development Status :: 4 - Beta"]
         assert _extract_development_status(classifiers) == "4 - Beta"
 
     def test_extract_inactive(self):
         """Extract Inactive status."""
         from pypi_collector import _extract_development_status
+
         classifiers = ["Development Status :: 7 - Inactive"]
         assert _extract_development_status(classifiers) == "7 - Inactive"
 
     def test_no_development_status(self):
         """Return None when no development status classifier."""
         from pypi_collector import _extract_development_status
+
         classifiers = ["Programming Language :: Python :: 3"]
         assert _extract_development_status(classifiers) is None
 
@@ -186,6 +205,7 @@ class TestExtractPythonVersions:
     def test_extract_multiple_versions(self):
         """Extract multiple Python versions."""
         from pypi_collector import _extract_python_versions
+
         classifiers = [
             "Programming Language :: Python :: 3.9",
             "Programming Language :: Python :: 3.10",
@@ -201,6 +221,7 @@ class TestExtractPythonVersions:
     def test_extract_major_version_only(self):
         """Handle major version classifier."""
         from pypi_collector import _extract_python_versions
+
         classifiers = [
             "Programming Language :: Python :: 3",
             "Programming Language :: Python :: 3.10",
@@ -212,6 +233,7 @@ class TestExtractPythonVersions:
     def test_no_python_classifiers(self):
         """Return empty list when no Python classifiers."""
         from pypi_collector import _extract_python_versions
+
         classifiers = ["Development Status :: 5 - Production/Stable"]
         versions = _extract_python_versions(classifiers)
         assert versions == []
@@ -219,6 +241,7 @@ class TestExtractPythonVersions:
     def test_filter_non_version_classifiers(self):
         """Filter out non-version Python classifiers."""
         from pypi_collector import _extract_python_versions
+
         classifiers = [
             "Programming Language :: Python :: 3.10",
             "Programming Language :: Python :: Implementation :: CPython",
@@ -234,42 +257,49 @@ class TestParseKeywords:
     def test_parse_string_keywords(self):
         """Parse comma-separated string keywords."""
         from pypi_collector import _parse_keywords
+
         result = _parse_keywords("http,client,requests")
         assert result == ["http", "client", "requests"]
 
     def test_parse_list_keywords(self):
         """Parse list keywords."""
         from pypi_collector import _parse_keywords
+
         result = _parse_keywords(["http", "client", "requests"])
         assert result == ["http", "client", "requests"]
 
     def test_parse_none_keywords(self):
         """Return empty list for None."""
         from pypi_collector import _parse_keywords
+
         result = _parse_keywords(None)
         assert result == []
 
     def test_parse_empty_string(self):
         """Return empty list for empty string."""
         from pypi_collector import _parse_keywords
+
         result = _parse_keywords("")
         assert result == []
 
     def test_strip_whitespace(self):
         """Strip whitespace from keywords."""
         from pypi_collector import _parse_keywords
+
         result = _parse_keywords("  http , client , requests  ")
         assert result == ["http", "client", "requests"]
 
     def test_filter_empty_keywords(self):
         """Filter out empty keywords."""
         from pypi_collector import _parse_keywords
+
         result = _parse_keywords("http,,client,")
         assert result == ["http", "client"]
 
     def test_handle_non_string_in_list(self):
         """Handle non-string items in list."""
         from pypi_collector import _parse_keywords
+
         result = _parse_keywords(["http", 123, "client", None])
         assert result == ["http", "client"]
 
@@ -402,9 +432,7 @@ class TestGetPyPIMetadata:
         from pypi_collector import get_pypi_metadata
 
         response = self._create_pypi_response()
-        response["info"]["project_urls"] = {
-            "Homepage": "https://example.com/mypackage"
-        }
+        response["info"]["project_urls"] = {"Homepage": "https://example.com/mypackage"}
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
@@ -449,9 +477,7 @@ class TestGetPyPIMetadata:
         from pypi_collector import get_pypi_metadata
 
         deprecated_response = self._create_pypi_response()
-        deprecated_response["info"]["classifiers"] = [
-            "Development Status :: 7 - Inactive"
-        ]
+        deprecated_response["info"]["classifiers"] = ["Development Status :: 7 - Inactive"]
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
@@ -484,11 +510,13 @@ class TestPackageCollectorPyPIValidation:
         """Validate that pypi ecosystem is accepted."""
         from collectors.package_collector import validate_message
 
-        is_valid, error = validate_message({
-            "ecosystem": "pypi",
-            "name": "requests",
-            "tier": 1,
-        })
+        is_valid, error = validate_message(
+            {
+                "ecosystem": "pypi",
+                "name": "requests",
+                "tier": 1,
+            }
+        )
         assert is_valid is True
         assert error is None
 
@@ -496,33 +524,39 @@ class TestPackageCollectorPyPIValidation:
         """Validate PyPI package with mixed case name."""
         from collectors.package_collector import validate_message
 
-        is_valid, error = validate_message({
-            "ecosystem": "pypi",
-            "name": "Django",
-            "tier": 1,
-        })
+        is_valid, error = validate_message(
+            {
+                "ecosystem": "pypi",
+                "name": "Django",
+                "tier": 1,
+            }
+        )
         assert is_valid is True
 
     def test_validate_pypi_name_with_underscores(self):
         """Validate PyPI package with underscores."""
         from collectors.package_collector import validate_message
 
-        is_valid, error = validate_message({
-            "ecosystem": "pypi",
-            "name": "python_dateutil",
-            "tier": 1,
-        })
+        is_valid, error = validate_message(
+            {
+                "ecosystem": "pypi",
+                "name": "python_dateutil",
+                "tier": 1,
+            }
+        )
         assert is_valid is True
 
     def test_reject_invalid_pypi_name(self):
         """Reject invalid PyPI package name."""
         from collectors.package_collector import validate_message
 
-        is_valid, error = validate_message({
-            "ecosystem": "pypi",
-            "name": "-invalid",
-            "tier": 1,
-        })
+        is_valid, error = validate_message(
+            {
+                "ecosystem": "pypi",
+                "name": "-invalid",
+                "tier": 1,
+            }
+        )
         assert is_valid is False
         assert "Invalid" in error
 
@@ -530,11 +564,13 @@ class TestPackageCollectorPyPIValidation:
         """Reject PyPI package name that's too long."""
         from collectors.package_collector import validate_message
 
-        is_valid, error = validate_message({
-            "ecosystem": "pypi",
-            "name": "a" * 200,
-            "tier": 1,
-        })
+        is_valid, error = validate_message(
+            {
+                "ecosystem": "pypi",
+                "name": "a" * 200,
+                "tier": 1,
+            }
+        )
         assert is_valid is False
         assert "too long" in error
 
@@ -542,11 +578,13 @@ class TestPackageCollectorPyPIValidation:
         """Reject PyPI package name with path traversal."""
         from collectors.package_collector import validate_message
 
-        is_valid, error = validate_message({
-            "ecosystem": "pypi",
-            "name": "../etc/passwd",
-            "tier": 1,
-        })
+        is_valid, error = validate_message(
+            {
+                "ecosystem": "pypi",
+                "name": "../etc/passwd",
+                "tier": 1,
+            }
+        )
         assert is_valid is False
         assert "path traversal" in error
 
@@ -960,9 +998,7 @@ class TestPyPIMetadataEdgeCases:
         from pypi_collector import get_pypi_metadata
 
         response = self._create_pypi_response()
-        response["info"]["project_urls"] = {
-            "Repository": "git+https://github.com/user/repo"
-        }
+        response["info"]["project_urls"] = {"Repository": "git+https://github.com/user/repo"}
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
@@ -987,9 +1023,7 @@ class TestPyPIMetadataEdgeCases:
         from pypi_collector import get_pypi_metadata
 
         response = self._create_pypi_response()
-        response["info"]["project_urls"] = {
-            "Source": "git://github.com/user/repo.git"
-        }
+        response["info"]["project_urls"] = {"Source": "git://github.com/user/repo.git"}
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
@@ -1014,9 +1048,7 @@ class TestPyPIMetadataEdgeCases:
         from pypi_collector import get_pypi_metadata
 
         response = self._create_pypi_response()
-        response["info"]["project_urls"] = {
-            "Source": "https://gitlab.com/user/repo"
-        }
+        response["info"]["project_urls"] = {"Source": "https://gitlab.com/user/repo"}
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
@@ -1041,9 +1073,7 @@ class TestPyPIMetadataEdgeCases:
         from pypi_collector import get_pypi_metadata
 
         response = self._create_pypi_response()
-        response["info"]["project_urls"] = {
-            "Source": "https://bitbucket.org/user/repo"
-        }
+        response["info"]["project_urls"] = {"Source": "https://bitbucket.org/user/repo"}
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
@@ -1121,9 +1151,7 @@ class TestPyPIMetadataEdgeCases:
         from pypi_collector import get_pypi_metadata
 
         response = self._create_pypi_response()
-        response["info"]["project_urls"] = {
-            "Source": "https://github.com/user/repo"
-        }
+        response["info"]["project_urls"] = {"Source": "https://github.com/user/repo"}
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
@@ -1149,6 +1177,7 @@ class TestPyPIMetadataEdgeCases:
     def test_parse_keywords_non_string_type(self):
         """Test _parse_keywords with non-string/non-list type."""
         from pypi_collector import _parse_keywords
+
         assert _parse_keywords(12345) == []
         assert _parse_keywords({"key": "value"}) == []
 
@@ -1166,13 +1195,16 @@ class TestGetPyPIDownloadStats:
         from pypi_collector import get_pypi_download_stats
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={
-                "data": {
-                    "last_day": 10000,
-                    "last_week": 70000,
-                    "last_month": 300000,
-                }
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "last_day": 10000,
+                        "last_week": 70000,
+                        "last_month": 300000,
+                    }
+                },
+            )
 
         original_init = httpx.AsyncClient.__init__
 
@@ -1214,9 +1246,7 @@ class TestGetPyPIDownloadStats:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             nonlocal requested_url
             requested_url = str(request.url)
-            return httpx.Response(200, json={
-                "data": {"last_day": 1, "last_week": 7, "last_month": 30}
-            })
+            return httpx.Response(200, json={"data": {"last_day": 1, "last_week": 7, "last_month": 30}})
 
         original_init = httpx.AsyncClient.__init__
 

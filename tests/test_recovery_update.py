@@ -54,10 +54,12 @@ class TestRecoveryUpdateEmailValidFlow:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -95,10 +97,12 @@ class TestRecoveryUpdateEmailValidFlow:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -147,9 +151,11 @@ class TestRecoveryUpdateEmailInputValidation:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -165,9 +171,11 @@ class TestRecoveryUpdateEmailInputValidation:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": "some-token",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": "some-token",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -183,10 +191,12 @@ class TestRecoveryUpdateEmailInputValidation:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": "some-token",
-                "new_email": "not-an-email",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": "some-token",
+                    "new_email": "not-an-email",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -224,10 +234,12 @@ class TestRecoveryUpdateEmailSecurityChecks:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -243,10 +255,12 @@ class TestRecoveryUpdateEmailSecurityChecks:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": "invalid-token-xyz",
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": "invalid-token-xyz",
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -281,10 +295,12 @@ class TestRecoveryUpdateEmailSecurityChecks:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -319,10 +335,12 @@ class TestRecoveryUpdateEmailSecurityChecks:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -370,10 +388,12 @@ class TestRecoveryUpdateEmailSecurityChecks:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "taken@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "taken@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -408,10 +428,12 @@ class TestRecoveryUpdateEmailSecurityChecks:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "test@example.com",  # Same as current
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "test@example.com",  # Same as current
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -432,20 +454,20 @@ class TestRecoveryUpdateEmailErrorHandling:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": "test-token-123",
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": "test-token-123",
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), \
-             patch("api.recovery_update_email.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_update_email.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.scan.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test"}},
-                "Scan"
+                {"Error": {"Code": "InternalServerError", "Message": "Test"}}, "Scan"
             )
             response = handler(event, None)
 
@@ -477,15 +499,16 @@ class TestRecoveryUpdateEmailErrorHandling:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), \
-             patch("api.recovery_update_email.ses") as mock_ses:
+        with patch("time.sleep"), patch("api.recovery_update_email.ses") as mock_ses:
             mock_ses.send_email.side_effect = Exception("SES failure")
             response = handler(event, None)
 
@@ -516,8 +539,10 @@ class TestRecoveryConfirmEmailValidFlow:
 
         from api.recovery_confirm_email import handler
 
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("api.recovery_confirm_email.ses") as mock_ses:
+        with (
+            patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"),
+            patch("api.recovery_confirm_email.ses") as mock_ses,
+        ):
             mock_ses.send_email = MagicMock()
 
             event = {"queryStringParameters": {"token": change_token}}
@@ -562,8 +587,10 @@ class TestRecoveryConfirmEmailValidFlow:
 
         from api.recovery_confirm_email import handler
 
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("api.recovery_confirm_email.ses") as mock_ses:
+        with (
+            patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"),
+            patch("api.recovery_confirm_email.ses") as mock_ses,
+        ):
             mock_ses.send_email = MagicMock()
 
             event = {"queryStringParameters": {"token": change_token}}
@@ -600,8 +627,10 @@ class TestRecoveryConfirmEmailValidFlow:
 
         from api.recovery_confirm_email import handler
 
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("api.recovery_confirm_email.ses") as mock_ses:
+        with (
+            patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"),
+            patch("api.recovery_confirm_email.ses") as mock_ses,
+        ):
             mock_ses.send_email = MagicMock()
 
             event = {"queryStringParameters": {"token": change_token}}
@@ -621,8 +650,7 @@ class TestRecoveryConfirmEmailSecurityChecks:
         """Should reject missing token parameter."""
         from api.recovery_confirm_email import handler
 
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("time.sleep"):
+        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), patch("time.sleep"):
             event = {"queryStringParameters": {}}
             response = handler(event, None)
 
@@ -634,8 +662,7 @@ class TestRecoveryConfirmEmailSecurityChecks:
         """Should reject invalid change token."""
         from api.recovery_confirm_email import handler
 
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("time.sleep"):
+        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), patch("time.sleep"):
             event = {"queryStringParameters": {"token": "nonexistent-token"}}
             response = handler(event, None)
 
@@ -692,9 +719,11 @@ class TestRecoveryConfirmEmailSecurityChecks:
         event = {"queryStringParameters": {"token": change_token}}
 
         # First use should succeed
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("api.recovery_confirm_email.ses") as mock_ses, \
-             patch("time.sleep"):
+        with (
+            patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"),
+            patch("api.recovery_confirm_email.ses") as mock_ses,
+            patch("time.sleep"),
+        ):
             mock_ses.send_email = MagicMock()
             response1 = handler(event, None)
 
@@ -702,8 +731,7 @@ class TestRecoveryConfirmEmailSecurityChecks:
         assert "email_changed=true" in response1["headers"]["Location"]
 
         # Second use should fail
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("time.sleep"):
+        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), patch("time.sleep"):
             response2 = handler(event, None)
 
         assert response2["statusCode"] == 302
@@ -726,32 +754,37 @@ class TestRecoveryConfirmEmailRaceConditions:
 
         event = {"queryStringParameters": {"token": change_token}}
 
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("api.recovery_confirm_email.dynamodb") as mock_ddb:
+        with (
+            patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"),
+            patch("api.recovery_confirm_email.dynamodb") as mock_ddb,
+        ):
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.scan.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": f"EMAIL_CHANGE_{change_token}",
-                    "old_email": "test@example.com",
-                    "new_email": "new@example.com",
-                    "change_token": change_token,
-                    "ttl": int((now + timedelta(hours=24)).timestamp()),
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": f"EMAIL_CHANGE_{change_token}",
+                        "old_email": "test@example.com",
+                        "new_email": "new@example.com",
+                        "change_token": change_token,
+                        "ttl": int((now + timedelta(hours=24)).timestamp()),
+                    }
+                ]
             }
             mock_table.query.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": key_hash,
-                    "key_hash": key_hash,
-                    "email": "test@example.com",
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": key_hash,
+                        "key_hash": key_hash,
+                        "email": "test@example.com",
+                    }
+                ]
             }
             # delete_item fails with ConditionalCheckFailed (already deleted)
             mock_table.delete_item.side_effect = ClientError(
-                {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Already deleted"}},
-                "DeleteItem"
+                {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Already deleted"}}, "DeleteItem"
             )
             response = handler(event, None)
 
@@ -781,13 +814,14 @@ class TestRecoveryConfirmEmailErrorHandling:
 
         event = {"queryStringParameters": {"token": "test-token"}}
 
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("api.recovery_confirm_email.dynamodb") as mock_ddb:
+        with (
+            patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"),
+            patch("api.recovery_confirm_email.dynamodb") as mock_ddb,
+        ):
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.scan.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test"}},
-                "Scan"
+                {"Error": {"Code": "InternalServerError", "Message": "Test"}}, "Scan"
             )
             response = handler(event, None)
 
@@ -806,23 +840,26 @@ class TestRecoveryConfirmEmailErrorHandling:
 
         event = {"queryStringParameters": {"token": change_token}}
 
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("api.recovery_confirm_email.dynamodb") as mock_ddb:
+        with (
+            patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"),
+            patch("api.recovery_confirm_email.dynamodb") as mock_ddb,
+        ):
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.scan.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": f"EMAIL_CHANGE_{change_token}",
-                    "old_email": "test@example.com",
-                    "new_email": "new@example.com",
-                    "change_token": change_token,
-                    "ttl": int((now + timedelta(hours=24)).timestamp()),
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": f"EMAIL_CHANGE_{change_token}",
+                        "old_email": "test@example.com",
+                        "new_email": "new@example.com",
+                        "change_token": change_token,
+                        "ttl": int((now + timedelta(hours=24)).timestamp()),
+                    }
+                ]
             }
             mock_table.query.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test"}},
-                "Query"
+                {"Error": {"Code": "InternalServerError", "Message": "Test"}}, "Query"
             )
             response = handler(event, None)
 
@@ -876,8 +913,10 @@ class TestRecoveryConfirmEmailErrorHandling:
 
         from api.recovery_confirm_email import handler
 
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("api.recovery_confirm_email.ses") as mock_ses:
+        with (
+            patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"),
+            patch("api.recovery_confirm_email.ses") as mock_ses,
+        ):
             mock_ses.send_email.side_effect = Exception("SES failure")
 
             event = {"queryStringParameters": {"token": change_token}}
@@ -919,8 +958,10 @@ class TestRecoveryConfirmEmailSessionCreation:
 
         from api.recovery_confirm_email import handler
 
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("api.recovery_confirm_email.ses") as mock_ses:
+        with (
+            patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"),
+            patch("api.recovery_confirm_email.ses") as mock_ses,
+        ):
             mock_ses.send_email = MagicMock()
 
             event = {"queryStringParameters": {"token": change_token}}
@@ -962,10 +1003,12 @@ class TestRecoveryUpdateEmailNormalization:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "NEW@EXAMPLE.COM",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "NEW@EXAMPLE.COM",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -1007,10 +1050,12 @@ class TestRecoveryUpdateEmailNormalization:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "  new@example.com  ",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "  new@example.com  ",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 

@@ -19,10 +19,10 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # Color coding for health scores
-COLOR_GREEN = "#4c1"       # score >= 70
-COLOR_YELLOW = "#dfb317"   # score >= 50
-COLOR_RED = "#e05d44"      # score < 50
-COLOR_GREY = "#9f9f9f"     # unknown / pending
+COLOR_GREEN = "#4c1"  # score >= 70
+COLOR_YELLOW = "#dfb317"  # score >= 50
+COLOR_RED = "#e05d44"  # score < 50
+COLOR_GREY = "#9f9f9f"  # unknown / pending
 
 # Character width approximation for Verdana 11px
 CHAR_WIDTH = 6.5

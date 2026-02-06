@@ -24,7 +24,7 @@ def mock_openssf_response():
             {"name": "Vulnerabilities", "score": 10},
             {"name": "Security-Policy", "score": 5},
             {"name": "CI-Tests", "score": -1},  # Not applicable
-        ]
+        ],
     }
 
 
@@ -67,9 +67,7 @@ class TestGetOpenSSFScorecard:
     @respx.mock
     async def test_404_returns_none(self):
         """Test that 404 returns None (not an error)."""
-        respx.get(f"{OPENSSF_API}/projects/github.com/unknown/repo").mock(
-            return_value=httpx.Response(404)
-        )
+        respx.get(f"{OPENSSF_API}/projects/github.com/unknown/repo").mock(return_value=httpx.Response(404))
 
         result = await get_openssf_scorecard("unknown", "repo")
         assert result is None
@@ -78,9 +76,7 @@ class TestGetOpenSSFScorecard:
     @respx.mock
     async def test_500_returns_none(self):
         """Test that server errors return None."""
-        respx.get(f"{OPENSSF_API}/projects/github.com/facebook/react").mock(
-            return_value=httpx.Response(500)
-        )
+        respx.get(f"{OPENSSF_API}/projects/github.com/facebook/react").mock(return_value=httpx.Response(500))
 
         result = await get_openssf_scorecard("facebook", "react")
         assert result is None
@@ -89,9 +85,7 @@ class TestGetOpenSSFScorecard:
     @respx.mock
     async def test_502_returns_none(self):
         """Test that 502 Bad Gateway returns None."""
-        respx.get(f"{OPENSSF_API}/projects/github.com/facebook/react").mock(
-            return_value=httpx.Response(502)
-        )
+        respx.get(f"{OPENSSF_API}/projects/github.com/facebook/react").mock(return_value=httpx.Response(502))
 
         result = await get_openssf_scorecard("facebook", "react")
         assert result is None
@@ -100,9 +94,7 @@ class TestGetOpenSSFScorecard:
     @respx.mock
     async def test_503_returns_none(self):
         """Test that 503 Service Unavailable returns None."""
-        respx.get(f"{OPENSSF_API}/projects/github.com/facebook/react").mock(
-            return_value=httpx.Response(503)
-        )
+        respx.get(f"{OPENSSF_API}/projects/github.com/facebook/react").mock(return_value=httpx.Response(503))
 
         result = await get_openssf_scorecard("facebook", "react")
         assert result is None
@@ -111,9 +103,7 @@ class TestGetOpenSSFScorecard:
     @respx.mock
     async def test_429_raises_for_circuit_breaker(self):
         """Test that 429 rate limit raises exception for circuit breaker."""
-        respx.get(f"{OPENSSF_API}/projects/github.com/facebook/react").mock(
-            return_value=httpx.Response(429)
-        )
+        respx.get(f"{OPENSSF_API}/projects/github.com/facebook/react").mock(return_value=httpx.Response(429))
 
         with pytest.raises(httpx.HTTPStatusError):
             await get_openssf_scorecard("facebook", "react")
@@ -185,11 +175,9 @@ class TestGetOpenSSFScorecard:
                 "invalid_check",
                 None,
                 {"name": "Also-Valid", "score": 8},
-            ]
+            ],
         }
-        respx.get(f"{OPENSSF_API}/projects/github.com/owner/repo").mock(
-            return_value=httpx.Response(200, json=response)
-        )
+        respx.get(f"{OPENSSF_API}/projects/github.com/owner/repo").mock(return_value=httpx.Response(200, json=response))
 
         result = await get_openssf_scorecard("owner", "repo")
         assert result is not None

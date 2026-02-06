@@ -51,7 +51,7 @@ class TestGetResetTimestamp:
 
         # Mock December 15th
         mock_date = datetime(2025, 12, 15, 10, 30, 0, tzinfo=timezone.utc)
-        with patch('shared.rate_limit_utils.datetime') as mock_datetime:
+        with patch("shared.rate_limit_utils.datetime") as mock_datetime:
             mock_datetime.now.return_value = mock_date
             mock_datetime.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
 
@@ -178,11 +178,7 @@ class TestExternalRateLimiting:
         # Verify counter was created in DynamoDB
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         response = table.scan()
-        rate_limit_items = [
-            item
-            for item in response["Items"]
-            if item.get("pk", "").startswith("npm_rate_limit#")
-        ]
+        rate_limit_items = [item for item in response["Items"] if item.get("pk", "").startswith("npm_rate_limit#")]
         assert len(rate_limit_items) == 1
         assert rate_limit_items[0]["calls"] == 1
 
@@ -206,11 +202,7 @@ class TestExternalRateLimiting:
         # Verify counter was incremented
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         response = table.scan()
-        rate_limit_items = [
-            item
-            for item in response["Items"]
-            if item.get("pk", "").startswith("npm_rate_limit#0")
-        ]
+        rate_limit_items = [item for item in response["Items"] if item.get("pk", "").startswith("npm_rate_limit#0")]
         assert len(rate_limit_items) == 1
         assert rate_limit_items[0]["calls"] == 5
 
@@ -300,7 +292,4 @@ class TestExternalRateLimiting:
                     service="npm", hourly_limit=100, table_name="pkgwatch-api-keys"
                 )
 
-            assert (
-                exc_info.value.response["Error"]["Code"]
-                == "ProvisionedThroughputExceededException"
-            )
+            assert exc_info.value.response["Error"]["Code"] == "ProvisionedThroughputExceededException"

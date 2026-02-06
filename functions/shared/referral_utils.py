@@ -34,9 +34,9 @@ REFERRAL_EVENTS_TABLE = os.environ.get("REFERRAL_EVENTS_TABLE", "pkgwatch-referr
 
 # Reward amounts (requests)
 REFERRAL_REWARDS = {
-    "signup": 5000,      # Referrer gets when referred user scans 100+ packages
-    "paid": 25000,       # Referrer gets when referred user upgrades to paid
-    "retained": 25000,   # Referrer gets when referred user stays 2 months
+    "signup": 5000,  # Referrer gets when referred user scans 100+ packages
+    "paid": 25000,  # Referrer gets when referred user upgrades to paid
+    "retained": 25000,  # Referrer gets when referred user stays 2 months
 }
 REFERRED_USER_BONUS = 10000  # What the referred user gets immediately
 
@@ -47,9 +47,9 @@ ACTIVITY_THRESHOLD = 100
 BONUS_CAP = 500000  # Lifetime cap for bonus credits
 
 # Time limits
-LATE_ENTRY_DAYS = 14         # Days after signup to add referral code
-PENDING_TIMEOUT_DAYS = 90    # Days before pending referral expires
-RETENTION_MONTHS = 2         # Months before retention bonus triggers
+LATE_ENTRY_DAYS = 14  # Days after signup to add referral code
+PENDING_TIMEOUT_DAYS = 90  # Days before pending referral expires
+RETENTION_MONTHS = 2  # Months before retention bonus triggers
 
 # Referral code format (allows alphanumeric plus _ and - for backwards compatibility)
 REFERRAL_CODE_REGEX = re.compile(r"^[a-zA-Z0-9_-]{6,12}$")
@@ -57,6 +57,7 @@ REFERRAL_CODE_REGEX = re.compile(r"^[a-zA-Z0-9_-]{6,12}$")
 # ===========================================
 # Email Canonicalization
 # ===========================================
+
 
 def canonicalize_email(email: str) -> str:
     """
@@ -95,21 +96,60 @@ def canonicalize_email(email: str) -> str:
 # ===========================================
 
 # Top disposable email domains (subset - can be expanded)
-DISPOSABLE_DOMAINS = frozenset([
-    "10minutemail.com", "10minutemail.net", "guerrillamail.com",
-    "guerrillamail.org", "mailinator.com", "tempmail.com", "temp-mail.org",
-    "throwaway.email", "throwawaymail.com", "trashmail.com", "fakeinbox.com",
-    "yopmail.com", "sharklasers.com", "maildrop.cc", "dispostable.com",
-    "mailnesia.com", "tempr.email", "discard.email", "tmpmail.org",
-    "tmpmail.net", "emailondeck.com", "mohmal.com", "getnada.com",
-    "minuteinbox.com", "tempail.com", "emailfake.com", "crazymailing.com",
-    "inboxkitten.com", "burnermail.io", "mailsac.com", "moakt.com",
-    "tempinbox.com", "mytrashmail.com", "spam4.me", "jetable.org",
-    "getairmail.com", "mailcatch.com", "tempmailaddress.com", "spambox.us",
-    "bobmail.info", "mintemail.com", "mailforspam.com", "spamdecoy.net",
-    "trash-mail.com", "harakirimail.com", "spamfree24.org", "anonymbox.net",
-    "tempemailco.com", "mailnull.com", "disposableemailaddresses.com",
-])
+DISPOSABLE_DOMAINS = frozenset(
+    [
+        "10minutemail.com",
+        "10minutemail.net",
+        "guerrillamail.com",
+        "guerrillamail.org",
+        "mailinator.com",
+        "tempmail.com",
+        "temp-mail.org",
+        "throwaway.email",
+        "throwawaymail.com",
+        "trashmail.com",
+        "fakeinbox.com",
+        "yopmail.com",
+        "sharklasers.com",
+        "maildrop.cc",
+        "dispostable.com",
+        "mailnesia.com",
+        "tempr.email",
+        "discard.email",
+        "tmpmail.org",
+        "tmpmail.net",
+        "emailondeck.com",
+        "mohmal.com",
+        "getnada.com",
+        "minuteinbox.com",
+        "tempail.com",
+        "emailfake.com",
+        "crazymailing.com",
+        "inboxkitten.com",
+        "burnermail.io",
+        "mailsac.com",
+        "moakt.com",
+        "tempinbox.com",
+        "mytrashmail.com",
+        "spam4.me",
+        "jetable.org",
+        "getairmail.com",
+        "mailcatch.com",
+        "tempmailaddress.com",
+        "spambox.us",
+        "bobmail.info",
+        "mintemail.com",
+        "mailforspam.com",
+        "spamdecoy.net",
+        "trash-mail.com",
+        "harakirimail.com",
+        "spamfree24.org",
+        "anonymbox.net",
+        "tempemailco.com",
+        "mailnull.com",
+        "disposableemailaddresses.com",
+    ]
+)
 
 
 def is_disposable_email(email: str) -> bool:
@@ -132,6 +172,7 @@ def is_disposable_email(email: str) -> bool:
 # ===========================================
 # Referral Code Generation
 # ===========================================
+
 
 def generate_referral_code() -> str:
     """
@@ -166,6 +207,7 @@ def is_valid_referral_code(code: str) -> bool:
 # ===========================================
 # Referral Code Lookup
 # ===========================================
+
 
 def lookup_referrer_by_code(code: str) -> Optional[dict]:
     """
@@ -244,6 +286,7 @@ def generate_unique_referral_code(max_attempts: int = 5) -> str:
 # ===========================================
 # Bonus Credit Management
 # ===========================================
+
 
 def add_bonus_with_cap(user_id: str, amount: int) -> int:
     """
@@ -408,6 +451,7 @@ def get_bonus_balance(user_id: str) -> dict:
 # Referral Event Recording
 # ===========================================
 
+
 def record_referral_event(
     referrer_id: str,
     referred_id: str,
@@ -491,9 +535,7 @@ def update_referral_event_to_credited(
 
     try:
         # Delete the pending event
-        table.delete_item(
-            Key={"pk": referrer_id, "sk": f"{referred_id}#pending"}
-        )
+        table.delete_item(Key={"pk": referrer_id, "sk": f"{referred_id}#pending"})
 
         # Create the signup event (no TTL)
         table.put_item(
@@ -540,6 +582,7 @@ def mark_retention_checked(referrer_id: str, referred_id: str) -> bool:
 # ===========================================
 # Referrer Stats Management
 # ===========================================
+
 
 def update_referrer_stats(
     user_id: str,
@@ -622,8 +665,7 @@ def get_referrer_stats(user_id: str) -> dict:
     response = table.get_item(
         Key={"pk": user_id, "sk": "USER_META"},
         ProjectionExpression=(
-            "referral_total, referral_pending_count, referral_paid, "
-            "referral_retained, referral_rewards_earned"
+            "referral_total, referral_pending_count, referral_paid, referral_retained, referral_rewards_earned"
         ),
     )
 
@@ -641,6 +683,7 @@ def get_referrer_stats(user_id: str) -> dict:
 # ===========================================
 # Self-Referral Prevention
 # ===========================================
+
 
 def is_self_referral(referrer_email: str, referred_email: str) -> bool:
     """
@@ -664,6 +707,7 @@ def is_self_referral(referrer_email: str, referred_email: str) -> bool:
 # ===========================================
 # Helper Functions
 # ===========================================
+
 
 def mask_email(email: str) -> str:
     """

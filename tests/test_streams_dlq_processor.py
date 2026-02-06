@@ -148,18 +148,20 @@ class TestHandler:
         event = {
             "Records": [
                 {
-                    "body": json.dumps({
-                        "Records": [
-                            {
-                                "dynamodb": {
-                                    "NewImage": {
-                                        "pk": {"S": "npm#lodash"},
-                                        "sk": {"S": "LATEST"},
+                    "body": json.dumps(
+                        {
+                            "Records": [
+                                {
+                                    "dynamodb": {
+                                        "NewImage": {
+                                            "pk": {"S": "npm#lodash"},
+                                            "sk": {"S": "LATEST"},
+                                        }
                                     }
                                 }
-                            }
-                        ]
-                    })
+                            ]
+                        }
+                    )
                 }
             ]
         }
@@ -181,33 +183,37 @@ class TestHandler:
         event = {
             "Records": [
                 {
-                    "body": json.dumps({
-                        "Records": [
-                            {
-                                "dynamodb": {
-                                    "NewImage": {
-                                        "pk": {"S": "npm#lodash"},
-                                        "sk": {"S": "LATEST"},
+                    "body": json.dumps(
+                        {
+                            "Records": [
+                                {
+                                    "dynamodb": {
+                                        "NewImage": {
+                                            "pk": {"S": "npm#lodash"},
+                                            "sk": {"S": "LATEST"},
+                                        }
                                     }
                                 }
-                            }
-                        ]
-                    })
+                            ]
+                        }
+                    )
                 },
                 {
-                    "body": json.dumps({
-                        "Records": [
-                            {
-                                "dynamodb": {
-                                    "NewImage": {
-                                        "pk": {"S": "npm#react"},
-                                        "sk": {"S": "LATEST"},
+                    "body": json.dumps(
+                        {
+                            "Records": [
+                                {
+                                    "dynamodb": {
+                                        "NewImage": {
+                                            "pk": {"S": "npm#react"},
+                                            "sk": {"S": "LATEST"},
+                                        }
                                     }
                                 }
-                            }
-                        ]
-                    })
-                }
+                            ]
+                        }
+                    )
+                },
             ]
         }
 
@@ -228,26 +234,28 @@ class TestHandler:
         event = {
             "Records": [
                 {
-                    "body": json.dumps({
-                        "Records": [
-                            {
-                                "dynamodb": {
-                                    "NewImage": {
-                                        "pk": {"S": "npm#lodash"},
-                                        "sk": {"S": "LATEST"},
+                    "body": json.dumps(
+                        {
+                            "Records": [
+                                {
+                                    "dynamodb": {
+                                        "NewImage": {
+                                            "pk": {"S": "npm#lodash"},
+                                            "sk": {"S": "LATEST"},
+                                        }
                                     }
-                                }
-                            },
-                            {
-                                "dynamodb": {
-                                    "NewImage": {
-                                        "pk": {"S": "npm#lodash"},
-                                        "sk": {"S": "LATEST"},
+                                },
+                                {
+                                    "dynamodb": {
+                                        "NewImage": {
+                                            "pk": {"S": "npm#lodash"},
+                                            "sk": {"S": "LATEST"},
+                                        }
                                     }
-                                }
-                            }
-                        ]
-                    })
+                                },
+                            ]
+                        }
+                    )
                 }
             ]
         }
@@ -264,11 +272,7 @@ class TestHandler:
     @patch("streams_dlq_processor.emit_batch_metrics")
     def test_handler_invalid_json(self, mock_metrics, mock_rescore):
         """Test handling invalid JSON in DLQ message."""
-        event = {
-            "Records": [
-                {"body": "invalid json"}
-            ]
-        }
+        event = {"Records": [{"body": "invalid json"}]}
 
         result = handler(event, None)
 
@@ -295,18 +299,20 @@ class TestHandler:
         event = {
             "Records": [
                 {
-                    "body": json.dumps({
-                        "Records": [
-                            {
-                                "dynamodb": {
-                                    "NewImage": {
-                                        "pk": {"S": "npm#lodash"},
-                                        "sk": {"S": "LATEST"},
+                    "body": json.dumps(
+                        {
+                            "Records": [
+                                {
+                                    "dynamodb": {
+                                        "NewImage": {
+                                            "pk": {"S": "npm#lodash"},
+                                            "sk": {"S": "LATEST"},
+                                        }
                                     }
                                 }
-                            }
-                        ]
-                    })
+                            ]
+                        }
+                    )
                 }
             ]
         }
@@ -325,18 +331,20 @@ class TestHandler:
         event = {
             "Records": [
                 {
-                    "body": json.dumps({
-                        "Records": [
-                            {
-                                "dynamodb": {
-                                    "NewImage": {
-                                        "pk": {"S": "invalid-no-hash"},
-                                        "sk": {"S": "LATEST"},
+                    "body": json.dumps(
+                        {
+                            "Records": [
+                                {
+                                    "dynamodb": {
+                                        "NewImage": {
+                                            "pk": {"S": "invalid-no-hash"},
+                                            "sk": {"S": "LATEST"},
+                                        }
                                     }
                                 }
-                            }
-                        ]
-                    })
+                            ]
+                        }
+                    )
                 }
             ]
         }
@@ -359,18 +367,20 @@ class TestHandler:
         event = {
             "Records": [
                 {
-                    "body": json.dumps({
-                        "Records": [
-                            {
-                                "dynamodb": {
-                                    "NewImage": {
-                                        "pk": {"S": "npm#lodash"},
-                                        "sk": {"S": "LATEST"},
+                    "body": json.dumps(
+                        {
+                            "Records": [
+                                {
+                                    "dynamodb": {
+                                        "NewImage": {
+                                            "pk": {"S": "npm#lodash"},
+                                            "sk": {"S": "LATEST"},
+                                        }
                                     }
                                 }
-                            }
-                        ]
-                    })
+                            ]
+                        }
+                    )
                 }
             ]
         }
@@ -391,18 +401,20 @@ class TestHandler:
         event = {
             "Records": [
                 {
-                    "body": json.dumps({
-                        "Records": [
-                            {
-                                "dynamodb": {
-                                    "NewImage": {
-                                        "pk": {"S": "npm#lodash"},
-                                        "sk": {"S": "LATEST"},
+                    "body": json.dumps(
+                        {
+                            "Records": [
+                                {
+                                    "dynamodb": {
+                                        "NewImage": {
+                                            "pk": {"S": "npm#lodash"},
+                                            "sk": {"S": "LATEST"},
+                                        }
                                     }
                                 }
-                            }
-                        ]
-                    })
+                            ]
+                        }
+                    )
                 }
             ]
         }
@@ -426,14 +438,16 @@ class TestHandler:
         event = {
             "Records": [
                 {
-                    "body": json.dumps({
-                        "dynamodb": {
-                            "NewImage": {
-                                "pk": {"S": "npm#express"},
-                                "sk": {"S": "LATEST"},
+                    "body": json.dumps(
+                        {
+                            "dynamodb": {
+                                "NewImage": {
+                                    "pk": {"S": "npm#express"},
+                                    "sk": {"S": "LATEST"},
+                                }
                             }
                         }
-                    })
+                    )
                 }
             ]
         }
@@ -551,9 +565,7 @@ class TestTriggerRescoreEdgeCases:
         mock_dynamodb.Table.return_value = mock_table
 
         # Create a proper exception class
-        ConditionalCheckFailed = type(
-            "ConditionalCheckFailedException", (Exception,), {}
-        )
+        ConditionalCheckFailed = type("ConditionalCheckFailedException", (Exception,), {})
         mock_dynamodb.meta.client.exceptions.ConditionalCheckFailedException = ConditionalCheckFailed
         mock_table.update_item.side_effect = ConditionalCheckFailed("Package not found")
 
@@ -602,18 +614,20 @@ class TestMetricsImportFallback:
         event = {
             "Records": [
                 {
-                    "body": json.dumps({
-                        "Records": [
-                            {
-                                "dynamodb": {
-                                    "NewImage": {
-                                        "pk": {"S": "npm#lodash"},
-                                        "sk": {"S": "LATEST"},
+                    "body": json.dumps(
+                        {
+                            "Records": [
+                                {
+                                    "dynamodb": {
+                                        "NewImage": {
+                                            "pk": {"S": "npm#lodash"},
+                                            "sk": {"S": "LATEST"},
+                                        }
                                     }
                                 }
-                            }
-                        ]
-                    })
+                            ]
+                        }
+                    )
                 }
             ]
         }

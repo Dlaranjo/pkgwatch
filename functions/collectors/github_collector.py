@@ -125,9 +125,7 @@ class GitHubCollector:
 
                 # Track rate limits from response headers
                 if "X-RateLimit-Remaining" in resp.headers:
-                    self._rate_limit_remaining = int(
-                        resp.headers.get("X-RateLimit-Remaining", 5000)
-                    )
+                    self._rate_limit_remaining = int(resp.headers.get("X-RateLimit-Remaining", 5000))
                 if "X-RateLimit-Reset" in resp.headers:
                     self._rate_limit_reset = int(resp.headers.get("X-RateLimit-Reset", 0))
 
@@ -273,13 +271,7 @@ class GitHubCollector:
         issues = await self._request_with_retry(
             client,
             issues_url,
-            params={
-                "state": "all",
-                "since": since,
-                "per_page": 100,
-                "sort": "created",
-                "direction": "desc"
-            },
+            params={"state": "all", "since": since, "per_page": 100, "sort": "created", "direction": "desc"},
         )
         issues = issues or []
 
@@ -288,13 +280,7 @@ class GitHubCollector:
         prs = await self._request_with_retry(
             client,
             prs_url,
-            params={
-                "state": "all",
-                "since": since,
-                "per_page": 100,
-                "sort": "created",
-                "direction": "desc"
-            },
+            params={"state": "all", "since": since, "per_page": 100, "sort": "created", "direction": "desc"},
         )
         prs = prs or []
 
@@ -342,24 +328,17 @@ class GitHubCollector:
                     bus_factor_confidence = "LOW"
 
                 # Top 10 contributors for distribution insight
-                sorted_contributors = sorted(
-                    committers.items(), key=lambda x: -x[1]
-                )[:10]
-                contribution_distribution = [
-                    {"login": login, "commits": count}
-                    for login, count in sorted_contributors
-                ]
+                sorted_contributors = sorted(committers.items(), key=lambda x: -x[1])[:10]
+                contribution_distribution = [{"login": login, "commits": count} for login, count in sorted_contributors]
 
         # Filter bot commits
         commits_90d_non_bot = 0
         if isinstance(commits, list):
             non_bot_commits = [
-                c for c in commits
-                if isinstance(c, dict) and
-                not any(
-                    bot in (c.get("author") or {}).get("login", "").lower()
-                    for bot in BOT_PATTERNS
-                )
+                c
+                for c in commits
+                if isinstance(c, dict)
+                and not any(bot in (c.get("author") or {}).get("login", "").lower() for bot in BOT_PATTERNS)
             ]
             commits_90d_non_bot = len(non_bot_commits)
 
@@ -377,12 +356,8 @@ class GitHubCollector:
 
                 if last_commit_date:
                     try:
-                        last_commit = datetime.fromisoformat(
-                            last_commit_date.replace("Z", "+00:00")
-                        )
-                        days_since_commit = (
-                            datetime.now(timezone.utc) - last_commit
-                        ).days
+                        last_commit = datetime.fromisoformat(last_commit_date.replace("Z", "+00:00"))
+                        days_since_commit = (datetime.now(timezone.utc) - last_commit).days
                         days_since_commit = max(0, days_since_commit)
                     except ValueError as e:
                         logger.warning(f"Could not parse commit date: {e}")
@@ -392,31 +367,23 @@ class GitHubCollector:
             pushed_at = repo_data.get("pushed_at")
             if pushed_at:
                 try:
-                    pushed_date = datetime.fromisoformat(
-                        pushed_at.replace("Z", "+00:00")
-                    )
+                    pushed_date = datetime.fromisoformat(pushed_at.replace("Z", "+00:00"))
                     # Handle naive datetimes (defensive)
                     if pushed_date.tzinfo is None:
                         pushed_date = pushed_date.replace(tzinfo=timezone.utc)
-                    days_since_commit = (
-                        datetime.now(timezone.utc) - pushed_date
-                    ).days
+                    days_since_commit = (datetime.now(timezone.utc) - pushed_date).days
                     days_since_commit = max(0, days_since_commit)
                     logger.debug(
                         f"Using pushed_at fallback for {owner}/{repo}: "
                         f"{days_since_commit} days (no commits in 90-day window)"
                     )
                 except (ValueError, TypeError) as e:
-                    logger.warning(
-                        f"Could not parse pushed_at date '{pushed_at}': {e}"
-                    )
+                    logger.warning(f"Could not parse pushed_at date '{pushed_at}': {e}")
 
         # Final fallback: truly unknown
         if days_since_commit is None:
             days_since_commit = 999
-            logger.info(
-                f"No commit activity data for {owner}/{repo}, using 999 days"
-            )
+            logger.info(f"No commit activity data for {owner}/{repo}, using 999 days")
 
         # Calculate issue response time
         # NOTE: This uses heuristic estimation rather than actual response times

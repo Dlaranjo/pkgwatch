@@ -93,6 +93,7 @@ class TestRecoveryInitiateValidUser:
 
         # Generate and store recovery codes
         from shared.recovery_utils import generate_recovery_codes
+
         _, hashed_codes = generate_recovery_codes(count=8)
 
         table.put_item(
@@ -511,24 +512,24 @@ class TestRecoveryInitiateEdgeCases:
         }
 
         # Mock the DynamoDB operations
-        with patch("time.sleep"), \
-             patch("api.recovery_initiate.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_initiate.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
 
             # Query returns the user
             mock_table.query.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": key_hash,
-                    "email": "test@example.com",
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": key_hash,
+                        "email": "test@example.com",
+                    }
+                ]
             }
 
             # get_item for USER_META fails
             mock_table.get_item.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test"}},
-                "GetItem"
+                {"Error": {"Code": "InternalServerError", "Message": "Test"}}, "GetItem"
             )
 
             # put_item succeeds (session creation)
@@ -556,13 +557,11 @@ class TestRecoveryInitiateErrorHandling:
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), \
-             patch("api.recovery_initiate.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_initiate.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.query.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
-                "Query"
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "Query"
             )
             response = handler(event, None)
 
@@ -574,6 +573,7 @@ class TestRecoveryInitiateErrorHandling:
     def test_handles_session_creation_error(self, mock_dynamodb, seeded_api_keys_table):
         """Should handle DynamoDB put_item error when creating session."""
         import hashlib
+
         table, test_key = seeded_api_keys_table
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
@@ -584,21 +584,21 @@ class TestRecoveryInitiateErrorHandling:
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), \
-             patch("api.recovery_initiate.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_initiate.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.query.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": key_hash,
-                    "email": "test@example.com",
-                    "email_verified": True,
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": key_hash,
+                        "email": "test@example.com",
+                        "email_verified": True,
+                    }
+                ]
             }
             mock_table.put_item.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
-                "PutItem"
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "PutItem"
             )
             response = handler(event, None)
 

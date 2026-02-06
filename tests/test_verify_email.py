@@ -65,10 +65,7 @@ def mock_secretsmanager():
     """Mock Secrets Manager for session secret."""
     with mock_aws():
         sm = boto3.client("secretsmanager", region_name="us-east-1")
-        sm.create_secret(
-            Name="test-session-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
-        )
+        sm.create_secret(Name="test-session-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}')
         yield sm
 
 
@@ -198,9 +195,7 @@ class TestDatabaseErrorHandling:
         with patch("api.verify_email.dynamodb") as mock_db:
             mock_table = MagicMock()
             # Query returns the GSI result
-            mock_table.query.return_value = {
-                "Items": [{"pk": user_id, "sk": "PENDING", "verification_token": token}]
-            }
+            mock_table.query.return_value = {"Items": [{"pk": user_id, "sk": "PENDING", "verification_token": token}]}
             # get_item returns empty (simulating race condition where record was deleted)
             mock_table.get_item.return_value = {"ResponseMetadata": {}}  # No Item key
             mock_db.Table.return_value = mock_table
@@ -235,9 +230,7 @@ class TestDatabaseErrorHandling:
         with patch("api.verify_email.dynamodb") as mock_db:
             mock_table = MagicMock()
             # Query returns the GSI result
-            mock_table.query.return_value = {
-                "Items": [{"pk": user_id, "sk": "PENDING", "verification_token": token}]
-            }
+            mock_table.query.return_value = {"Items": [{"pk": user_id, "sk": "PENDING", "verification_token": token}]}
             # get_item raises exception
             mock_table.get_item.side_effect = Exception("DynamoDB error during get")
             mock_db.Table.return_value = mock_table
@@ -271,9 +264,7 @@ class TestDatabaseErrorHandling:
 
         with patch("api.verify_email.dynamodb") as mock_db:
             mock_table = MagicMock()
-            mock_table.query.return_value = {
-                "Items": [{"pk": user_id, "sk": "PENDING", "verification_token": token}]
-            }
+            mock_table.query.return_value = {"Items": [{"pk": user_id, "sk": "PENDING", "verification_token": token}]}
             mock_table.get_item.return_value = {
                 "Item": {
                     "pk": user_id,
@@ -316,18 +307,11 @@ class TestDatabaseErrorHandling:
 
         api_gateway_event["queryStringParameters"] = {"token": token}
 
-        error_response = {
-            "Error": {
-                "Code": "ProvisionedThroughputExceededException",
-                "Message": "Rate exceeded"
-            }
-        }
+        error_response = {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Rate exceeded"}}
 
         with patch("api.verify_email.dynamodb") as mock_db:
             mock_table = MagicMock()
-            mock_table.query.return_value = {
-                "Items": [{"pk": user_id, "sk": "PENDING", "verification_token": token}]
-            }
+            mock_table.query.return_value = {"Items": [{"pk": user_id, "sk": "PENDING", "verification_token": token}]}
             mock_table.get_item.return_value = {
                 "Item": {
                     "pk": user_id,
@@ -447,9 +431,7 @@ class TestConcurrentVerification:
     """Tests for race condition handling during concurrent verification attempts."""
 
     @mock_aws
-    def test_conditional_delete_failure_returns_token_already_used(
-        self, mock_dynamodb, setup_env, api_gateway_event
-    ):
+    def test_conditional_delete_failure_returns_token_already_used(self, mock_dynamodb, setup_env, api_gateway_event):
         """Should return token_already_used when conditional delete fails."""
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         token = secrets.token_urlsafe(32)
@@ -471,17 +453,12 @@ class TestConcurrentVerification:
         api_gateway_event["queryStringParameters"] = {"token": token}
 
         error_response = {
-            "Error": {
-                "Code": "ConditionalCheckFailedException",
-                "Message": "The conditional request failed"
-            }
+            "Error": {"Code": "ConditionalCheckFailedException", "Message": "The conditional request failed"}
         }
 
         with patch("api.verify_email.dynamodb") as mock_db:
             mock_table = MagicMock()
-            mock_table.query.return_value = {
-                "Items": [{"pk": user_id, "sk": "PENDING", "verification_token": token}]
-            }
+            mock_table.query.return_value = {"Items": [{"pk": user_id, "sk": "PENDING", "verification_token": token}]}
             mock_table.get_item.return_value = {
                 "Item": {
                     "pk": user_id,
@@ -540,6 +517,7 @@ class TestPendingDisplayStorageError:
     ):
         """Should continue verification even if PENDING_DISPLAY storage fails."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -593,6 +571,7 @@ class TestRecoveryCodesGenerationError:
     ):
         """Should continue verification even if recovery codes generation fails."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -602,8 +581,7 @@ class TestRecoveryCodesGenerationError:
 
         with patch("api.verify_email.generate_api_key", return_value="pw_test_key"):
             with patch(
-                "api.verify_email.generate_recovery_codes",
-                side_effect=Exception("Recovery codes generation failed")
+                "api.verify_email.generate_recovery_codes", side_effect=Exception("Recovery codes generation failed")
             ):
                 result = handler(api_gateway_event, {})
 
@@ -627,11 +605,13 @@ class TestReferralProcessing:
     ):
         """Should process valid referral code and set up relationship."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
         # Need to reset the lazy-loaded dynamodb resource in referral_utils
         import shared.referral_utils
+
         shared.referral_utils._dynamodb = None
 
         from api.verify_email import handler
@@ -646,9 +626,7 @@ class TestReferralProcessing:
 
         # Verify USER_META was created with referral tracking
         table = pending_user_with_referral["table"]
-        response = table.get_item(
-            Key={"pk": pending_user_with_referral["user_id"], "sk": "USER_META"}
-        )
+        response = table.get_item(Key={"pk": pending_user_with_referral["user_id"], "sk": "USER_META"})
 
         assert "Item" in response
         user_meta = response["Item"]
@@ -657,18 +635,19 @@ class TestReferralProcessing:
         assert "referral_pending_expires" in user_meta
         # Referred user gets immediate bonus
         from shared.referral_utils import REFERRED_USER_BONUS
+
         assert user_meta.get("bonus_requests") == REFERRED_USER_BONUS
 
     @mock_aws
-    def test_self_referral_blocked(
-        self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event
-    ):
+    def test_self_referral_blocked(self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event):
         """Should block self-referral attempt (same email)."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
         import shared.referral_utils
+
         shared.referral_utils._dynamodb = None
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -718,15 +697,15 @@ class TestReferralProcessing:
         assert user_meta.get("bonus_requests", 0) == 0
 
     @mock_aws
-    def test_invalid_referral_code_ignored(
-        self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event
-    ):
+    def test_invalid_referral_code_ignored(self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event):
         """Should ignore referral code if referrer not found."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
         import shared.referral_utils
+
         shared.referral_utils._dynamodb = None
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -778,6 +757,7 @@ class TestSessionCreation:
     ):
         """Should set session cookie when verification succeeds and secret is available."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -804,6 +784,7 @@ class TestSessionCreation:
     ):
         """Should not set session cookie when SESSION_SECRET_ARN is not configured."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -825,6 +806,7 @@ class TestSessionCreation:
     ):
         """Should include correct user data in session token."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -863,6 +845,7 @@ class TestFullVerificationFlow:
     ):
         """Should create API key, USER_META, PENDING_DISPLAY, and PENDING_RECOVERY_CODES."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -879,15 +862,11 @@ class TestFullVerificationFlow:
         table = pending_user["table"]
 
         # Check PENDING record was deleted
-        pending_response = table.get_item(
-            Key={"pk": pending_user["user_id"], "sk": "PENDING"}
-        )
+        pending_response = table.get_item(Key={"pk": pending_user["user_id"], "sk": "PENDING"})
         assert "Item" not in pending_response
 
         # Check USER_META was created
-        meta_response = table.get_item(
-            Key={"pk": pending_user["user_id"], "sk": "USER_META"}
-        )
+        meta_response = table.get_item(Key={"pk": pending_user["user_id"], "sk": "USER_META"})
         assert "Item" in meta_response
         user_meta = meta_response["Item"]
         assert user_meta["key_count"] == 1
@@ -895,16 +874,12 @@ class TestFullVerificationFlow:
         assert "referral_code" in user_meta
 
         # Check PENDING_DISPLAY was created
-        display_response = table.get_item(
-            Key={"pk": pending_user["user_id"], "sk": "PENDING_DISPLAY"}
-        )
+        display_response = table.get_item(Key={"pk": pending_user["user_id"], "sk": "PENDING_DISPLAY"})
         assert "Item" in display_response
         assert display_response["Item"]["api_key"] == "pw_test_api_key"
 
         # Check PENDING_RECOVERY_CODES was created
-        codes_response = table.get_item(
-            Key={"pk": pending_user["user_id"], "sk": "PENDING_RECOVERY_CODES"}
-        )
+        codes_response = table.get_item(Key={"pk": pending_user["user_id"], "sk": "PENDING_RECOVERY_CODES"})
         assert "Item" in codes_response
         assert "codes" in codes_response["Item"]
         assert len(codes_response["Item"]["codes"]) == 4  # 4 recovery codes
@@ -915,6 +890,7 @@ class TestFullVerificationFlow:
     ):
         """Should include security headers in successful verification response."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -930,11 +906,10 @@ class TestFullVerificationFlow:
         assert result["headers"]["X-Content-Type-Options"] == "nosniff"
 
     @mock_aws
-    def test_email_without_at_symbol_handled(
-        self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event
-    ):
+    def test_email_without_at_symbol_handled(self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event):
         """Should handle edge case of email without @ symbol (malformed data)."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 

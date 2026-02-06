@@ -38,8 +38,10 @@ def run_async(coro):
 
 def create_mock_transport(handler):
     """Create a mock transport for httpx that routes requests to handler."""
+
     async def mock_handler(request: httpx.Request) -> httpx.Response:
         return handler(request)
+
     return httpx.MockTransport(mock_handler)
 
 
@@ -54,21 +56,25 @@ class TestEncodePackageSpec:
     def test_encode_simple_package(self):
         """Simple package names should be URL-encoded."""
         from bundlephobia_collector import encode_package_spec
+
         assert encode_package_spec("lodash") == "lodash"
 
     def test_encode_scoped_package(self):
         """Scoped npm packages should be URL-encoded."""
         from bundlephobia_collector import encode_package_spec
+
         assert encode_package_spec("@babel/core") == "%40babel%2Fcore"
 
     def test_encode_package_with_version(self):
         """Package with version should be properly encoded."""
         from bundlephobia_collector import encode_package_spec
+
         assert encode_package_spec("lodash", "4.17.21") == "lodash@4.17.21"
 
     def test_encode_scoped_package_with_version(self):
         """Scoped package with version should be properly encoded."""
         from bundlephobia_collector import encode_package_spec
+
         assert encode_package_spec("@babel/core", "7.24.0") == "%40babel%2Fcore@7.24.0"
 
 
@@ -386,14 +392,17 @@ class TestBundleSizeCategoriesInFetch:
         from bundlephobia_collector import get_bundle_size
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={
-                "name": "tiny-pkg",
-                "version": "1.0.0",
-                "size": 2000,
-                "gzip": 1000,  # 1KB
-                "dependencyCount": 0,
-                "hasSideEffects": False,
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "name": "tiny-pkg",
+                    "version": "1.0.0",
+                    "size": 2000,
+                    "gzip": 1000,  # 1KB
+                    "dependencyCount": 0,
+                    "hasSideEffects": False,
+                },
+            )
 
         original_init = httpx.AsyncClient.__init__
 
@@ -410,14 +419,17 @@ class TestBundleSizeCategoriesInFetch:
         from bundlephobia_collector import get_bundle_size
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={
-                "name": "huge-pkg",
-                "version": "1.0.0",
-                "size": 2000000,
-                "gzip": 600000,  # 600KB
-                "dependencyCount": 50,
-                "hasSideEffects": True,
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "name": "huge-pkg",
+                    "version": "1.0.0",
+                    "size": 2000000,
+                    "gzip": 600000,  # 600KB
+                    "dependencyCount": 50,
+                    "hasSideEffects": True,
+                },
+            )
 
         original_init = httpx.AsyncClient.__init__
 
@@ -449,23 +461,29 @@ class TestGetBundleSizesBatch:
             call_count += 1
             url = str(request.url)
             if "lodash" in url:
-                return httpx.Response(200, json={
-                    "name": "lodash",
-                    "version": "4.17.21",
-                    "size": 70000,
-                    "gzip": 25000,
-                    "dependencyCount": 0,
-                    "hasSideEffects": False,
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "name": "lodash",
+                        "version": "4.17.21",
+                        "size": 70000,
+                        "gzip": 25000,
+                        "dependencyCount": 0,
+                        "hasSideEffects": False,
+                    },
+                )
             elif "express" in url:
-                return httpx.Response(200, json={
-                    "name": "express",
-                    "version": "4.18.2",
-                    "size": 50000,
-                    "gzip": 15000,
-                    "dependencyCount": 30,
-                    "hasSideEffects": False,
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "name": "express",
+                        "version": "4.18.2",
+                        "size": 50000,
+                        "gzip": 15000,
+                        "dependencyCount": 30,
+                        "hasSideEffects": False,
+                    },
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
@@ -493,14 +511,17 @@ class TestGetBundleSizesBatch:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if "lodash" in url:
-                return httpx.Response(200, json={
-                    "name": "lodash",
-                    "version": "4.17.21",
-                    "size": 70000,
-                    "gzip": 25000,
-                    "dependencyCount": 0,
-                    "hasSideEffects": False,
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "name": "lodash",
+                        "version": "4.17.21",
+                        "size": 70000,
+                        "gzip": 25000,
+                        "dependencyCount": 0,
+                        "hasSideEffects": False,
+                    },
+                )
             elif "nonexistent" in url:
                 return httpx.Response(404)  # Not found
             return httpx.Response(404)
@@ -717,14 +738,17 @@ class TestEdgeCases:
         from bundlephobia_collector import get_bundle_size
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={
-                "name": "side-effect-pkg",
-                "version": "1.0.0",
-                "size": 10000,
-                "gzip": 5000,
-                "dependencyCount": 5,
-                "hasSideEffects": True,
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "name": "side-effect-pkg",
+                    "version": "1.0.0",
+                    "size": 10000,
+                    "gzip": 5000,
+                    "dependencyCount": 5,
+                    "hasSideEffects": True,
+                },
+            )
 
         original_init = httpx.AsyncClient.__init__
 
@@ -741,14 +765,17 @@ class TestEdgeCases:
         from bundlephobia_collector import get_bundle_size
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={
-                "name": "heavy-deps-pkg",
-                "version": "1.0.0",
-                "size": 500000,
-                "gzip": 150000,
-                "dependencyCount": 100,
-                "hasSideEffects": False,
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "name": "heavy-deps-pkg",
+                    "version": "1.0.0",
+                    "size": 500000,
+                    "gzip": 150000,
+                    "dependencyCount": 100,
+                    "hasSideEffects": False,
+                },
+            )
 
         original_init = httpx.AsyncClient.__init__
 
@@ -767,11 +794,14 @@ class TestEdgeCases:
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
             # Response missing some optional fields
-            return httpx.Response(200, json={
-                "name": "minimal-pkg",
-                "version": "1.0.0",
-                # size and gzip might be 0 or missing
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "name": "minimal-pkg",
+                    "version": "1.0.0",
+                    # size and gzip might be 0 or missing
+                },
+            )
 
         original_init = httpx.AsyncClient.__init__
 

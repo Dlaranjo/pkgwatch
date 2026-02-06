@@ -21,7 +21,7 @@ from urllib.parse import quote
 import httpx
 
 sys.path.insert(0, os.path.dirname(__file__))  # Add collectors directory
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))  # Add functions directory
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))  # Add functions directory
 from http_client import get_http_client
 
 from shared.circuit_breaker import DEPSDEV_CIRCUIT, circuit_breaker
@@ -88,7 +88,7 @@ async def retry_with_backoff(
                 raise last_exception
 
             # Equal jitter: 50% fixed backoff + 50% random
-            base = base_delay * (2 ** attempt)
+            base = base_delay * (2**attempt)
             delay = base * 0.5 + random.uniform(0, base * 0.5)
             logger.warning(f"Attempt {attempt + 1} failed, retrying in {delay:.2f}s: {last_exception}")
             await asyncio.sleep(delay)
@@ -193,7 +193,9 @@ async def get_package_info(name: str, ecosystem: str = "npm") -> Optional[dict]:
     if latest_version:
         try:
             encoded_version = quote(latest_version, safe="")
-            dependents_url = f"{DEPSDEV_API_ALPHA}/systems/{ecosystem}/packages/{encoded_name}/versions/{encoded_version}:dependents"
+            dependents_url = (
+                f"{DEPSDEV_API_ALPHA}/systems/{ecosystem}/packages/{encoded_name}/versions/{encoded_version}:dependents"
+            )
             dependents_resp = await retry_with_backoff(client.get, dependents_url)
             dependents_resp.raise_for_status()
             dependents_data = dependents_resp.json()

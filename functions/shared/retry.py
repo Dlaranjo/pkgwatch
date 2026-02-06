@@ -42,6 +42,7 @@ T = TypeVar("T")
 @dataclass
 class RetryConfig:
     """Configuration for retry behavior."""
+
     max_retries: int = 3
     base_delay: float = 1.0
     max_delay: float = 60.0
@@ -53,10 +54,7 @@ class RetryConfig:
 def calculate_delay(attempt: int, config: RetryConfig) -> float:
     """Calculate delay with exponential backoff and jitter."""
     # Exponential backoff
-    delay = min(
-        config.base_delay * (config.exponential_base ** attempt),
-        config.max_delay
-    )
+    delay = min(config.base_delay * (config.exponential_base**attempt), config.max_delay)
 
     # Add jitter to prevent thundering herd
     jitter = random.uniform(0, delay * config.jitter_factor)
@@ -64,12 +62,7 @@ def calculate_delay(attempt: int, config: RetryConfig) -> float:
     return delay + jitter
 
 
-async def retry_async(
-    func: Callable[..., T],
-    *args,
-    config: Optional[RetryConfig] = None,
-    **kwargs
-) -> T:
+async def retry_async(func: Callable[..., T], *args, config: Optional[RetryConfig] = None, **kwargs) -> T:
     """
     Execute async function with retry logic.
 
@@ -102,7 +95,7 @@ async def retry_async(
                         "attempts": config.max_retries + 1,
                         "final_error": str(e),
                         "error_type": type(e).__name__,
-                    }
+                    },
                 )
                 raise
 
@@ -117,7 +110,7 @@ async def retry_async(
                     "delay_seconds": delay,
                     "error": str(e),
                     "error_type": type(e).__name__,
-                }
+                },
             )
 
             await asyncio.sleep(delay)
@@ -135,11 +128,14 @@ def retry(config: Optional[RetryConfig] = None):
         async def call_external_api():
             ...
     """
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         async def wrapper(*args, **kwargs) -> T:
             return await retry_async(func, *args, config=config, **kwargs)
+
         return wrapper
+
     return decorator
 
 

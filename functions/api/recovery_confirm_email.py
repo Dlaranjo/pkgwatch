@@ -83,7 +83,9 @@ def handler(event, context):
 
     if not records:
         logger.warning(f"Email change token not found: {token[:8]}...")
-        return _timed_redirect(start_time, _redirect_with_error("invalid_token", "Invalid or expired verification link"))
+        return _timed_redirect(
+            start_time, _redirect_with_error("invalid_token", "Invalid or expired verification link")
+        )
 
     change_record = records[0]
     user_id = change_record["pk"]
@@ -96,7 +98,12 @@ def handler(event, context):
     record_ttl = change_record.get("ttl", 0)
     if record_ttl < now.timestamp():
         logger.warning(f"Email change token expired for user {user_id}")
-        return _timed_redirect(start_time, _redirect_with_error("token_expired", "This verification link has expired. Please start the recovery process again."))
+        return _timed_redirect(
+            start_time,
+            _redirect_with_error(
+                "token_expired", "This verification link has expired. Please start the recovery process again."
+            ),
+        )
 
     # Get all user records to update email
     try:
@@ -131,7 +138,9 @@ def handler(event, context):
         if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
             # Token was already consumed by concurrent request
             logger.warning(f"Email change token already used for user {user_id}")
-            return _timed_redirect(start_time, _redirect_with_error("invalid_token", "This verification link has already been used."))
+            return _timed_redirect(
+                start_time, _redirect_with_error("invalid_token", "This verification link has already been used.")
+            )
         logger.error(f"Error consuming email change token: {e}")
         return _timed_redirect(start_time, _redirect_with_error("internal_error", "Failed to update email"))
 
@@ -140,7 +149,11 @@ def handler(event, context):
         for item in user_items:
             sk = item.get("sk", "")
             # Update API key records (not metadata records)
-            if sk not in ["PENDING", "USER_META"] and not sk.startswith("RECOVERY_") and not sk.startswith("EMAIL_CHANGE_"):
+            if (
+                sk not in ["PENDING", "USER_META"]
+                and not sk.startswith("RECOVERY_")
+                and not sk.startswith("EMAIL_CHANGE_")
+            ):
                 table.update_item(
                     Key={"pk": user_id, "sk": sk},
                     UpdateExpression="SET email = :new_email, email_changed_at = :now, previous_email = :old_email",
@@ -196,7 +209,9 @@ def handler(event, context):
     session_token = _create_session_token(session_data, session_secret)
 
     # Set session cookie and redirect to dashboard
-    cookie_value = f"session={session_token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL_DAYS * 86400}"
+    cookie_value = (
+        f"session={session_token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL_DAYS * 86400}"
+    )
 
     logger.info(f"Email change completed for user {user_id}: {old_email[:5]}*** -> {new_email[:5]}***")
 
@@ -215,9 +230,11 @@ def handler(event, context):
 
 def _redirect_with_error(code: str, message: str) -> dict:
     """Redirect to recovery page with error message."""
-    redirect_params = urlencode({
-        "error": code,
-    })
+    redirect_params = urlencode(
+        {
+            "error": code,
+        }
+    )
     return {
         "statusCode": 302,
         "headers": {

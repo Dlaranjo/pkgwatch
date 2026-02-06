@@ -89,12 +89,14 @@ def handler(event, context):
                     # 404 is not a failure of pypistats.org, record success
                     PYPISTATS_CIRCUIT.record_success()
                     consecutive_429s = 0
-                    pending_updates.append({
-                        "name": pkg_name,
-                        "weekly_downloads": 0,
-                        "downloads_source": "pypistats_404",
-                        "downloads_status": "unavailable",
-                    })
+                    pending_updates.append(
+                        {
+                            "name": pkg_name,
+                            "weekly_downloads": 0,
+                            "downloads_source": "pypistats_404",
+                            "downloads_status": "unavailable",
+                        }
+                    )
                     processed += 1
                     # Reduce delay on success (fast recovery)
                     current_delay = max(REQUEST_DELAY, current_delay * 0.5)
@@ -111,14 +113,15 @@ def handler(event, context):
                         # Too many consecutive 429s — abort batch
                         PYPISTATS_CIRCUIT.record_failure()
                         logger.warning(
-                            f"Aborting batch after {consecutive_429s} consecutive 429s "
-                            f"(processed {processed} packages)"
+                            f"Aborting batch after {consecutive_429s} consecutive 429s (processed {processed} packages)"
                         )
-                        pending_updates.append({
-                            "name": pkg_name,
-                            "downloads_status": "rate_limited",
-                            "downloads_source": "pypistats_429",
-                        })
+                        pending_updates.append(
+                            {
+                                "name": pkg_name,
+                                "downloads_status": "rate_limited",
+                                "downloads_source": "pypistats_429",
+                            }
+                        )
                         processed += 1
                         break
 
@@ -143,22 +146,26 @@ def handler(event, context):
                         PYPISTATS_CIRCUIT.record_success()
                         data = retry_resp.json()
                         downloads = data.get("data", {}).get("last_week", 0)
-                        pending_updates.append({
-                            "name": pkg_name,
-                            "weekly_downloads": downloads,
-                            "downloads_source": "pypistats",
-                            "downloads_status": "collected",
-                        })
+                        pending_updates.append(
+                            {
+                                "name": pkg_name,
+                                "weekly_downloads": downloads,
+                                "downloads_source": "pypistats",
+                                "downloads_status": "collected",
+                            }
+                        )
                         if downloads > 0:
                             updated += 1
                         processed += 1
                     else:
                         # Retry failed — skip this package, continue batch
-                        pending_updates.append({
-                            "name": pkg_name,
-                            "downloads_status": "rate_limited",
-                            "downloads_source": "pypistats_429",
-                        })
+                        pending_updates.append(
+                            {
+                                "name": pkg_name,
+                                "downloads_status": "rate_limited",
+                                "downloads_source": "pypistats_429",
+                            }
+                        )
                         processed += 1
 
                     time.sleep(current_delay)
@@ -171,12 +178,14 @@ def handler(event, context):
                     data = resp.json()
                     downloads = data.get("data", {}).get("last_week", 0)
 
-                    pending_updates.append({
-                        "name": pkg_name,
-                        "weekly_downloads": downloads,
-                        "downloads_source": "pypistats",
-                        "downloads_status": "collected",
-                    })
+                    pending_updates.append(
+                        {
+                            "name": pkg_name,
+                            "weekly_downloads": downloads,
+                            "downloads_source": "pypistats",
+                            "downloads_status": "collected",
+                        }
+                    )
                     if downloads > 0:
                         updated += 1
                     processed += 1
@@ -188,20 +197,24 @@ def handler(event, context):
             except httpx.HTTPStatusError as e:
                 PYPISTATS_CIRCUIT.record_failure()
                 logger.warning(f"HTTP error for {pkg_name}: {e.response.status_code}")
-                pending_updates.append({
-                    "name": pkg_name,
-                    "downloads_status": "error",
-                    "downloads_source": f"pypistats_http_{e.response.status_code}",
-                })
+                pending_updates.append(
+                    {
+                        "name": pkg_name,
+                        "downloads_status": "error",
+                        "downloads_source": f"pypistats_http_{e.response.status_code}",
+                    }
+                )
                 processed += 1
             except Exception as e:
                 PYPISTATS_CIRCUIT.record_failure()
                 logger.warning(f"Failed to fetch downloads for {pkg_name}: {e}")
-                pending_updates.append({
-                    "name": pkg_name,
-                    "downloads_status": "error",
-                    "downloads_source": f"pypistats_{type(e).__name__}",
-                })
+                pending_updates.append(
+                    {
+                        "name": pkg_name,
+                        "downloads_status": "error",
+                        "downloads_source": f"pypistats_{type(e).__name__}",
+                    }
+                )
                 processed += 1
 
             # Incremental write every WRITE_BATCH_SIZE packages
@@ -213,18 +226,18 @@ def handler(event, context):
     if pending_updates:
         _write_updates(packages_table, pending_updates)
 
-    logger.info(
-        f"Updated {updated} package download stats "
-        f"(processed {processed}, rate_limited {rate_limited_count})"
-    )
+    logger.info(f"Updated {updated} package download stats (processed {processed}, rate_limited {rate_limited_count})")
 
     # Emit CloudWatch metrics for monitoring
     try:
         from shared.metrics import emit_batch_metrics
-        emit_batch_metrics([
-            {"metric_name": "PyPIDownloadsProcessed", "value": processed},
-            {"metric_name": "PyPIDownloadsRateLimited", "value": rate_limited_count},
-        ])
+
+        emit_batch_metrics(
+            [
+                {"metric_name": "PyPIDownloadsProcessed", "value": processed},
+                {"metric_name": "PyPIDownloadsRateLimited", "value": rate_limited_count},
+            ]
+        )
     except Exception as e:
         logger.warning(f"Failed to emit metrics: {e}")
 
@@ -349,7 +362,7 @@ def _write_updates(table, updates: list):
                         ":ds": downloads_status,
                         ":s": update.get("downloads_source", "unknown"),
                         ":t": now,
-                    }
+                    },
                 )
             else:
                 # Full update for collected/unavailable status
@@ -361,7 +374,7 @@ def _write_updates(table, updates: list):
                         ":s": update["downloads_source"],
                         ":ds": downloads_status,
                         ":t": now,
-                    }
+                    },
                 )
         except ClientError as e:
             logger.warning(f"Failed to update {update['name']}: {e}")

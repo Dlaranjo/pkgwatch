@@ -174,7 +174,12 @@ def handler(event, context):
                 logger.warning(f"Email {new_email[:5]}*** already in use")
                 return _timed_response(
                     start_time,
-                    error_response(400, "email_in_use", "This email address is already associated with another account", origin=origin),
+                    error_response(
+                        400,
+                        "email_in_use",
+                        "This email address is already associated with another account",
+                        origin=origin,
+                    ),
                 )
     except ClientError as e:
         logger.error(f"Error checking email availability: {e}")

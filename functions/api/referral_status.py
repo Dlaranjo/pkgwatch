@@ -147,16 +147,19 @@ def handler(event, context):
         return {
             "statusCode": 200,
             "headers": response_headers,
-            "body": json.dumps({
-                "referral_code": referral_code,
-                "referral_url": f"{BASE_URL}/r/{referral_code}",
-                "bonus_requests": bonus_balance,
-                "bonus_cap": BONUS_CAP,
-                "bonus_lifetime": bonus_lifetime,
-                "at_cap": bonus_lifetime >= BONUS_CAP,
-                "stats": stats,
-                "referrals": referrals,
-            }, default=decimal_default),
+            "body": json.dumps(
+                {
+                    "referral_code": referral_code,
+                    "referral_url": f"{BASE_URL}/r/{referral_code}",
+                    "bonus_requests": bonus_balance,
+                    "bonus_cap": BONUS_CAP,
+                    "bonus_lifetime": bonus_lifetime,
+                    "at_cap": bonus_lifetime >= BONUS_CAP,
+                    "stats": stats,
+                    "referrals": referrals,
+                },
+                default=decimal_default,
+            ),
         }
 
     except Exception as e:

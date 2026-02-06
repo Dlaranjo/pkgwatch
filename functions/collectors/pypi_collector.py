@@ -24,7 +24,7 @@ from typing import Optional
 import httpx
 
 sys.path.insert(0, os.path.dirname(__file__))  # Add collectors directory
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))  # Add functions directory
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))  # Add functions directory
 from http_client import get_http_client
 
 from shared.circuit_breaker import PYPI_CIRCUIT, PYPISTATS_CIRCUIT, circuit_breaker
@@ -40,9 +40,7 @@ logger.setLevel(logging.INFO)
 # PEP 508 normalized package name pattern
 # Allows: letters, digits, underscores, hyphens, periods
 # Must start and end with alphanumeric
-PYPI_PACKAGE_PATTERN = re.compile(
-    r'^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9])$'
-)
+PYPI_PACKAGE_PATTERN = re.compile(r"^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9])$")
 
 MAX_PACKAGE_NAME_LENGTH = 128  # PyPI practical limit
 
@@ -62,7 +60,7 @@ def normalize_package_name(name: str) -> str:
         foo__bar -> foo-bar
     """
     name = name.lower()
-    name = re.sub(r'[-_.]+', '-', name)
+    name = re.sub(r"[-_.]+", "-", name)
     return name
 
 
@@ -119,7 +117,7 @@ async def retry_with_backoff(
                 raise last_exception
 
             # Equal jitter: 50% fixed backoff + 50% random
-            base = base_delay * (2 ** attempt)
+            base = base_delay * (2**attempt)
             delay = base * 0.5 + random.uniform(0, base * 0.5)
             logger.warning(f"Attempt {attempt + 1} failed, retrying in {delay:.2f}s: {last_exception}")
             await asyncio.sleep(delay)
@@ -266,31 +264,24 @@ async def get_pypi_metadata(name: str) -> dict:
 
     # Check deprecation via classifiers
     classifiers = info.get("classifiers", [])
-    is_deprecated = any(
-        "Development Status :: 7 - Inactive" in c
-        for c in classifiers
-    )
+    is_deprecated = any("Development Status :: 7 - Inactive" in c for c in classifiers)
 
     # Extract repository URL from project URLs
     project_urls = info.get("project_urls", {}) or {}
     repository_url = (
-        project_urls.get("Repository") or
-        project_urls.get("Source") or
-        project_urls.get("Source Code") or
-        project_urls.get("GitHub") or
-        project_urls.get("Code") or
-        project_urls.get("Homepage") or
-        info.get("home_page") or
-        info.get("project_url")
+        project_urls.get("Repository")
+        or project_urls.get("Source")
+        or project_urls.get("Source Code")
+        or project_urls.get("GitHub")
+        or project_urls.get("Code")
+        or project_urls.get("Homepage")
+        or info.get("home_page")
+        or info.get("project_url")
     )
 
     # Clean repository URL (git+, git://, .git suffix)
     if repository_url:
-        repository_url = (
-            repository_url.replace("git+", "")
-            .replace("git://", "https://")
-            .replace(".git", "")
-        )
+        repository_url = repository_url.replace("git+", "").replace("git://", "https://").replace(".git", "")
         # Only keep GitHub/GitLab/Bitbucket URLs for repo_url (used by GitHub collector)
         # Other URLs are not useful for fetching repo metrics
         if not any(host in repository_url for host in ["github.com", "gitlab.com", "bitbucket.org"]):

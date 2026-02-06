@@ -12,9 +12,7 @@ class TestGetPackageHandler:
     """Tests for the get_package Lambda handler."""
 
     @mock_aws
-    def test_returns_package_with_valid_api_key(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_returns_package_with_valid_api_key(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should return package health data for authenticated request."""
         # Set env vars before import
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
@@ -36,9 +34,7 @@ class TestGetPackageHandler:
         assert body["risk_level"] == "LOW"
 
     @mock_aws
-    def test_returns_package_in_demo_mode(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_returns_package_in_demo_mode(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Should return package data for demo (unauthenticated) request."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -56,9 +52,7 @@ class TestGetPackageHandler:
         assert result["headers"].get("X-Demo-Mode") == "true"
 
     @mock_aws
-    def test_returns_404_for_unknown_package(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_returns_404_for_unknown_package(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should return 404 for packages not in database."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -76,9 +70,7 @@ class TestGetPackageHandler:
         assert body["error"]["code"] == "package_not_found"
 
     @mock_aws
-    def test_returns_400_for_invalid_ecosystem(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_returns_400_for_invalid_ecosystem(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should return 400 for unsupported ecosystem."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -96,9 +88,7 @@ class TestGetPackageHandler:
         assert body["error"]["code"] == "invalid_ecosystem"
 
     @mock_aws
-    def test_returns_400_for_missing_name(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_returns_400_for_missing_name(self, seeded_api_keys_table, api_gateway_event):
         """Should return 400 when package name is missing."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -155,9 +145,7 @@ class TestGetPackageHandler:
         assert body["package"] == "@babel/core"
 
     @mock_aws
-    def test_rate_limit_headers_in_response(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_rate_limit_headers_in_response(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should include rate limit headers in response."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -251,9 +239,7 @@ class TestGetPackageHandler:
         assert "upgrade_url" in body["error"]
 
     @mock_aws
-    def test_returns_429_when_demo_limit_exceeded(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_returns_429_when_demo_limit_exceeded(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Should return 429 when demo mode IP exceeds hourly limit."""
         from datetime import datetime, timezone
 
@@ -319,9 +305,7 @@ class TestDataQualityInGetPackage:
         assert "missing_sources" in body["data_quality"]
 
     @mock_aws
-    def test_data_quality_verified_for_complete_package(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_data_quality_verified_for_complete_package(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should return VERIFIED assessment for complete data package."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -362,9 +346,7 @@ class TestDataQualityInGetPackage:
         assert body["data_quality"]["missing_sources"] == []
 
     @mock_aws
-    def test_data_quality_unverified_for_minimal_package(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_data_quality_unverified_for_minimal_package(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should return UNVERIFIED assessment for minimal data package."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -406,9 +388,7 @@ class TestDataQualityInGetPackage:
         assert "No repository URL" in body["data_quality"]["explanation"]
 
     @mock_aws
-    def test_data_quality_defaults_for_legacy_package(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_data_quality_defaults_for_legacy_package(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should return UNVERIFIED for packages without data_status field."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -451,9 +431,7 @@ class TestDataQualityGate:
     """Tests for the 202 data quality gate (queryable field)."""
 
     @mock_aws
-    def test_returns_202_for_non_queryable_package(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_returns_202_for_non_queryable_package(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should return 202 for packages with queryable=False."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -493,9 +471,7 @@ class TestDataQualityGate:
         assert body["retry_after_seconds"] == 60
 
     @mock_aws
-    def test_returns_200_with_include_incomplete_bypass(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_returns_200_with_include_incomplete_bypass(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should return 200 with include_incomplete=true even for non-queryable packages."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -532,9 +508,7 @@ class TestDataQualityGate:
         assert body["health_score"] == 60
 
     @mock_aws
-    def test_returns_200_for_queryable_package(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_returns_200_for_queryable_package(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should return 200 for packages with queryable=True."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -600,11 +574,7 @@ class TestGetClientIp:
         """Should return sourceIp when present in requestContext."""
         from api.get_package import _get_client_ip
 
-        event = {
-            "requestContext": {
-                "identity": {"sourceIp": "203.0.113.42"}
-            }
-        }
+        event = {"requestContext": {"identity": {"sourceIp": "203.0.113.42"}}}
         assert _get_client_ip(event) == "203.0.113.42"
 
     def test_returns_unknown_when_source_ip_missing(self):
@@ -630,9 +600,7 @@ class TestGetClientIp:
         assert _get_client_ip(event) == "unknown"
 
     @mock_aws
-    def test_demo_mode_with_missing_source_ip(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_demo_mode_with_missing_source_ip(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Should use 'unknown' IP for demo rate limiting when sourceIp is missing."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -779,21 +747,20 @@ class TestFormatOpenSSFChecks:
         ]
         result = _format_openssf_checks(checks)
 
-        assert result["summary"]["Code-Review"]["status"] == "pass"       # 8 >= 8 -> pass
+        assert result["summary"]["Code-Review"]["status"] == "pass"  # 8 >= 8 -> pass
         assert result["summary"]["Branch-Protection"]["status"] == "partial"  # 7 >= 5, < 8 -> partial
-        assert result["summary"]["Security-Policy"]["status"] == "partial"    # 5 >= 5 -> partial
-        assert result["summary"]["Vulnerabilities"]["status"] == "fail"       # 4 < 5 -> fail
+        assert result["summary"]["Security-Policy"]["status"] == "partial"  # 5 >= 5 -> partial
+        assert result["summary"]["Vulnerabilities"]["status"] == "fail"  # 4 < 5 -> fail
 
 
 class TestDemoRateLimitGenericException:
     """Tests for generic exception in _check_demo_rate_limit (lines 185-188)."""
 
     @mock_aws
-    def test_generic_exception_returns_false(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_generic_exception_returns_false(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Should fail closed (deny access) on unexpected errors (lines 185-188)."""
         from unittest.mock import patch
+
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
@@ -811,11 +778,10 @@ class TestDemoRateLimitGenericException:
         assert remaining == 0
 
     @mock_aws
-    def test_handler_returns_429_on_generic_demo_error(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_handler_returns_429_on_generic_demo_error(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Should return 429 when demo rate limiting encounters unexpected error."""
         from unittest.mock import patch
+
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
@@ -836,9 +802,7 @@ class TestUsageAlertsInGetPackage:
     """Tests for usage alert headers in authenticated response (lines 380-383)."""
 
     @mock_aws
-    def test_warning_alert_in_response(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_warning_alert_in_response(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Should include usage_alert in response when usage exceeds 80%."""
         import hashlib
 
@@ -888,9 +852,7 @@ class TestUsageAlertsInGetPackage:
         assert body["usage_alert"]["level"] == "warning"
 
     @mock_aws
-    def test_critical_alert_in_response(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_critical_alert_in_response(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Should include critical alert when usage exceeds 95%."""
         import hashlib
 
@@ -939,9 +901,7 @@ class TestUsageAlertsInGetPackage:
         assert "message" in body["usage_alert"]
 
     @mock_aws
-    def test_no_alert_below_80_percent(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_no_alert_below_80_percent(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should NOT include usage_alert when usage is below 80%."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -978,6 +938,7 @@ class TestCORSInRateLimitResponses:
         import importlib
 
         import api.get_package as gp_module
+
         importlib.reload(gp_module)
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1017,9 +978,7 @@ class TestCORSInRateLimitResponses:
         os.environ.pop("ALLOW_DEV_CORS", None)
 
     @mock_aws
-    def test_demo_rate_limit_includes_cors_headers(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_demo_rate_limit_includes_cors_headers(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Should include CORS headers in 429 demo response (line 432)."""
         from datetime import datetime, timezone
 
@@ -1057,9 +1016,7 @@ class TestResponseBodyCompleteness:
     """Tests to verify response body contains all expected fields."""
 
     @mock_aws
-    def test_response_contains_all_signal_fields(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_response_contains_all_signal_fields(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should include all signal fields in the response."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1107,9 +1064,7 @@ class TestResponseBodyCompleteness:
         assert "bus_factor_confidence" in signals
 
     @mock_aws
-    def test_true_bus_factor_defaults(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_true_bus_factor_defaults(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should default true_bus_factor to 1 and bus_factor_confidence to LOW."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1199,9 +1154,7 @@ class TestPyPIPackageLookup:
     """Tests for PyPI package lookup via GET endpoint."""
 
     @mock_aws
-    def test_returns_pypi_package(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_returns_pypi_package(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should return PyPI package data correctly."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1226,9 +1179,7 @@ class TestNullAndMissingPathParameters:
     """Tests for null/missing pathParameters edge cases."""
 
     @mock_aws
-    def test_handles_null_path_parameters(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_handles_null_path_parameters(self, seeded_api_keys_table, api_gateway_event):
         """Should handle None pathParameters gracefully."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1247,9 +1198,7 @@ class TestNullAndMissingPathParameters:
         assert body["error"]["code"] == "missing_parameter"
 
     @mock_aws
-    def test_handles_missing_path_parameters_key(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_handles_missing_path_parameters_key(self, seeded_api_keys_table, api_gateway_event):
         """Should handle missing pathParameters key entirely."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1273,9 +1222,7 @@ class TestDemoModeRateLimitHeaders:
     """Tests for demo mode rate limit headers in successful responses."""
 
     @mock_aws
-    def test_demo_mode_includes_hourly_reset_header(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_demo_mode_includes_hourly_reset_header(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Should include X-RateLimit-Reset header with hourly reset timestamp."""
         import time
 
@@ -1305,9 +1252,7 @@ class TestDynamoDBErrorInGetPackage:
     """Tests for DynamoDB error handling in handler."""
 
     @mock_aws
-    def test_returns_500_on_dynamodb_error(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_returns_500_on_dynamodb_error(self, seeded_api_keys_table, api_gateway_event):
         """Should return 500 when DynamoDB fetch fails."""
         from unittest.mock import MagicMock, patch
 
@@ -1337,9 +1282,7 @@ class TestNpmCaseNormalization:
     """Tests for npm package name case normalization."""
 
     @mock_aws
-    def test_normalizes_uppercase_npm_name(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_normalizes_uppercase_npm_name(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should normalize uppercase npm package name to lowercase for lookup."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1358,9 +1301,7 @@ class TestNpmCaseNormalization:
         assert body["package"] == "lodash"
 
     @mock_aws
-    def test_does_not_normalize_pypi_name(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_does_not_normalize_pypi_name(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should NOT normalize PyPI package names (different from npm)."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1400,9 +1341,7 @@ class TestQueryableFieldFallback:
     """Tests for queryable field fallback logic (computed on-the-fly for pre-migration packages)."""
 
     @mock_aws
-    def test_computes_queryable_for_premigration_package(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_computes_queryable_for_premigration_package(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should compute queryable on-the-fly when field is not set."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"

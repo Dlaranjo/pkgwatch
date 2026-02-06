@@ -24,6 +24,7 @@ class TestStripeWebhookHandler:
         os.environ["STRIPE_WEBHOOK_SECRET_ARN"] = ""
 
         import api.stripe_webhook as webhook_module
+
         # Clear the secrets cache to ensure test isolation
         webhook_module._stripe_secrets_cache = (None, None)
         webhook_module._stripe_secrets_cache_time = 0.0
@@ -53,6 +54,7 @@ class TestStripeWebhookHandler:
         import importlib
 
         import api.stripe_webhook as webhook_module
+
         importlib.reload(webhook_module)
 
         # Should have fallback prices, not empty strings
@@ -506,9 +508,7 @@ class TestHandleSubscriptionDeleted:
         _handle_subscription_deleted(subscription)
 
         for key_hash in [key_hash_1, key_hash_2]:
-            response = table.get_item(
-                Key={"pk": "user_multikey", "sk": key_hash}
-            )
+            response = table.get_item(Key={"pk": "user_multikey", "sk": key_hash})
             item = response.get("Item")
             assert item["tier"] == "free"
             assert "stripe_subscription_id" not in item
@@ -543,6 +543,7 @@ class TestHandleSubscriptionUpdatedCancellation:
         import importlib
 
         import api.stripe_webhook as webhook_module
+
         importlib.reload(webhook_module)
 
         subscription = {
@@ -556,7 +557,7 @@ class TestHandleSubscriptionUpdatedCancellation:
                         "current_period_end": 1707955200,  # Unix timestamp - on item, not subscription
                     }
                 ]
-            }
+            },
         }
 
         webhook_module._handle_subscription_updated(subscription)
@@ -595,6 +596,7 @@ class TestHandleSubscriptionUpdatedCancellation:
         import importlib
 
         import api.stripe_webhook as webhook_module
+
         importlib.reload(webhook_module)
 
         subscription = {
@@ -608,7 +610,7 @@ class TestHandleSubscriptionUpdatedCancellation:
                         "current_period_end": 1709164800,  # Unix timestamp - on item
                     }
                 ]
-            }
+            },
         }
 
         webhook_module._handle_subscription_updated(subscription)
@@ -1239,6 +1241,7 @@ class TestCheckAndClaimEvent:
         assert "ttl" in item
         # TTL should be ~90 days in the future
         import time
+
         now = int(time.time())
         assert item["ttl"] > now + (85 * 24 * 60 * 60)  # At least 85 days
         assert item["ttl"] < now + (95 * 24 * 60 * 60)  # At most 95 days
@@ -1252,12 +1255,14 @@ class TestCheckAndClaimEvent:
 
         # Pre-insert the event to simulate a concurrent claim that "won"
         table = mock_dynamodb.Table("pkgwatch-billing-events")
-        table.put_item(Item={
-            "pk": "evt_concurrent",
-            "sk": "invoice.paid",
-            "status": "processing",
-            "processed_at": "2024-01-15T10:00:00Z",
-        })
+        table.put_item(
+            Item={
+                "pk": "evt_concurrent",
+                "sk": "invoice.paid",
+                "status": "processing",
+                "processed_at": "2024-01-15T10:00:00Z",
+            }
+        )
 
         # Now this claim should fail
         result = _check_and_claim_event("evt_concurrent", "invoice.paid")
@@ -1360,10 +1365,10 @@ class TestHandleInvoicePaid:
                         "period": {
                             "start": 1706745600,  # New period
                             "end": 1709424000,
-                        }
+                        },
                     }
                 ]
-            }
+            },
         }
 
         _handle_invoice_paid(invoice)
@@ -1445,10 +1450,10 @@ class TestHandleInvoicePaid:
                         "period": {
                             "start": 1706745600,
                             "end": 1709424000,
-                        }
+                        },
                     }
                 ]
-            }
+            },
         }
 
         _handle_invoice_paid(invoice)
@@ -1493,10 +1498,10 @@ class TestHandleInvoicePaid:
                         "period": {
                             "start": 1706745600,
                             "end": 1709424000,
-                        }
+                        },
                     }
                 ]
-            }
+            },
         }
 
         _handle_invoice_paid(invoice)
@@ -1550,10 +1555,10 @@ class TestHandleInvoicePaid:
                         "period": {
                             "start": 1706745600,  # Same period - already processed
                             "end": 1709424000,
-                        }
+                        },
                     }
                 ]
-            }
+            },
         }
 
         _handle_invoice_paid(invoice)
@@ -1593,14 +1598,7 @@ class TestHandleInvoicePaid:
             "customer": "cus_multikey",
             "subscription": "sub_multikey",
             "billing_reason": "subscription_cycle",
-            "lines": {
-                "data": [
-                    {
-                        "type": "subscription",
-                        "period": {"start": 1706745600, "end": 1709424000}
-                    }
-                ]
-            }
+            "lines": {"data": [{"type": "subscription", "period": {"start": 1706745600, "end": 1709424000}}]},
         }
 
         _handle_invoice_paid(invoice)
@@ -1647,14 +1645,7 @@ class TestHandleInvoicePaid:
             "customer": "cus_meta",
             "subscription": "sub_meta",
             "billing_reason": "subscription_cycle",
-            "lines": {
-                "data": [
-                    {
-                        "type": "subscription",
-                        "period": {"start": 1706745600, "end": 1709424000}
-                    }
-                ]
-            }
+            "lines": {"data": [{"type": "subscription", "period": {"start": 1706745600, "end": 1709424000}}]},
         }
 
         _handle_invoice_paid(invoice)
@@ -1681,7 +1672,7 @@ class TestExtractPeriodFromInvoice:
                         "period": {
                             "start": 1706745600,
                             "end": 1709424000,
-                        }
+                        },
                     }
                 ]
             }
@@ -1700,7 +1691,7 @@ class TestExtractPeriodFromInvoice:
                 "data": [
                     {
                         "type": "invoiceitem",  # Not subscription
-                        "period": {"start": 1706745600, "end": 1709424000}
+                        "period": {"start": 1706745600, "end": 1709424000},
                     }
                 ]
             }
@@ -1820,14 +1811,17 @@ class TestDoubleChargingPrevention:
 
         # Pre-claim the event to simulate it already being processed
         billing_table = mock_dynamodb.Table("pkgwatch-billing-events")
-        billing_table.put_item(Item={
-            "pk": "evt_checkout_dup",
-            "sk": "checkout.session.completed",
-            "status": "success",
-            "processed_at": "2024-01-15T10:00:00Z",
-        })
+        billing_table.put_item(
+            Item={
+                "pk": "evt_checkout_dup",
+                "sk": "checkout.session.completed",
+                "status": "success",
+                "processed_at": "2024-01-15T10:00:00Z",
+            }
+        )
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = (None, None)
         webhook_module._stripe_secrets_cache_time = 0.0
 
@@ -1891,6 +1885,7 @@ class TestChargeRefunded:
     def test_logs_refund_details(self, mock_dynamodb, caplog):
         """Should log refund details for audit trail."""
         import logging
+
         caplog.set_level(logging.INFO)
 
         from api.stripe_webhook import _handle_charge_refunded
@@ -1910,6 +1905,7 @@ class TestChargeRefunded:
     def test_handles_missing_refund_reason(self, caplog):
         """Should handle missing refund_reason gracefully."""
         import logging
+
         caplog.set_level(logging.INFO)
 
         from api.stripe_webhook import _handle_charge_refunded
@@ -1931,6 +1927,7 @@ class TestDisputeCreated:
     def test_logs_dispute_warning(self, mock_dynamodb, caplog):
         """Should log dispute as warning for attention."""
         import logging
+
         caplog.set_level(logging.WARNING)
 
         from api.stripe_webhook import _handle_dispute_created
@@ -1950,6 +1947,7 @@ class TestDisputeCreated:
     def test_handles_nested_customer_id(self, caplog):
         """Should handle customer_id nested in charge object."""
         import logging
+
         caplog.set_level(logging.WARNING)
 
         from api.stripe_webhook import _handle_dispute_created
@@ -1967,6 +1965,7 @@ class TestDisputeCreated:
     def test_handles_missing_customer_id(self, caplog):
         """Should handle missing customer_id gracefully."""
         import logging
+
         caplog.set_level(logging.WARNING)
 
         from api.stripe_webhook import _handle_dispute_created
@@ -1986,6 +1985,7 @@ class TestDisputeCreated:
         import logging
 
         import boto3
+
         caplog.set_level(logging.INFO)
 
         # Create a real SNS topic via moto
@@ -1997,6 +1997,7 @@ class TestDisputeCreated:
 
         # Reset SNS client so it picks up moto mock
         from shared.aws_clients import reset_clients
+
         reset_clients()
 
         try:
@@ -2018,6 +2019,7 @@ class TestDisputeCreated:
     def test_skips_sns_when_alert_topic_not_configured(self, caplog):
         """Should skip SNS notification when ALERT_TOPIC_ARN is not set."""
         import logging
+
         caplog.set_level(logging.DEBUG, logger="api.stripe_webhook")
 
         os.environ.pop("ALERT_TOPIC_ARN", None)
@@ -2040,6 +2042,7 @@ class TestDisputeCreated:
         """Should handle SNS publish errors gracefully without breaking dispute handling."""
         import logging
         from unittest.mock import MagicMock, patch
+
         caplog.set_level(logging.WARNING)
 
         os.environ["ALERT_TOPIC_ARN"] = "arn:aws:sns:us-east-1:123456789:fake-topic"
@@ -2084,6 +2087,7 @@ class TestWebhookHandlerTransientErrors:
 
         # Reset secrets cache
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = (None, None)
         webhook_module._stripe_secrets_cache_time = 0.0
 
@@ -2124,9 +2128,7 @@ class TestSubscriptionRaceConditions:
                 "stripe_customer_id": "cus_race",
                 "email_verified": True,
                 "payment_failures": 2,
-                "first_payment_failure_at": (
-                    datetime.now(timezone.utc) - timedelta(days=5)
-                ).isoformat(),
+                "first_payment_failure_at": (datetime.now(timezone.utc) - timedelta(days=5)).isoformat(),
             }
         )
 
@@ -2137,14 +2139,7 @@ class TestSubscriptionRaceConditions:
             "customer": "cus_race",
             "subscription": "sub_race",
             "billing_reason": "subscription_cycle",
-            "lines": {
-                "data": [
-                    {
-                        "type": "subscription",
-                        "period": {"start": 1706745600, "end": 1709424000}
-                    }
-                ]
-            }
+            "lines": {"data": [{"type": "subscription", "period": {"start": 1706745600, "end": 1709424000}}]},
         }
 
         _handle_invoice_paid(invoice)
@@ -2217,11 +2212,7 @@ class TestRecordBillingEvent:
             "type": "invoice.paid",
             "created": 1706745600,
             "livemode": False,
-            "data": {
-                "object": {
-                    "customer": "cus_audit"
-                }
-            }
+            "data": {"object": {"customer": "cus_audit"}},
         }
 
         _record_billing_event(event, "success")
@@ -2247,7 +2238,7 @@ class TestRecordBillingEvent:
         event = {
             "id": "evt_failed",
             "type": "checkout.session.completed",
-            "data": {"object": {"customer": "cus_failed"}}
+            "data": {"object": {"customer": "cus_failed"}},
         }
 
         _record_billing_event(event, "failed", "User not found")
@@ -2269,7 +2260,7 @@ class TestRecordBillingEvent:
         event = {
             "id": "evt_no_customer",
             "type": "checkout.session.completed",
-            "data": {"object": {}}  # No customer field
+            "data": {"object": {}},  # No customer field
         }
 
         _record_billing_event(event, "success")
@@ -2344,6 +2335,7 @@ class TestHandlerSignatureValidation:
         os.environ["STRIPE_WEBHOOK_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123456789012:secret:webhook"
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
 
@@ -2352,6 +2344,7 @@ class TestHandlerSignatureValidation:
         api_gateway_event["headers"] = {}  # No stripe-signature header
 
         from api.stripe_webhook import handler
+
         result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 400
@@ -2523,14 +2516,7 @@ class TestHandleInvoicePaidMissingCustomer:
             "customer": "cus_nonexistent",
             "subscription": "sub_test",
             "billing_reason": "subscription_cycle",
-            "lines": {
-                "data": [
-                    {
-                        "type": "subscription",
-                        "period": {"start": 1706745600, "end": 1709424000}
-                    }
-                ]
-            }
+            "lines": {"data": [{"type": "subscription", "period": {"start": 1706745600, "end": 1709424000}}]},
         }
 
         # Should not raise - just logs warning
@@ -2659,6 +2645,7 @@ class TestSubscriptionUpdatedEdgeCases:
         import importlib
 
         import api.stripe_webhook as webhook_module
+
         importlib.reload(webhook_module)
 
         subscription = {
@@ -2673,7 +2660,7 @@ class TestSubscriptionUpdatedEdgeCases:
                         "current_period_end": 1709424000,
                     }
                 ]
-            }
+            },
         }
 
         webhook_module._handle_subscription_updated(subscription)
@@ -2695,6 +2682,7 @@ class TestSubscriptionDeletedEdgeCases:
         """Should log warning when period_end is in the future."""
         import logging
         import time
+
         caplog.set_level(logging.WARNING)
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -2874,6 +2862,7 @@ class TestWebhookSignatureTampering:
 
         # Reset secrets cache with test webhook secret
         import api.stripe_webhook as webhook_module
+
         webhook_secret = "whsec_test_secret_key"
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", webhook_secret)
         webhook_module._stripe_secrets_cache_time = 9999999999.0
@@ -2883,9 +2872,7 @@ class TestWebhookSignatureTampering:
         timestamp = int(time.time())
         signed_payload = f"{timestamp}.{original_payload}"
         expected_sig = hmac.new(
-            webhook_secret.encode("utf-8"),
-            signed_payload.encode("utf-8"),
-            stdlib_hashlib.sha256
+            webhook_secret.encode("utf-8"), signed_payload.encode("utf-8"), stdlib_hashlib.sha256
         ).hexdigest()
         stripe_signature = f"t={timestamp},v1={expected_sig}"
 
@@ -2897,6 +2884,7 @@ class TestWebhookSignatureTampering:
         api_gateway_event["headers"] = {"stripe-signature": stripe_signature}
 
         from api.stripe_webhook import handler
+
         result = handler(api_gateway_event, {})
 
         # Should be rejected - signature doesn't match tampered payload
@@ -2917,6 +2905,7 @@ class TestWebhookSignatureTampering:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         webhook_secret = "whsec_test_expired"
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", webhook_secret)
         webhook_module._stripe_secrets_cache_time = 9999999999.0
@@ -2926,9 +2915,7 @@ class TestWebhookSignatureTampering:
         old_timestamp = int(time.time()) - 360  # 6 minutes ago
         signed_payload = f"{old_timestamp}.{payload}"
         expected_sig = hmac.new(
-            webhook_secret.encode("utf-8"),
-            signed_payload.encode("utf-8"),
-            stdlib_hashlib.sha256
+            webhook_secret.encode("utf-8"), signed_payload.encode("utf-8"), stdlib_hashlib.sha256
         ).hexdigest()
         stripe_signature = f"t={old_timestamp},v1={expected_sig}"
 
@@ -2937,6 +2924,7 @@ class TestWebhookSignatureTampering:
         api_gateway_event["headers"] = {"stripe-signature": stripe_signature}
 
         from api.stripe_webhook import handler
+
         result = handler(api_gateway_event, {})
 
         # Should be rejected due to timestamp tolerance
@@ -2977,6 +2965,7 @@ class TestWebhookSignatureTampering:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_test")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
 
@@ -2986,6 +2975,7 @@ class TestWebhookSignatureTampering:
         api_gateway_event["headers"] = {"stripe-signature": "v1=abc123"}
 
         from api.stripe_webhook import handler
+
         result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 400
@@ -3005,6 +2995,7 @@ class TestWebhookSignatureTampering:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         # Server expects this secret
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_correct_secret")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
@@ -3015,9 +3006,7 @@ class TestWebhookSignatureTampering:
         timestamp = int(time.time())
         signed_payload = f"{timestamp}.{payload}"
         wrong_sig = hmac.new(
-            wrong_secret.encode("utf-8"),
-            signed_payload.encode("utf-8"),
-            stdlib_hashlib.sha256
+            wrong_secret.encode("utf-8"), signed_payload.encode("utf-8"), stdlib_hashlib.sha256
         ).hexdigest()
         stripe_signature = f"t={timestamp},v1={wrong_sig}"
 
@@ -3026,6 +3015,7 @@ class TestWebhookSignatureTampering:
         api_gateway_event["headers"] = {"stripe-signature": stripe_signature}
 
         from api.stripe_webhook import handler
+
         result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 400
@@ -3042,12 +3032,14 @@ class TestWebhookErrorResponseQuality:
         """Signature errors should not leak the webhook secret in logs or response."""
         pytest.importorskip("stripe")
         import logging
+
         caplog.set_level(logging.DEBUG)
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         secret = "whsec_supersecret123"
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", secret)
         webhook_module._stripe_secrets_cache_time = 9999999999.0
@@ -3057,6 +3049,7 @@ class TestWebhookErrorResponseQuality:
         api_gateway_event["headers"] = {"stripe-signature": "invalid_signature"}
 
         from api.stripe_webhook import handler
+
         result = handler(api_gateway_event, {})
 
         # Secret should NOT appear in response
@@ -3074,6 +3067,7 @@ class TestWebhookErrorResponseQuality:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_test")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
 
@@ -3082,6 +3076,7 @@ class TestWebhookErrorResponseQuality:
         api_gateway_event["headers"] = {"stripe-signature": "t=123,v1=wrong"}
 
         from api.stripe_webhook import handler
+
         result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 400
@@ -3105,6 +3100,7 @@ class TestGetStripeSecretsPlainTextFallback:
         from unittest.mock import patch
 
         import boto3
+
         sm = boto3.client("secretsmanager", region_name="us-east-1")
         resp1 = sm.create_secret(
             Name="stripe-api-key-plain",
@@ -3116,14 +3112,17 @@ class TestGetStripeSecretsPlainTextFallback:
         )
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = (None, None)
         webhook_module._stripe_secrets_cache_time = 0.0
         # Force fresh client so it uses the mocked Secrets Manager
         webhook_module._secretsmanager = None
 
         # Patch module-level constants (they are read at import time)
-        with patch.object(webhook_module, "STRIPE_SECRET_ARN", resp1["ARN"]), \
-             patch.object(webhook_module, "STRIPE_WEBHOOK_SECRET_ARN", resp2["ARN"]):
+        with (
+            patch.object(webhook_module, "STRIPE_SECRET_ARN", resp1["ARN"]),
+            patch.object(webhook_module, "STRIPE_WEBHOOK_SECRET_ARN", resp2["ARN"]),
+        ):
             api_key, webhook_secret = webhook_module.get_stripe_secrets()
 
         # Plain text should be used directly (JSONDecodeError fallback)
@@ -3136,6 +3135,7 @@ class TestGetStripeSecretsPlainTextFallback:
         from unittest.mock import patch
 
         import boto3
+
         sm = boto3.client("secretsmanager", region_name="us-east-1")
         resp1 = sm.create_secret(
             Name="stripe-key-json",
@@ -3147,12 +3147,15 @@ class TestGetStripeSecretsPlainTextFallback:
         )
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = (None, None)
         webhook_module._stripe_secrets_cache_time = 0.0
         webhook_module._secretsmanager = None
 
-        with patch.object(webhook_module, "STRIPE_SECRET_ARN", resp1["ARN"]), \
-             patch.object(webhook_module, "STRIPE_WEBHOOK_SECRET_ARN", resp2["ARN"]):
+        with (
+            patch.object(webhook_module, "STRIPE_SECRET_ARN", resp1["ARN"]),
+            patch.object(webhook_module, "STRIPE_WEBHOOK_SECRET_ARN", resp2["ARN"]),
+        ):
             api_key, webhook_secret = webhook_module.get_stripe_secrets()
 
         assert api_key == "sk_test_json"
@@ -3165,6 +3168,7 @@ class TestGetStripeSecretsPlainTextFallback:
         import time
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_cached", "whsec_cached")
         webhook_module._stripe_secrets_cache_time = time.time()  # Just now
 
@@ -3187,6 +3191,7 @@ class TestHandlerFullEventFlow:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
 
@@ -3213,6 +3218,7 @@ class TestHandlerFullEventFlow:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
 
@@ -3243,16 +3249,19 @@ class TestHandlerFullEventFlow:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
 
         # Pre-claim the event
         billing_table = mock_dynamodb.Table("pkgwatch-billing-events")
-        billing_table.put_item(Item={
-            "pk": "evt_dup_handler",
-            "sk": "invoice.paid",
-            "status": "success",
-        })
+        billing_table.put_item(
+            Item={
+                "pk": "evt_dup_handler",
+                "sk": "invoice.paid",
+                "status": "success",
+            }
+        )
 
         mock_event = {
             "id": "evt_dup_handler",
@@ -3283,6 +3292,7 @@ class TestHandlerFullEventFlow:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
 
@@ -3301,8 +3311,10 @@ class TestHandlerFullEventFlow:
             "UpdateItem",
         )
 
-        with patch("stripe.Webhook.construct_event", return_value=mock_event), \
-             patch.object(webhook_module, "_handle_checkout_completed", side_effect=dynamo_error):
+        with (
+            patch("stripe.Webhook.construct_event", return_value=mock_event),
+            patch.object(webhook_module, "_handle_checkout_completed", side_effect=dynamo_error),
+        ):
             result = webhook_module.handler(api_gateway_event, {})
 
         assert result["statusCode"] == 500
@@ -3328,6 +3340,7 @@ class TestHandlerFullEventFlow:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
 
@@ -3341,8 +3354,10 @@ class TestHandlerFullEventFlow:
         api_gateway_event["body"] = json.dumps({"type": "checkout.session.completed"})
         api_gateway_event["headers"] = {"stripe-signature": "t=123,v1=abc"}
 
-        with patch("stripe.Webhook.construct_event", return_value=mock_event), \
-             patch.object(webhook_module, "_handle_checkout_completed", side_effect=ValueError("bad data")):
+        with (
+            patch("stripe.Webhook.construct_event", return_value=mock_event),
+            patch.object(webhook_module, "_handle_checkout_completed", side_effect=ValueError("bad data")),
+        ):
             result = webhook_module.handler(api_gateway_event, {})
 
         assert result["statusCode"] == 200
@@ -3362,6 +3377,7 @@ class TestHandlerFullEventFlow:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
 
@@ -3375,8 +3391,10 @@ class TestHandlerFullEventFlow:
         api_gateway_event["body"] = json.dumps({"type": "checkout.session.completed"})
         api_gateway_event["headers"] = {"stripe-signature": "t=123,v1=abc"}
 
-        with patch("stripe.Webhook.construct_event", return_value=mock_event), \
-             patch.object(webhook_module, "_handle_checkout_completed", side_effect=RuntimeError("unexpected")):
+        with (
+            patch("stripe.Webhook.construct_event", return_value=mock_event),
+            patch.object(webhook_module, "_handle_checkout_completed", side_effect=RuntimeError("unexpected")),
+        ):
             result = webhook_module.handler(api_gateway_event, {})
 
         assert result["statusCode"] == 500
@@ -3396,6 +3414,7 @@ class TestHandlerFullEventFlow:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
 
@@ -3409,11 +3428,14 @@ class TestHandlerFullEventFlow:
         api_gateway_event["body"] = json.dumps({"type": "checkout.session.completed"})
         api_gateway_event["headers"] = {"stripe-signature": "t=123,v1=abc"}
 
-        with patch("stripe.Webhook.construct_event", return_value=mock_event), \
-             patch.object(
-                 webhook_module, "_handle_checkout_completed",
-                 side_effect=stripe.error.APIConnectionError("connection failed"),
-             ):
+        with (
+            patch("stripe.Webhook.construct_event", return_value=mock_event),
+            patch.object(
+                webhook_module,
+                "_handle_checkout_completed",
+                side_effect=stripe.error.APIConnectionError("connection failed"),
+            ),
+        ):
             result = webhook_module.handler(api_gateway_event, {})
 
         assert result["statusCode"] == 500
@@ -3433,6 +3455,7 @@ class TestHandlerFullEventFlow:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
 
@@ -3446,11 +3469,14 @@ class TestHandlerFullEventFlow:
         api_gateway_event["body"] = json.dumps({"type": "checkout.session.completed"})
         api_gateway_event["headers"] = {"stripe-signature": "t=123,v1=abc"}
 
-        with patch("stripe.Webhook.construct_event", return_value=mock_event), \
-             patch.object(
-                 webhook_module, "_handle_checkout_completed",
-                 side_effect=stripe.error.InvalidRequestError("bad request", "param"),
-             ):
+        with (
+            patch("stripe.Webhook.construct_event", return_value=mock_event),
+            patch.object(
+                webhook_module,
+                "_handle_checkout_completed",
+                side_effect=stripe.error.InvalidRequestError("bad request", "param"),
+            ),
+        ):
             result = webhook_module.handler(api_gateway_event, {})
 
         assert result["statusCode"] == 200
@@ -3474,6 +3500,7 @@ class TestHandlerEventRouting:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
 
@@ -3488,8 +3515,10 @@ class TestHandlerEventRouting:
         api_gateway_event["headers"] = {"stripe-signature": "t=123,v1=abc"}
 
         mock_handler = MagicMock()
-        with patch("stripe.Webhook.construct_event", return_value=mock_event), \
-             patch.object(webhook_module, "_handle_subscription_updated", mock_handler):
+        with (
+            patch("stripe.Webhook.construct_event", return_value=mock_event),
+            patch.object(webhook_module, "_handle_subscription_updated", mock_handler),
+        ):
             result = webhook_module.handler(api_gateway_event, {})
 
         assert result["statusCode"] == 200
@@ -3505,6 +3534,7 @@ class TestHandlerEventRouting:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
 
@@ -3519,8 +3549,10 @@ class TestHandlerEventRouting:
         api_gateway_event["headers"] = {"stripe-signature": "t=123,v1=abc"}
 
         mock_handler = MagicMock()
-        with patch("stripe.Webhook.construct_event", return_value=mock_event), \
-             patch.object(webhook_module, "_handle_subscription_deleted", mock_handler):
+        with (
+            patch("stripe.Webhook.construct_event", return_value=mock_event),
+            patch.object(webhook_module, "_handle_subscription_deleted", mock_handler),
+        ):
             result = webhook_module.handler(api_gateway_event, {})
 
         assert result["statusCode"] == 200
@@ -3536,6 +3568,7 @@ class TestHandlerEventRouting:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
 
@@ -3550,8 +3583,10 @@ class TestHandlerEventRouting:
         api_gateway_event["headers"] = {"stripe-signature": "t=123,v1=abc"}
 
         mock_handler = MagicMock()
-        with patch("stripe.Webhook.construct_event", return_value=mock_event), \
-             patch.object(webhook_module, "_handle_charge_refunded", mock_handler):
+        with (
+            patch("stripe.Webhook.construct_event", return_value=mock_event),
+            patch.object(webhook_module, "_handle_charge_refunded", mock_handler),
+        ):
             result = webhook_module.handler(api_gateway_event, {})
 
         assert result["statusCode"] == 200
@@ -3567,6 +3602,7 @@ class TestHandlerEventRouting:
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
 
         import api.stripe_webhook as webhook_module
+
         webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
         webhook_module._stripe_secrets_cache_time = 9999999999.0
 
@@ -3581,8 +3617,10 @@ class TestHandlerEventRouting:
         api_gateway_event["headers"] = {"stripe-signature": "t=123,v1=abc"}
 
         mock_handler = MagicMock()
-        with patch("stripe.Webhook.construct_event", return_value=mock_event), \
-             patch.object(webhook_module, "_handle_dispute_created", mock_handler):
+        with (
+            patch("stripe.Webhook.construct_event", return_value=mock_event),
+            patch.object(webhook_module, "_handle_dispute_created", mock_handler),
+        ):
             result = webhook_module.handler(api_gateway_event, {})
 
         assert result["statusCode"] == 200
@@ -3619,11 +3657,13 @@ class TestCheckoutCompletedWithSubscription:
         # Mock stripe.Subscription.retrieve
         mock_subscription = {
             "items": {
-                "data": [{
-                    "price": {"id": "price_pro_test"},
-                    "current_period_start": 1706745600,
-                    "current_period_end": 1709424000,
-                }]
+                "data": [
+                    {
+                        "price": {"id": "price_pro_test"},
+                        "current_period_start": 1706745600,
+                        "current_period_end": 1709424000,
+                    }
+                ]
             }
         }
 
@@ -3634,8 +3674,10 @@ class TestCheckoutCompletedWithSubscription:
         }
 
         # Patch PRICE_TO_TIER since it reads env vars at module load time
-        with patch("stripe.Subscription.retrieve", return_value=mock_subscription), \
-             patch.dict(webhook_module.PRICE_TO_TIER, {"price_pro_test": "pro"}):
+        with (
+            patch("stripe.Subscription.retrieve", return_value=mock_subscription),
+            patch.dict(webhook_module.PRICE_TO_TIER, {"price_pro_test": "pro"}),
+        ):
             webhook_module._handle_checkout_completed(session)
 
         response = table.get_item(Key={"pk": "user_sub_checkout", "sk": key_hash})
@@ -3673,11 +3715,13 @@ class TestCheckoutCompletedWithSubscription:
 
         mock_subscription = {
             "items": {
-                "data": [{
-                    "price": {"id": "price_starter"},
-                    "current_period_start": 1706745600,
-                    "current_period_end": 1709424000,
-                }]
+                "data": [
+                    {
+                        "price": {"id": "price_starter"},
+                        "current_period_start": 1706745600,
+                        "current_period_end": 1709424000,
+                    }
+                ]
             }
         }
 
@@ -3732,6 +3776,7 @@ class TestCheckoutCompletedWithSubscription:
     def test_checkout_no_email_no_customer_id(self, mock_dynamodb, caplog):
         """Checkout with neither email nor customer_id should log warning and return."""
         import logging
+
         caplog.set_level(logging.WARNING)
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -3754,6 +3799,7 @@ class TestCheckoutCompletedWithSubscription:
         pytest.importorskip("stripe")
         import logging
         from unittest.mock import patch
+
         caplog.set_level(logging.WARNING)
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -3762,11 +3808,13 @@ class TestCheckoutCompletedWithSubscription:
 
         mock_subscription = {
             "items": {
-                "data": [{
-                    "price": {"id": "price_starter"},
-                    "current_period_start": 1706745600,
-                    "current_period_end": 1709424000,
-                }]
+                "data": [
+                    {
+                        "price": {"id": "price_starter"},
+                        "current_period_start": 1706745600,
+                        "current_period_end": 1709424000,
+                    }
+                ]
             }
         }
 
@@ -4047,6 +4095,7 @@ class TestRecordBillingEventErrorHandling:
         """Should swallow DynamoDB errors and log them."""
         import logging
         from unittest.mock import MagicMock, patch
+
         caplog.set_level(logging.ERROR)
 
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
@@ -4079,6 +4128,7 @@ class TestReleaseEventClaimErrorHandling:
         """Should swallow errors when releasing claim fails."""
         import logging
         from unittest.mock import MagicMock, patch
+
         caplog.set_level(logging.ERROR)
 
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
@@ -4104,6 +4154,7 @@ class TestCustomerExistsErrorHandling:
         """Should return False when query raises an exception."""
         import logging
         from unittest.mock import MagicMock, patch
+
         caplog.set_level(logging.ERROR)
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -4156,6 +4207,7 @@ class TestUpdateUserSubscriptionStateDowngradeWarning:
     def test_logs_warning_when_downgrading_over_limit(self, mock_dynamodb, caplog):
         """Should log warning when user has usage over the new tier's limit."""
         import logging
+
         caplog.set_level(logging.WARNING)
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -4263,12 +4315,14 @@ class TestSubscriptionUpdatedTrialing:
                 "status": "trialing",
                 "cancel_at_period_end": False,
                 "items": {
-                    "data": [{
-                        "price": {"id": "price_trial_pro"},
-                        "current_period_start": 1706745600,
-                        "current_period_end": 1709424000,
-                    }]
-                }
+                    "data": [
+                        {
+                            "price": {"id": "price_trial_pro"},
+                            "current_period_start": 1706745600,
+                            "current_period_end": 1709424000,
+                        }
+                    ]
+                },
             }
 
             _handle_subscription_updated(subscription)

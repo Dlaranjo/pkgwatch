@@ -271,9 +271,7 @@ class TestDuplicateEmailHandling:
     """Tests for duplicate email handling with enumeration prevention."""
 
     @mock_aws
-    def test_existing_verified_user_returns_200(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_existing_verified_user_returns_200(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should return 200 for existing verified user (enumeration prevention)."""
         # Create an existing verified user
         key_hash = hashlib.sha256(b"pw_existing_key").hexdigest()
@@ -301,9 +299,7 @@ class TestDuplicateEmailHandling:
         assert "email" in body["message"].lower()
 
     @mock_aws
-    def test_existing_verified_user_sends_magic_link(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_existing_verified_user_sends_magic_link(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should send magic link to existing verified user."""
         # Create an existing verified user
         key_hash = hashlib.sha256(b"pw_existing_key").hexdigest()
@@ -327,6 +323,7 @@ class TestDuplicateEmailHandling:
 
         # Verify magic token was created on the user record
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             KeyConditionExpression=Key("pk").eq("user_existing456"),
         )
@@ -337,9 +334,7 @@ class TestDuplicateEmailHandling:
         assert "magic_expires" in api_key_item
 
     @mock_aws
-    def test_new_email_creates_pending_user(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_new_email_creates_pending_user(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should create PENDING record for new email."""
         from api.signup import handler
 
@@ -351,6 +346,7 @@ class TestDuplicateEmailHandling:
 
         # Verify PENDING user was created
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("newuser@example.com"),
@@ -361,9 +357,7 @@ class TestDuplicateEmailHandling:
         assert "verification_token" in response["Items"][0]
 
     @mock_aws
-    def test_case_insensitive_email_matching(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_case_insensitive_email_matching(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should handle email case insensitively."""
         # Create user with lowercase email
         api_keys_table.put_item(
@@ -393,9 +387,7 @@ class TestReferralCodeValidation:
     """Tests for referral code handling during signup."""
 
     @mock_aws
-    def test_valid_referral_code_stored(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_valid_referral_code_stored(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should store valid referral code in PENDING record."""
         # Create a referrer user with referral code
         api_keys_table.put_item(
@@ -409,10 +401,12 @@ class TestReferralCodeValidation:
 
         from api.signup import handler
 
-        base_event["body"] = json.dumps({
-            "email": "newuser_ref@example.com",
-            "referral_code": "REF12345",
-        })
+        base_event["body"] = json.dumps(
+            {
+                "email": "newuser_ref@example.com",
+                "referral_code": "REF12345",
+            }
+        )
 
         result = handler(base_event, {})
 
@@ -420,6 +414,7 @@ class TestReferralCodeValidation:
 
         # Verify referral code was stored in PENDING record
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("newuser_ref@example.com"),
@@ -428,16 +423,16 @@ class TestReferralCodeValidation:
         assert pending_item["referral_code_used"] == "REF12345"
 
     @mock_aws
-    def test_invalid_format_referral_code_ignored(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_invalid_format_referral_code_ignored(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should ignore referral code with invalid format."""
         from api.signup import handler
 
-        base_event["body"] = json.dumps({
-            "email": "newuser_invalid_ref@example.com",
-            "referral_code": "bad",  # Too short
-        })
+        base_event["body"] = json.dumps(
+            {
+                "email": "newuser_invalid_ref@example.com",
+                "referral_code": "bad",  # Too short
+            }
+        )
 
         result = handler(base_event, {})
 
@@ -445,6 +440,7 @@ class TestReferralCodeValidation:
 
         # Verify referral code was NOT stored
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("newuser_invalid_ref@example.com"),
@@ -453,16 +449,16 @@ class TestReferralCodeValidation:
         assert "referral_code_used" not in pending_item
 
     @mock_aws
-    def test_nonexistent_referral_code_ignored(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_nonexistent_referral_code_ignored(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should ignore referral code that doesn't exist in DB."""
         from api.signup import handler
 
-        base_event["body"] = json.dumps({
-            "email": "newuser_noref@example.com",
-            "referral_code": "NOTEXIST",
-        })
+        base_event["body"] = json.dumps(
+            {
+                "email": "newuser_noref@example.com",
+                "referral_code": "NOTEXIST",
+            }
+        )
 
         result = handler(base_event, {})
 
@@ -470,6 +466,7 @@ class TestReferralCodeValidation:
 
         # Verify referral code was NOT stored (doesn't exist)
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("newuser_noref@example.com"),
@@ -478,32 +475,32 @@ class TestReferralCodeValidation:
         assert "referral_code_used" not in pending_item
 
     @mock_aws
-    def test_null_referral_code_handled(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_null_referral_code_handled(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should handle null/missing referral code gracefully."""
         from api.signup import handler
 
-        base_event["body"] = json.dumps({
-            "email": "newuser_nullref@example.com",
-            "referral_code": None,
-        })
+        base_event["body"] = json.dumps(
+            {
+                "email": "newuser_nullref@example.com",
+                "referral_code": None,
+            }
+        )
 
         result = handler(base_event, {})
 
         assert result["statusCode"] == 200
 
     @mock_aws
-    def test_empty_referral_code_handled(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_empty_referral_code_handled(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should handle empty string referral code gracefully."""
         from api.signup import handler
 
-        base_event["body"] = json.dumps({
-            "email": "newuser_emptyref@example.com",
-            "referral_code": "",
-        })
+        base_event["body"] = json.dumps(
+            {
+                "email": "newuser_emptyref@example.com",
+                "referral_code": "",
+            }
+        )
 
         result = handler(base_event, {})
 
@@ -544,6 +541,7 @@ class TestResendCooldown:
 
         # Verify token was NOT updated (still original)
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("cooldown@example.com"),
@@ -552,9 +550,7 @@ class TestResendCooldown:
         # last_verification_sent should be very close to the original (not updated)
 
     @mock_aws
-    def test_resend_after_cooldown_sends_new_email(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_resend_after_cooldown_sends_new_email(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should resend verification email after cooldown passes."""
         now = datetime.now(timezone.utc)
         old_time = now - timedelta(seconds=120)  # 2 minutes ago, past 60s cooldown
@@ -583,6 +579,7 @@ class TestResendCooldown:
 
         # Verify token was updated (new token generated)
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("resend@example.com"),
@@ -595,9 +592,7 @@ class TestExpiredPendingCleanup:
     """Tests for cleanup of expired PENDING records."""
 
     @mock_aws
-    def test_expired_pending_deleted(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_expired_pending_deleted(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should delete expired PENDING records on signup attempt."""
         now = datetime.now(timezone.utc)
         old_time = now - timedelta(hours=48)  # Expired 24 hours ago
@@ -626,6 +621,7 @@ class TestExpiredPendingCleanup:
 
         # Verify a new PENDING record exists (old one was cleaned up)
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("expired@example.com"),
@@ -642,9 +638,7 @@ class TestDatabaseErrorHandling:
     """Tests for database error handling."""
 
     @mock_aws
-    def test_dynamodb_query_error_returns_500(
-        self, mock_dynamodb, base_event, ses_client
-    ):
+    def test_dynamodb_query_error_returns_500(self, mock_dynamodb, base_event, ses_client):
         """Should return 500 on DynamoDB query error."""
         from api.signup import handler
 
@@ -663,9 +657,7 @@ class TestDatabaseErrorHandling:
             assert body["error"]["code"] == "internal_error"
 
     @mock_aws
-    def test_put_item_error_returns_500(
-        self, mock_dynamodb, base_event, ses_client
-    ):
+    def test_put_item_error_returns_500(self, mock_dynamodb, base_event, ses_client):
         """Should return 500 on DynamoDB put_item error."""
         from botocore.exceptions import ClientError
 
@@ -704,9 +696,7 @@ class TestConcurrentSignupAttempts:
     """Tests for concurrent signup handling (race conditions)."""
 
     @mock_aws
-    def test_conditional_write_conflict_returns_200(
-        self, mock_dynamodb, base_event, ses_client
-    ):
+    def test_conditional_write_conflict_returns_200(self, mock_dynamodb, base_event, ses_client):
         """Should return 200 on conditional write conflict (enumeration prevention)."""
 
         from api.signup import handler
@@ -746,9 +736,7 @@ class TestVerificationTokenGeneration:
     """Tests for verification token generation."""
 
     @mock_aws
-    def test_token_is_cryptographically_secure(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_token_is_cryptographically_secure(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should generate cryptographically secure verification tokens."""
         from api.signup import handler
 
@@ -760,6 +748,7 @@ class TestVerificationTokenGeneration:
 
         # Verify token properties
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("secure@example.com"),
@@ -772,9 +761,7 @@ class TestVerificationTokenGeneration:
         assert all(c.isalnum() or c in "-_" for c in token)
 
     @mock_aws
-    def test_verification_expires_in_24_hours(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_verification_expires_in_24_hours(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should set verification expiry to 24 hours."""
         from api.signup import handler
 
@@ -786,6 +773,7 @@ class TestVerificationTokenGeneration:
         assert result["statusCode"] == 200
 
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("expiry@example.com"),
@@ -799,9 +787,7 @@ class TestVerificationTokenGeneration:
         assert diff < 60  # Within 1 minute tolerance
 
     @mock_aws
-    def test_ttl_is_set_for_pending_record(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_ttl_is_set_for_pending_record(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should set TTL for auto-cleanup of PENDING records."""
         from api.signup import handler
 
@@ -812,6 +798,7 @@ class TestVerificationTokenGeneration:
         assert result["statusCode"] == 200
 
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("ttl@example.com"),
@@ -823,6 +810,7 @@ class TestVerificationTokenGeneration:
         ttl_timestamp = pending_item["ttl"]
         # DynamoDB stores numbers as Decimal, so check it's numeric
         from decimal import Decimal
+
         assert isinstance(ttl_timestamp, (int, float, Decimal))
 
 
@@ -830,9 +818,7 @@ class TestEmailSendingFailure:
     """Tests for email sending failure handling."""
 
     @mock_aws
-    def test_ses_failure_does_not_fail_signup(
-        self, mock_dynamodb, base_event, api_keys_table
-    ):
+    def test_ses_failure_does_not_fail_signup(self, mock_dynamodb, base_event, api_keys_table):
         """Should not fail signup if SES fails (user can request resend)."""
         from api.signup import handler
 
@@ -848,6 +834,7 @@ class TestEmailSendingFailure:
 
         # Verify user was still created
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("sesfail@example.com"),
@@ -859,9 +846,7 @@ class TestOriginHeaderHandling:
     """Tests for Origin header handling in CORS responses."""
 
     @mock_aws
-    def test_cors_origin_in_response(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_cors_origin_in_response(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should include CORS origin header in response."""
         from api.signup import handler
 
@@ -876,9 +861,7 @@ class TestOriginHeaderHandling:
         assert "Access-Control-Allow-Origin" in headers
 
     @mock_aws
-    def test_missing_origin_handled(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_missing_origin_handled(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should handle missing Origin header."""
         from api.signup import handler
 
@@ -890,9 +873,7 @@ class TestOriginHeaderHandling:
         assert result["statusCode"] == 200
 
     @mock_aws
-    def test_case_insensitive_origin_header(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_case_insensitive_origin_header(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should handle case-insensitive Origin header."""
         from api.signup import handler
 
@@ -909,9 +890,7 @@ class TestTimingNormalization:
     """Tests for timing normalization (enumeration prevention)."""
 
     @mock_aws
-    def test_response_takes_minimum_time(
-        self, mock_dynamodb, base_event, ses_client
-    ):
+    def test_response_takes_minimum_time(self, mock_dynamodb, base_event, ses_client):
         """Response should take at least MIN_RESPONSE_TIME_SECONDS."""
         from api.signup import MIN_RESPONSE_TIME_SECONDS, handler
 
@@ -931,9 +910,7 @@ class TestUserIdGeneration:
     """Tests for deterministic user ID generation."""
 
     @mock_aws
-    def test_user_id_is_deterministic(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_user_id_is_deterministic(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should generate deterministic user ID from email."""
         from api.signup import handler
 
@@ -948,6 +925,7 @@ class TestUserIdGeneration:
         assert result["statusCode"] == 200
 
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq(email),
@@ -956,9 +934,7 @@ class TestUserIdGeneration:
         assert pending_item["pk"] == expected_user_id
 
     @mock_aws
-    def test_user_id_is_lowercase_email_based(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_user_id_is_lowercase_email_based(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should generate user ID from lowercased email."""
         from api.signup import handler
 
@@ -975,6 +951,7 @@ class TestUserIdGeneration:
         assert result["statusCode"] == 200
 
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq(email_normalized),
@@ -987,9 +964,7 @@ class TestPendingRecordResendUpdate:
     """Tests for updating PENDING records on resend."""
 
     @mock_aws
-    def test_resend_updates_pending_record_fields(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_resend_updates_pending_record_fields(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should update verification fields when resending."""
         now = datetime.now(timezone.utc)
         old_time = now - timedelta(seconds=120)  # Past cooldown
@@ -1019,6 +994,7 @@ class TestPendingRecordResendUpdate:
 
         # Verify all fields were updated
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("resendupdate@example.com"),
@@ -1040,9 +1016,7 @@ class TestPendingWithoutExpiry:
     """Tests for handling PENDING records without expiry field."""
 
     @mock_aws
-    def test_pending_without_expiry_deleted(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_pending_without_expiry_deleted(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should delete PENDING record without verification_expires."""
         user_id = f"user_{hashlib.sha256(b'noexpiry@example.com').hexdigest()[:16]}"
         api_keys_table.put_item(
@@ -1066,6 +1040,7 @@ class TestPendingWithoutExpiry:
 
         # A new PENDING record should exist (old one was cleaned up)
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("noexpiry@example.com"),
@@ -1079,9 +1054,7 @@ class TestMagicLinkSendFailure:
     """Tests for magic link send failure handling."""
 
     @mock_aws
-    def test_magic_link_failure_still_returns_200(
-        self, mock_dynamodb, base_event, api_keys_table
-    ):
+    def test_magic_link_failure_still_returns_200(self, mock_dynamodb, base_event, api_keys_table):
         """Should return 200 even if magic link send fails (enumeration prevention)."""
         # Create an existing verified user
         key_hash = hashlib.sha256(b"pw_magic_fail_key").hexdigest()
@@ -1112,9 +1085,7 @@ class TestInvalidDateParsing:
     """Tests for handling invalid date formats in stored records."""
 
     @mock_aws
-    def test_invalid_expiry_format_creates_new_pending(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_invalid_expiry_format_creates_new_pending(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should handle invalid verification_expires format gracefully."""
         user_id = f"user_{hashlib.sha256(b'badexpiry@example.com').hexdigest()[:16]}"
         api_keys_table.put_item(
@@ -1139,9 +1110,7 @@ class TestInvalidDateParsing:
         assert result["statusCode"] == 200
 
     @mock_aws
-    def test_invalid_last_sent_format_proceeds_with_resend(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_invalid_last_sent_format_proceeds_with_resend(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should proceed with resend when last_verification_sent is invalid."""
         now = datetime.now(timezone.utc)
         old_token = "old_token_value_123456789012345678901234567890"
@@ -1170,6 +1139,7 @@ class TestInvalidDateParsing:
 
         # Verify token was updated (resend happened)
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("badsent@example.com"),
@@ -1182,11 +1152,10 @@ class TestResendUpdateError:
     """Tests for errors during PENDING record update on resend."""
 
     @mock_aws
-    def test_update_pending_error_returns_success(
-        self, mock_dynamodb, base_event, ses_client
-    ):
+    def test_update_pending_error_returns_success(self, mock_dynamodb, base_event, ses_client):
         """Should return success even if update_item fails (enumeration prevention)."""
         from api.signup import handler
+
         now = datetime.now(timezone.utc)
         old_time = now - timedelta(seconds=120)  # Past cooldown
 
@@ -1196,15 +1165,17 @@ class TestResendUpdateError:
 
             # First query returns valid PENDING record past cooldown
             mock_table.query.return_value = {
-                "Items": [{
-                    "pk": "user_resend_fail",
-                    "sk": "PENDING",
-                    "email": "resendfail@example.com",
-                    "verification_token": "old_token",
-                    "verification_expires": (now + timedelta(hours=24)).isoformat(),
-                    "last_verification_sent": old_time.isoformat(),
-                    "email_verified": False,
-                }]
+                "Items": [
+                    {
+                        "pk": "user_resend_fail",
+                        "sk": "PENDING",
+                        "email": "resendfail@example.com",
+                        "verification_token": "old_token",
+                        "verification_expires": (now + timedelta(hours=24)).isoformat(),
+                        "last_verification_sent": old_time.isoformat(),
+                        "email_verified": False,
+                    }
+                ]
             }
 
             # Update fails
@@ -1223,9 +1194,7 @@ class TestResendEmailFailure:
     """Tests for email send failure during resend."""
 
     @mock_aws
-    def test_resend_email_failure_still_succeeds(
-        self, mock_dynamodb, base_event, api_keys_table
-    ):
+    def test_resend_email_failure_still_succeeds(self, mock_dynamodb, base_event, api_keys_table):
         """Should return success even if resend email fails."""
         now = datetime.now(timezone.utc)
         old_time = now - timedelta(seconds=120)  # Past cooldown
@@ -1256,6 +1225,7 @@ class TestResendEmailFailure:
 
         # Token should still be updated (update_item succeeded before email fail)
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("resendemailfail@example.com"),
@@ -1269,9 +1239,7 @@ class TestEmailNormalization:
     """Tests for email normalization (whitespace trimming, lowercasing)."""
 
     @mock_aws
-    def test_email_whitespace_trimmed(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_email_whitespace_trimmed(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should trim whitespace from email."""
         from api.signup import handler
 
@@ -1282,6 +1250,7 @@ class TestEmailNormalization:
         assert result["statusCode"] == 200
 
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("trimmed@example.com"),
@@ -1289,9 +1258,7 @@ class TestEmailNormalization:
         assert len(response["Items"]) == 1
 
     @mock_aws
-    def test_email_lowercased(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_email_lowercased(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should lowercase email."""
         from api.signup import handler
 
@@ -1302,6 +1269,7 @@ class TestEmailNormalization:
         assert result["statusCode"] == 200
 
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("upper@example.com"),

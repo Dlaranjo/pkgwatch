@@ -435,9 +435,7 @@ class TestAuthEdgeCases:
         )
 
         # Try to increment - should be denied
-        allowed, count = check_and_increment_usage(
-            user["user_id"], user["key_hash"], TIER_LIMITS["free"]
-        )
+        allowed, count = check_and_increment_usage(user["user_id"], user["key_hash"], TIER_LIMITS["free"])
 
         assert allowed is False
         assert count == TIER_LIMITS["free"]
@@ -462,9 +460,7 @@ class TestAuthEdgeCases:
         )
 
         # Should be allowed
-        allowed, count = check_and_increment_usage(
-            user["user_id"], user["key_hash"], TIER_LIMITS["free"]
-        )
+        allowed, count = check_and_increment_usage(user["user_id"], user["key_hash"], TIER_LIMITS["free"])
 
         assert allowed is True
         assert count == TIER_LIMITS["free"]
@@ -836,9 +832,7 @@ class TestPostScanEdgeCases:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": ["lodash", "express", "react"]
-        })
+        api_gateway_event["body"] = json.dumps({"dependencies": ["lodash", "express", "react"]})
 
         result = handler(api_gateway_event, {})
 
@@ -870,13 +864,15 @@ class TestPostScanEdgeCases:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {
-                "lodash": "^4.17.21",
-                "express": None,
-                "": "1.0.0",  # Empty key
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {
+                    "lodash": "^4.17.21",
+                    "express": None,
+                    "": "1.0.0",  # Empty key
+                }
             }
-        })
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -907,15 +903,17 @@ class TestPostScanEdgeCases:
 
         from api.post_scan import handler
 
-        package_json = json.dumps({
-            "name": "test-project",
-            "dependencies": {
-                "lodash": "^4.17.21",
-            },
-            "devDependencies": {
-                "jest": "^29.0.0",
-            },
-        })
+        package_json = json.dumps(
+            {
+                "name": "test-project",
+                "dependencies": {
+                    "lodash": "^4.17.21",
+                },
+                "devDependencies": {
+                    "jest": "^29.0.0",
+                },
+            }
+        )
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key

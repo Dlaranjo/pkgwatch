@@ -1,4 +1,5 @@
 """Tests for data quality gates (queryable field, downloads_status, etc.)."""
+
 import os
 import sys
 
@@ -161,9 +162,7 @@ class TestSeedPackagesInitialState:
 
         # Call batch_write_packages directly
         packages = [{"name": "test-package", "rank": 1}]
-        success, errors = seed_packages.batch_write_packages(
-            "pkgwatch-packages", packages, "npm"
-        )
+        success, errors = seed_packages.batch_write_packages("pkgwatch-packages", packages, "npm")
 
         assert success == 1
         assert errors == 0

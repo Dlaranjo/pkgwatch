@@ -50,9 +50,9 @@ def handler(event, context):
         # - We paginate to avoid Lambda timeouts
         scan_kwargs = {
             "FilterExpression": (
-                Attr("sk").eq("USER_META") &
-                Attr("referral_pending").eq(True) &
-                Attr("referral_pending_expires").lt(now_iso)
+                Attr("sk").eq("USER_META")
+                & Attr("referral_pending").eq(True)
+                & Attr("referral_pending_expires").lt(now_iso)
             ),
             "ProjectionExpression": "pk, referred_by, referral_pending_expires",
         }
@@ -82,8 +82,7 @@ def handler(event, context):
                         update_referrer_stats(referrer_id, pending_delta=-1)
 
                     logger.info(
-                        f"Cleaned up stale pending referral: {user_id} "
-                        f"(referrer: {referrer_id}, expired: {expires})"
+                        f"Cleaned up stale pending referral: {user_id} (referrer: {referrer_id}, expired: {expires})"
                     )
                     cleaned += 1
 
@@ -109,9 +108,7 @@ def handler(event, context):
         logger.error(f"Error in referral cleanup scan: {e}")
         return {"processed": 0, "cleaned": 0, "error": str(e)}
 
-    logger.info(
-        f"Referral cleanup complete: processed={processed}, cleaned={cleaned}, errors={errors}"
-    )
+    logger.info(f"Referral cleanup complete: processed={processed}, cleaned={cleaned}, errors={errors}")
 
     return {
         "processed": processed,

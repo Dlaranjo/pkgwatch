@@ -126,6 +126,7 @@ class TestCreateCheckoutHandler:
         )
 
         import api.create_checkout as checkout_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         # Set price IDs directly since module reads env at import time
@@ -166,6 +167,7 @@ class TestCreateCheckoutHandler:
         )
 
         import api.create_checkout as checkout_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         checkout_module.TIER_TO_PRICE["starter"] = "price_starter_123"
@@ -206,6 +208,7 @@ class TestCreateCheckoutHandler:
         )
 
         import api.create_checkout as checkout_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         checkout_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -260,6 +263,7 @@ class TestCreateCheckoutHandler:
         )
 
         import api.create_checkout as checkout_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         checkout_module.TIER_TO_PRICE["business"] = "price_business_123"
@@ -329,6 +333,7 @@ class TestCreateCheckoutHandler:
         )
 
         import api.create_checkout as checkout_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         # Force TIER_TO_PRICE to have None for starter

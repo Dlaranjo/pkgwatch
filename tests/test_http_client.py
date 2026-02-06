@@ -45,17 +45,20 @@ class TestConnectionPoolingConfiguration:
         """Connection pooling is disabled by conftest.py for test isolation."""
         # conftest.py sets USE_CONNECTION_POOLING=false
         from http_client import _use_connection_pooling
+
         assert _use_connection_pooling() is False
 
     def test_pooling_enabled_when_env_true(self):
         """Connection pooling enabled when USE_CONNECTION_POOLING=true."""
         from http_client import _use_connection_pooling
+
         with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "true"}):
             assert _use_connection_pooling() is True
 
     def test_pooling_enabled_case_insensitive(self):
         """USE_CONNECTION_POOLING check is case insensitive."""
         from http_client import _use_connection_pooling
+
         with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "TRUE"}):
             assert _use_connection_pooling() is True
         with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "True"}):
@@ -64,12 +67,14 @@ class TestConnectionPoolingConfiguration:
     def test_pooling_disabled_when_env_false(self):
         """Connection pooling disabled when USE_CONNECTION_POOLING=false."""
         from http_client import _use_connection_pooling
+
         with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "false"}):
             assert _use_connection_pooling() is False
 
     def test_pooling_disabled_for_invalid_value(self):
         """Connection pooling disabled for invalid environment values."""
         from http_client import _use_connection_pooling
+
         with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "invalid"}):
             assert _use_connection_pooling() is False
         with patch.dict(os.environ, {"USE_CONNECTION_POOLING": ""}):
@@ -126,12 +131,14 @@ class TestGetHttpClientPoolingEnabled:
     def setup_method(self):
         """Reset global client state before each test."""
         import http_client
+
         http_client._client = None
         http_client._client_loop_id = None
 
     def teardown_method(self):
         """Clean up global client state after each test."""
         import http_client
+
         http_client._client = None
         http_client._client_loop_id = None
 
@@ -219,12 +226,14 @@ class TestCloseHttpClient:
     def setup_method(self):
         """Reset global client state before each test."""
         import http_client
+
         http_client._client = None
         http_client._client_loop_id = None
 
     def teardown_method(self):
         """Clean up global client state after each test."""
         import http_client
+
         http_client._client = None
         http_client._client_loop_id = None
 
@@ -380,8 +389,10 @@ class TestDefaultConfiguration:
 
 def create_mock_transport(handler):
     """Create a mock transport for httpx that routes requests to handler."""
+
     async def mock_handler(request: httpx.Request) -> httpx.Response:
         return handler(request)
+
     return httpx.MockTransport(mock_handler)
 
 
@@ -484,10 +495,7 @@ class TestHttpClientIntegration:
             url = str(request.url)
             if "original" in url and redirect_count[0] == 0:
                 redirect_count[0] += 1
-                return httpx.Response(
-                    302,
-                    headers={"Location": "https://api.example.com/final"}
-                )
+                return httpx.Response(302, headers={"Location": "https://api.example.com/final"})
             return httpx.Response(200, json={"redirected": True})
 
         async def test_coro():
@@ -512,10 +520,12 @@ class TestHttpClientIntegration:
             return httpx.Response(200, json={"ok": True})
 
         async def test_coro():
-            client = get_http_client_with_headers({
-                "Authorization": "Bearer secret-token",
-                "X-API-Key": "api-key-123",
-            })
+            client = get_http_client_with_headers(
+                {
+                    "Authorization": "Bearer secret-token",
+                    "X-API-Key": "api-key-123",
+                }
+            )
             client._transport = create_mock_transport(mock_handler)
             response = await client.get("https://api.example.com/auth")
             return response
@@ -550,10 +560,7 @@ class TestConcurrentRequests:
                 client._transport = create_mock_transport(mock_handler)
 
                 # Make 5 concurrent requests
-                tasks = [
-                    client.get(f"https://api.example.com/request/{i}")
-                    for i in range(5)
-                ]
+                tasks = [client.get(f"https://api.example.com/request/{i}") for i in range(5)]
                 responses = await asyncio.gather(*tasks)
                 return responses
 
@@ -582,10 +589,7 @@ class TestConcurrentRequests:
                 client._transport = create_mock_transport(mock_handler)
 
                 # Make concurrent requests - all should use same pooled client
-                tasks = [
-                    client.get(f"https://api.example.com/request/{i}")
-                    for i in range(3)
-                ]
+                tasks = [client.get(f"https://api.example.com/request/{i}") for i in range(3)]
                 responses = await asyncio.gather(*tasks)
 
                 # Verify same client is returned
@@ -615,12 +619,14 @@ class TestEventLoopEdgeCases:
     def setup_method(self):
         """Reset global client state before each test."""
         import http_client
+
         http_client._client = None
         http_client._client_loop_id = None
 
     def teardown_method(self):
         """Clean up global client state after each test."""
         import http_client
+
         http_client._client = None
         http_client._client_loop_id = None
 
@@ -698,12 +704,14 @@ class TestGetGitHubClient:
     def setup_method(self):
         """Reset GitHub client cache state before each test."""
         import http_client
+
         http_client._github_clients.clear()
         http_client._github_client_loop_ids.clear()
 
     def teardown_method(self):
         """Clean up GitHub client cache state after each test."""
         import http_client
+
         http_client._github_clients.clear()
         http_client._github_client_loop_ids.clear()
 

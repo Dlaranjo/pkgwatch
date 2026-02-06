@@ -49,8 +49,10 @@ def count_download_coverage(table) -> dict:
     Lambda timeout. Replace with pre-aggregated counters if package count exceeds 50K.
     """
     coverage = {
-        "npm_total": 0, "npm_with_downloads": 0,
-        "pypi_total": 0, "pypi_with_downloads": 0,
+        "npm_total": 0,
+        "npm_with_downloads": 0,
+        "pypi_total": 0,
+        "pypi_with_downloads": 0,
         "pypi_never_fetched": 0,
     }
 
@@ -109,15 +111,9 @@ def handler(event, context):
 
     # Compute percentages
     pypi_pct = (
-        (coverage["pypi_with_downloads"] / coverage["pypi_total"] * 100)
-        if coverage.get("pypi_total", 0) > 0
-        else 0
+        (coverage["pypi_with_downloads"] / coverage["pypi_total"] * 100) if coverage.get("pypi_total", 0) > 0 else 0
     )
-    npm_pct = (
-        (coverage["npm_with_downloads"] / coverage["npm_total"] * 100)
-        if coverage.get("npm_total", 0) > 0
-        else 0
-    )
+    npm_pct = (coverage["npm_with_downloads"] / coverage["npm_total"] * 100) if coverage.get("npm_total", 0) > 0 else 0
 
     # Use existing metrics utility
     try:

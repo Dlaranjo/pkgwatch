@@ -49,8 +49,7 @@ def generate_recovery_codes(count: int = 8) -> tuple[list[str], list[str]]:
 
         # Format as XXXX-XXXX-XXXX-XXXX
         segments = [
-            hex_str[i : i + RECOVERY_CODE_SEGMENT_LENGTH]
-            for i in range(0, len(hex_str), RECOVERY_CODE_SEGMENT_LENGTH)
+            hex_str[i : i + RECOVERY_CODE_SEGMENT_LENGTH] for i in range(0, len(hex_str), RECOVERY_CODE_SEGMENT_LENGTH)
         ]
         formatted_code = "-".join(segments)
         plaintext_codes.append(formatted_code)

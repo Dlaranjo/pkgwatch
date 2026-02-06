@@ -208,10 +208,7 @@ def handler(event, context):
         table.update_item(
             Key={"pk": user_id, "sk": f"RECOVERY_{recovery_session_id}"},
             UpdateExpression=(
-                "SET verified = :verified, "
-                "recovery_method = :method, "
-                "recovery_token = :token, "
-                "verified_at = :now"
+                "SET verified = :verified, recovery_method = :method, recovery_token = :token, verified_at = :now"
             ),
             ExpressionAttributeValues={
                 ":verified": True,
@@ -227,7 +224,9 @@ def handler(event, context):
             logger.warning(f"Race condition detected consuming recovery code for user {user_id}")
             return _timed_response(
                 start_time,
-                error_response(409, "concurrent_modification", "Recovery code was already used. Please try again.", origin=origin),
+                error_response(
+                    409, "concurrent_modification", "Recovery code was already used. Please try again.", origin=origin
+                ),
             )
         logger.error(f"Error consuming recovery code: {e}")
         return _timed_response(

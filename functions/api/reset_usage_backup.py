@@ -49,17 +49,13 @@ def handler(event, context):
     items_reset = 0
     items_already_reset = 0
 
-    logger.info(
-        f"Starting backup reset check, cutoff={cutoff_timestamp} "
-        f"({(now - grace_period).isoformat()})"
-    )
+    logger.info(f"Starting backup reset check, cutoff={cutoff_timestamp} ({(now - grace_period).isoformat()})")
 
     # Scan for paid users with current_period_end in the past
     # Note: This scan is intentionally broad - we check idempotency per-item
     scan_kwargs = {
         "ProjectionExpression": (
-            "pk, sk, tier, current_period_start, current_period_end, "
-            "last_reset_period_start, stripe_customer_id"
+            "pk, sk, tier, current_period_start, current_period_end, last_reset_period_start, stripe_customer_id"
         ),
         "FilterExpression": (
             "attribute_exists(current_period_end) AND "
@@ -153,16 +149,12 @@ def handler(event, context):
         scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
 
     logger.info(
-        f"Backup reset complete: checked={items_checked}, "
-        f"reset={items_reset}, already_reset={items_already_reset}"
+        f"Backup reset complete: checked={items_checked}, reset={items_reset}, already_reset={items_already_reset}"
     )
 
     # Log warning if we had to do backup resets (indicates webhook issues)
     if items_reset > 0:
-        logger.warning(
-            f"ALERT: {items_reset} users required backup reset - "
-            "check Stripe webhook delivery"
-        )
+        logger.warning(f"ALERT: {items_reset} users required backup reset - check Stripe webhook delivery")
 
     return {
         "statusCode": 200,

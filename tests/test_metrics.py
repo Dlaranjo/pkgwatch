@@ -99,9 +99,7 @@ class TestEmitMetric:
             with patch.object(
                 metrics_module,
                 "_get_cloudwatch",
-                return_value=MagicMock(
-                    put_metric_data=MagicMock(side_effect=Exception("CloudWatch error"))
-                ),
+                return_value=MagicMock(put_metric_data=MagicMock(side_effect=Exception("CloudWatch error"))),
             ):
                 # Should not raise
                 emit_metric("TestMetric")
@@ -112,6 +110,7 @@ class TestEmitMetric:
     def test_logs_debug_on_success(self, mock_cloudwatch, caplog):
         """Should log debug message on successful emission."""
         import logging
+
         with caplog.at_level(logging.DEBUG):
             emit_metric("DebugTestMetric", value=42, unit="Count")
 
@@ -153,10 +152,7 @@ class TestEmitBatchMetrics:
     def test_batches_over_20_metrics(self, mock_cloudwatch):
         """Should split metrics into batches of 20 (CloudWatch limit)."""
         # Create 25 metrics
-        metrics = [
-            {"metric_name": f"Metric{i}", "value": i}
-            for i in range(25)
-        ]
+        metrics = [{"metric_name": f"Metric{i}", "value": i} for i in range(25)]
 
         emit_batch_metrics(metrics)
 
@@ -196,9 +192,7 @@ class TestEmitBatchMetrics:
             with patch.object(
                 metrics_module,
                 "_get_cloudwatch",
-                return_value=MagicMock(
-                    put_metric_data=MagicMock(side_effect=Exception("Batch error"))
-                ),
+                return_value=MagicMock(put_metric_data=MagicMock(side_effect=Exception("Batch error"))),
             ):
                 metrics = [{"metric_name": "Test", "value": 1}]
 
@@ -324,6 +318,7 @@ class TestNamespaceConfiguration:
         with patch.dict(os.environ, {}, clear=True):
             # Need to reimport to get new default
             import importlib
+
             importlib.reload(metrics_module)
 
             assert metrics_module.NAMESPACE == "PkgWatch"
@@ -332,6 +327,7 @@ class TestNamespaceConfiguration:
         """Should use CLOUDWATCH_NAMESPACE env var if set."""
         with patch.dict(os.environ, {"CLOUDWATCH_NAMESPACE": "CustomNamespace"}):
             import importlib
+
             importlib.reload(metrics_module)
 
             assert metrics_module.NAMESPACE == "CustomNamespace"

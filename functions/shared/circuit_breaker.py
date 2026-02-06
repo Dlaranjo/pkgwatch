@@ -40,15 +40,17 @@ class CircuitState(Enum):
 @dataclass
 class CircuitBreakerConfig:
     """Configuration for circuit breaker behavior."""
-    failure_threshold: int = 5          # Failures before opening
-    success_threshold: int = 2          # Successes to close from half-open
-    timeout_seconds: int = 60           # Time before testing recovery
-    half_open_max_calls: int = 3        # Max calls in half-open state
+
+    failure_threshold: int = 5  # Failures before opening
+    success_threshold: int = 2  # Successes to close from half-open
+    timeout_seconds: int = 60  # Time before testing recovery
+    half_open_max_calls: int = 3  # Max calls in half-open state
 
 
 @dataclass
 class CircuitBreakerState:
     """Current state of a circuit breaker."""
+
     state: CircuitState = CircuitState.CLOSED
     failure_count: int = 0
     success_count: int = 0
@@ -173,7 +175,7 @@ class InMemoryCircuitBreaker:
                 self._state.state = CircuitState.CLOSED
                 self._state.failure_count = 0
                 self._state.half_open_calls = 0  # Reset for next open cycle
-                self._state.success_count = 0    # Reset for next open cycle
+                self._state.success_count = 0  # Reset for next open cycle
         elif self._state.state == CircuitState.CLOSED:
             # Reset failure count on success
             self._state.failure_count = 0
@@ -188,7 +190,7 @@ class InMemoryCircuitBreaker:
                     self._state.state = CircuitState.CLOSED
                     self._state.failure_count = 0
                     self._state.half_open_calls = 0  # Reset for next open cycle
-                    self._state.success_count = 0    # Reset for next open cycle
+                    self._state.success_count = 0  # Reset for next open cycle
             elif self._state.state == CircuitState.CLOSED:
                 # Reset failure count on success
                 self._state.failure_count = 0
@@ -207,10 +209,7 @@ class InMemoryCircuitBreaker:
             self._state.state = CircuitState.OPEN
         elif self._state.state == CircuitState.CLOSED:
             if self._state.failure_count >= self.config.failure_threshold:
-                logger.warning(
-                    f"Circuit {self.name}: CLOSED -> OPEN "
-                    f"({self._state.failure_count} failures)"
-                )
+                logger.warning(f"Circuit {self.name}: CLOSED -> OPEN ({self._state.failure_count} failures)")
                 self._state.state = CircuitState.OPEN
 
     async def record_failure_async(self, error: Optional[Exception] = None) -> None:
@@ -224,10 +223,7 @@ class InMemoryCircuitBreaker:
                 self._state.state = CircuitState.OPEN
             elif self._state.state == CircuitState.CLOSED:
                 if self._state.failure_count >= self.config.failure_threshold:
-                    logger.warning(
-                        f"Circuit {self.name}: CLOSED -> OPEN "
-                        f"({self._state.failure_count} failures)"
-                    )
+                    logger.warning(f"Circuit {self.name}: CLOSED -> OPEN ({self._state.failure_count} failures)")
                     self._state.state = CircuitState.OPEN
 
 
@@ -254,15 +250,13 @@ def circuit_breaker(breaker: InMemoryCircuitBreaker):
         async def call_github_api():
             ...
     """
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         async def wrapper(*args, **kwargs) -> T:
             # Use thread-safe async method
             if not await breaker.can_execute_async():
-                raise CircuitOpenError(
-                    breaker.name,
-                    breaker.config.timeout_seconds
-                )
+                raise CircuitOpenError(breaker.name, breaker.config.timeout_seconds)
 
             try:
                 result = await func(*args, **kwargs)
@@ -273,6 +267,7 @@ def circuit_breaker(breaker: InMemoryCircuitBreaker):
                 raise
 
         return wrapper
+
     return decorator
 
 
@@ -542,11 +537,7 @@ class DynamoDBCircuitBreaker:
 
             table.update_item(
                 Key={"pk": self._pk, "sk": self._sk},
-                UpdateExpression=(
-                    "SET half_open_calls = :one, "
-                    "half_open_at = :now, "
-                    "version = version + :inc"
-                ),
+                UpdateExpression=("SET half_open_calls = :one, half_open_at = :now, version = version + :inc"),
                 ExpressionAttributeValues={
                     ":one": 1,  # Set to 1 since we're allowing this request
                     ":now": now.isoformat(),
@@ -594,9 +585,7 @@ class DynamoDBCircuitBreaker:
             # This avoids race condition where multiple instances read stale state
             response = table.update_item(
                 Key={"pk": self._pk, "sk": self._sk},
-                UpdateExpression=(
-                    "SET success_count = if_not_exists(success_count, :zero) + :one"
-                ),
+                UpdateExpression=("SET success_count = if_not_exists(success_count, :zero) + :one"),
                 ExpressionAttributeValues={
                     ":zero": 0,
                     ":one": 1,
@@ -751,18 +740,12 @@ class DynamoDBCircuitBreaker:
                     },
                     ConditionExpression="version = :version",
                 )
-                logger.warning(
-                    f"Circuit {self.name}: CLOSED -> OPEN "
-                    f"({new_failure_count} failures)"
-                )
+                logger.warning(f"Circuit {self.name}: CLOSED -> OPEN ({new_failure_count} failures)")
             else:
                 # Just increment failure count
                 table.update_item(
                     Key={"pk": self._pk, "sk": self._sk},
-                    UpdateExpression=(
-                        "SET failure_count = failure_count + :one, "
-                        "last_failure_at = :now"
-                    ),
+                    UpdateExpression=("SET failure_count = failure_count + :one, last_failure_at = :now"),
                     ExpressionAttributeValues={
                         ":one": 1,
                         ":now": now.isoformat(),
@@ -776,9 +759,7 @@ class DynamoDBCircuitBreaker:
 
 
 # Flag to enable distributed circuit breaker (set via environment variable)
-USE_DISTRIBUTED_CIRCUIT_BREAKER = os.environ.get(
-    "USE_DISTRIBUTED_CIRCUIT_BREAKER", "false"
-).lower() == "true"
+USE_DISTRIBUTED_CIRCUIT_BREAKER = os.environ.get("USE_DISTRIBUTED_CIRCUIT_BREAKER", "false").lower() == "true"
 
 
 def _create_circuit_breaker(name: str, config: CircuitBreakerConfig):
@@ -795,7 +776,7 @@ GITHUB_CIRCUIT = _create_circuit_breaker(
         failure_threshold=5,
         timeout_seconds=120,
         success_threshold=2,
-    )
+    ),
 )
 
 DEPSDEV_CIRCUIT = _create_circuit_breaker(
@@ -804,7 +785,7 @@ DEPSDEV_CIRCUIT = _create_circuit_breaker(
         failure_threshold=10,
         timeout_seconds=60,
         success_threshold=3,
-    )
+    ),
 )
 
 NPM_CIRCUIT = _create_circuit_breaker(
@@ -813,7 +794,7 @@ NPM_CIRCUIT = _create_circuit_breaker(
         failure_threshold=10,
         timeout_seconds=60,
         success_threshold=3,
-    )
+    ),
 )
 
 BUNDLEPHOBIA_CIRCUIT = _create_circuit_breaker(
@@ -822,7 +803,7 @@ BUNDLEPHOBIA_CIRCUIT = _create_circuit_breaker(
         failure_threshold=5,
         timeout_seconds=120,
         success_threshold=2,
-    )
+    ),
 )
 
 PYPI_CIRCUIT = _create_circuit_breaker(
@@ -831,7 +812,7 @@ PYPI_CIRCUIT = _create_circuit_breaker(
         failure_threshold=10,
         timeout_seconds=60,
         success_threshold=3,
-    )
+    ),
 )
 
 # pypistats.org is a separate third-party service from PyPI registry
@@ -839,10 +820,10 @@ PYPI_CIRCUIT = _create_circuit_breaker(
 PYPISTATS_CIRCUIT = _create_circuit_breaker(
     "pypistats",
     CircuitBreakerConfig(
-        failure_threshold=5,      # Conservative - undocumented rate limits
-        timeout_seconds=120,      # Give time to recover
-        success_threshold=2,      # Quick recovery once healthy
-    )
+        failure_threshold=5,  # Conservative - undocumented rate limits
+        timeout_seconds=120,  # Give time to recover
+        success_threshold=2,  # Quick recovery once healthy
+    ),
 )
 
 OPENSSF_CIRCUIT = _create_circuit_breaker(
@@ -852,7 +833,7 @@ OPENSSF_CIRCUIT = _create_circuit_breaker(
         timeout_seconds=120,
         half_open_max_calls=3,
         success_threshold=2,
-    )
+    ),
 )
 
 # DynamoDB circuit breaker - for protecting against throttling cascades
@@ -863,9 +844,9 @@ OPENSSF_CIRCUIT = _create_circuit_breaker(
 DYNAMODB_CIRCUIT = InMemoryCircuitBreaker(
     "dynamodb",
     CircuitBreakerConfig(
-        failure_threshold=3,     # DynamoDB failures are serious
-        timeout_seconds=30,      # Short timeout - DynamoDB recovers quickly
+        failure_threshold=3,  # DynamoDB failures are serious
+        timeout_seconds=30,  # Short timeout - DynamoDB recovers quickly
         success_threshold=2,
         half_open_max_calls=2,
-    )
+    ),
 )

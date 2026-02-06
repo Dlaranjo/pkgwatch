@@ -280,6 +280,7 @@ class TestMigrateQueryableHandler:
         os.environ["PACKAGES_TABLE"] = "nonexistent-table"
 
         import admin.migrate_queryable as migrate_module
+
         old_table = migrate_module.PACKAGES_TABLE
         migrate_module.PACKAGES_TABLE = "nonexistent-table"
 

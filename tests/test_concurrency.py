@@ -110,9 +110,9 @@ class TestUsageCounterConcurrency:
         elif final_count != num_concurrent:
             # Log warning but don't fail - moto limitation
             import warnings
+
             warnings.warn(
-                f"Moto limitation: Expected {num_concurrent}, got {final_count}. "
-                "Real DynamoDB would be exact."
+                f"Moto limitation: Expected {num_concurrent}, got {final_count}. Real DynamoDB would be exact."
             )
 
         # In moto, return values may have duplicates due to mock implementation
@@ -215,8 +215,7 @@ class TestApiKeyCreationConcurrency:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         # Start with 4 keys (1 under limit)
@@ -246,6 +245,7 @@ class TestApiKeyCreationConcurrency:
 
         import api.auth_callback
         from api.create_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_race", "race@example.com")
@@ -282,8 +282,8 @@ class TestApiKeyCreationConcurrency:
                 ":pk": "user_race",
                 ":meta": "META",
                 ":user_meta": "USER_META",
-                ":pending": "PENDING"
-            }
+                ":pending": "PENDING",
+            },
         )
         actual_key_count = len(response["Items"])
 
@@ -307,8 +307,8 @@ class TestApiKeyRevocationConcurrency:
 
     @pytest.mark.xfail(
         reason="Moto doesn't properly simulate DynamoDB transaction isolation - "
-               "concurrent transactions can both succeed when real DynamoDB would serialize them. "
-               "Production code is correct - this is a mock limitation."
+        "concurrent transactions can both succeed when real DynamoDB would serialize them. "
+        "Production code is correct - this is a mock limitation."
     )
     @mock_aws
     def test_concurrent_revocation_protects_last_key(self, mock_dynamodb, api_gateway_event):
@@ -322,8 +322,7 @@ class TestApiKeyRevocationConcurrency:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -355,6 +354,7 @@ class TestApiKeyRevocationConcurrency:
 
         import api.auth_callback
         from api.revoke_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_revoke_race", "revoke_race@example.com")
@@ -373,11 +373,9 @@ class TestApiKeyRevocationConcurrency:
             }
             result = handler(event, {})
             with lock:
-                results.append({
-                    "key": key_hash[:8],
-                    "status": result["statusCode"],
-                    "body": json.loads(result["body"])
-                })
+                results.append(
+                    {"key": key_hash[:8], "status": result["statusCode"], "body": json.loads(result["body"])}
+                )
 
         # Try to revoke both keys concurrently
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
@@ -387,11 +385,7 @@ class TestApiKeyRevocationConcurrency:
         # Count remaining keys (excluding USER_META record)
         response = table.scan(
             FilterExpression="pk = :pk AND sk <> :meta AND sk <> :pending",
-            ExpressionAttributeValues={
-                ":pk": "user_revoke_race",
-                ":meta": "USER_META",
-                ":pending": "PENDING"
-            }
+            ExpressionAttributeValues={":pk": "user_revoke_race", ":meta": "USER_META", ":pending": "PENDING"},
         )
         remaining_keys = len(response["Items"])
 
@@ -408,8 +402,7 @@ class TestApiKeyRevocationConcurrency:
         # Verify the counter matches actual count
         meta_record = table.get_item(Key={"pk": "user_revoke_race", "sk": "USER_META"})
         assert meta_record["Item"]["key_count"] == remaining_keys, (
-            f"Counter mismatch: USER_META shows {meta_record['Item']['key_count']}, "
-            f"actual keys: {remaining_keys}"
+            f"Counter mismatch: USER_META shows {meta_record['Item']['key_count']}, actual keys: {remaining_keys}"
         )
 
 
@@ -437,8 +430,7 @@ class TestMagicLinkTokenConcurrency:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -463,6 +455,7 @@ class TestMagicLinkTokenConcurrency:
 
         import api.auth_callback
         from api.auth_callback import handler
+
         api.auth_callback._session_secret_cache = None
 
         results = []
@@ -479,11 +472,13 @@ class TestMagicLinkTokenConcurrency:
             }
             result = handler(event, {})
             with lock:
-                results.append({
-                    "status": result["statusCode"],
-                    "location": result.get("headers", {}).get("Location", ""),
-                    "has_cookie": "Set-Cookie" in result.get("headers", {}),
-                })
+                results.append(
+                    {
+                        "status": result["statusCode"],
+                        "location": result.get("headers", {}).get("Location", ""),
+                        "has_cookie": "Set-Cookie" in result.get("headers", {}),
+                    }
+                )
 
         # Try to use the same magic link concurrently
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -502,8 +497,7 @@ class TestMagicLinkTokenConcurrency:
             )
 
         assert len(successes) == 1, (
-            f"Expected exactly 1 successful auth, got {len(successes)}. "
-            f"Successes: {successes}, Failures: {failures}"
+            f"Expected exactly 1 successful auth, got {len(successes)}. Successes: {successes}, Failures: {failures}"
         )
 
 
@@ -574,8 +568,7 @@ class TestMonthlyResetConcurrency:
         # If increment happened before reset, count should be 0 (reset won)
         # Either is valid - the key is no data corruption
         assert final_user["requests_this_month"] in [0, 1], (
-            f"Unexpected count: {final_user['requests_this_month']}. "
-            "Data may be corrupted."
+            f"Unexpected count: {final_user['requests_this_month']}. Data may be corrupted."
         )
 
     @mock_aws
@@ -655,12 +648,8 @@ class TestPackageUpdateConcurrency:
         # Final package should have consistent data (one of the writes)
         package = get_package(ecosystem, name)
         assert package is not None
-        assert package["health_score"] == package["test_id"], (
-            "Package data is inconsistent - partial write occurred"
-        )
-        assert package["health_score"] in range(10), (
-            f"Unexpected health_score: {package['health_score']}"
-        )
+        assert package["health_score"] == package["test_id"], "Package data is inconsistent - partial write occurred"
+        assert package["health_score"] in range(10), f"Unexpected health_score: {package['health_score']}"
 
 
 class TestAddVsSetForCounters:
@@ -914,9 +903,7 @@ class TestCodePatternVerification:
         has_transaction = "transact_write_items" in source
 
         # Should use transactions for atomic check and delete
-        assert has_transaction, (
-            "revoke_api_key.py should use transact_write_items for atomic key revocation"
-        )
+        assert has_transaction, "revoke_api_key.py should use transact_write_items for atomic key revocation"
 
     def test_magic_token_lacks_atomic_consumption(self):
         """Document that auth_callback has a race condition.
@@ -934,10 +921,7 @@ class TestCodePatternVerification:
 
         # The REMOVE operation should have a ConditionExpression
         # to ensure token exists before removing
-        has_condition_on_remove = (
-            "ConditionExpression" in source and
-            "magic_token" in source
-        )
+        has_condition_on_remove = "ConditionExpression" in source and "magic_token" in source
 
         # This test documents the bug - it SHOULD fail
         if not has_condition_on_remove:
@@ -984,7 +968,7 @@ class TestRaceConditionFixes:
                     "key_hash": {"S": key_hash},
                     "email": {"S": "atomic@example.com"},
                     "tier": {"S": "free"},
-                }
+                },
             )
 
         # The FIX would use a transaction like this:
@@ -996,7 +980,7 @@ class TestRaceConditionFixes:
             TableName=table_name,
             KeyConditionExpression="pk = :pk",
             ExpressionAttributeValues={":pk": {"S": user_id}},
-            Select="COUNT"
+            Select="COUNT",
         )
         current_count = response["Count"]
 

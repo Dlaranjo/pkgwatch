@@ -574,10 +574,7 @@ class TestFetchNpmsioTopPackages:
         def create_response(count):
             mock = MagicMock()
             mock.json.return_value = {
-                "results": [
-                    {"package": {"name": f"pkg-{i}"}, "score": {"final": 0.9}}
-                    for i in range(count)
-                ]
+                "results": [{"package": {"name": f"pkg-{i}"}, "score": {"final": 0.9}} for i in range(count)]
             }
             mock.raise_for_status = MagicMock()
             return mock
@@ -619,8 +616,8 @@ class TestFetchNpmsioTopPackages:
         mock_response.status_code = 500
 
         with patch("discovery.npmsio_audit.httpx.Client") as mock_client:
-            mock_client.return_value.__enter__.return_value.get.side_effect = (
-                httpx.HTTPStatusError("Server error", request=mock_request, response=mock_response)
+            mock_client.return_value.__enter__.return_value.get.side_effect = httpx.HTTPStatusError(
+                "Server error", request=mock_request, response=mock_response
             )
 
             result = module.fetch_npmsio_top_packages(10)
@@ -632,9 +629,7 @@ class TestFetchNpmsioTopPackages:
         import discovery.npmsio_audit as module
 
         with patch("discovery.npmsio_audit.httpx.Client") as mock_client:
-            mock_client.return_value.__enter__.return_value.get.side_effect = Exception(
-                "Network error"
-            )
+            mock_client.return_value.__enter__.return_value.get.side_effect = Exception("Network error")
 
             result = module.fetch_npmsio_top_packages(10)
 
@@ -645,8 +640,8 @@ class TestFetchNpmsioTopPackages:
         import discovery.npmsio_audit as module
 
         with patch("discovery.npmsio_audit.httpx.Client") as mock_client:
-            mock_client.return_value.__enter__.return_value.get.side_effect = (
-                httpx.TimeoutException("Request timed out")
+            mock_client.return_value.__enter__.return_value.get.side_effect = httpx.TimeoutException(
+                "Request timed out"
             )
 
             result = module.fetch_npmsio_top_packages(10)
@@ -694,10 +689,7 @@ class TestFetchNpmsioTopPackages:
         def create_response(offset):
             mock = MagicMock()
             mock.json.return_value = {
-                "results": [
-                    {"package": {"name": f"pkg-{offset + i}"}, "score": {"final": 0.9}}
-                    for i in range(250)
-                ]
+                "results": [{"package": {"name": f"pkg-{offset + i}"}, "score": {"final": 0.9}} for i in range(250)]
             }
             mock.raise_for_status = MagicMock()
             return mock

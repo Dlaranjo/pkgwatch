@@ -21,7 +21,7 @@ from urllib.parse import quote
 import httpx
 
 sys.path.insert(0, os.path.dirname(__file__))  # Add collectors directory
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))  # Add functions directory
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))  # Add functions directory
 from http_client import get_http_client
 
 from shared.circuit_breaker import BUNDLEPHOBIA_CIRCUIT, circuit_breaker
@@ -79,7 +79,7 @@ async def retry_with_backoff(
                 raise last_exception
 
             # Equal jitter: 50% fixed backoff + 50% random
-            base = base_delay * (2 ** attempt)
+            base = base_delay * (2**attempt)
             delay = base * 0.5 + random.uniform(0, base * 0.5)
             logger.warning(f"Attempt {attempt + 1} failed, retrying in {delay:.2f}s: {last_exception}")
             await asyncio.sleep(delay)
@@ -132,12 +132,8 @@ async def get_bundle_size(name: str, version: Optional[str] = None) -> dict:
             "has_side_effects": data.get("hasSideEffects", True),
             # Download time estimates (milliseconds)
             # Based on bundlephobia's network speed assumptions
-            "download_time_3g": _estimate_download_time(
-                data.get("gzip", 0), network="3g"
-            ),
-            "download_time_4g": _estimate_download_time(
-                data.get("gzip", 0), network="4g"
-            ),
+            "download_time_3g": _estimate_download_time(data.get("gzip", 0), network="3g"),
+            "download_time_4g": _estimate_download_time(data.get("gzip", 0), network="4g"),
             # Size categories for quick filtering
             "size_category": _categorize_size(data.get("gzip", 0)),
             "source": "bundlephobia",

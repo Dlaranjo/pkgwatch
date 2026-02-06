@@ -66,7 +66,7 @@ def handler(event, context):
     Scheduled to run every 15 minutes via EventBridge.
     """
     configure_structured_logging()
-    request_id_var.set(getattr(context, 'aws_request_id', 'unknown'))
+    request_id_var.set(getattr(context, "aws_request_id", "unknown"))
 
     if not DLQ_URL:
         logger.error("DLQ_URL not configured")
@@ -84,7 +84,7 @@ def handler(event, context):
     # Process messages in batches until queue is empty or we hit a limit
     max_iterations = 10  # Process up to 100 messages per invocation
     for _ in range(max_iterations):
-        if context and hasattr(context, 'get_remaining_time_in_millis'):
+        if context and hasattr(context, "get_remaining_time_in_millis"):
             remaining_ms = context.get_remaining_time_in_millis()
             if remaining_ms < 30000:
                 logger.warning(f"Approaching timeout ({remaining_ms}ms remaining), stopping early")
@@ -124,12 +124,14 @@ def handler(event, context):
 
     # Emit metrics
     try:
-        emit_batch_metrics([
-            {"metric_name": "DLQMessagesProcessed", "value": processed},
-            {"metric_name": "DLQMessagesRequeued", "value": requeued},
-            {"metric_name": "DLQPermanentFailures", "value": permanently_failed},
-            {"metric_name": "DLQMessagesSkipped", "value": skipped},
-        ])
+        emit_batch_metrics(
+            [
+                {"metric_name": "DLQMessagesProcessed", "value": processed},
+                {"metric_name": "DLQMessagesRequeued", "value": requeued},
+                {"metric_name": "DLQPermanentFailures", "value": permanently_failed},
+                {"metric_name": "DLQMessagesSkipped", "value": skipped},
+            ]
+        )
     except Exception as e:
         logger.warning(f"Failed to emit DLQ metrics: {e}")
 
@@ -213,14 +215,9 @@ def _process_dlq_message(message: dict) -> str:
     if not should_retry(body):
         # Move to permanent failure storage
         if error_type == "permanent":
-            logger.warning(
-                f"Message {message_id} has permanent error, not retrying: {last_error}"
-            )
+            logger.warning(f"Message {message_id} has permanent error, not retrying: {last_error}")
         else:
-            logger.warning(
-                f"Message {message_id} exceeded max retries ({retry_count}), "
-                f"last error: {last_error}"
-            )
+            logger.warning(f"Message {message_id} exceeded max retries ({retry_count}), last error: {last_error}")
         _store_permanent_failure(body, message_id, last_error, error_type)
         if _delete_dlq_message(message):
             emit_dlq_metric("permanent_failure", body.get("name"))
@@ -259,9 +256,7 @@ def _process_dlq_message(message: dict) -> str:
     else:
         # Delete failed - message may be reprocessed, but requeue succeeded
         # so the work will be done. Log warning but report as requeued.
-        logger.warning(
-            f"Message {message_id} requeued but delete failed - may cause duplicate processing"
-        )
+        logger.warning(f"Message {message_id} requeued but delete failed - may cause duplicate processing")
         emit_dlq_metric("requeued", body.get("name"))
         return "requeued"
 
@@ -287,7 +282,7 @@ def _delete_dlq_message(message: dict, max_retries: int = 3) -> bool:
                 logger.error(f"Failed to delete DLQ message after {max_retries} attempts: {e}")
                 return False
             # Exponential backoff
-            delay = 0.5 * (2 ** attempt)
+            delay = 0.5 * (2**attempt)
             logger.warning(f"DLQ delete attempt {attempt + 1} failed, retrying in {delay}s: {e}")
             time.sleep(delay)
 

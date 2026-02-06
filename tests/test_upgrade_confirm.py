@@ -132,6 +132,7 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -172,6 +173,7 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -215,6 +217,7 @@ class TestUpgradeConfirmHandler:
         import stripe as stripe_module
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -276,6 +279,7 @@ class TestUpgradeConfirmHandler:
         import stripe as stripe_module
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -336,6 +340,7 @@ class TestUpgradeConfirmHandler:
         import stripe as stripe_module
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -437,6 +442,7 @@ class TestUpgradeConfirmHandler:
         import stripe as stripe_module
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -519,6 +525,7 @@ class TestUpgradeConfirmHandler:
         import stripe as stripe_module
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -641,6 +648,7 @@ class TestUpgradeConfirmHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         # Ensure the pro price is NOT configured
@@ -691,6 +699,7 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -736,6 +745,7 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -781,6 +791,7 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -836,6 +847,7 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -888,6 +900,7 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -944,6 +957,7 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -967,9 +981,7 @@ class TestUpgradeConfirmHandler:
                     }
 
                     # Invoice retrieval fails
-                    mock_stripe.Invoice.retrieve.side_effect = stripe_module.StripeError(
-                        "Invoice not found"
-                    )
+                    mock_stripe.Invoice.retrieve.side_effect = stripe_module.StripeError("Invoice not found")
 
                     from api.upgrade_confirm import handler
 
@@ -1019,6 +1031,7 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -1059,15 +1072,17 @@ class TestUpgradeConfirmHandler:
 
                     mock_table = MagicMock()
                     mock_table.query.return_value = {
-                        "Items": [{
-                            "pk": "user_starter",
-                            "sk": key_hash,
-                            "email": "starter@example.com",
-                            "tier": "starter",
-                            "email_verified": True,
-                            "stripe_customer_id": "cus_123",
-                            "stripe_subscription_id": "sub_123",
-                        }]
+                        "Items": [
+                            {
+                                "pk": "user_starter",
+                                "sk": key_hash,
+                                "email": "starter@example.com",
+                                "tier": "starter",
+                                "email_verified": True,
+                                "stripe_customer_id": "cus_123",
+                                "stripe_subscription_id": "sub_123",
+                            }
+                        ]
                     }
                     mock_table.update_item.side_effect = conditional_error
 
@@ -1102,6 +1117,7 @@ class TestUpgradeConfirmHandler:
         key_hash = hashlib.sha256(b"pw_test").hexdigest()
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -1143,15 +1159,17 @@ class TestUpgradeConfirmHandler:
 
                     mock_table = MagicMock()
                     mock_table.query.return_value = {
-                        "Items": [{
-                            "pk": "user_starter",
-                            "sk": key_hash,
-                            "email": "starter@example.com",
-                            "tier": "starter",
-                            "email_verified": True,
-                            "stripe_customer_id": "cus_123",
-                            "stripe_subscription_id": "sub_123",
-                        }]
+                        "Items": [
+                            {
+                                "pk": "user_starter",
+                                "sk": key_hash,
+                                "email": "starter@example.com",
+                                "tier": "starter",
+                                "email_verified": True,
+                                "stripe_customer_id": "cus_123",
+                                "stripe_subscription_id": "sub_123",
+                            }
+                        ]
                     }
                     mock_table.update_item.side_effect = throttle_error
 
@@ -1194,6 +1212,7 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -1254,6 +1273,7 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -1269,9 +1289,7 @@ class TestUpgradeConfirmHandler:
                     mock_stripe.StripeError = stripe_module.StripeError
 
                     # Use plain StripeError (not CardError, APIError, or InvalidRequestError)
-                    mock_stripe.Subscription.retrieve.side_effect = stripe_module.StripeError(
-                        "Unknown Stripe error"
-                    )
+                    mock_stripe.Subscription.retrieve.side_effect = stripe_module.StripeError("Unknown Stripe error")
 
                     from api.upgrade_confirm import handler
 
@@ -1309,6 +1327,7 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -1364,6 +1383,7 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["business"] = "price_business_123"
@@ -1435,6 +1455,7 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"

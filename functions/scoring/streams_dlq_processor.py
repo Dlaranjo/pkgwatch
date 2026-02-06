@@ -33,8 +33,10 @@ except ImportError:
     # Fallback for testing
     def emit_metric(*args, **kwargs):
         pass
+
     def emit_batch_metrics(*args, **kwargs):
         pass
+
 
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 
@@ -103,11 +105,7 @@ def _trigger_rescore(ecosystem: str, name: str) -> bool:
     try:
         table.update_item(
             Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"},
-            UpdateExpression=(
-                "SET force_rescore = :true, "
-                "rescore_requested_at = :now, "
-                "rescore_reason = :reason"
-            ),
+            UpdateExpression=("SET force_rescore = :true, rescore_requested_at = :now, rescore_reason = :reason"),
             ExpressionAttributeValues={
                 ":true": True,
                 ":now": now,
@@ -188,26 +186,27 @@ def handler(event, context):
 
     # Emit metrics
     try:
-        emit_batch_metrics([
-            {"metric_name": "StreamsDLQProcessed", "value": processed},
-            {"metric_name": "StreamsDLQRescored", "value": rescored},
-            {"metric_name": "StreamsDLQSkipped", "value": skipped},
-            {"metric_name": "StreamsDLQFailed", "value": failed},
-        ])
+        emit_batch_metrics(
+            [
+                {"metric_name": "StreamsDLQProcessed", "value": processed},
+                {"metric_name": "StreamsDLQRescored", "value": rescored},
+                {"metric_name": "StreamsDLQSkipped", "value": skipped},
+                {"metric_name": "StreamsDLQFailed", "value": failed},
+            ]
+        )
     except Exception as e:
         logger.warning(f"Failed to emit metrics: {e}")
 
-    logger.info(
-        f"Streams DLQ processed: {processed}, rescored: {rescored}, "
-        f"skipped: {skipped}, failed: {failed}"
-    )
+    logger.info(f"Streams DLQ processed: {processed}, rescored: {rescored}, skipped: {skipped}, failed: {failed}")
 
     return {
         "statusCode": 200,
-        "body": json.dumps({
-            "processed": processed,
-            "rescored": rescored,
-            "skipped": skipped,
-            "failed": failed,
-        }),
+        "body": json.dumps(
+            {
+                "processed": processed,
+                "rescored": rescored,
+                "skipped": skipped,
+                "failed": failed,
+            }
+        ),
     }

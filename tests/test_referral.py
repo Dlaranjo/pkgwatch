@@ -338,9 +338,7 @@ class TestUpdateReferralEventToCredited:
         assert result is True
 
         # Verify event was updated
-        response = table.get_item(
-            Key={"pk": referrer_id, "sk": f"{referred_id}#signup"}
-        )
+        response = table.get_item(Key={"pk": referrer_id, "sk": f"{referred_id}#signup"})
         assert "Item" in response
         assert response["Item"]["event_type"] == "signup"
         assert response["Item"]["reward_amount"] == 5000
@@ -380,9 +378,7 @@ class TestMarkRetentionChecked:
         assert result is True
 
         # Verify flag was cleared
-        response = table.get_item(
-            Key={"pk": referrer_id, "sk": f"{referred_id}#paid"}
-        )
+        response = table.get_item(Key={"pk": referrer_id, "sk": f"{referred_id}#paid"})
         item = response.get("Item", {})
         assert item.get("needs_retention_check") is None
 
@@ -494,9 +490,7 @@ class TestReferralEvents:
 
         assert result is True
 
-        response = events_table.get_item(
-            Key={"pk": "user_ref", "sk": "user_new#pending"}
-        )
+        response = events_table.get_item(Key={"pk": "user_ref", "sk": "user_new#pending"})
         item = response["Item"]
         assert item["event_type"] == "pending"
         assert item["referred_email_masked"] == "ne**@example.com"
@@ -519,9 +513,7 @@ class TestReferralEvents:
 
         assert result is True
 
-        response = events_table.get_item(
-            Key={"pk": "user_ref", "sk": "user_paid#paid"}
-        )
+        response = events_table.get_item(Key={"pk": "user_ref", "sk": "user_paid#paid"})
         item = response["Item"]
         assert item["needs_retention_check"] == "true"
         assert item["retention_check_date"] == retention_date
@@ -588,9 +580,27 @@ class TestGetReferralEvents:
 
         # Add multiple events
         events = [
-            {"pk": referrer_id, "sk": "user1#pending", "event_type": "pending", "referred_id": "user1", "created_at": "2024-01-15T10:00:00Z"},
-            {"pk": referrer_id, "sk": "user2#signup", "event_type": "signup", "referred_id": "user2", "created_at": "2024-01-14T10:00:00Z"},
-            {"pk": referrer_id, "sk": "user3#paid", "event_type": "paid", "referred_id": "user3", "created_at": "2024-01-13T10:00:00Z"},
+            {
+                "pk": referrer_id,
+                "sk": "user1#pending",
+                "event_type": "pending",
+                "referred_id": "user1",
+                "created_at": "2024-01-15T10:00:00Z",
+            },
+            {
+                "pk": referrer_id,
+                "sk": "user2#signup",
+                "event_type": "signup",
+                "referred_id": "user2",
+                "created_at": "2024-01-14T10:00:00Z",
+            },
+            {
+                "pk": referrer_id,
+                "sk": "user3#paid",
+                "event_type": "paid",
+                "referred_id": "user3",
+                "created_at": "2024-01-13T10:00:00Z",
+            },
         ]
         for event in events:
             table.put_item(Item=event)
@@ -827,9 +837,7 @@ class TestAddBonusWithCapEdgeCases:
             "UpdateItem",
         )
         mock_table.update_item.side_effect = [conditional_error, conditional_error]
-        mock_table.get_item.return_value = {
-            "Item": {"bonus_requests_lifetime": 490000}
-        }
+        mock_table.get_item.return_value = {"Item": {"bonus_requests_lifetime": 490000}}
 
         mock_dynamodb_resource = MagicMock()
         mock_dynamodb_resource.Table.return_value = mock_table
@@ -854,9 +862,7 @@ class TestAddBonusWithCapEdgeCases:
         )
         mock_table.update_item.side_effect = conditional_error
         # get_item: user is exactly at cap
-        mock_table.get_item.return_value = {
-            "Item": {"bonus_requests_lifetime": BONUS_CAP}
-        }
+        mock_table.get_item.return_value = {"Item": {"bonus_requests_lifetime": BONUS_CAP}}
 
         mock_dynamodb_resource = MagicMock()
         mock_dynamodb_resource.Table.return_value = mock_table
@@ -884,9 +890,7 @@ class TestAddBonusWithCapEdgeCases:
         )
         # First update: conditional fail; retry update: internal error
         mock_table.update_item.side_effect = [conditional_error, internal_error]
-        mock_table.get_item.return_value = {
-            "Item": {"bonus_requests_lifetime": 490000}
-        }
+        mock_table.get_item.return_value = {"Item": {"bonus_requests_lifetime": 490000}}
 
         mock_dynamodb_resource = MagicMock()
         mock_dynamodb_resource.Table.return_value = mock_table
@@ -905,6 +909,7 @@ class TestConsumeBonusCredits:
     def user_with_bonus(self, mock_dynamodb):
         """Create a user with bonus credits."""
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -921,6 +926,7 @@ class TestConsumeBonusCredits:
     def test_zero_amount_returns_true(self, mock_dynamodb):
         """Consuming 0 credits should return True (line 369-370)."""
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
         from shared.referral_utils import consume_bonus_credits
 
@@ -930,6 +936,7 @@ class TestConsumeBonusCredits:
     def test_negative_amount_returns_true(self, mock_dynamodb):
         """Consuming negative credits should return True (line 369-370)."""
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
         from shared.referral_utils import consume_bonus_credits
 
@@ -964,6 +971,7 @@ class TestConsumeBonusCredits:
     def test_no_bonus_attribute_returns_false(self, mock_dynamodb):
         """Should return False when user has no bonus_requests attribute."""
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
         from shared.referral_utils import consume_bonus_credits
 
@@ -1081,6 +1089,7 @@ class TestUpdateReferrerStatsEdgeCases:
     def test_no_deltas_returns_true(self, mock_dynamodb):
         """Calling with no deltas should return True early (line 604)."""
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
         from shared.referral_utils import update_referrer_stats
 
@@ -1091,6 +1100,7 @@ class TestUpdateReferrerStatsEdgeCases:
     def test_paid_delta_increments(self, mock_dynamodb):
         """Should update paid count when paid_delta is non-zero (lines 591-593)."""
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
         from shared.referral_utils import update_referrer_stats
 
@@ -1113,6 +1123,7 @@ class TestUpdateReferrerStatsEdgeCases:
     def test_retained_delta_increments(self, mock_dynamodb):
         """Should update retained count when retained_delta is non-zero (lines 595-596)."""
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
         from shared.referral_utils import update_referrer_stats
 
@@ -1135,6 +1146,7 @@ class TestUpdateReferrerStatsEdgeCases:
     def test_rewards_delta_increments(self, mock_dynamodb):
         """Should update rewards earned when rewards_delta is non-zero (lines 599-601)."""
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
         from shared.referral_utils import update_referrer_stats
 
@@ -1180,6 +1192,7 @@ class TestCanAddLateReferralEdgeCases:
     def test_missing_created_at_returns_false(self, mock_dynamodb):
         """Should return (False, None) when created_at is missing (line 729)."""
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
         from shared.referral_utils import can_add_late_referral
 
@@ -1199,6 +1212,7 @@ class TestCanAddLateReferralEdgeCases:
     def test_invalid_date_format_returns_false(self, mock_dynamodb):
         """Should return (False, None) when created_at has invalid format (lines 741-742)."""
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
         from shared.referral_utils import can_add_late_referral
 
@@ -1218,6 +1232,7 @@ class TestCanAddLateReferralEdgeCases:
     def test_nonexistent_user_returns_false(self, mock_dynamodb):
         """Should return (False, None) for user that doesn't exist."""
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
         from shared.referral_utils import can_add_late_referral
 

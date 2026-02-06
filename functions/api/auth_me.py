@@ -51,7 +51,6 @@ def handler(event, context):
     origin = headers.get("origin") or headers.get("Origin")
 
     try:
-
         # Extract session cookie
         cookie_header = headers.get("cookie") or headers.get("Cookie") or ""
 
@@ -109,9 +108,7 @@ def handler(event, context):
         # Handle Stripe refresh if requested and user has subscription
         stripe_subscription_id = primary_key.get("stripe_subscription_id")
         if should_refresh and stripe_subscription_id:
-            refreshed_data = _refresh_from_stripe(
-                table, user_id, primary_key, api_keys, stripe_subscription_id
-            )
+            refreshed_data = _refresh_from_stripe(table, user_id, primary_key, api_keys, stripe_subscription_id)
             if refreshed_data:
                 # Use refreshed data
                 primary_key = refreshed_data
@@ -124,10 +121,7 @@ def handler(event, context):
             total_requests = int(user_meta.get("requests_this_month", 0))
         else:
             # Backward compatibility: sum per-key counters
-            total_requests = sum(
-                int(key.get("requests_this_month", 0))
-                for key in api_keys
-            )
+            total_requests = sum(int(key.get("requests_this_month", 0)) for key in api_keys)
 
         # Return user info with CORS headers and no-cache to prevent stale data
         response_headers = {
@@ -160,6 +154,7 @@ def handler(event, context):
                 created_at = user_meta.get("created_at")
                 if created_at:
                     from datetime import datetime, timedelta, timezone
+
                     try:
                         created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
                         deadline = created_dt + timedelta(days=LATE_ENTRY_DAYS)
@@ -177,26 +172,29 @@ def handler(event, context):
         return {
             "statusCode": 200,
             "headers": response_headers,
-            "body": json.dumps({
-                "user_id": user_id,
-                "email": email,
-                "tier": primary_key.get("tier", "free"),
-                "requests_this_month": total_requests,
-                "monthly_limit": monthly_limit,
-                "bonus_requests": bonus_requests,
-                "bonus_cap": BONUS_CAP,
-                "bonus_lifetime": bonus_lifetime,
-                "effective_limit": effective_limit,
-                "created_at": primary_key.get("created_at") or (user_meta.get("created_at") if user_meta else None),
-                "last_login": primary_key.get("last_login"),
-                "cancellation_pending": cancellation_pending,
-                "cancellation_date": cancellation_date,
-                "current_period_end": current_period_end,
-                "referral_code": referral_code,
-                "can_add_referral": can_add_referral,
-                "referral_code_deadline": referral_code_deadline,
-                "data_source": data_source,
-            }, default=decimal_default),
+            "body": json.dumps(
+                {
+                    "user_id": user_id,
+                    "email": email,
+                    "tier": primary_key.get("tier", "free"),
+                    "requests_this_month": total_requests,
+                    "monthly_limit": monthly_limit,
+                    "bonus_requests": bonus_requests,
+                    "bonus_cap": BONUS_CAP,
+                    "bonus_lifetime": bonus_lifetime,
+                    "effective_limit": effective_limit,
+                    "created_at": primary_key.get("created_at") or (user_meta.get("created_at") if user_meta else None),
+                    "last_login": primary_key.get("last_login"),
+                    "cancellation_pending": cancellation_pending,
+                    "cancellation_date": cancellation_date,
+                    "current_period_end": current_period_end,
+                    "referral_code": referral_code,
+                    "can_add_referral": can_add_referral,
+                    "referral_code_deadline": referral_code_deadline,
+                    "data_source": data_source,
+                },
+                default=decimal_default,
+            ),
         }
     except Exception as e:
         logger.error(f"Error in auth_me handler: {e}")
@@ -310,7 +308,3 @@ def _refresh_from_stripe(table, user_id: str, primary_key: dict, api_keys: list,
     except Exception as e:
         logger.error(f"Error refreshing from Stripe: {e}")
         return None
-
-
-
-

@@ -102,6 +102,7 @@ class TestValidMagicLinkGeneration:
 
         # Verify magic token was stored on user record
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             KeyConditionExpression=Key("pk").eq(verified_user["user_id"]),
         )
@@ -131,6 +132,7 @@ class TestValidMagicLinkGeneration:
         assert result["statusCode"] == 200
 
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             KeyConditionExpression=Key("pk").eq(verified_user["user_id"]),
         )
@@ -143,9 +145,7 @@ class TestValidMagicLinkGeneration:
         assert diff < 60  # Within 1 minute tolerance
 
     @mock_aws
-    def test_email_case_insensitive_lookup(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user
-    ):
+    def test_email_case_insensitive_lookup(self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user):
         """Should handle email lookup case insensitively."""
         from api.magic_link import handler
 
@@ -158,6 +158,7 @@ class TestValidMagicLinkGeneration:
 
         # Verify magic token was stored
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             KeyConditionExpression=Key("pk").eq(verified_user["user_id"]),
         )
@@ -294,9 +295,7 @@ class TestTimingNormalization:
         assert elapsed >= MIN_RESPONSE_TIME_SECONDS - 0.1
 
     @mock_aws
-    def test_response_takes_minimum_time_for_nonexistent_user(
-        self, mock_dynamodb, base_event, ses_client
-    ):
+    def test_response_takes_minimum_time_for_nonexistent_user(self, mock_dynamodb, base_event, ses_client):
         """Response should take at least MIN_RESPONSE_TIME_SECONDS for non-existent user."""
         from api.magic_link import MIN_RESPONSE_TIME_SECONDS, handler
 
@@ -340,9 +339,7 @@ class TestNonExistentUserHandling:
     """Tests for non-existent user handling (enumeration prevention)."""
 
     @mock_aws
-    def test_nonexistent_email_returns_success(
-        self, mock_dynamodb, base_event, ses_client
-    ):
+    def test_nonexistent_email_returns_success(self, mock_dynamodb, base_event, ses_client):
         """Should return 200 for non-existent email (enumeration prevention)."""
         from api.magic_link import handler
 
@@ -356,9 +353,7 @@ class TestNonExistentUserHandling:
         assert "message" in body
 
     @mock_aws
-    def test_nonexistent_email_does_not_store_token(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_nonexistent_email_does_not_store_token(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should not create any database records for non-existent email."""
         from api.magic_link import handler
 
@@ -370,6 +365,7 @@ class TestNonExistentUserHandling:
 
         # Verify no records were created
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("unknown@example.com"),
@@ -409,6 +405,7 @@ class TestUnverifiedUserHandling:
 
         # Verify no magic token was stored (user not verified)
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             KeyConditionExpression=Key("pk").eq(user_id),
         )
@@ -444,6 +441,7 @@ class TestUnverifiedUserHandling:
 
         # Verify no magic token was stored
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             KeyConditionExpression=Key("pk").eq(user_id),
         )
@@ -455,9 +453,7 @@ class TestDatabaseErrorHandling:
     """Tests for database error handling."""
 
     @mock_aws
-    def test_dynamodb_query_error_returns_500(
-        self, mock_dynamodb, base_event, ses_client
-    ):
+    def test_dynamodb_query_error_returns_500(self, mock_dynamodb, base_event, ses_client):
         """Should return 500 on DynamoDB query error."""
         from api.magic_link import handler
 
@@ -475,9 +471,7 @@ class TestDatabaseErrorHandling:
             assert body["error"]["code"] == "internal_error"
 
     @mock_aws
-    def test_update_item_error_returns_500(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user
-    ):
+    def test_update_item_error_returns_500(self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user):
         """Should return 500 on DynamoDB update_item error."""
         from api.magic_link import handler
 
@@ -485,12 +479,14 @@ class TestDatabaseErrorHandling:
             mock_table = MagicMock()
             # Query succeeds
             mock_table.query.return_value = {
-                "Items": [{
-                    "pk": verified_user["user_id"],
-                    "sk": verified_user["key_hash"],
-                    "email": "verified@example.com",
-                    "email_verified": True,
-                }]
+                "Items": [
+                    {
+                        "pk": verified_user["user_id"],
+                        "sk": verified_user["key_hash"],
+                        "email": "verified@example.com",
+                        "email_verified": True,
+                    }
+                ]
             }
             # Update fails
             mock_table.update_item.side_effect = Exception("Update failed")
@@ -509,9 +505,7 @@ class TestSESEmailFailureHandling:
     """Tests for SES email send failure handling."""
 
     @mock_aws
-    def test_ses_failure_still_returns_success(
-        self, mock_dynamodb, base_event, api_keys_table, verified_user
-    ):
+    def test_ses_failure_still_returns_success(self, mock_dynamodb, base_event, api_keys_table, verified_user):
         """Should return 200 even if SES fails (enumeration prevention)."""
         from api.magic_link import handler
 
@@ -525,6 +519,7 @@ class TestSESEmailFailureHandling:
 
         # Magic token should still be stored
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             KeyConditionExpression=Key("pk").eq(verified_user["user_id"]),
         )
@@ -553,9 +548,7 @@ class TestOriginHeaderHandling:
     """Tests for Origin header and CORS handling."""
 
     @mock_aws
-    def test_cors_origin_in_response(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user
-    ):
+    def test_cors_origin_in_response(self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user):
         """Should include CORS origin header in response."""
         from api.magic_link import handler
 
@@ -569,9 +562,7 @@ class TestOriginHeaderHandling:
         assert "Access-Control-Allow-Origin" in headers
 
     @mock_aws
-    def test_missing_origin_handled(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user
-    ):
+    def test_missing_origin_handled(self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user):
         """Should handle missing Origin header."""
         from api.magic_link import handler
 
@@ -583,9 +574,7 @@ class TestOriginHeaderHandling:
         assert result["statusCode"] == 200
 
     @mock_aws
-    def test_case_insensitive_origin_header(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user
-    ):
+    def test_case_insensitive_origin_header(self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user):
         """Should handle case-insensitive Origin header."""
         from api.magic_link import handler
 
@@ -627,6 +616,7 @@ class TestMagicTokenStorage:
 
         # Get first token
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             KeyConditionExpression=Key("pk").eq(verified_user["user_id"]),
         )
@@ -659,6 +649,7 @@ class TestMagicTokenStorage:
         for _ in range(5):
             handler(base_event, {})
             from boto3.dynamodb.conditions import Key
+
             response = api_keys_table.query(
                 KeyConditionExpression=Key("pk").eq(verified_user["user_id"]),
             )
@@ -678,9 +669,7 @@ class TestMultipleApiKeysUser:
     """Tests for users with multiple API keys."""
 
     @mock_aws
-    def test_magic_link_uses_first_verified_record(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table
-    ):
+    def test_magic_link_uses_first_verified_record(self, mock_dynamodb, base_event, ses_client, api_keys_table):
         """Should use first verified record found for user with multiple keys."""
         user_id = "user_multikey"
 
@@ -732,15 +721,14 @@ class TestMultipleApiKeysUser:
 
         # Verify magic token was stored on one of the verified records
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             KeyConditionExpression=Key("pk").eq(user_id),
         )
 
         # At least one record should have magic_token
         has_magic_token = any(
-            "magic_token" in item
-            for item in response["Items"]
-            if item["sk"] not in ["USER_META", "PENDING"]
+            "magic_token" in item for item in response["Items"] if item["sk"] not in ["USER_META", "PENDING"]
         )
         assert has_magic_token
 
@@ -749,9 +737,7 @@ class TestEmailNormalization:
     """Tests for email normalization."""
 
     @mock_aws
-    def test_email_whitespace_trimmed(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user
-    ):
+    def test_email_whitespace_trimmed(self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user):
         """Should trim whitespace from email."""
         from api.magic_link import handler
 
@@ -763,6 +749,7 @@ class TestEmailNormalization:
 
         # Verify magic token was stored (email matched after trimming)
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             KeyConditionExpression=Key("pk").eq(verified_user["user_id"]),
         )
@@ -770,9 +757,7 @@ class TestEmailNormalization:
         assert "magic_token" in api_key_item
 
     @mock_aws
-    def test_email_lowercased(
-        self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user
-    ):
+    def test_email_lowercased(self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user):
         """Should lowercase email for lookup."""
         from api.magic_link import handler
 
@@ -784,6 +769,7 @@ class TestEmailNormalization:
 
         # Verify magic token was stored (email matched after lowercasing)
         from boto3.dynamodb.conditions import Key
+
         response = api_keys_table.query(
             KeyConditionExpression=Key("pk").eq(verified_user["user_id"]),
         )

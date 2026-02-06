@@ -34,8 +34,8 @@ PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 REFRESH_DISPATCHER_ARN = os.environ.get("REFRESH_DISPATCHER_ARN", "")
 
 # Tier thresholds (by rank within ecosystem)
-TIER_1_MAX = 100   # Top 100 = daily refresh
-TIER_2_MAX = 500   # 101-500 = every 3 days
+TIER_1_MAX = 100  # Top 100 = daily refresh
+TIER_2_MAX = 500  # 101-500 = every 3 days
 # 501+ = tier 3 = weekly
 
 # Data sources
@@ -82,43 +82,191 @@ def fetch_top_npm_packages(count: int) -> list[dict]:
     # Use common framework/library keywords to find popular packages
     # These cover most of the npm ecosystem
     search_terms = [
-        "react", "vue", "angular", "express", "webpack", "babel",
-        "typescript", "eslint", "jest", "lodash", "axios", "moment",
-        "redux", "graphql", "apollo", "next", "gatsby", "nuxt",
-        "node", "npm", "yarn", "gulp", "grunt", "rollup", "vite",
-        "socket", "mongoose", "sequelize", "prisma", "knex",
-        "aws", "google", "azure", "firebase", "supabase",
-        "test", "mock", "faker", "chai", "mocha", "jasmine",
-        "crypto", "bcrypt", "jwt", "passport", "auth",
-        "http", "https", "fetch", "request", "got",
-        "fs", "path", "stream", "buffer", "util",
-        "cli", "commander", "yargs", "inquirer", "chalk",
-        "date", "time", "uuid", "nanoid", "shortid",
-        "json", "yaml", "xml", "csv", "markdown",
-        "image", "sharp", "canvas", "pdf", "excel",
-        "email", "nodemailer", "sendgrid", "mailgun",
-        "cache", "redis", "memcached", "lru",
-        "queue", "bull", "bee", "agenda",
-        "log", "winston", "bunyan", "pino", "debug",
-        "config", "dotenv", "convict", "nconf",
-        "validation", "joi", "yup", "zod", "ajv",
-        "orm", "database", "sql", "postgres", "mysql", "sqlite", "mongo",
-        "api", "rest", "swagger", "openapi",
-        "ui", "component", "button", "form", "table", "modal",
-        "style", "css", "sass", "less", "styled", "tailwind", "bootstrap",
-        "animation", "transition", "motion", "framer",
-        "chart", "graph", "d3", "echarts", "highcharts",
-        "map", "leaflet", "mapbox", "google-maps",
-        "video", "audio", "media", "player",
-        "build", "bundle", "compile", "transpile", "minify",
-        "lint", "format", "prettier", "standard",
-        "type", "types", "typing", "interface",
-        "async", "promise", "observable", "rxjs",
-        "state", "store", "flux", "mobx", "recoil",
-        "router", "route", "navigation", "history",
-        "server", "client", "ssr", "ssg", "spa",
-        "plugin", "extension", "addon", "middleware",
-        "util", "helper", "tool", "kit", "core", "common", "shared",
+        "react",
+        "vue",
+        "angular",
+        "express",
+        "webpack",
+        "babel",
+        "typescript",
+        "eslint",
+        "jest",
+        "lodash",
+        "axios",
+        "moment",
+        "redux",
+        "graphql",
+        "apollo",
+        "next",
+        "gatsby",
+        "nuxt",
+        "node",
+        "npm",
+        "yarn",
+        "gulp",
+        "grunt",
+        "rollup",
+        "vite",
+        "socket",
+        "mongoose",
+        "sequelize",
+        "prisma",
+        "knex",
+        "aws",
+        "google",
+        "azure",
+        "firebase",
+        "supabase",
+        "test",
+        "mock",
+        "faker",
+        "chai",
+        "mocha",
+        "jasmine",
+        "crypto",
+        "bcrypt",
+        "jwt",
+        "passport",
+        "auth",
+        "http",
+        "https",
+        "fetch",
+        "request",
+        "got",
+        "fs",
+        "path",
+        "stream",
+        "buffer",
+        "util",
+        "cli",
+        "commander",
+        "yargs",
+        "inquirer",
+        "chalk",
+        "date",
+        "time",
+        "uuid",
+        "nanoid",
+        "shortid",
+        "json",
+        "yaml",
+        "xml",
+        "csv",
+        "markdown",
+        "image",
+        "sharp",
+        "canvas",
+        "pdf",
+        "excel",
+        "email",
+        "nodemailer",
+        "sendgrid",
+        "mailgun",
+        "cache",
+        "redis",
+        "memcached",
+        "lru",
+        "queue",
+        "bull",
+        "bee",
+        "agenda",
+        "log",
+        "winston",
+        "bunyan",
+        "pino",
+        "debug",
+        "config",
+        "dotenv",
+        "convict",
+        "nconf",
+        "validation",
+        "joi",
+        "yup",
+        "zod",
+        "ajv",
+        "orm",
+        "database",
+        "sql",
+        "postgres",
+        "mysql",
+        "sqlite",
+        "mongo",
+        "api",
+        "rest",
+        "swagger",
+        "openapi",
+        "ui",
+        "component",
+        "button",
+        "form",
+        "table",
+        "modal",
+        "style",
+        "css",
+        "sass",
+        "less",
+        "styled",
+        "tailwind",
+        "bootstrap",
+        "animation",
+        "transition",
+        "motion",
+        "framer",
+        "chart",
+        "graph",
+        "d3",
+        "echarts",
+        "highcharts",
+        "map",
+        "leaflet",
+        "mapbox",
+        "google-maps",
+        "video",
+        "audio",
+        "media",
+        "player",
+        "build",
+        "bundle",
+        "compile",
+        "transpile",
+        "minify",
+        "lint",
+        "format",
+        "prettier",
+        "standard",
+        "type",
+        "types",
+        "typing",
+        "interface",
+        "async",
+        "promise",
+        "observable",
+        "rxjs",
+        "state",
+        "store",
+        "flux",
+        "mobx",
+        "recoil",
+        "router",
+        "route",
+        "navigation",
+        "history",
+        "server",
+        "client",
+        "ssr",
+        "ssg",
+        "spa",
+        "plugin",
+        "extension",
+        "addon",
+        "middleware",
+        "util",
+        "helper",
+        "tool",
+        "kit",
+        "core",
+        "common",
+        "shared",
     ]
 
     page_size = 250
@@ -146,11 +294,13 @@ def fetch_top_npm_packages(count: int) -> list[dict]:
                     pkg_name = obj.get("package", {}).get("name")
                     if pkg_name and pkg_name not in seen and len(packages) < count:
                         score = obj.get("score", {}).get("final", 0)
-                        packages.append({
-                            "name": pkg_name,
-                            "rank": len(packages) + 1,
-                            "score": score,
-                        })
+                        packages.append(
+                            {
+                                "name": pkg_name,
+                                "rank": len(packages) + 1,
+                                "score": score,
+                            }
+                        )
                         seen.add(pkg_name)
                         added_this_page += 1
 
@@ -192,10 +342,12 @@ def fetch_top_pypi_packages(count: int) -> list[dict]:
         for i, row in enumerate(rows[:count]):
             pkg_name = row.get("project")
             if pkg_name:
-                packages.append({
-                    "name": pkg_name,
-                    "rank": i + 1,
-                })
+                packages.append(
+                    {
+                        "name": pkg_name,
+                        "rank": i + 1,
+                    }
+                )
 
         logger.info(f"Total PyPI packages fetched: {len(packages)}")
 
@@ -226,7 +378,7 @@ def batch_write_packages(
     batch_size = 25
 
     for i in range(0, len(packages), batch_size):
-        batch = packages[i:i + batch_size]
+        batch = packages[i : i + batch_size]
 
         try:
             with table.batch_writer() as writer:
@@ -270,10 +422,12 @@ def trigger_refresh_dispatcher(tier: int) -> dict:
         response = lambda_client.invoke(
             FunctionName=REFRESH_DISPATCHER_ARN,
             InvocationType="Event",  # Async invocation
-            Payload=json.dumps({
-                "tier": tier,
-                "reason": "seed_packages",
-            }),
+            Payload=json.dumps(
+                {
+                    "tier": tier,
+                    "reason": "seed_packages",
+                }
+            ),
         )
 
         return {

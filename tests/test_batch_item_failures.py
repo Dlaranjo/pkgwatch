@@ -24,9 +24,7 @@ class TestProcessBatch:
     @patch("package_collector.process_single_package")
     @patch("package_collector.emit_metric")
     @patch("package_collector.emit_batch_metrics")
-    def test_process_batch_returns_failed_message_ids(
-        self, mock_batch_metrics, mock_metric, mock_process
-    ):
+    def test_process_batch_returns_failed_message_ids(self, mock_batch_metrics, mock_metric, mock_process):
         """Test that process_batch returns list of failed message IDs."""
         from package_collector import process_batch
 
@@ -53,9 +51,7 @@ class TestProcessBatch:
     @patch("package_collector.process_single_package")
     @patch("package_collector.emit_metric")
     @patch("package_collector.emit_batch_metrics")
-    def test_process_batch_handles_json_parse_error(
-        self, mock_batch_metrics, mock_metric, mock_process
-    ):
+    def test_process_batch_handles_json_parse_error(self, mock_batch_metrics, mock_metric, mock_process):
         """Test that JSON parse errors result in message ID being recorded as failed."""
         from package_collector import process_batch
 
@@ -78,9 +74,7 @@ class TestProcessBatch:
     @patch("package_collector.process_single_package")
     @patch("package_collector.emit_metric")
     @patch("package_collector.emit_batch_metrics")
-    def test_process_batch_handles_exception(
-        self, mock_batch_metrics, mock_metric, mock_process
-    ):
+    def test_process_batch_handles_exception(self, mock_batch_metrics, mock_metric, mock_process):
         """Test that exceptions from process_single_package are handled."""
         from package_collector import process_batch
 
@@ -102,9 +96,7 @@ class TestProcessBatch:
     @patch("package_collector.process_single_package")
     @patch("package_collector.emit_metric")
     @patch("package_collector.emit_batch_metrics")
-    def test_process_batch_all_success(
-        self, mock_batch_metrics, mock_metric, mock_process
-    ):
+    def test_process_batch_all_success(self, mock_batch_metrics, mock_metric, mock_process):
         """Test that successful batch returns empty failed_ids list."""
         from package_collector import process_batch
 

@@ -33,12 +33,14 @@ def referral_env_vars():
     # Reset module-level BASE_URL in referral modules
     try:
         import api.referral_redirect as redirect_module
+
         redirect_module.BASE_URL = "https://pkgwatch.dev"
     except ImportError:
         pass
 
     try:
         import api.referral_status as status_module
+
         status_module.BASE_URL = "https://pkgwatch.dev"
     except ImportError:
         pass
@@ -61,9 +63,7 @@ def create_session_token(user_id: str, email: str, tier: str = "free") -> str:
         "exp": int(session_expires.timestamp()),
     }
     payload = base64.urlsafe_b64encode(json.dumps(session_data).encode()).decode()
-    signature = hmac.new(
-        session_secret.encode(), payload.encode(), hashlib.sha256
-    ).hexdigest()
+    signature = hmac.new(session_secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return f"{payload}.{signature}"
 
 
@@ -466,6 +466,7 @@ class TestReferralCleanupHandler:
         """Should clean up expired pending referrals."""
         # Reset the module's dynamodb cache
         import api.referral_cleanup as cleanup_module
+
         cleanup_module._dynamodb = None
 
         from api.referral_cleanup import handler
@@ -490,6 +491,7 @@ class TestReferralCleanupHandler:
     def test_handles_empty_scan(self, mock_dynamodb):
         """Should handle case with no expired referrals."""
         import api.referral_cleanup as cleanup_module
+
         cleanup_module._dynamodb = None
 
         from api.referral_cleanup import handler
@@ -504,6 +506,7 @@ class TestReferralCleanupHandler:
         """Should handle ConditionalCheckFailedException when pending flag already cleared (lines 101-104)."""
 
         import api.referral_cleanup as cleanup_module
+
         cleanup_module._dynamodb = None
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -839,6 +842,7 @@ class TestReferralStatusErrorPaths:
 
         # Patch dynamodb.Table to raise an exception
         import api.referral_status as status_module
+
         with patch.object(status_module.dynamodb, "Table", side_effect=Exception("DB connection failed")):
             result = handler(event, {})
 
@@ -984,6 +988,7 @@ class TestReferralRetentionCheckHandler:
 
         # Reset module caches
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
 
         from api.referral_retention_check import handler
@@ -1000,6 +1005,7 @@ class TestReferralRetentionCheckHandler:
         mock_stripe_key.return_value = None
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
 
         from api.referral_retention_check import handler
@@ -1024,10 +1030,12 @@ class TestReferralRetentionCheckHandler:
         mock_stripe_retrieve.return_value = mock_subscription
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
 
         # Reset shared.referral_utils module cache
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         from api.referral_retention_check import handler
@@ -1070,8 +1078,10 @@ class TestReferralRetentionCheckHandler:
         mock_stripe_retrieve.return_value = mock_subscription
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         from api.referral_retention_check import handler
@@ -1107,8 +1117,10 @@ class TestReferralRetentionCheckHandler:
         mock_stripe_retrieve.return_value = mock_subscription
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         from api.referral_retention_check import handler
@@ -1142,8 +1154,10 @@ class TestReferralRetentionCheckHandler:
         mock_stripe_key.return_value = "sk_test_fake"
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         from api.referral_retention_check import handler
@@ -1168,19 +1182,20 @@ class TestReferralRetentionCheckHandler:
 
     @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
-    def test_handles_stripe_api_error_gracefully(
-        self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
-    ):
+    def test_handles_stripe_api_error_gracefully(self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals):
         """Should handle Stripe API errors gracefully and continue processing."""
         import stripe
+
         mock_stripe_key.return_value = "sk_test_fake"
 
         # Mock Stripe error
         mock_stripe_retrieve.side_effect = stripe.StripeError("API Error")
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         from api.referral_retention_check import handler
@@ -1216,8 +1231,10 @@ class TestReferralRetentionCheckHandler:
         mock_stripe_retrieve.return_value = mock_subscription
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         from api.referral_retention_check import handler
@@ -1235,9 +1252,7 @@ class TestReferralRetentionCheckHandler:
         handler({}, {})
 
         # Verify retention check flag was cleared
-        response = events_table.get_item(
-            Key={"pk": referrer_id, "sk": f"{referred_id}#paid"}
-        )
+        response = events_table.get_item(Key={"pk": referrer_id, "sk": f"{referred_id}#paid"})
         item = response.get("Item", {})
         assert item.get("needs_retention_check") is None
         assert item.get("retention_check_date") is None
@@ -1255,8 +1270,10 @@ class TestReferralRetentionCheckHandler:
         mock_stripe_retrieve.return_value = mock_subscription
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         api_table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1323,6 +1340,7 @@ class TestReferralRetentionCheckHandler:
         mock_stripe_key.return_value = "sk_test_fake"
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
 
         api_table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1364,9 +1382,7 @@ class TestReferralRetentionCheckHandler:
 
     @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
-    def test_retention_check_date_boundary_exactly_now(
-        self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
-    ):
+    def test_retention_check_date_boundary_exactly_now(self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb):
         """Referrals with retention date at exactly now should be processed."""
         mock_stripe_key.return_value = "sk_test_fake"
 
@@ -1375,8 +1391,10 @@ class TestReferralRetentionCheckHandler:
         mock_stripe_retrieve.return_value = mock_subscription
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         api_table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1424,9 +1442,7 @@ class TestReferralRetentionCheckHandler:
 
     @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
-    def test_retention_check_60_days_after_paid(
-        self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
-    ):
+    def test_retention_check_60_days_after_paid(self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb):
         """Retention check should be scheduled for 60 days (2 months) after paid conversion."""
         mock_stripe_key.return_value = "sk_test_fake"
 
@@ -1435,8 +1451,10 @@ class TestReferralRetentionCheckHandler:
         mock_stripe_retrieve.return_value = mock_subscription
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         api_table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1488,9 +1506,7 @@ class TestReferralRetentionCheckHandler:
 
     @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
-    def test_records_retained_event(
-        self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
-    ):
+    def test_records_retained_event(self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals):
         """Should record a 'retained' event when crediting referrer."""
         mock_stripe_key.return_value = "sk_test_fake"
 
@@ -1499,8 +1515,10 @@ class TestReferralRetentionCheckHandler:
         mock_stripe_retrieve.return_value = mock_subscription
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         from api.referral_retention_check import handler
@@ -1518,9 +1536,7 @@ class TestReferralRetentionCheckHandler:
         handler({}, {})
 
         # Verify retained event was recorded
-        response = events_table.get_item(
-            Key={"pk": referrer_id, "sk": f"{referred_id}#retained"}
-        )
+        response = events_table.get_item(Key={"pk": referrer_id, "sk": f"{referred_id}#retained"})
         assert "Item" in response
         item = response["Item"]
         assert item["event_type"] == "retained"
@@ -1528,9 +1544,7 @@ class TestReferralRetentionCheckHandler:
 
     @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
-    def test_updates_referrer_retained_stats(
-        self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
-    ):
+    def test_updates_referrer_retained_stats(self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals):
         """Should update referrer's retained count when crediting."""
         mock_stripe_key.return_value = "sk_test_fake"
 
@@ -1539,8 +1553,10 @@ class TestReferralRetentionCheckHandler:
         mock_stripe_retrieve.return_value = mock_subscription
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         from api.referral_retention_check import handler
@@ -1573,8 +1589,7 @@ class TestReferralRetentionCheckHandler:
         # Create a mock table that raises an error on query
         mock_table = MagicMock()
         mock_table.query.side_effect = ClientError(
-            {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
-            "Query"
+            {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "Query"
         )
 
         mock_dynamodb_resource = MagicMock()
@@ -1591,9 +1606,7 @@ class TestReferralRetentionCheckHandler:
 
     @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
-    def test_handles_processing_error_continues_with_others(
-        self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
-    ):
+    def test_handles_processing_error_continues_with_others(self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb):
         """Should continue processing other referrals when one fails."""
         mock_stripe_key.return_value = "sk_test_fake"
 
@@ -1602,8 +1615,10 @@ class TestReferralRetentionCheckHandler:
         mock_stripe_retrieve.return_value = mock_subscription
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         api_table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1671,9 +1686,7 @@ class TestReferralRetentionCheckHandler:
 
     @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
-    def test_bonus_cap_applied_on_retention_credit(
-        self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
-    ):
+    def test_bonus_cap_applied_on_retention_credit(self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb):
         """Should apply bonus cap when crediting retention reward."""
         mock_stripe_key.return_value = "sk_test_fake"
 
@@ -1682,8 +1695,10 @@ class TestReferralRetentionCheckHandler:
         mock_stripe_retrieve.return_value = mock_subscription
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         api_table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1736,9 +1751,7 @@ class TestReferralRetentionCheckHandler:
 
     @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
-    def test_skips_pending_and_user_meta_records(
-        self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
-    ):
+    def test_skips_pending_and_user_meta_records(self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals):
         """Should skip PENDING and USER_META records when looking for subscription."""
         mock_stripe_key.return_value = "sk_test_fake"
 
@@ -1747,8 +1760,10 @@ class TestReferralRetentionCheckHandler:
         mock_stripe_retrieve.return_value = mock_subscription
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         from api.referral_retention_check import handler
@@ -1810,13 +1825,12 @@ class TestGetStripeApiKey:
     def test_retrieves_key_from_json_secret(self, mock_get_sm):
         """Should retrieve Stripe key from JSON secret."""
         import shared.billing_utils as billing_utils
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
         mock_sm = MagicMock()
-        mock_sm.get_secret_value.return_value = {
-            "SecretString": '{"key": "sk_test_json_key"}'
-        }
+        mock_sm.get_secret_value.return_value = {"SecretString": '{"key": "sk_test_json_key"}'}
         mock_get_sm.return_value = mock_sm
 
         result = billing_utils.get_stripe_api_key()
@@ -1827,13 +1841,12 @@ class TestGetStripeApiKey:
     def test_retrieves_key_from_plain_string_secret(self, mock_get_sm):
         """Should retrieve Stripe key from plain string secret."""
         import shared.billing_utils as billing_utils
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
         mock_sm = MagicMock()
-        mock_sm.get_secret_value.return_value = {
-            "SecretString": "sk_test_plain_key"
-        }
+        mock_sm.get_secret_value.return_value = {"SecretString": "sk_test_plain_key"}
         mock_get_sm.return_value = mock_sm
 
         result = billing_utils.get_stripe_api_key()
@@ -1844,6 +1857,7 @@ class TestGetStripeApiKey:
     def test_handles_secrets_manager_error(self, mock_get_sm):
         """Should return None when Secrets Manager fails."""
         import shared.billing_utils as billing_utils
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -1851,8 +1865,7 @@ class TestGetStripeApiKey:
 
         mock_sm = MagicMock()
         mock_sm.get_secret_value.side_effect = ClientError(
-            {"Error": {"Code": "ResourceNotFoundException", "Message": "Not found"}},
-            "GetSecretValue"
+            {"Error": {"Code": "ResourceNotFoundException", "Message": "Not found"}}, "GetSecretValue"
         )
         mock_get_sm.return_value = mock_sm
 
@@ -1864,13 +1877,12 @@ class TestGetStripeApiKey:
     def test_uses_json_key_field_when_present(self, mock_get_sm):
         """Should prefer 'key' field from JSON over entire string."""
         import shared.billing_utils as billing_utils
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
         mock_sm = MagicMock()
-        mock_sm.get_secret_value.return_value = {
-            "SecretString": '{"key": "sk_test_from_key_field", "other": "value"}'
-        }
+        mock_sm.get_secret_value.return_value = {"SecretString": '{"key": "sk_test_from_key_field", "other": "value"}'}
         mock_get_sm.return_value = mock_sm
 
         result = billing_utils.get_stripe_api_key()
@@ -1881,13 +1893,12 @@ class TestGetStripeApiKey:
     def test_falls_back_to_secret_string_when_key_empty(self, mock_get_sm):
         """Should fall back to full secret string when 'key' field is empty."""
         import shared.billing_utils as billing_utils
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
         mock_sm = MagicMock()
-        mock_sm.get_secret_value.return_value = {
-            "SecretString": '{"key": "", "fallback": "data"}'
-        }
+        mock_sm.get_secret_value.return_value = {"SecretString": '{"key": "", "fallback": "data"}'}
         mock_get_sm.return_value = mock_sm
 
         result = billing_utils.get_stripe_api_key()
@@ -1962,8 +1973,10 @@ class TestRetentionCheckErrorRecovery:
         mock_add_bonus.side_effect = Exception("Simulated bonus error")
 
         import api.referral_retention_check as retention_module
+
         retention_module._dynamodb = None
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         api_table = mock_dynamodb.Table("pkgwatch-api-keys")

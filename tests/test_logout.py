@@ -327,6 +327,7 @@ class TestLogoutDevCors:
             import importlib
 
             import shared.response_utils
+
             importlib.reload(shared.response_utils)
 
             from api.logout import handler
@@ -347,4 +348,5 @@ class TestLogoutDevCors:
             import importlib
 
             import shared.response_utils
+
             importlib.reload(shared.response_utils)

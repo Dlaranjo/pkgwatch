@@ -30,11 +30,28 @@ class StructuredFormatter(logging.Formatter):
         if hasattr(record, "__dict__"):
             for key, value in record.__dict__.items():
                 if key not in (
-                    "name", "msg", "args", "created", "filename", "funcName",
-                    "levelname", "levelno", "lineno", "module", "msecs",
-                    "pathname", "process", "processName", "relativeCreated",
-                    "stack_info", "exc_info", "exc_text", "thread", "threadName",
-                    "message", "asctime",
+                    "name",
+                    "msg",
+                    "args",
+                    "created",
+                    "filename",
+                    "funcName",
+                    "levelname",
+                    "levelno",
+                    "lineno",
+                    "module",
+                    "msecs",
+                    "pathname",
+                    "process",
+                    "processName",
+                    "relativeCreated",
+                    "stack_info",
+                    "exc_info",
+                    "exc_text",
+                    "thread",
+                    "threadName",
+                    "message",
+                    "asctime",
                 ):
                     log_entry[key] = value
 
@@ -109,7 +126,7 @@ def log_api_request(
             "status_code": status_code,
             "latency_ms": latency_ms,
             "user_id": user_id or "anonymous",
-        }
+        },
     )
 
 
@@ -132,5 +149,5 @@ def log_external_call(
             "success": success,
             "latency_ms": latency_ms,
             "error": error,
-        }
+        },
     )

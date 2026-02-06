@@ -104,6 +104,7 @@ class TestDataStatusMetricsHandler:
         # Reset the module-level dynamodb resource to use mock
         import admin.data_status_metrics as metrics_module
         from admin.data_status_metrics import handler
+
         metrics_module.dynamodb = mock_dynamodb
 
         result = handler({}, {})
@@ -124,6 +125,7 @@ class TestDataStatusMetricsHandler:
 
         import admin.data_status_metrics as metrics_module
         from admin.data_status_metrics import handler
+
         metrics_module.dynamodb = mock_dynamodb
 
         result = handler({}, {})
@@ -140,6 +142,7 @@ class TestDataStatusMetricsHandler:
 
         import admin.data_status_metrics as metrics_module
         from admin.data_status_metrics import handler
+
         metrics_module.dynamodb = mock_dynamodb
 
         # Patch count_by_status to raise an exception for a specific status
@@ -175,6 +178,7 @@ class TestDataStatusMetricsHandler:
         )
 
         import admin.data_status_metrics as metrics_module
+
         metrics_module.dynamodb = mock_dynamodb
 
         with patch("shared.metrics.emit_batch_metrics") as mock_emit:
@@ -196,6 +200,7 @@ class TestDataStatusMetricsHandler:
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         import admin.data_status_metrics as metrics_module
+
         metrics_module.dynamodb = mock_dynamodb
 
         with patch("shared.metrics.emit_batch_metrics", side_effect=Exception("CloudWatch down")):
@@ -211,6 +216,7 @@ class TestDataStatusMetricsHandler:
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         import admin.data_status_metrics as metrics_module
+
         metrics_module.dynamodb = mock_dynamodb
 
         # Simulate an EventBridge scheduled event

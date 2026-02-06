@@ -40,10 +40,7 @@ def mock_secretsmanager():
     """Mock Secrets Manager for session secret."""
     with mock_aws():
         sm = boto3.client("secretsmanager", region_name="us-east-1")
-        sm.create_secret(
-            Name="test-session-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
-        )
+        sm.create_secret(Name="test-session-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}')
         yield sm
 
 
@@ -153,9 +150,7 @@ class TestVerifyEmailTokenReplay:
         assert "verified=true" in result["headers"]["Location"]
 
         # Verify PENDING record was deleted
-        response = pending_user["table"].get_item(
-            Key={"pk": pending_user["user_id"], "sk": "PENDING"}
-        )
+        response = pending_user["table"].get_item(Key={"pk": pending_user["user_id"], "sk": "PENDING"})
         assert "Item" not in response
 
     @mock_aws
@@ -189,9 +184,7 @@ class TestVerifyEmailTokenReplay:
 
         # Simulate race: manually delete the PENDING record before handler runs
         # This simulates another request consuming the token first
-        pending_user["table"].delete_item(
-            Key={"pk": pending_user["user_id"], "sk": "PENDING"}
-        )
+        pending_user["table"].delete_item(Key={"pk": pending_user["user_id"], "sk": "PENDING"})
 
         # Now the handler should fail because token is already consumed
         result = handler(api_gateway_event, {})
@@ -292,10 +285,13 @@ class TestAuthCallbackTOCTOU:
     """Tests for TOCTOU race condition fix in auth_callback.py."""
 
     @mock_aws
-    def test_atomic_token_consumption(self, mock_dynamodb, mock_secretsmanager, verified_user_with_magic_token, setup_env, api_gateway_event):
+    def test_atomic_token_consumption(
+        self, mock_dynamodb, mock_secretsmanager, verified_user_with_magic_token, setup_env, api_gateway_event
+    ):
         """Magic token should be atomically consumed with expiration check."""
         # Clear the session secret cache
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -318,9 +314,12 @@ class TestAuthCallbackTOCTOU:
         assert "magic_expires" not in item
 
     @mock_aws
-    def test_replay_returns_token_already_used(self, mock_dynamodb, mock_secretsmanager, verified_user_with_magic_token, setup_env, api_gateway_event):
+    def test_replay_returns_token_already_used(
+        self, mock_dynamodb, mock_secretsmanager, verified_user_with_magic_token, setup_env, api_gateway_event
+    ):
         """Second use of magic token should return token_already_used."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -340,11 +339,14 @@ class TestAuthCallbackTOCTOU:
         assert "error=invalid_token" in result2["headers"]["Location"]
 
     @mock_aws
-    def test_expired_token_returns_token_expired(self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event):
+    def test_expired_token_returns_token_expired(
+        self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event
+    ):
         """Expired magic token should return token_expired error."""
         import hashlib
 
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -384,9 +386,12 @@ class TestAuthCallbackTOCTOU:
         assert "magic_token" not in item
 
     @mock_aws
-    def test_race_condition_token_consumed_by_another(self, mock_dynamodb, mock_secretsmanager, verified_user_with_magic_token, setup_env, api_gateway_event):
+    def test_race_condition_token_consumed_by_another(
+        self, mock_dynamodb, mock_secretsmanager, verified_user_with_magic_token, setup_env, api_gateway_event
+    ):
         """Simulates race where another request consumed the token first."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -412,9 +417,12 @@ class TestAuthCallbackSessionCreation:
     """Tests for session token creation."""
 
     @mock_aws
-    def test_session_cookie_set_correctly(self, mock_dynamodb, mock_secretsmanager, verified_user_with_magic_token, setup_env, api_gateway_event):
+    def test_session_cookie_set_correctly(
+        self, mock_dynamodb, mock_secretsmanager, verified_user_with_magic_token, setup_env, api_gateway_event
+    ):
         """Session cookie should have correct security attributes."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -431,9 +439,12 @@ class TestAuthCallbackSessionCreation:
         assert "SameSite=Strict" in cookie
 
     @mock_aws
-    def test_verify_session_token(self, mock_dynamodb, mock_secretsmanager, verified_user_with_magic_token, setup_env, api_gateway_event):
+    def test_verify_session_token(
+        self, mock_dynamodb, mock_secretsmanager, verified_user_with_magic_token, setup_env, api_gateway_event
+    ):
         """Session token should be verifiable."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -463,7 +474,9 @@ class TestMagicLinkEmailEnumeration:
     """Tests for email enumeration prevention in magic_link.py."""
 
     @mock_aws
-    def test_same_response_for_existing_email(self, mock_dynamodb, mock_ses, seeded_api_keys_table, setup_env, api_gateway_event):
+    def test_same_response_for_existing_email(
+        self, mock_dynamodb, mock_ses, seeded_api_keys_table, setup_env, api_gateway_event
+    ):
         """Should return success for existing email."""
         from api.magic_link import handler
 
@@ -516,14 +529,8 @@ class TestMagicLinkEmailEnumeration:
         api_gateway_event["body"] = json.dumps({"email": "test@example.com"})
 
         # Mock SES throttling error
-        error_response = {
-            "Error": {
-                "Code": "Throttling",
-                "Message": "Rate exceeded"
-            }
-        }
-        with patch("api.magic_link.ses.send_email",
-                   side_effect=ClientError(error_response, "SendEmail")):
+        error_response = {"Error": {"Code": "Throttling", "Message": "Rate exceeded"}}
+        with patch("api.magic_link.ses.send_email", side_effect=ClientError(error_response, "SendEmail")):
             result = handler(api_gateway_event, {})
 
         # Should still return success
@@ -549,7 +556,9 @@ class TestMagicLinkTimingNormalization:
         assert elapsed >= MIN_RESPONSE_TIME_SECONDS - 0.1
 
     @mock_aws
-    def test_timing_constant_for_existing_vs_nonexistent(self, mock_dynamodb, mock_ses, seeded_api_keys_table, setup_env, api_gateway_event):
+    def test_timing_constant_for_existing_vs_nonexistent(
+        self, mock_dynamodb, mock_ses, seeded_api_keys_table, setup_env, api_gateway_event
+    ):
         """Timing should be similar for existing vs non-existent emails."""
         from api.magic_link import MIN_RESPONSE_TIME_SECONDS, handler
 
@@ -600,9 +609,7 @@ class TestResendVerification:
         assert "pending verification" in body["message"]
 
         # Verify new token was generated
-        response = pending_user["table"].get_item(
-            Key={"pk": pending_user["user_id"], "sk": "PENDING"}
-        )
+        response = pending_user["table"].get_item(Key={"pk": pending_user["user_id"], "sk": "PENDING"})
         new_token = response["Item"]["verification_token"]
         assert new_token != original_token
 
@@ -689,6 +696,7 @@ class TestGetPendingKey:
     def test_returns_401_with_invalid_session(self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event):
         """Should return 401 with invalid session token."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -703,9 +711,12 @@ class TestGetPendingKey:
         assert body["error"]["code"] == "session_expired"
 
     @mock_aws
-    def test_returns_pending_key_with_valid_session(self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event):
+    def test_returns_pending_key_with_valid_session(
+        self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event
+    ):
         """Should return pending key with valid session."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -745,9 +756,12 @@ class TestGetPendingKey:
         assert body["api_key"] == pending_api_key
 
     @mock_aws
-    def test_pending_key_deleted_after_retrieval(self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event):
+    def test_pending_key_deleted_after_retrieval(
+        self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event
+    ):
         """Pending key should be deleted after first retrieval (one-time use)."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -793,6 +807,7 @@ class TestGetPendingKey:
     def test_returns_404_when_no_pending_key(self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event):
         """Should return 404 when no pending key exists."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -851,9 +866,12 @@ class TestSecurityEdgeCases:
             assert "error=" in result["headers"]["Location"]
 
     @mock_aws
-    def test_auth_callback_handles_malformed_token(self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event):
+    def test_auth_callback_handles_malformed_token(
+        self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event
+    ):
         """Should handle malformed magic tokens gracefully."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -925,9 +943,7 @@ class TestConcurrencySimulation:
         api_gateway_event["queryStringParameters"] = {"token": pending_user["token"]}
 
         # Verify the record exists before
-        response = pending_user["table"].get_item(
-            Key={"pk": pending_user["user_id"], "sk": "PENDING"}
-        )
+        response = pending_user["table"].get_item(Key={"pk": pending_user["user_id"], "sk": "PENDING"})
         assert "Item" in response
 
         with patch("api.verify_email.generate_api_key", return_value="pw_test"):
@@ -936,15 +952,16 @@ class TestConcurrencySimulation:
         assert result["statusCode"] == 302
 
         # Record should be gone
-        response = pending_user["table"].get_item(
-            Key={"pk": pending_user["user_id"], "sk": "PENDING"}
-        )
+        response = pending_user["table"].get_item(Key={"pk": pending_user["user_id"], "sk": "PENDING"})
         assert "Item" not in response
 
     @mock_aws
-    def test_auth_callback_atomic_operation(self, mock_dynamodb, mock_secretsmanager, verified_user_with_magic_token, setup_env, api_gateway_event):
+    def test_auth_callback_atomic_operation(
+        self, mock_dynamodb, mock_secretsmanager, verified_user_with_magic_token, setup_env, api_gateway_event
+    ):
         """Test that auth_callback uses atomic conditional update."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 

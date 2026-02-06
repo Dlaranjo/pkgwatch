@@ -171,21 +171,15 @@ class TestGitHubCollector:
                     json=[
                         {
                             "author": {"login": "jdalton"},
-                            "commit": {
-                                "author": {"date": datetime.now(timezone.utc).isoformat()}
-                            },
+                            "commit": {"author": {"date": datetime.now(timezone.utc).isoformat()}},
                         },
                         {
                             "author": {"login": "jdalton"},
-                            "commit": {
-                                "author": {"date": datetime.now(timezone.utc).isoformat()}
-                            },
+                            "commit": {"author": {"date": datetime.now(timezone.utc).isoformat()}},
                         },
                         {
                             "author": {"login": "contributor1"},
-                            "commit": {
-                                "author": {"date": datetime.now(timezone.utc).isoformat()}
-                            },
+                            "commit": {"author": {"date": datetime.now(timezone.utc).isoformat()}},
                         },
                     ],
                     headers={"X-RateLimit-Remaining": "4998"},
@@ -347,18 +341,21 @@ class TestGitHubCollector:
             elif "/pulls" in url:
                 return httpx.Response(200, json=[])
             elif "/repos/stable/package" in url:
-                return httpx.Response(200, json={
-                    "stargazers_count": 1000,
-                    "forks_count": 100,
-                    "open_issues_count": 5,
-                    "watchers_count": 1000,
-                    "pushed_at": pushed_at_date,
-                    "updated_at": pushed_at_date,
-                    "created_at": "2020-01-01T00:00:00Z",
-                    "archived": False,
-                    "disabled": False,
-                    "default_branch": "main",
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "stargazers_count": 1000,
+                        "forks_count": 100,
+                        "open_issues_count": 5,
+                        "watchers_count": 1000,
+                        "pushed_at": pushed_at_date,
+                        "updated_at": pushed_at_date,
+                        "created_at": "2020-01-01T00:00:00Z",
+                        "archived": False,
+                        "disabled": False,
+                        "default_branch": "main",
+                    },
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
@@ -390,16 +387,19 @@ class TestGitHubCollector:
             elif "/pulls" in url:
                 return httpx.Response(200, json=[])
             elif "/repos/unknown/repo" in url:
-                return httpx.Response(200, json={
-                    "stargazers_count": 0,
-                    "forks_count": 0,
-                    "open_issues_count": 0,
-                    "watchers_count": 0,
-                    # No pushed_at field
-                    "archived": False,
-                    "disabled": False,
-                    "default_branch": "main",
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "stargazers_count": 0,
+                        "forks_count": 0,
+                        "open_issues_count": 0,
+                        "watchers_count": 0,
+                        # No pushed_at field
+                        "archived": False,
+                        "disabled": False,
+                        "default_branch": "main",
+                    },
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
@@ -426,10 +426,15 @@ class TestGitHubCollector:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if "/commits" in url:
-                return httpx.Response(200, json=[{
-                    "author": {"login": "dev"},
-                    "commit": {"author": {"date": commit_date}},
-                }])
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "author": {"login": "dev"},
+                            "commit": {"author": {"date": commit_date}},
+                        }
+                    ],
+                )
             elif "/contributors" in url:
                 return httpx.Response(200, json=[{"login": "dev", "contributions": 100}])
             elif "/issues" in url:
@@ -437,18 +442,21 @@ class TestGitHubCollector:
             elif "/pulls" in url:
                 return httpx.Response(200, json=[])
             elif "/repos/active/repo" in url:
-                return httpx.Response(200, json={
-                    "stargazers_count": 1000,
-                    "forks_count": 100,
-                    "open_issues_count": 5,
-                    "watchers_count": 1000,
-                    "pushed_at": pushed_at_date,
-                    "updated_at": commit_date,
-                    "created_at": "2020-01-01T00:00:00Z",
-                    "archived": False,
-                    "disabled": False,
-                    "default_branch": "main",
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "stargazers_count": 1000,
+                        "forks_count": 100,
+                        "open_issues_count": 5,
+                        "watchers_count": 1000,
+                        "pushed_at": pushed_at_date,
+                        "updated_at": commit_date,
+                        "created_at": "2020-01-01T00:00:00Z",
+                        "archived": False,
+                        "disabled": False,
+                        "default_branch": "main",
+                    },
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
@@ -482,16 +490,19 @@ class TestGitHubCollector:
             elif "/pulls" in url:
                 return httpx.Response(200, json=[])
             elif "/repos/future/repo" in url:
-                return httpx.Response(200, json={
-                    "stargazers_count": 0,
-                    "forks_count": 0,
-                    "open_issues_count": 0,
-                    "watchers_count": 0,
-                    "pushed_at": future_date,
-                    "archived": False,
-                    "disabled": False,
-                    "default_branch": "main",
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "stargazers_count": 0,
+                        "forks_count": 0,
+                        "open_issues_count": 0,
+                        "watchers_count": 0,
+                        "pushed_at": future_date,
+                        "archived": False,
+                        "disabled": False,
+                        "default_branch": "main",
+                    },
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
@@ -522,16 +533,19 @@ class TestGitHubCollector:
             elif "/pulls" in url:
                 return httpx.Response(200, json=[])
             elif "/repos/malformed/repo" in url:
-                return httpx.Response(200, json={
-                    "stargazers_count": 0,
-                    "forks_count": 0,
-                    "open_issues_count": 0,
-                    "watchers_count": 0,
-                    "pushed_at": "not-a-valid-date",  # Invalid date format
-                    "archived": False,
-                    "disabled": False,
-                    "default_branch": "main",
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "stargazers_count": 0,
+                        "forks_count": 0,
+                        "open_issues_count": 0,
+                        "watchers_count": 0,
+                        "pushed_at": "not-a-valid-date",  # Invalid date format
+                        "archived": False,
+                        "disabled": False,
+                        "default_branch": "main",
+                    },
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
@@ -606,19 +620,19 @@ class TestTrueBusFactor:
         commits = []
         for i in range(120):
             contributor = f"dev{i % 3}"
-            commits.append({
-                "author": {"login": contributor},
-                "commit": {"author": {"date": datetime.now(timezone.utc).isoformat()}},
-            })
+            commits.append(
+                {
+                    "author": {"login": contributor},
+                    "commit": {"author": {"date": datetime.now(timezone.utc).isoformat()}},
+                }
+            )
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if "/commits" in url:
                 return httpx.Response(200, json=commits[:100])  # API limit
             elif "/contributors" in url:
-                return httpx.Response(
-                    200, json=[{"login": f"dev{i}"} for i in range(3)]
-                )
+                return httpx.Response(200, json=[{"login": f"dev{i}"} for i in range(3)])
             elif "/repos/team/project" in url:
                 return httpx.Response(
                     200,
@@ -1174,9 +1188,7 @@ class TestGetPackageInfo:
                         "licenses": ["MIT"],
                         "relations": {"dependencies": ["dep1", "dep2"]},
                         "advisories": [],
-                        "links": [
-                            {"label": "SOURCE_REPO", "url": "https://github.com/lodash/lodash"}
-                        ],
+                        "links": [{"label": "SOURCE_REPO", "url": "https://github.com/lodash/lodash"}],
                     },
                 )
             elif "packages/lodash" in url:
@@ -1303,9 +1315,7 @@ class TestGetPackageInfo:
                         "licenses": ["MIT"],
                         "relations": {},
                         "advisories": [],
-                        "links": [
-                            {"label": "SOURCE_REPO", "url": "https://github.com/user/small-pkg"}
-                        ],
+                        "links": [{"label": "SOURCE_REPO", "url": "https://github.com/user/small-pkg"}],
                     },
                 )
             elif "packages/small-pkg" in url:
@@ -1615,9 +1625,7 @@ class TestDepsDevPackageInfoEdgeCases:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if "packages/test-pkg/versions/1.0.0:dependents" in url:
-                return httpx.Response(200, json={
-                    "dependentCount": ["dep1", "dep2", "dep3"]
-                })
+                return httpx.Response(200, json={"dependentCount": ["dep1", "dep2", "dep3"]})
             elif "packages/test-pkg/versions/1.0.0" in url:
                 return httpx.Response(
                     200,
@@ -1729,12 +1737,15 @@ class TestGetAdvisories:
         from depsdev_collector import get_advisories
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={
-                "advisories": [
-                    {"id": "GHSA-1", "severity": "HIGH"},
-                    {"id": "GHSA-2", "severity": "MEDIUM"},
-                ]
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "advisories": [
+                        {"id": "GHSA-1", "severity": "HIGH"},
+                        {"id": "GHSA-2", "severity": "MEDIUM"},
+                    ]
+                },
+            )
 
         original_init = httpx.AsyncClient.__init__
 
@@ -1796,14 +1807,17 @@ class TestGetDependencies:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if ":dependencies" in url:
-                return httpx.Response(200, json={
-                    "nodes": [
-                        {"versionKey": {"name": "main-pkg", "system": "NPM"}, "relation": "SELF"},
-                        {"versionKey": {"name": "dep1", "system": "NPM"}, "relation": "DIRECT"},
-                        {"versionKey": {"name": "dep2", "system": "NPM"}, "relation": "DIRECT"},
-                        {"versionKey": {"name": "transitive", "system": "NPM"}, "relation": "INDIRECT"},
-                    ]
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "nodes": [
+                            {"versionKey": {"name": "main-pkg", "system": "NPM"}, "relation": "SELF"},
+                            {"versionKey": {"name": "dep1", "system": "NPM"}, "relation": "DIRECT"},
+                            {"versionKey": {"name": "dep2", "system": "NPM"}, "relation": "DIRECT"},
+                            {"versionKey": {"name": "transitive", "system": "NPM"}, "relation": "INDIRECT"},
+                        ]
+                    },
+                )
             elif "packages/main-pkg" in url:
                 return httpx.Response(
                     200,
@@ -1905,13 +1919,16 @@ class TestGetDependencies:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if ":dependencies" in url:
-                return httpx.Response(200, json={
-                    "nodes": [
-                        {"versionKey": {"name": "main-pkg", "system": "NPM"}, "relation": "SELF"},
-                        {"versionKey": {"name": "npm-dep", "system": "NPM"}, "relation": "DIRECT"},
-                        {"versionKey": {"name": "go-dep", "system": "GO"}, "relation": "DIRECT"},
-                    ]
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "nodes": [
+                            {"versionKey": {"name": "main-pkg", "system": "NPM"}, "relation": "SELF"},
+                            {"versionKey": {"name": "npm-dep", "system": "NPM"}, "relation": "DIRECT"},
+                            {"versionKey": {"name": "go-dep", "system": "GO"}, "relation": "DIRECT"},
+                        ]
+                    },
+                )
             elif "packages/main-pkg" in url:
                 return httpx.Response(
                     200,
@@ -1941,12 +1958,15 @@ class TestGetDependencies:
             url = str(request.url)
             if "systems/pypi" in url:
                 if ":dependencies" in url:
-                    return httpx.Response(200, json={
-                        "nodes": [
-                            {"versionKey": {"name": "requests", "system": "PYPI"}, "relation": "SELF"},
-                            {"versionKey": {"name": "urllib3", "system": "PYPI"}, "relation": "DIRECT"},
-                        ]
-                    })
+                    return httpx.Response(
+                        200,
+                        json={
+                            "nodes": [
+                                {"versionKey": {"name": "requests", "system": "PYPI"}, "relation": "SELF"},
+                                {"versionKey": {"name": "urllib3", "system": "PYPI"}, "relation": "DIRECT"},
+                            ]
+                        },
+                    )
                 elif "packages/requests" in url:
                     return httpx.Response(
                         200,
@@ -1974,12 +1994,15 @@ class TestGetDependencies:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if ":dependencies" in url and "2.0.0" in url:
-                return httpx.Response(200, json={
-                    "nodes": [
-                        {"versionKey": {"name": "test-pkg", "system": "NPM"}, "relation": "SELF"},
-                        {"versionKey": {"name": "my-dep", "system": "NPM"}, "relation": "DIRECT"},
-                    ]
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "nodes": [
+                            {"versionKey": {"name": "test-pkg", "system": "NPM"}, "relation": "SELF"},
+                            {"versionKey": {"name": "my-dep", "system": "NPM"}, "relation": "DIRECT"},
+                        ]
+                    },
+                )
             elif "packages/test-pkg" in url and ":dependencies" not in url:
                 return httpx.Response(
                     200,
@@ -2508,6 +2531,7 @@ class TestCollectPackageData:
 
     def test_collect_package_data_all_sources(self):
         """Test collecting data from all sources."""
+
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
 
@@ -2522,9 +2546,7 @@ class TestCollectPackageData:
                         "licenses": ["MIT"],
                         "relations": {},
                         "advisories": [],
-                        "links": [
-                            {"label": "SOURCE_REPO", "url": "https://github.com/lodash/lodash"}
-                        ],
+                        "links": [{"label": "SOURCE_REPO", "url": "https://github.com/lodash/lodash"}],
                     },
                 )
             elif "api.deps.dev/v3/systems/npm/packages/lodash" in url:
@@ -2560,9 +2582,7 @@ class TestCollectPackageData:
                     json=[
                         {
                             "author": {"login": "jdalton"},
-                            "commit": {
-                                "author": {"date": datetime.now(timezone.utc).isoformat()}
-                            },
+                            "commit": {"author": {"date": datetime.now(timezone.utc).isoformat()}},
                         }
                     ],
                 )
@@ -2616,9 +2636,11 @@ class TestCollectPackageData:
                 "API_KEYS_TABLE": "pkgwatch-api-keys",
             },
         ):
-            with patch.object(httpx.AsyncClient, "__init__", patched_init), \
-                 patch("package_collector._check_and_increment_github_rate_limit", return_value=True), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True):
+            with (
+                patch.object(httpx.AsyncClient, "__init__", patched_init),
+                patch("package_collector._check_and_increment_github_rate_limit", return_value=True),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+            ):
                 from package_collector import collect_package_data
 
                 result = run_async(collect_package_data("npm", "lodash"))
@@ -2636,6 +2658,7 @@ class TestCollectPackageData:
 
     def test_collect_package_data_partial_failure(self):
         """Test graceful handling when some sources fail."""
+
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
 
@@ -2681,11 +2704,14 @@ class TestCollectPackageData:
                 "API_KEYS_TABLE": "pkgwatch-api-keys",
             },
         ):
-            with patch.object(httpx.AsyncClient, "__init__", patched_init), \
-                 patch("rate_limit_utils.check_and_increment_external_rate_limit", return_value=True):
+            with (
+                patch.object(httpx.AsyncClient, "__init__", patched_init),
+                patch("rate_limit_utils.check_and_increment_external_rate_limit", return_value=True),
+            ):
                 from importlib import reload
 
                 import package_collector
+
                 reload(package_collector)
 
                 result = run_async(package_collector.collect_package_data("npm", "test-pkg"))
@@ -2696,6 +2722,7 @@ class TestCollectPackageData:
 
     def test_collect_package_data_uses_bulk_downloads(self):
         """Test that bulk_downloads parameter overrides individual npm download fetch."""
+
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
 
@@ -2753,17 +2780,21 @@ class TestCollectPackageData:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
-            with patch.object(httpx.AsyncClient, "__init__", patched_init), \
-                 patch.object(package_collector, "check_and_increment_external_rate_limit", return_value=True):
-
+            with (
+                patch.object(httpx.AsyncClient, "__init__", patched_init),
+                patch.object(package_collector, "check_and_increment_external_rate_limit", return_value=True),
+            ):
                 # Pre-fetched bulk downloads (simulating batch processing)
                 bulk_downloads = {"test-pkg": 12345}
 
-                result = run_async(package_collector.collect_package_data(
-                    "npm", "test-pkg", existing=None, retry_sources=None, bulk_downloads=bulk_downloads
-                ))
+                result = run_async(
+                    package_collector.collect_package_data(
+                        "npm", "test-pkg", existing=None, retry_sources=None, bulk_downloads=bulk_downloads
+                    )
+                )
 
                 # Should use bulk-fetched downloads instead of individual fetch
                 assert result["weekly_downloads"] == 12345
@@ -3031,8 +3062,10 @@ class TestHandler:
                 "API_KEYS_TABLE": "pkgwatch-api-keys",
             },
         ):
-            with patch.object(httpx.AsyncClient, "__init__", patched_init), \
-                 patch("rate_limit_utils.check_and_increment_external_rate_limit", return_value=True):
+            with (
+                patch.object(httpx.AsyncClient, "__init__", patched_init),
+                patch("rate_limit_utils.check_and_increment_external_rate_limit", return_value=True),
+            ):
                 from importlib import reload
 
                 import package_collector
@@ -3210,9 +3243,7 @@ class TestRetryWithBackoff:
         async def test_coro():
             nonlocal call_count
             call_count = 0
-            result = await retry_with_backoff(
-                flaky_request, max_retries=3, base_delay=0.01
-            )
+            result = await retry_with_backoff(flaky_request, max_retries=3, base_delay=0.01)
             return result.json(), call_count
 
         result, count = run_async(test_coro())
@@ -3227,9 +3258,7 @@ class TestRetryWithBackoff:
             raise httpx.RequestError("Connection failed", request=None)
 
         async def test_coro():
-            await retry_with_backoff(
-                always_fail, max_retries=2, base_delay=0.01
-            )
+            await retry_with_backoff(always_fail, max_retries=2, base_delay=0.01)
 
         with pytest.raises(httpx.RequestError):
             run_async(test_coro())
@@ -3246,17 +3275,13 @@ class TestRetryWithBackoff:
             mock_request = MagicMock()
             mock_response = MagicMock(status_code=500)
             if call_count < 2:
-                raise httpx.HTTPStatusError(
-                    "Server Error", request=mock_request, response=mock_response
-                )
+                raise httpx.HTTPStatusError("Server Error", request=mock_request, response=mock_response)
             return MagicMock(status_code=200, json=lambda: {"ok": True})
 
         async def test_coro():
             nonlocal call_count
             call_count = 0
-            result = await retry_with_backoff(
-                failing_then_success, max_retries=3, base_delay=0.01
-            )
+            result = await retry_with_backoff(failing_then_success, max_retries=3, base_delay=0.01)
             return result.json(), call_count
 
         result, count = run_async(test_coro())
@@ -3286,6 +3311,7 @@ class TestDLQProcessor:
 
         # Force reimport to pick up new env
         import sys
+
         if "dlq_processor" in sys.modules:
             del sys.modules["dlq_processor"]
 
@@ -3299,6 +3325,7 @@ class TestDLQProcessor:
         monkeypatch.delenv("MAIN_QUEUE_URL", raising=False)
 
         import sys
+
         if "dlq_processor" in sys.modules:
             del sys.modules["dlq_processor"]
 
@@ -3343,16 +3370,20 @@ class TestDLQProcessor:
         """Message exceeding max retries should be stored as permanent failure."""
         from dlq_processor import _process_dlq_message
 
-        with patch("dlq_processor._delete_dlq_message") as mock_delete, \
-             patch("dlq_processor._store_permanent_failure") as mock_store:
+        with (
+            patch("dlq_processor._delete_dlq_message") as mock_delete,
+            patch("dlq_processor._store_permanent_failure") as mock_store,
+        ):
             message = {
                 "MessageId": "test-123",
-                "Body": json.dumps({
-                    "ecosystem": "npm",
-                    "name": "test-package",
-                    "_retry_count": 5,  # At max
-                    "_last_error": "rate_limited",
-                }),
+                "Body": json.dumps(
+                    {
+                        "ecosystem": "npm",
+                        "name": "test-package",
+                        "_retry_count": 5,  # At max
+                        "_last_error": "rate_limited",
+                    }
+                ),
                 "ReceiptHandle": "test-handle",
             }
 
@@ -3366,15 +3397,16 @@ class TestDLQProcessor:
         """Message under max retries should be requeued with exponential backoff."""
         from dlq_processor import _process_dlq_message
 
-        with patch("dlq_processor.sqs") as mock_sqs, \
-             patch("dlq_processor._delete_dlq_message") as mock_delete:
+        with patch("dlq_processor.sqs") as mock_sqs, patch("dlq_processor._delete_dlq_message") as mock_delete:
             message = {
                 "MessageId": "test-123",
-                "Body": json.dumps({
-                    "ecosystem": "npm",
-                    "name": "test-package",
-                    "_retry_count": 2,
-                }),
+                "Body": json.dumps(
+                    {
+                        "ecosystem": "npm",
+                        "name": "test-package",
+                        "_retry_count": 2,
+                    }
+                ),
                 "ReceiptHandle": "test-handle",
             }
 
@@ -3399,47 +3431,50 @@ class TestDLQProcessor:
 
         # Test backoff values for each retry count
         expected_delays = {
-            0: 60,    # 60 * 2^0 = 60
-            1: 120,   # 60 * 2^1 = 120
-            2: 240,   # 60 * 2^2 = 240
-            3: 480,   # 60 * 2^3 = 480
-            4: 900,   # 60 * 2^4 = 960, but capped at 900
+            0: 60,  # 60 * 2^0 = 60
+            1: 120,  # 60 * 2^1 = 120
+            2: 240,  # 60 * 2^2 = 240
+            3: 480,  # 60 * 2^3 = 480
+            4: 900,  # 60 * 2^4 = 960, but capped at 900
         }
 
         for retry_count, expected_delay in expected_delays.items():
-            with patch("dlq_processor.sqs") as mock_sqs, \
-                 patch("dlq_processor._delete_dlq_message"):
+            with patch("dlq_processor.sqs") as mock_sqs, patch("dlq_processor._delete_dlq_message"):
                 message = {
                     "MessageId": f"test-{retry_count}",
-                    "Body": json.dumps({
-                        "ecosystem": "npm",
-                        "name": "test-package",
-                        "_retry_count": retry_count,
-                    }),
+                    "Body": json.dumps(
+                        {
+                            "ecosystem": "npm",
+                            "name": "test-package",
+                            "_retry_count": retry_count,
+                        }
+                    ),
                     "ReceiptHandle": "test-handle",
                 }
 
                 _process_dlq_message(message)
 
                 call_kwargs = mock_sqs.send_message.call_args.kwargs
-                assert call_kwargs["DelaySeconds"] == expected_delay, \
+                assert call_kwargs["DelaySeconds"] == expected_delay, (
                     f"Retry {retry_count}: expected {expected_delay}, got {call_kwargs['DelaySeconds']}"
+                )
 
     def test_process_dlq_message_requeue_failure_doesnt_delete(self):
         """If requeue fails, message should NOT be deleted from DLQ."""
         from dlq_processor import _process_dlq_message
 
-        with patch("dlq_processor.sqs") as mock_sqs, \
-             patch("dlq_processor._delete_dlq_message") as mock_delete:
+        with patch("dlq_processor.sqs") as mock_sqs, patch("dlq_processor._delete_dlq_message") as mock_delete:
             mock_sqs.send_message.side_effect = Exception("SQS error")
 
             message = {
                 "MessageId": "test-123",
-                "Body": json.dumps({
-                    "ecosystem": "npm",
-                    "name": "test-package",
-                    "_retry_count": 0,
-                }),
+                "Body": json.dumps(
+                    {
+                        "ecosystem": "npm",
+                        "name": "test-package",
+                        "_retry_count": 0,
+                    }
+                ),
                 "ReceiptHandle": "test-handle",
             }
 
@@ -3466,6 +3501,7 @@ class TestDLQProcessor:
 
         # Reimport to pick up env
         import sys
+
         if "dlq_processor" in sys.modules:
             del sys.modules["dlq_processor"]
         from dlq_processor import _store_permanent_failure
@@ -3497,6 +3533,7 @@ class TestDLQProcessor:
         monkeypatch.setenv("MAIN_QUEUE_URL", "https://sqs.us-east-1.amazonaws.com/123456789/test-queue")
 
         import sys
+
         if "dlq_processor" in sys.modules:
             del sys.modules["dlq_processor"]
         from dlq_processor import handler
@@ -3517,12 +3554,12 @@ class TestDLQProcessor:
         monkeypatch.setenv("MAIN_QUEUE_URL", "https://sqs.us-east-1.amazonaws.com/123456789/test-queue")
 
         import sys
+
         if "dlq_processor" in sys.modules:
             del sys.modules["dlq_processor"]
         from dlq_processor import handler
 
-        with patch("dlq_processor.sqs") as mock_sqs, \
-             patch("dlq_processor._process_dlq_message") as mock_process:
+        with patch("dlq_processor.sqs") as mock_sqs, patch("dlq_processor._process_dlq_message") as mock_process:
             # First call returns 2 messages, second call returns empty
             mock_sqs.receive_message.side_effect = [
                 {"Messages": [{"MessageId": "1"}, {"MessageId": "2"}]},
@@ -3675,6 +3712,7 @@ class TestRateLimitAtomicOperation:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # First call should succeed
@@ -3707,6 +3745,7 @@ class TestRateLimitAtomicOperation:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # Pre-populate rate limit counter at the limit
@@ -4085,6 +4124,7 @@ class TestHelperFunctions:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             total = package_collector._get_total_github_calls("2024-03-15-14")
@@ -4117,6 +4157,7 @@ class TestHelperFunctions:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             total = package_collector._get_total_github_calls(window_key)
@@ -4130,6 +4171,7 @@ class TestHelperFunctions:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # Should return False (fail closed) on error
@@ -4146,6 +4188,7 @@ class TestConfigurableValues:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             assert package_collector.STALE_DATA_MAX_AGE_DAYS == 14
@@ -4156,20 +4199,25 @@ class TestConfigurableValues:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             assert package_collector.DEDUP_WINDOW_MINUTES == 60
 
     def test_tier_jitter_configurable(self):
         """Test that tier jitter values are configurable."""
-        with patch.dict(os.environ, {
-            "TIER1_JITTER_MAX": "600",
-            "TIER2_JITTER_MAX": "1200",
-            "TIER3_JITTER_MAX": "3600",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "TIER1_JITTER_MAX": "600",
+                "TIER2_JITTER_MAX": "1200",
+                "TIER3_JITTER_MAX": "3600",
+            },
+        ):
             from importlib import reload
 
             import refresh_dispatcher
+
             reload(refresh_dispatcher)
 
             assert refresh_dispatcher.JITTER_MAX_SECONDS[1] == 600
@@ -4192,6 +4240,7 @@ class TestErrorRecoveryFlows:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # Patch DynamoDB to raise an exception
@@ -4224,17 +4273,20 @@ class TestErrorRecoveryFlows:
         )
 
         # Create initial record
-        table.put_item(Item={
-            "pk": "npm#test-pkg",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "test-pkg",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#test-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "test-pkg",
+            }
+        )
 
         with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             package_collector._store_collection_error_sync("npm", "test-pkg", "Test error message")
@@ -4252,6 +4304,7 @@ class TestErrorRecoveryFlows:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # Patch DynamoDB to raise an exception
@@ -4332,28 +4385,31 @@ class TestStaleThresholdHandling:
 
         # Create existing package data with GitHub fields
         recent_time = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
-        table.put_item(Item={
-            "pk": "npm#test-pkg",
-            "sk": "LATEST",
-            "last_updated": recent_time,
-            "stars": 1000,
-            "forks": 100,
-            "days_since_last_commit": 5,
-            "commits_90d": 50,
-            "sources": ["github"],
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#test-pkg",
+                "sk": "LATEST",
+                "last_updated": recent_time,
+                "stars": 1000,
+                "forks": 100,
+                "days_since_last_commit": 5,
+                "commits_90d": 50,
+                "sources": ["github"],
+            }
+        )
 
         with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             combined_data = {"sources": []}
 
-            run_async(package_collector._try_github_stale_fallback(
-                combined_data, "npm", "test-pkg", "rate_limit_exceeded"
-            ))
+            run_async(
+                package_collector._try_github_stale_fallback(combined_data, "npm", "test-pkg", "rate_limit_exceeded")
+            )
 
             # Verify stale data was used
             assert combined_data.get("stars") == 1000
@@ -4381,33 +4437,34 @@ class TestStaleThresholdHandling:
 
         # Create existing package data that's 10 days old
         old_time = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
-        table.put_item(Item={
-            "pk": "npm#test-pkg",
-            "sk": "LATEST",
-            "last_updated": old_time,
-            "stars": 500,
-            "days_since_last_commit": 15,
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#test-pkg",
+                "sk": "LATEST",
+                "last_updated": old_time,
+                "stars": 500,
+                "days_since_last_commit": 15,
+            }
+        )
 
         with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             combined_data = {"sources": []}
 
             # With rate_limit (7 days), 10-day data would be rejected
-            run_async(package_collector._try_github_stale_fallback(
-                combined_data, "npm", "test-pkg", "rate_limit_exceeded"
-            ))
+            run_async(
+                package_collector._try_github_stale_fallback(combined_data, "npm", "test-pkg", "rate_limit_exceeded")
+            )
             assert combined_data.get("stars") is None  # Should not use stale data
 
             # With circuit_open (14 days), 10-day data should be accepted
             combined_data = {"sources": []}
-            run_async(package_collector._try_github_stale_fallback(
-                combined_data, "npm", "test-pkg", "circuit_open"
-            ))
+            run_async(package_collector._try_github_stale_fallback(combined_data, "npm", "test-pkg", "circuit_open"))
             assert combined_data.get("stars") == 500
 
     @mock_aws
@@ -4431,14 +4488,15 @@ class TestStaleThresholdHandling:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             combined_data = {"sources": []}
 
             # Should not crash when no existing data
-            run_async(package_collector._try_github_stale_fallback(
-                combined_data, "npm", "nonexistent-pkg", "rate_limit"
-            ))
+            run_async(
+                package_collector._try_github_stale_fallback(combined_data, "npm", "nonexistent-pkg", "rate_limit")
+            )
             assert "github_freshness" not in combined_data
 
 
@@ -4543,27 +4601,35 @@ class TestS3RawDataArchival:
 
         # Create existing package with valid stale data
         recent_time = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
-        table.put_item(Item={
-            "pk": "npm#test-pkg",
-            "sk": "LATEST",
-            "last_updated": recent_time,
-            "latest_version": "1.0.0",
-            "licenses": ["MIT"],
-            "repository_url": "https://github.com/test/pkg",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#test-pkg",
+                "sk": "LATEST",
+                "last_updated": recent_time,
+                "latest_version": "1.0.0",
+                "licenses": ["MIT"],
+                "repository_url": "https://github.com/test/pkg",
+            }
+        )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # Mock deps.dev to raise CircuitOpenError
-            with patch("package_collector.get_depsdev_info") as mock_depsdev, \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=False):
+            with (
+                patch("package_collector.get_depsdev_info") as mock_depsdev,
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=False),
+            ):
                 mock_depsdev.side_effect = CircuitOpenError("deps.dev", retry_after=60)
 
                 result = run_async(package_collector.collect_package_data("npm", "test-pkg"))
@@ -4592,26 +4658,34 @@ class TestS3RawDataArchival:
 
         # Create existing package with valid stale data
         recent_time = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
-        table.put_item(Item={
-            "pk": "npm#test-pkg",
-            "sk": "LATEST",
-            "last_updated": recent_time,
-            "latest_version": "2.0.0",
-            "dependents_count": 500,
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#test-pkg",
+                "sk": "LATEST",
+                "last_updated": recent_time,
+                "latest_version": "2.0.0",
+                "dependents_count": 500,
+            }
+        )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # Mock deps.dev to raise general exception
-            with patch("package_collector.get_depsdev_info") as mock_depsdev, \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=False):
+            with (
+                patch("package_collector.get_depsdev_info") as mock_depsdev,
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=False),
+            ):
                 mock_depsdev.side_effect = Exception("Network timeout")
 
                 result = run_async(package_collector.collect_package_data("npm", "test-pkg"))
@@ -4629,6 +4703,7 @@ class TestS3RawDataArchival:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # Mock S3 to fail
@@ -4661,13 +4736,17 @@ class TestCircuitBreakerAsyncContext:
             BillingMode="PAY_PER_REQUEST",
         )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # Mock deps.dev to return data with repo URL
@@ -4676,9 +4755,11 @@ class TestCircuitBreakerAsyncContext:
                 "repository_url": "https://github.com/test/repo",
             }
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=False), \
-                 patch("package_collector.GITHUB_CIRCUIT") as mock_circuit:
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=False),
+                patch("package_collector.GITHUB_CIRCUIT") as mock_circuit,
+            ):
                 # Mock circuit as open
                 mock_circuit.can_execute_async = AsyncMock(return_value=False)
 
@@ -4705,13 +4786,17 @@ class TestCircuitBreakerAsyncContext:
             BillingMode="PAY_PER_REQUEST",
         )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # Mock deps.dev to return data with repo URL
@@ -4720,10 +4805,12 @@ class TestCircuitBreakerAsyncContext:
                 "repository_url": "https://github.com/test/repo",
             }
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=False), \
-                 patch("package_collector.GITHUB_CIRCUIT") as mock_circuit, \
-                 patch("package_collector._check_and_increment_github_rate_limit", return_value=False):
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=False),
+                patch("package_collector.GITHUB_CIRCUIT") as mock_circuit,
+                patch("package_collector._check_and_increment_github_rate_limit", return_value=False),
+            ):
                 mock_circuit.can_execute_async = AsyncMock(return_value=True)
 
                 result = run_async(package_collector.collect_package_data("npm", "test-pkg"))
@@ -4749,21 +4836,27 @@ class TestCircuitBreakerAsyncContext:
 
         # Create existing data with GitHub fields
         recent_time = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
-        table.put_item(Item={
-            "pk": "npm#test-pkg",
-            "sk": "LATEST",
-            "last_updated": recent_time,
-            "stars": 1000,
-            "commits_90d": 25,
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#test-pkg",
+                "sk": "LATEST",
+                "last_updated": recent_time,
+                "stars": 1000,
+                "commits_90d": 25,
+            }
+        )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             mock_depsdev_data = {
@@ -4774,11 +4867,13 @@ class TestCircuitBreakerAsyncContext:
             mock_collector = MagicMock()
             mock_collector.get_repo_metrics = AsyncMock(side_effect=Exception("GitHub API error"))
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=False), \
-                 patch("package_collector.GITHUB_CIRCUIT") as mock_circuit, \
-                 patch("package_collector._check_and_increment_github_rate_limit", return_value=True), \
-                 patch("package_collector.GitHubCollector", return_value=mock_collector):
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=False),
+                patch("package_collector.GITHUB_CIRCUIT") as mock_circuit,
+                patch("package_collector._check_and_increment_github_rate_limit", return_value=True),
+                patch("package_collector.GitHubCollector", return_value=mock_collector),
+            ):
                 mock_circuit.can_execute_async = AsyncMock(return_value=True)
                 mock_circuit.record_failure_async = AsyncMock()
 
@@ -4815,13 +4910,17 @@ class TestPartialCollectionFailures:
             BillingMode="PAY_PER_REQUEST",
         )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             mock_depsdev_data = {"latest_version": "1.0.0"}
@@ -4830,9 +4929,10 @@ class TestPartialCollectionFailures:
                 # npm rate limited, bundlephobia not
                 return service != "npm"
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", side_effect=rate_limit_check):
-
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", side_effect=rate_limit_check),
+            ):
                 result = run_async(package_collector.collect_package_data("npm", "test-pkg"))
 
                 assert result.get("npm_error") == "rate_limit_exceeded"
@@ -4858,22 +4958,28 @@ class TestPartialCollectionFailures:
 
         # Insert existing package with npm data
         table = dynamodb.Table("pkgwatch-packages")
-        table.put_item(Item={
-            "pk": "npm#test-pkg",
-            "sk": "LATEST",
-            "weekly_downloads": 50000,
-            "maintainer_count": 3,
-            "has_types": True,
-            "last_updated": datetime.now(timezone.utc).isoformat(),
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#test-pkg",
+                "sk": "LATEST",
+                "weekly_downloads": 50000,
+                "maintainer_count": 3,
+                "has_types": True,
+                "last_updated": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             mock_depsdev_data = {"latest_version": "1.0.0"}
@@ -4888,11 +4994,12 @@ class TestPartialCollectionFailures:
                 # npm rate limited
                 return service != "npm"
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", side_effect=rate_limit_check), \
-                 patch("package_collector._get_existing_package_data", return_value=existing), \
-                 patch("package_collector._is_data_acceptable", return_value=True):
-
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", side_effect=rate_limit_check),
+                patch("package_collector._get_existing_package_data", return_value=existing),
+                patch("package_collector._is_data_acceptable", return_value=True),
+            ):
                 result = run_async(package_collector.collect_package_data("npm", "test-pkg"))
 
                 # Should have stale data with npm_stale in sources
@@ -4918,13 +5025,17 @@ class TestPartialCollectionFailures:
             BillingMode="PAY_PER_REQUEST",
         )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             mock_depsdev_data = {"latest_version": "1.0.0"}
@@ -4933,10 +5044,11 @@ class TestPartialCollectionFailures:
                 # bundlephobia rate limited, npm not
                 return service != "bundlephobia"
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", side_effect=rate_limit_check), \
-                 patch("package_collector.get_npm_metadata", return_value={"weekly_downloads": 1000}):
-
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", side_effect=rate_limit_check),
+                patch("package_collector.get_npm_metadata", return_value={"weekly_downloads": 1000}),
+            ):
                 result = run_async(package_collector.collect_package_data("npm", "test-pkg"))
 
                 assert result.get("bundlephobia_error") == "rate_limit_exceeded"
@@ -4960,22 +5072,27 @@ class TestPartialCollectionFailures:
             BillingMode="PAY_PER_REQUEST",
         )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             mock_depsdev_data = {"latest_version": "1.0.0"}
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True), \
-                 patch("package_collector.get_npm_metadata", side_effect=CircuitOpenError("npm", retry_after=60)), \
-                 patch("package_collector.get_bundle_size", return_value={"size": 1000}):
-
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+                patch("package_collector.get_npm_metadata", side_effect=CircuitOpenError("npm", retry_after=60)),
+                patch("package_collector.get_bundle_size", return_value={"size": 1000}),
+            ):
                 result = run_async(package_collector.collect_package_data("npm", "test-pkg"))
 
                 assert result.get("npm_error") == "circuit_open"
@@ -4999,22 +5116,29 @@ class TestPartialCollectionFailures:
             BillingMode="PAY_PER_REQUEST",
         )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             mock_depsdev_data = {"latest_version": "1.0.0"}
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True), \
-                 patch("package_collector.get_npm_metadata", return_value={"weekly_downloads": 1000}), \
-                 patch("package_collector.get_bundle_size", side_effect=CircuitOpenError("bundlephobia", retry_after=60)):
-
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+                patch("package_collector.get_npm_metadata", return_value={"weekly_downloads": 1000}),
+                patch(
+                    "package_collector.get_bundle_size", side_effect=CircuitOpenError("bundlephobia", retry_after=60)
+                ),
+            ):
                 result = run_async(package_collector.collect_package_data("npm", "test-pkg"))
 
                 assert result.get("bundlephobia_error") == "circuit_open"
@@ -5036,22 +5160,27 @@ class TestPartialCollectionFailures:
             BillingMode="PAY_PER_REQUEST",
         )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             mock_depsdev_data = {"latest_version": "1.0.0"}
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True), \
-                 patch("package_collector.get_npm_metadata", return_value={"weekly_downloads": 1000}), \
-                 patch("package_collector.get_bundle_size", side_effect=Exception("Connection timeout")):
-
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+                patch("package_collector.get_npm_metadata", return_value={"weekly_downloads": 1000}),
+                patch("package_collector.get_bundle_size", side_effect=Exception("Connection timeout")),
+            ):
                 result = run_async(package_collector.collect_package_data("npm", "test-pkg"))
 
                 assert "Connection timeout" in result.get("bundlephobia_error", "")
@@ -5077,13 +5206,17 @@ class TestPyPICollectionPath:
             BillingMode="PAY_PER_REQUEST",
         )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             mock_depsdev_data = {"latest_version": "1.0.0"}
@@ -5097,10 +5230,11 @@ class TestPyPICollectionPath:
                 "repository_url": "https://github.com/test/pypi-pkg",
             }
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True), \
-                 patch("package_collector.get_pypi_metadata", return_value=mock_pypi_data):
-
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+                patch("package_collector.get_pypi_metadata", return_value=mock_pypi_data),
+            ):
                 result = run_async(package_collector.collect_package_data("pypi", "test-pkg"))
 
                 assert "pypi" in result.get("sources", [])
@@ -5126,22 +5260,27 @@ class TestPyPICollectionPath:
             BillingMode="PAY_PER_REQUEST",
         )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             mock_depsdev_data = {"latest_version": "1.0.0"}
             mock_pypi_data = {"error": "Package not found"}
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True), \
-                 patch("package_collector.get_pypi_metadata", return_value=mock_pypi_data):
-
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+                patch("package_collector.get_pypi_metadata", return_value=mock_pypi_data),
+            ):
                 result = run_async(package_collector.collect_package_data("pypi", "test-pkg"))
 
                 assert result.get("pypi_error") == "Package not found"
@@ -5166,21 +5305,26 @@ class TestPyPICollectionPath:
             BillingMode="PAY_PER_REQUEST",
         )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             mock_depsdev_data = {"latest_version": "1.0.0"}
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True), \
-                 patch("package_collector.get_pypi_metadata", side_effect=CircuitOpenError("pypi", retry_after=60)):
-
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+                patch("package_collector.get_pypi_metadata", side_effect=CircuitOpenError("pypi", retry_after=60)),
+            ):
                 result = run_async(package_collector.collect_package_data("pypi", "test-pkg"))
 
                 assert result.get("pypi_error") == "circuit_open"
@@ -5202,13 +5346,17 @@ class TestPyPICollectionPath:
             BillingMode="PAY_PER_REQUEST",
         )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             mock_depsdev_data = {"latest_version": "1.0.0"}
@@ -5216,9 +5364,10 @@ class TestPyPICollectionPath:
             def rate_limit_check(service, limit):
                 return service != "pypi"
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", side_effect=rate_limit_check):
-
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", side_effect=rate_limit_check),
+            ):
                 result = run_async(package_collector.collect_package_data("pypi", "test-pkg"))
 
                 assert result.get("pypi_error") == "rate_limit_exceeded"
@@ -5240,21 +5389,26 @@ class TestPyPICollectionPath:
             BillingMode="PAY_PER_REQUEST",
         )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             mock_depsdev_data = {"latest_version": "1.0.0"}
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True), \
-                 patch("package_collector.get_pypi_metadata", side_effect=Exception("Network error")):
-
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+                patch("package_collector.get_pypi_metadata", side_effect=Exception("Network error")),
+            ):
                 result = run_async(package_collector.collect_package_data("pypi", "test-pkg"))
 
                 assert "Network error" in result.get("pypi_error", "")
@@ -5284,6 +5438,7 @@ class TestDatabaseWriteErrors:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # Mock DynamoDB to raise error
@@ -5446,29 +5601,36 @@ class TestRetryTracking:
         s3.create_bucket(Bucket="pkgwatch-raw-data")
 
         # Create existing package with retry_count
-        table.put_item(Item={
-            "pk": "npm#test-pkg",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "test-pkg",
-            "retry_count": 2,
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#test-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "test-pkg",
+                "retry_count": 2,
+            }
+        )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             mock_depsdev_data = {"latest_version": "1.0.0"}
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=False):
-
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=False),
+            ):
                 message = {
                     "ecosystem": "npm",
                     "name": "test-pkg",
@@ -5507,26 +5669,31 @@ class TestProcessSinglePackageErrors:
         )
 
         # Create existing package
-        table.put_item(Item={
-            "pk": "npm#test-pkg",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "test-pkg",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#test-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "test-pkg",
+            }
+        )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # Mock collect_package_data to raise exception
             with patch.object(package_collector, "collect_package_data", side_effect=Exception("Collection failed")):
-
                 message = {
                     "ecosystem": "npm",
                     "name": "test-pkg",
@@ -5549,21 +5716,26 @@ class TestProcessBatchExceptions:
 
     def test_process_batch_handles_task_exception(self):
         """Test process_batch handles task exceptions (lines 1012-1018)."""
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # Mock process_single_package to raise exception
-            with patch.object(package_collector, "process_single_package", side_effect=Exception("Task failed")), \
-                 patch("package_collector.emit_metric"), \
-                 patch("package_collector.emit_batch_metrics"):
-
+            with (
+                patch.object(package_collector, "process_single_package", side_effect=Exception("Task failed")),
+                patch("package_collector.emit_metric"),
+                patch("package_collector.emit_batch_metrics"),
+            ):
                 records = [
                     {"messageId": "msg-1", "body": json.dumps({"ecosystem": "npm", "name": "pkg1"})},
                     {"messageId": "msg-2", "body": json.dumps({"ecosystem": "npm", "name": "pkg2"})},
@@ -5577,24 +5749,29 @@ class TestProcessBatchExceptions:
 
     def test_process_batch_handles_unexpected_result_format(self):
         """Test process_batch handles unexpected result format (lines 1044-1046)."""
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # Mock process_single_package to return unexpected format
             async def mock_process(*args):
                 return "unexpected_format"  # Not a tuple
 
-            with patch.object(package_collector, "process_single_package", side_effect=mock_process), \
-                 patch("package_collector.emit_metric"), \
-                 patch("package_collector.emit_batch_metrics"):
-
+            with (
+                patch.object(package_collector, "process_single_package", side_effect=mock_process),
+                patch("package_collector.emit_metric"),
+                patch("package_collector.emit_batch_metrics"),
+            ):
                 records = [
                     {"messageId": "msg-1", "body": json.dumps({"ecosystem": "npm", "name": "pkg1"})},
                 ]
@@ -5606,14 +5783,18 @@ class TestProcessBatchExceptions:
 
     def test_process_batch_handles_partial_success(self):
         """Test process_batch handles partial success (lines 1025-1036)."""
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             call_count = [0]
@@ -5625,10 +5806,11 @@ class TestProcessBatchExceptions:
                 else:
                     return (False, "npm/pkg2", "rate_limit")  # Failure
 
-            with patch.object(package_collector, "process_single_package", side_effect=mock_process), \
-                 patch("package_collector.emit_metric"), \
-                 patch("package_collector.emit_batch_metrics"):
-
+            with (
+                patch.object(package_collector, "process_single_package", side_effect=mock_process),
+                patch("package_collector.emit_metric"),
+                patch("package_collector.emit_batch_metrics"),
+            ):
                 records = [
                     {"messageId": "msg-1", "body": json.dumps({"ecosystem": "npm", "name": "pkg1"})},
                     {"messageId": "msg-2", "body": json.dumps({"ecosystem": "npm", "name": "pkg2"})},
@@ -5715,6 +5897,7 @@ class TestGetGitHubTokenErrors:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # With mock_aws, accessing non-existent secret will raise ClientError
@@ -5744,23 +5927,29 @@ class TestDeduplicationWindow:
 
         # Create package updated 10 minutes ago (within 30 min window)
         recent_time = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-        table.put_item(Item={
-            "pk": "npm#test-pkg",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "test-pkg",
-            "last_updated": recent_time,
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#test-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "test-pkg",
+                "last_updated": recent_time,
+            }
+        )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-            "DEDUP_WINDOW_MINUTES": "30",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+                "DEDUP_WINDOW_MINUTES": "30",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             message = {
@@ -5798,22 +5987,28 @@ class TestDeduplicationWindow:
 
         # Create package updated 10 minutes ago (within window)
         recent_time = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-        table.put_item(Item={
-            "pk": "npm#test-pkg",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "test-pkg",
-            "last_updated": recent_time,
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#test-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "test-pkg",
+                "last_updated": recent_time,
+            }
+        )
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             mock_depsdev_data = {"latest_version": "1.0.0"}
@@ -5825,9 +6020,10 @@ class TestDeduplicationWindow:
                 "force_refresh": True,  # Should bypass dedup
             }
 
-            with patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=False):
-
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=False),
+            ):
                 success, pkg_name, error = run_async(package_collector.process_single_package(message))
 
                 assert success is True
@@ -5842,12 +6038,16 @@ class TestValidationError:
 
     def test_process_single_package_validation_error(self):
         """Test process_single_package returns failure on validation error."""
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+            },
+        ):
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             # Invalid message (missing ecosystem)
@@ -6141,16 +6341,22 @@ class TestRateLimitFallback:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             combined_data = {"sources": []}
 
-            result = run_async(package_collector._try_stale_fallback(
-                combined_data,
-                "npm", "lodash", "npm", "rate_limit_exceeded",
-                package_collector._extract_cached_npm_fields,
-                existing=existing,
-            ))
+            result = run_async(
+                package_collector._try_stale_fallback(
+                    combined_data,
+                    "npm",
+                    "lodash",
+                    "npm",
+                    "rate_limit_exceeded",
+                    package_collector._extract_cached_npm_fields,
+                    existing=existing,
+                )
+            )
 
             assert result is True
             assert combined_data["weekly_downloads"] == 50000000
@@ -6164,16 +6370,22 @@ class TestRateLimitFallback:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             combined_data = {"sources": []}
 
-            result = run_async(package_collector._try_stale_fallback(
-                combined_data,
-                "npm", "nonexistent", "npm", "rate_limit_exceeded",
-                package_collector._extract_cached_npm_fields,
-                existing=None,
-            ))
+            result = run_async(
+                package_collector._try_stale_fallback(
+                    combined_data,
+                    "npm",
+                    "nonexistent",
+                    "npm",
+                    "rate_limit_exceeded",
+                    package_collector._extract_cached_npm_fields,
+                    existing=None,
+                )
+            )
 
             assert result is False
             assert "npm_stale" not in combined_data.get("sources", [])
@@ -6190,16 +6402,22 @@ class TestRateLimitFallback:
             from importlib import reload
 
             import package_collector
+
             reload(package_collector)
 
             combined_data = {"sources": []}
 
-            result = run_async(package_collector._try_stale_fallback(
-                combined_data,
-                "npm", "lodash", "npm", "rate_limit_exceeded",  # 7 day threshold
-                package_collector._extract_cached_npm_fields,
-                existing=existing,
-            ))
+            result = run_async(
+                package_collector._try_stale_fallback(
+                    combined_data,
+                    "npm",
+                    "lodash",
+                    "npm",
+                    "rate_limit_exceeded",  # 7 day threshold
+                    package_collector._extract_cached_npm_fields,
+                    existing=existing,
+                )
+            )
 
             assert result is False
 
@@ -6394,12 +6612,14 @@ class TestGetGitHubSemaphore:
     def setup_method(self):
         """Reset semaphore state before each test."""
         import package_collector
+
         package_collector._github_semaphore = None
         package_collector._github_semaphore_loop_id = None
 
     def teardown_method(self):
         """Reset semaphore state after each test."""
         import package_collector
+
         package_collector._github_semaphore = None
         package_collector._github_semaphore_loop_id = None
 
@@ -6426,9 +6646,7 @@ class TestGetGitHubSemaphore:
         first_sem_id = id(sem1)
 
         # Force loop ID mismatch to simulate Lambda container reuse
-        package_collector._github_semaphore_loop_id = (
-            (package_collector._github_semaphore_loop_id or 0) + 99999
-        )
+        package_collector._github_semaphore_loop_id = (package_collector._github_semaphore_loop_id or 0) + 99999
 
         async def second_loop():
             return package_collector.get_github_semaphore()
@@ -6571,16 +6789,23 @@ class TestCollectPackageDataDepsdevNone:
 
     def test_depsdev_returns_none_logs_warning(self):
         """When deps.dev returns None (package not found), should not add to sources."""
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "GITHUB_TOKEN_SECRET_ARN": "",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
-            with patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=None), \
-                 patch("package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "not_found"}), \
-                 patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
+            with (
+                patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=None),
+                patch(
+                    "package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "not_found"}
+                ),
+                patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+            ):
                 from package_collector import collect_package_data
 
                 result = run_async(collect_package_data("npm", "nonexistent-pkg-xyz"))
@@ -6638,16 +6863,24 @@ class TestPyPIBatchDownloadLogic:
             "last_updated": datetime.now(timezone.utc).isoformat(),
         }
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "GITHUB_TOKEN_SECRET_ARN": "",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
-            with patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=None), \
-                 patch("package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=False), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True):
-
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
+            with (
+                patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=None),
+                patch(
+                    "package_collector._check_and_increment_github_rate_limit",
+                    new_callable=AsyncMock,
+                    return_value=False,
+                ),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+            ):
                 result = run_async(
                     collect_package_data("pypi", "requests", existing=existing, retry_sources=["github"])
                 )
@@ -6680,20 +6913,26 @@ class TestPyPIBatchDownloadLogic:
             "last_published": "2024-01-01T00:00:00Z",
         }
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "GITHUB_TOKEN_SECRET_ARN": "",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
-            with patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=None), \
-                 patch("package_collector.get_pypi_metadata", new_callable=AsyncMock, return_value=pypi_data), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True), \
-                 patch("package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=False):
-
-                result = run_async(
-                    collect_package_data("pypi", "some-package", existing=existing)
-                )
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
+            with (
+                patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=None),
+                patch("package_collector.get_pypi_metadata", new_callable=AsyncMock, return_value=pypi_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+                patch(
+                    "package_collector._check_and_increment_github_rate_limit",
+                    new_callable=AsyncMock,
+                    return_value=False,
+                ),
+            ):
+                result = run_async(collect_package_data("pypi", "some-package", existing=existing))
 
                 # Batch downloads should be preferred over inline 0
                 assert result["weekly_downloads"] == 100000
@@ -6727,22 +6966,30 @@ class TestOpenSSFIntegration:
             "repository_url": "https://github.com/owner/repo",
         }
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "GITHUB_TOKEN_SECRET_ARN": "",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
-            with patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=depsdev_data), \
-                 patch("package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "not_found"}), \
-                 patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}), \
-                 patch("package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=False), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True), \
-                 patch("package_collector.get_openssf_scorecard") as mock_openssf:
-
-                result = run_async(
-                    collect_package_data("npm", "some-pkg", existing=existing)
-                )
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
+            with (
+                patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=depsdev_data),
+                patch(
+                    "package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "not_found"}
+                ),
+                patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}),
+                patch(
+                    "package_collector._check_and_increment_github_rate_limit",
+                    new_callable=AsyncMock,
+                    return_value=False,
+                ),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+                patch("package_collector.get_openssf_scorecard") as mock_openssf,
+            ):
+                result = run_async(collect_package_data("npm", "some-pkg", existing=existing))
 
                 # Should not call OpenSSF API when cached data is fresh
                 mock_openssf.assert_not_called()
@@ -6769,25 +7016,34 @@ class TestOpenSSFIntegration:
             "repository_url": "https://github.com/owner/repo",
         }
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "GITHUB_TOKEN_SECRET_ARN": "",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
-            with patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=depsdev_data), \
-                 patch("package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "not_found"}), \
-                 patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}), \
-                 patch("package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=False), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True), \
-                 patch("package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=existing), \
-                 patch("package_collector.OPENSSF_CIRCUIT") as mock_openssf_cb:
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
+            with (
+                patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=depsdev_data),
+                patch(
+                    "package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "not_found"}
+                ),
+                patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}),
+                patch(
+                    "package_collector._check_and_increment_github_rate_limit",
+                    new_callable=AsyncMock,
+                    return_value=False,
+                ),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+                patch("package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=existing),
+                patch("package_collector.OPENSSF_CIRCUIT") as mock_openssf_cb,
+            ):
                 # Mock the circuit breaker as open
                 mock_openssf_cb.can_execute_async = AsyncMock(return_value=False)
 
-                result = run_async(
-                    collect_package_data("npm", "some-pkg", existing=existing)
-                )
+                result = run_async(collect_package_data("npm", "some-pkg", existing=existing))
 
                 assert result["openssf_error"] == "circuit_open"
                 assert result["openssf_score"] == 6.0
@@ -6812,22 +7068,30 @@ class TestOpenSSFIntegration:
             "openssf_date": "2024-01-15",
         }
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "GITHUB_TOKEN_SECRET_ARN": "",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
-            with patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=depsdev_data), \
-                 patch("package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "not_found"}), \
-                 patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}), \
-                 patch("package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=False), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True), \
-                 patch("package_collector.get_openssf_scorecard", new_callable=AsyncMock, return_value=openssf_result):
-
-                result = run_async(
-                    collect_package_data("npm", "some-pkg")
-                )
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
+            with (
+                patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=depsdev_data),
+                patch(
+                    "package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "not_found"}
+                ),
+                patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}),
+                patch(
+                    "package_collector._check_and_increment_github_rate_limit",
+                    new_callable=AsyncMock,
+                    return_value=False,
+                ),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+                patch("package_collector.get_openssf_scorecard", new_callable=AsyncMock, return_value=openssf_result),
+            ):
+                result = run_async(collect_package_data("npm", "some-pkg"))
 
                 assert result["openssf_score"] == 8.5
                 assert result["openssf_source"] == "direct"
@@ -6845,22 +7109,32 @@ class TestOpenSSFIntegration:
             "repository_url": "https://github.com/owner/repo",
         }
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "GITHUB_TOKEN_SECRET_ARN": "",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
-            with patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=depsdev_data), \
-                 patch("package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "not_found"}), \
-                 patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}), \
-                 patch("package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=False), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True), \
-                 patch("package_collector.get_openssf_scorecard", new_callable=AsyncMock, return_value=None) as mock_openssf:
-
-                result = run_async(
-                    collect_package_data("npm", "some-pkg")
-                )
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
+            with (
+                patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=depsdev_data),
+                patch(
+                    "package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "not_found"}
+                ),
+                patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}),
+                patch(
+                    "package_collector._check_and_increment_github_rate_limit",
+                    new_callable=AsyncMock,
+                    return_value=False,
+                ),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+                patch(
+                    "package_collector.get_openssf_scorecard", new_callable=AsyncMock, return_value=None
+                ) as mock_openssf,
+            ):
+                result = run_async(collect_package_data("npm", "some-pkg"))
 
                 # Should not set error since 404 is not a failure
                 assert result.get("openssf_error") is None
@@ -6885,26 +7159,39 @@ class TestOpenSSFIntegration:
             "repository_url": "https://github.com/owner/repo",
         }
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "GITHUB_TOKEN_SECRET_ARN": "",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
-            with patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=depsdev_data), \
-                 patch("package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "not_found"}), \
-                 patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}), \
-                 patch("package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=False), \
-                 patch("package_collector.check_and_increment_external_rate_limit", return_value=True), \
-                 patch("package_collector.get_openssf_scorecard", new_callable=AsyncMock, side_effect=Exception("Connection timeout")), \
-                 patch("package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=existing), \
-                 patch("package_collector.OPENSSF_CIRCUIT") as mock_openssf_cb:
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
+            with (
+                patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=depsdev_data),
+                patch(
+                    "package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "not_found"}
+                ),
+                patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}),
+                patch(
+                    "package_collector._check_and_increment_github_rate_limit",
+                    new_callable=AsyncMock,
+                    return_value=False,
+                ),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+                patch(
+                    "package_collector.get_openssf_scorecard",
+                    new_callable=AsyncMock,
+                    side_effect=Exception("Connection timeout"),
+                ),
+                patch("package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=existing),
+                patch("package_collector.OPENSSF_CIRCUIT") as mock_openssf_cb,
+            ):
                 mock_openssf_cb.can_execute_async = AsyncMock(return_value=True)
                 mock_openssf_cb.record_failure_async = AsyncMock()
 
-                result = run_async(
-                    collect_package_data("npm", "some-pkg", existing=existing)
-                )
+                result = run_async(collect_package_data("npm", "some-pkg", existing=existing))
 
                 # Error recorded, but stale data too old (>7 day default threshold)
                 assert result["openssf_error"] is not None
@@ -6938,25 +7225,37 @@ class TestOpenSSFIntegration:
             "repository_url": "https://github.com/owner/repo",
         }
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "GITHUB_TOKEN_SECRET_ARN": "",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             # Mock rate limit check to return False (rate limited)
-            with patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=depsdev_data), \
-                 patch("package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "not_found"}), \
-                 patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}), \
-                 patch("package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=False), \
-                 patch("package_collector.check_and_increment_external_rate_limit", side_effect=lambda svc, limit: svc != "openssf"), \
-                 patch("package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=existing), \
-                 patch("package_collector.OPENSSF_CIRCUIT") as mock_openssf_cb:
+            with (
+                patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=depsdev_data),
+                patch(
+                    "package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "not_found"}
+                ),
+                patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}),
+                patch(
+                    "package_collector._check_and_increment_github_rate_limit",
+                    new_callable=AsyncMock,
+                    return_value=False,
+                ),
+                patch(
+                    "package_collector.check_and_increment_external_rate_limit",
+                    side_effect=lambda svc, limit: svc != "openssf",
+                ),
+                patch("package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=existing),
+                patch("package_collector.OPENSSF_CIRCUIT") as mock_openssf_cb,
+            ):
                 mock_openssf_cb.can_execute_async = AsyncMock(return_value=True)
 
-                result = run_async(
-                    collect_package_data("npm", "some-pkg", existing=existing)
-                )
+                result = run_async(collect_package_data("npm", "some-pkg", existing=existing))
 
                 # Rate limit reached, error recorded
                 assert result["openssf_error"] == "rate_limit_exceeded"
@@ -6979,6 +7278,7 @@ class TestDataStatusAbandoned:
         with mock_aws():
             dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
             from conftest import create_dynamodb_tables
+
             create_dynamodb_tables(dynamodb)
 
             table = dynamodb.Table("pkgwatch-packages")
@@ -7018,25 +7318,39 @@ class TestProcessBatchEdgeCases:
         records = [
             {
                 "messageId": "msg-1",
-                "body": json.dumps({
-                    "ecosystem": "npm",
-                    "name": "test-pkg",
-                    "tier": 1,
-                }),
+                "body": json.dumps(
+                    {
+                        "ecosystem": "npm",
+                        "name": "test-pkg",
+                        "tier": 1,
+                    }
+                ),
             },
         ]
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "GITHUB_TOKEN_SECRET_ARN": "",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
-            with patch("package_collector.get_bulk_download_stats", new_callable=AsyncMock, side_effect=Exception("bulk API error")), \
-                 patch("package_collector.process_single_package", new_callable=AsyncMock, return_value=(True, "npm/test-pkg", None)), \
-                 patch("package_collector.emit_metric"), \
-                 patch("package_collector.emit_batch_metrics"):
-
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
+            with (
+                patch(
+                    "package_collector.get_bulk_download_stats",
+                    new_callable=AsyncMock,
+                    side_effect=Exception("bulk API error"),
+                ),
+                patch(
+                    "package_collector.process_single_package",
+                    new_callable=AsyncMock,
+                    return_value=(True, "npm/test-pkg", None),
+                ),
+                patch("package_collector.emit_metric"),
+                patch("package_collector.emit_batch_metrics"),
+            ):
                 successes, failed_ids = run_async(process_batch(records))
 
                 assert successes == 1
@@ -7070,29 +7384,37 @@ class TestProcessSinglePackageRetryLogging:
             "retry_count": 1,
         }
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "GITHUB_TOKEN_SECRET_ARN": "",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-            "DEDUP_WINDOW_MINUTES": "0",  # Disable dedup
-        }):
-            with patch("package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=existing_data), \
-                 patch("package_collector._increment_retry_count", new_callable=AsyncMock), \
-                 patch("package_collector.collect_package_data", new_callable=AsyncMock, return_value={
-                     "ecosystem": "npm",
-                     "name": "retry-pkg",
-                     "collected_at": datetime.now(timezone.utc).isoformat(),
-                     "sources": ["deps.dev", "github"],
-                     "data_freshness": "fresh",
-                     "latest_version": "1.0.0",
-                 }), \
-                 patch("package_collector.store_raw_data"), \
-                 patch("package_collector.store_package_data", new_callable=AsyncMock):
-
-                success, pkg_name, error = run_async(
-                    process_single_package(message)
-                )
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+                "DEDUP_WINDOW_MINUTES": "0",  # Disable dedup
+            },
+        ):
+            with (
+                patch(
+                    "package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=existing_data
+                ),
+                patch("package_collector._increment_retry_count", new_callable=AsyncMock),
+                patch(
+                    "package_collector.collect_package_data",
+                    new_callable=AsyncMock,
+                    return_value={
+                        "ecosystem": "npm",
+                        "name": "retry-pkg",
+                        "collected_at": datetime.now(timezone.utc).isoformat(),
+                        "sources": ["deps.dev", "github"],
+                        "data_freshness": "fresh",
+                        "latest_version": "1.0.0",
+                    },
+                ),
+                patch("package_collector.store_raw_data"),
+                patch("package_collector.store_package_data", new_callable=AsyncMock),
+            ):
+                success, pkg_name, error = run_async(process_single_package(message))
 
                 assert success is True
                 assert "retry-pkg" in pkg_name
@@ -7113,17 +7435,20 @@ class TestProcessSinglePackageRetryLogging:
             "last_updated": datetime.now(timezone.utc).isoformat(),
         }
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "GITHUB_TOKEN_SECRET_ARN": "",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-            "DEDUP_WINDOW_MINUTES": "30",
-        }):
-            with patch("package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=existing_data):
-                success, pkg_name, error = run_async(
-                    process_single_package(message)
-                )
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+                "DEDUP_WINDOW_MINUTES": "30",
+            },
+        ):
+            with patch(
+                "package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=existing_data
+            ):
+                success, pkg_name, error = run_async(process_single_package(message))
                 # Should succeed (dedup skip is a success)
                 assert success is True
                 assert error is None
@@ -7144,27 +7469,35 @@ class TestProcessSinglePackageRetryLogging:
             "last_updated": "not-a-date",  # Unparseable
         }
 
-        with patch.dict(os.environ, {
-            "PACKAGES_TABLE": "pkgwatch-packages",
-            "RAW_DATA_BUCKET": "pkgwatch-raw-data",
-            "GITHUB_TOKEN_SECRET_ARN": "",
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
-            with patch("package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=existing_data), \
-                 patch("package_collector.collect_package_data", new_callable=AsyncMock, return_value={
-                     "ecosystem": "npm",
-                     "name": "bad-date-pkg",
-                     "collected_at": datetime.now(timezone.utc).isoformat(),
-                     "sources": ["deps.dev"],
-                     "data_freshness": "fresh",
-                     "latest_version": "1.0.0",
-                 }), \
-                 patch("package_collector.store_raw_data"), \
-                 patch("package_collector.store_package_data", new_callable=AsyncMock):
-
-                success, pkg_name, error = run_async(
-                    process_single_package(message)
-                )
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
+            with (
+                patch(
+                    "package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=existing_data
+                ),
+                patch(
+                    "package_collector.collect_package_data",
+                    new_callable=AsyncMock,
+                    return_value={
+                        "ecosystem": "npm",
+                        "name": "bad-date-pkg",
+                        "collected_at": datetime.now(timezone.utc).isoformat(),
+                        "sources": ["deps.dev"],
+                        "data_freshness": "fresh",
+                        "latest_version": "1.0.0",
+                    },
+                ),
+                patch("package_collector.store_raw_data"),
+                patch("package_collector.store_package_data", new_callable=AsyncMock),
+            ):
+                success, pkg_name, error = run_async(process_single_package(message))
                 # Should succeed - bad date format doesn't block collection
                 assert success is True
 
@@ -7212,10 +7545,7 @@ class TestGetTotalGitHubCallsError:
             pk = kwargs["Key"]["pk"]
             shard_id = int(pk.split("#")[1])
             if shard_id == 3:
-                raise ClientError(
-                    {"Error": {"Code": "InternalServerError", "Message": "err"}},
-                    "GetItem"
-                )
+                raise ClientError({"Error": {"Code": "InternalServerError", "Message": "err"}}, "GetItem")
             if shard_id == 0:
                 return {"Item": {"calls": 10}}
             return {}  # No data for other shards

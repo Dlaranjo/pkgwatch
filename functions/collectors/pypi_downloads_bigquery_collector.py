@@ -45,9 +45,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
-GCP_CREDENTIALS_SECRET = os.environ.get(
-    "GCP_CREDENTIALS_SECRET", "pkgwatch/gcp-bigquery-credentials"
-)
+GCP_CREDENTIALS_SECRET = os.environ.get("GCP_CREDENTIALS_SECRET", "pkgwatch/gcp-bigquery-credentials")
 
 # Batch size for DynamoDB writes
 WRITE_BATCH_SIZE = int(os.environ.get("BIGQUERY_WRITE_BATCH_SIZE", "100"))
@@ -146,10 +144,7 @@ def _query_bigquery_downloads(credentials: dict, package_names: set, limit: int 
         from google.cloud import bigquery
         from google.oauth2 import service_account
     except ImportError as e:
-        logger.error(
-            f"google-cloud-bigquery not installed: {e}. "
-            "This Lambda requires google-cloud-bigquery package."
-        )
+        logger.error(f"google-cloud-bigquery not installed: {e}. This Lambda requires google-cloud-bigquery package.")
         return {}
 
     # Create credentials from service account info
@@ -223,10 +218,9 @@ def _query_bigquery_downloads(credentials: dict, package_names: set, limit: int 
 
             if attempt < MAX_QUERY_RETRIES - 1:
                 # Exponential backoff with jitter
-                delay = QUERY_RETRY_BASE_DELAY * (2 ** attempt) + random.uniform(0, 1)
+                delay = QUERY_RETRY_BASE_DELAY * (2**attempt) + random.uniform(0, 1)
                 logger.warning(
-                    f"BigQuery query failed (attempt {attempt + 1}/{MAX_QUERY_RETRIES}), "
-                    f"retrying in {delay:.1f}s: {e}"
+                    f"BigQuery query failed (attempt {attempt + 1}/{MAX_QUERY_RETRIES}), retrying in {delay:.1f}s: {e}"
                 )
                 time.sleep(delay)
             else:
@@ -285,8 +279,7 @@ def _write_downloads_batch(table, downloads: dict, dry_run: bool = False) -> tup
 
         if (batch_num + 1) % 10 == 0 or batch_num == total_batches - 1:
             logger.info(
-                f"Progress: batch {batch_num + 1}/{total_batches}, "
-                f"{success_count} updated, {error_count} errors"
+                f"Progress: batch {batch_num + 1}/{total_batches}, {success_count} updated, {error_count} errors"
             )
 
     return success_count, error_count
@@ -349,19 +342,19 @@ def handler(event, context):
     dry_run = event.get("dry_run", False)
     limit = event.get("limit", 0)
 
-    logger.info(
-        f"Starting BigQuery PyPI downloads collector: dry_run={dry_run}, limit={limit}"
-    )
+    logger.info(f"Starting BigQuery PyPI downloads collector: dry_run={dry_run}, limit={limit}")
 
     # Get GCP credentials
     credentials = _get_gcp_credentials()
     if not credentials:
         return {
             "statusCode": 500,
-            "body": json.dumps({
-                "error": "GCP credentials not available",
-                "message": f"Configure {GCP_CREDENTIALS_SECRET} in Secrets Manager",
-            }),
+            "body": json.dumps(
+                {
+                    "error": "GCP credentials not available",
+                    "message": f"Configure {GCP_CREDENTIALS_SECRET} in Secrets Manager",
+                }
+            ),
         }
 
     # Get DynamoDB table
@@ -373,10 +366,12 @@ def handler(event, context):
     if not package_names:
         return {
             "statusCode": 200,
-            "body": json.dumps({
-                "message": "No PyPI packages found in database",
-                "packages_updated": 0,
-            }),
+            "body": json.dumps(
+                {
+                    "message": "No PyPI packages found in database",
+                    "packages_updated": 0,
+                }
+            ),
         }
 
     # Query BigQuery for download counts
@@ -384,10 +379,12 @@ def handler(event, context):
     if not downloads:
         return {
             "statusCode": 500,
-            "body": json.dumps({
-                "error": "BigQuery query returned no results",
-                "message": "Check GCP credentials and BigQuery access",
-            }),
+            "body": json.dumps(
+                {
+                    "error": "BigQuery query returned no results",
+                    "message": "Check GCP credentials and BigQuery access",
+                }
+            ),
         }
 
     # Write to DynamoDB
@@ -399,9 +396,7 @@ def handler(event, context):
     not_found_count = len(packages_not_found)
     if packages_not_found:
         logger.info(f"Marking {not_found_count} packages not found in BigQuery")
-        not_found_success, not_found_errors = _mark_packages_not_found(
-            table, packages_not_found, dry_run
-        )
+        not_found_success, not_found_errors = _mark_packages_not_found(table, packages_not_found, dry_run)
         success_count += not_found_success
         error_count += not_found_errors
 
@@ -412,21 +407,20 @@ def handler(event, context):
 
     result = {
         "statusCode": 200,
-        "body": json.dumps({
-            "dry_run": dry_run,
-            "packages_tracked": total_tracked,
-            "packages_found_in_bigquery": len(downloads),
-            "packages_not_found": not_found_count,
-            "packages_with_downloads": packages_with_downloads,
-            "coverage_percent": round(coverage, 1),
-            "packages_updated": success_count,
-            "errors": error_count,
-        }),
+        "body": json.dumps(
+            {
+                "dry_run": dry_run,
+                "packages_tracked": total_tracked,
+                "packages_found_in_bigquery": len(downloads),
+                "packages_not_found": not_found_count,
+                "packages_with_downloads": packages_with_downloads,
+                "coverage_percent": round(coverage, 1),
+                "packages_updated": success_count,
+                "errors": error_count,
+            }
+        ),
     }
 
-    logger.info(
-        f"BigQuery collector complete: {success_count} updated, "
-        f"{error_count} errors, {coverage:.1f}% coverage"
-    )
+    logger.info(f"BigQuery collector complete: {success_count} updated, {error_count} errors, {coverage:.1f}% coverage")
 
     return result

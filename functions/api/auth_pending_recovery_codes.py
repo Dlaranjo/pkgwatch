@@ -80,7 +80,7 @@ def handler(event, context):
                     404,
                     "no_pending_codes",
                     "No pending recovery codes found. They may have already been retrieved or expired.",
-                    origin=origin
+                    origin=origin,
                 )
             raise
 
@@ -89,7 +89,7 @@ def handler(event, context):
                 404,
                 "no_pending_codes",
                 "No pending recovery codes found. They may have already been retrieved or expired.",
-                origin=origin
+                origin=origin,
             )
 
         codes = pending_item.get("codes", [])
@@ -116,10 +116,12 @@ def handler(event, context):
         return {
             "statusCode": 200,
             "headers": response_headers,
-            "body": json.dumps({
-                "codes": codes,
-                "message": "These recovery codes will only be shown once. Save them in a secure location.",
-            }),
+            "body": json.dumps(
+                {
+                    "codes": codes,
+                    "message": "These recovery codes will only be shown once. Save them in a secure location.",
+                }
+            ),
         }
 
     except Exception as e:

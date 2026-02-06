@@ -85,9 +85,7 @@ def check_usage_alerts(user: dict, current_usage: int) -> Optional[dict]:
 RATE_LIMIT_SHARDS = 10
 
 
-def check_and_increment_external_rate_limit(
-    service: str, hourly_limit: int, table_name: str = None
-) -> bool:
+def check_and_increment_external_rate_limit(service: str, hourly_limit: int, table_name: str = None) -> bool:
     """
     Check rate limit for external service using atomic sharded counters.
     Uses per-shard limits with atomic conditional updates to prevent TOCTOU race.

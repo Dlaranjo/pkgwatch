@@ -151,6 +151,7 @@ async def test_retry_decorator():
 @pytest.mark.asyncio
 async def test_retry_decorator_with_args():
     """Retry decorator should preserve function arguments."""
+
     @retry(RetryConfig(max_retries=1, base_delay=0.01))
     async def test_func(a, b, c=None):
         return f"{a}-{b}-{c}"
@@ -210,6 +211,7 @@ async def test_retry_timing():
 @pytest.mark.asyncio
 async def test_retry_async_with_kwargs():
     """Retry should work with functions that use kwargs."""
+
     @retry(RetryConfig(max_retries=1, base_delay=0.01))
     async def test_func(*, value):
         return value * 2

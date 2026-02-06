@@ -27,9 +27,9 @@ PACKAGE_QUEUE_URL = os.environ.get("PACKAGE_QUEUE_URL")
 
 # Configurable jitter by tier (in seconds)
 JITTER_MAX_SECONDS = {
-    1: int(os.environ.get("TIER1_JITTER_MAX", "300")),   # 5 minutes default
-    2: int(os.environ.get("TIER2_JITTER_MAX", "600")),   # 10 minutes default
-    3: int(os.environ.get("TIER3_JITTER_MAX", "900")),   # 15 minutes max (SQS limit)
+    1: int(os.environ.get("TIER1_JITTER_MAX", "300")),  # 5 minutes default
+    2: int(os.environ.get("TIER2_JITTER_MAX", "600")),  # 10 minutes default
+    3: int(os.environ.get("TIER3_JITTER_MAX", "900")),  # 15 minutes max (SQS limit)
 }
 
 # SQS DelaySeconds maximum is 900 seconds (15 minutes)
@@ -84,9 +84,7 @@ def handler(event, context):
                 KeyConditionExpression=Key("tier").eq(t),
                 ProjectionExpression="pk",  # Only need the partition key
             )
-            packages_to_refresh.extend(
-                item["pk"] for item in response.get("Items", [])
-            )
+            packages_to_refresh.extend(item["pk"] for item in response.get("Items", []))
 
             # Handle pagination
             while "LastEvaluatedKey" in response:
@@ -96,9 +94,7 @@ def handler(event, context):
                     ProjectionExpression="pk",
                     ExclusiveStartKey=response["LastEvaluatedKey"],
                 )
-                packages_to_refresh.extend(
-                    item["pk"] for item in response.get("Items", [])
-                )
+                packages_to_refresh.extend(item["pk"] for item in response.get("Items", []))
 
     except Exception as e:
         logger.error(f"Error querying packages: {e}")
@@ -110,10 +106,12 @@ def handler(event, context):
         logger.warning("No packages found for refresh")
         return {
             "statusCode": 200,
-            "body": json.dumps({
-                "message": "No packages to refresh",
-                "tier": tier,
-            }),
+            "body": json.dumps(
+                {
+                    "message": "No packages to refresh",
+                    "tier": tier,
+                }
+            ),
         }
 
     # Send messages to SQS in batches of 10
@@ -142,17 +140,21 @@ def handler(event, context):
             jitter_max = min(JITTER_MAX_SECONDS.get(tier, 60), SQS_MAX_DELAY_SECONDS)
             jitter = random.randint(0, jitter_max)
 
-            entries.append({
-                "Id": str(i + j),
-                "MessageBody": json.dumps({
-                    "ecosystem": ecosystem,
-                    "name": name,
-                    "tier": tier,
-                    "reason": reason,
-                    "dispatched_at": datetime.now(timezone.utc).isoformat(),
-                }),
-                "DelaySeconds": jitter,
-            })
+            entries.append(
+                {
+                    "Id": str(i + j),
+                    "MessageBody": json.dumps(
+                        {
+                            "ecosystem": ecosystem,
+                            "name": name,
+                            "tier": tier,
+                            "reason": reason,
+                            "dispatched_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                    ),
+                    "DelaySeconds": jitter,
+                }
+            )
 
         try:
             response = sqs.send_message_batch(
@@ -174,11 +176,13 @@ def handler(event, context):
 
     return {
         "statusCode": 200,
-        "body": json.dumps({
-            "message": f"Dispatched {messages_sent} packages for refresh",
-            "tier": tier,
-            "total_packages": len(packages_to_refresh),
-            "messages_sent": messages_sent,
-            "errors": len(errors),
-        }),
+        "body": json.dumps(
+            {
+                "message": f"Dispatched {messages_sent} packages for refresh",
+                "tier": tier,
+                "total_packages": len(packages_to_refresh),
+                "messages_sent": messages_sent,
+                "errors": len(errors),
+            }
+        ),
     }

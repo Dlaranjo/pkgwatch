@@ -73,16 +73,18 @@ def _queue_packages_for_collection(packages: list[str], ecosystem: str) -> int:
 
     # Send in batches of 10 (SQS limit)
     for i in range(0, len(to_queue), 10):
-        batch = to_queue[i:i + 10]
+        batch = to_queue[i : i + 10]
         entries = [
             {
                 "Id": str(j),
-                "MessageBody": json.dumps({
-                    "ecosystem": ecosystem,
-                    "name": name,  # Already normalized
-                    "tier": 3,  # Low priority for discovered packages
-                    "reason": "scan_discovery",
-                }),
+                "MessageBody": json.dumps(
+                    {
+                        "ecosystem": ecosystem,
+                        "name": name,  # Already normalized
+                        "tier": 3,  # Low priority for discovered packages
+                        "reason": "scan_discovery",
+                    }
+                ),
             }
             for j, name in enumerate(batch)
         ]
@@ -96,6 +98,7 @@ def _queue_packages_for_collection(packages: list[str], ecosystem: str) -> int:
         logger.info(f"Queued {queued} packages for collection (ecosystem={ecosystem})")
 
     return queued
+
 
 # Import from shared module (bundled with Lambda)
 from shared.auth import check_and_increment_usage_with_bonus, validate_api_key
@@ -192,7 +195,7 @@ def handler(event, context):
     # Process in batches of 25 (DynamoDB BatchGetItem limit)
     dep_list = list(dependencies)
     for i in range(0, len(dep_list), 25):
-        batch = dep_list[i:i + 25]
+        batch = dep_list[i : i + 25]
         # Normalize names for DB lookup (npm is case-insensitive, DB stores lowercase)
         if ecosystem == "npm":
             normalized_batch = [normalize_npm_name(name) for name in batch]
@@ -202,9 +205,7 @@ def handler(event, context):
 
         try:
             request_items = {
-                PACKAGES_TABLE: {
-                    "Keys": [{"pk": f"{ecosystem}#{name}", "sk": "LATEST"} for name in normalized_batch]
-                }
+                PACKAGES_TABLE: {"Keys": [{"pk": f"{ecosystem}#{name}", "sk": "LATEST"} for name in normalized_batch]}
             }
 
             # Retry loop for UnprocessedKeys (with exponential backoff)
@@ -219,17 +220,19 @@ def handler(event, context):
                     package_name = item["pk"].split("#", 1)[1]
                     if package_name in batch_set:
                         batch_set.discard(package_name)
-                        results.append({
-                            "package": package_name,
-                            "health_score": item.get("health_score"),
-                            "risk_level": item.get("risk_level"),
-                            "abandonment_risk": item.get("abandonment_risk", {}),
-                            "is_deprecated": item.get("is_deprecated", False),
-                            "archived": item.get("archived", False),
-                            "last_updated": item.get("last_updated"),
-                            # Data completeness indicator
-                            "data_quality": build_data_quality_compact(item),
-                        })
+                        results.append(
+                            {
+                                "package": package_name,
+                                "health_score": item.get("health_score"),
+                                "risk_level": item.get("risk_level"),
+                                "abandonment_risk": item.get("abandonment_risk", {}),
+                                "is_deprecated": item.get("is_deprecated", False),
+                                "archived": item.get("archived", False),
+                                "last_updated": item.get("last_updated"),
+                                # Data completeness indicator
+                                "data_quality": build_data_quality_compact(item),
+                            }
+                        )
 
                 # Check for unprocessed keys
                 unprocessed = response.get("UnprocessedKeys", {})
@@ -242,10 +245,14 @@ def handler(event, context):
                     time.sleep(retry_delay + jitter)
                     retry_delay *= 2
                     request_items = unprocessed
-                    logger.warning(f"Retrying {len(unprocessed.get(PACKAGES_TABLE, {}).get('Keys', []))} unprocessed keys (attempt {attempt + 2})")
+                    logger.warning(
+                        f"Retrying {len(unprocessed.get(PACKAGES_TABLE, {}).get('Keys', []))} unprocessed keys (attempt {attempt + 2})"
+                    )
                 else:
                     # Max retries exceeded, log warning
-                    logger.error(f"Max retries exceeded for batch_get_item, {len(unprocessed.get(PACKAGES_TABLE, {}).get('Keys', []))} keys unprocessed")
+                    logger.error(
+                        f"Max retries exceeded for batch_get_item, {len(unprocessed.get(PACKAGES_TABLE, {}).get('Keys', []))} keys unprocessed"
+                    )
 
             # Any remaining items in batch_set were not found
             not_found.extend(batch_set)

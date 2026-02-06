@@ -55,6 +55,7 @@ def packages_table():
         import importlib
 
         import shared.dynamo
+
         importlib.reload(shared.dynamo)
 
         yield table
@@ -373,6 +374,7 @@ class TestGetPackageRetryBehavior:
         # Reload to get fresh module state
         importlib.reload(dynamo_module)
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
 
         # Insert test data first
@@ -421,6 +423,7 @@ class TestGetPackageRetryBehavior:
 
         importlib.reload(dynamo_module)
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
 
         # Create mock that always fails with throttling
@@ -452,6 +455,7 @@ class TestGetPackageRetryBehavior:
 
         importlib.reload(dynamo_module)
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
 
         call_count = [0]
@@ -483,6 +487,7 @@ class TestGetPackageRetryBehavior:
 
         importlib.reload(dynamo_module)
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
 
         def raise_generic(**kwargs):
@@ -511,6 +516,7 @@ class TestQueryPackagesByTierPagination:
 
         importlib.reload(dynamo_module)
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
 
         # Simulate paginated response
@@ -555,6 +561,7 @@ class TestBatchGetPackagesRetry:
 
         importlib.reload(dynamo_module)
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
 
         # First call returns some unprocessed, second call completes
@@ -571,17 +578,11 @@ class TestBatchGetPackagesRetry:
                             {"pk": "npm#pkg2", "name": "pkg2"},
                         ]
                     },
-                    "UnprocessedKeys": {
-                        table_name: {
-                            "Keys": [{"pk": "npm#pkg3", "sk": "LATEST"}]
-                        }
-                    },
+                    "UnprocessedKeys": {table_name: {"Keys": [{"pk": "npm#pkg3", "sk": "LATEST"}]}},
                 }
             else:
                 return {
-                    "Responses": {
-                        table_name: [{"pk": "npm#pkg3", "name": "pkg3"}]
-                    },
+                    "Responses": {table_name: [{"pk": "npm#pkg3", "name": "pkg3"}]},
                     "UnprocessedKeys": {},
                 }
 
@@ -609,6 +610,7 @@ class TestBatchGetPackagesRetry:
 
         importlib.reload(dynamo_module)
         import shared.aws_clients
+
         shared.aws_clients._dynamodb = None
 
         call_count = [0]
@@ -617,14 +619,8 @@ class TestBatchGetPackagesRetry:
             call_count[0] += 1
             table_name = list(RequestItems.keys())[0]
             return {
-                "Responses": {
-                    table_name: [{"pk": "npm#pkg1", "name": "pkg1"}]
-                },
-                "UnprocessedKeys": {
-                    table_name: {
-                        "Keys": [{"pk": "npm#pkg2", "sk": "LATEST"}]
-                    }
-                },
+                "Responses": {table_name: [{"pk": "npm#pkg1", "name": "pkg1"}]},
+                "UnprocessedKeys": {table_name: {"Keys": [{"pk": "npm#pkg2", "sk": "LATEST"}]}},
             }
 
         mock_dynamodb = MagicMock()

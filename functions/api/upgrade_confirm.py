@@ -73,9 +73,7 @@ def handler(event, context):
     stripe_api_key = get_stripe_api_key()
     if not stripe_api_key:
         logger.error("Stripe API key not configured")
-        return error_response(
-            500, "stripe_not_configured", "Payment system not configured", origin=origin
-        )
+        return error_response(500, "stripe_not_configured", "Payment system not configured", origin=origin)
 
     stripe.api_key = stripe_api_key
 
@@ -89,18 +87,14 @@ def handler(event, context):
             session_token = cookies["session"].value
 
     if not session_token:
-        return error_response(
-            401, "unauthorized", "Please log in to upgrade", origin=origin
-        )
+        return error_response(401, "unauthorized", "Please log in to upgrade", origin=origin)
 
     # Import here to avoid circular imports at module level
     from api.auth_callback import verify_session_token
 
     session_data = verify_session_token(session_token)
     if not session_data:
-        return error_response(
-            401, "session_expired", "Session expired. Please log in again.", origin=origin
-        )
+        return error_response(401, "session_expired", "Session expired. Please log in again.", origin=origin)
 
     user_id = session_data.get("user_id")
     email = session_data.get("email")
@@ -109,9 +103,7 @@ def handler(event, context):
     try:
         body = json.loads(event.get("body", "{}") or "{}")
     except json.JSONDecodeError:
-        return error_response(
-            400, "invalid_json", "Request body must be valid JSON", origin=origin
-        )
+        return error_response(400, "invalid_json", "Request body must be valid JSON", origin=origin)
 
     tier = body.get("tier", "").lower()
     proration_date = body.get("proration_date")
@@ -156,9 +148,7 @@ def handler(event, context):
     new_price_id = TIER_TO_PRICE.get(tier)
     if not new_price_id:
         logger.error(f"Price ID not configured for tier: {tier}")
-        return error_response(
-            500, "price_not_configured", "Pricing not configured for this tier", origin=origin
-        )
+        return error_response(500, "price_not_configured", "Pricing not configured for this tier", origin=origin)
 
     # Get user's current subscription data from DynamoDB
     table = get_dynamodb().Table(API_KEYS_TABLE)
@@ -237,10 +227,12 @@ def handler(event, context):
             stripe_subscription_id,
             cancel_at_period_end=False,  # Clear any pending cancellation
             idempotency_key=f"upgrade-{user_id}-{tier}-{proration_date}",
-            items=[{
-                "id": current_item_id,
-                "price": new_price_id,
-            }],
+            items=[
+                {
+                    "id": current_item_id,
+                    "price": new_price_id,
+                }
+            ],
             proration_behavior="always_invoice",
             proration_date=proration_date,
             payment_behavior="error_if_incomplete",
@@ -248,7 +240,9 @@ def handler(event, context):
 
         # Get the latest invoice ID
         latest_invoice = updated_subscription.get("latest_invoice")
-        invoice_id = latest_invoice if isinstance(latest_invoice, str) else latest_invoice.get("id") if latest_invoice else None
+        invoice_id = (
+            latest_invoice if isinstance(latest_invoice, str) else latest_invoice.get("id") if latest_invoice else None
+        )
 
         # Get amount charged from the invoice
         amount_charged = 0
@@ -261,8 +255,7 @@ def handler(event, context):
                 logger.warning(f"Could not retrieve invoice {invoice_id}")
 
         logger.info(
-            f"Subscription upgrade successful for user {user_id}: "
-            f"{current_tier} -> {tier}, invoice: {invoice_id}"
+            f"Subscription upgrade successful for user {user_id}: {current_tier} -> {tier}, invoice: {invoice_id}"
         )
 
         # CRITICAL: Update DynamoDB synchronously (don't rely solely on webhook)
@@ -297,33 +290,28 @@ def handler(event, context):
 
         logger.info(f"Updated {len(user_items)} DynamoDB records for user {user_id}")
 
-        return success_response({
-            "success": True,
-            "new_tier": tier,
-            "amount_charged_cents": amount_charged,
-            "invoice_id": invoice_id,
-        }, origin=origin)
+        return success_response(
+            {
+                "success": True,
+                "new_tier": tier,
+                "amount_charged_cents": amount_charged,
+                "invoice_id": invoice_id,
+            },
+            origin=origin,
+        )
 
     except stripe.CardError as e:
         logger.warning(f"Card error during upgrade for user {user_id}: {e}")
-        return error_response(
-            402, "payment_failed", e.user_message or str(e), origin=origin
-        )
+        return error_response(402, "payment_failed", e.user_message or str(e), origin=origin)
     except stripe.InvalidRequestError as e:
         logger.error(f"Invalid Stripe request during upgrade: {e}")
-        return error_response(
-            400, "invalid_request", "Invalid upgrade request", origin=origin
-        )
+        return error_response(400, "invalid_request", "Invalid upgrade request", origin=origin)
     except stripe.APIError as e:
         logger.error(f"Stripe API error during upgrade: {e}")
-        return error_response(
-            503, "stripe_unavailable", "Payment system temporarily unavailable", origin=origin
-        )
+        return error_response(503, "stripe_unavailable", "Payment system temporarily unavailable", origin=origin)
     except stripe.StripeError as e:
         logger.error(f"Stripe error during upgrade: {e}")
-        return error_response(
-            500, "stripe_error", "Failed to process upgrade", origin=origin
-        )
+        return error_response(500, "stripe_error", "Failed to process upgrade", origin=origin)
     except Exception as e:
         logger.error(f"Error processing upgrade: {e}")
         return error_response(500, "internal_error", "An error occurred", origin=origin)

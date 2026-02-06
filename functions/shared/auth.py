@@ -139,12 +139,10 @@ def validate_api_key(api_key: str, max_retries: int = 3) -> Optional[UserInfo]:
                 DYNAMODB_CIRCUIT.record_failure(e)
                 if attempt < max_retries - 1:
                     # Exponential backoff with jitter to prevent thundering herd
-                    base_delay = min(0.1 * (2 ** attempt), 2.0)
+                    base_delay = min(0.1 * (2**attempt), 2.0)
                     jitter = random.uniform(0, base_delay * 0.5)
                     delay = base_delay + jitter
-                    logger.warning(
-                        f"DynamoDB throttled during auth, retry {attempt + 1}/{max_retries} in {delay:.2f}s"
-                    )
+                    logger.warning(f"DynamoDB throttled during auth, retry {attempt + 1}/{max_retries} in {delay:.2f}s")
                     time.sleep(delay)
                     continue
             # Non-throttling error or max retries exceeded
@@ -266,9 +264,7 @@ def check_and_increment_usage(user_id: str, key_hash: str, limit: int) -> tuple[
         raise
 
 
-def check_and_increment_usage_batch(
-    user_id: str, key_hash: str, limit: int, count: int
-) -> tuple[bool, int]:
+def check_and_increment_usage_batch(user_id: str, key_hash: str, limit: int, count: int) -> tuple[bool, int]:
     """
     Atomically check limit and increment usage counter by a batch count at USER_META level.
 
@@ -341,9 +337,7 @@ def check_and_increment_usage_batch(
                     Key={"pk": user_id, "sk": "USER_META"},
                     ProjectionExpression="requests_this_month",
                 )
-                current_count = get_response.get("Item", {}).get(
-                    "requests_this_month", limit
-                )
+                current_count = get_response.get("Item", {}).get("requests_this_month", limit)
                 return False, current_count
             except Exception:
                 return False, limit
@@ -457,8 +451,7 @@ def check_and_increment_usage_with_bonus(
                         "total_packages_scanned = if_not_exists(total_packages_scanned, :zero) + :count"
                     ),
                     ConditionExpression=(
-                        "attribute_not_exists(requests_this_month) OR "
-                        "requests_this_month < :max_allowed"
+                        "attribute_not_exists(requests_this_month) OR requests_this_month < :max_allowed"
                     ),
                     ExpressionAttributeValues={
                         ":inc": count,
@@ -557,13 +550,9 @@ def _trigger_referral_activity_gate(user_id: str, user_meta: dict):
         table.update_item(
             Key={"pk": user_id, "sk": "USER_META"},
             UpdateExpression=(
-                "SET referral_activity_credited = :true "
-                "REMOVE referral_pending, referral_pending_expires"
+                "SET referral_activity_credited = :true REMOVE referral_pending, referral_pending_expires"
             ),
-            ConditionExpression=(
-                "referral_pending = :pending AND "
-                "attribute_not_exists(referral_activity_credited)"
-            ),
+            ConditionExpression=("referral_pending = :pending AND attribute_not_exists(referral_activity_credited)"),
             ExpressionAttributeValues={
                 ":true": True,
                 ":pending": True,
@@ -592,10 +581,7 @@ def _trigger_referral_activity_gate(user_id: str, user_meta: dict):
             rewards_delta=actual_reward,
         )
 
-        logger.info(
-            f"Activity gate: credited referrer {referrer_id} with {actual_reward} "
-            f"for referred user {user_id}"
-        )
+        logger.info(f"Activity gate: credited referrer {referrer_id} with {actual_reward} for referred user {user_id}")
 
     except Exception as e:
         logger.error(f"Error processing activity gate for {user_id}: {e}")

@@ -39,8 +39,10 @@ def run_async(coro):
 
 def create_mock_transport(handler):
     """Create a mock transport for httpx that routes requests to handler."""
+
     async def mock_handler(request: httpx.Request) -> httpx.Response:
         return handler(request)
+
     return httpx.MockTransport(mock_handler)
 
 
@@ -55,27 +57,32 @@ class TestEncodeScopedPackage:
     def test_encode_scoped_package(self):
         """Encode scoped package name."""
         from npm_collector import encode_scoped_package
+
         assert encode_scoped_package("@babel/core") == "@babel%2Fcore"
 
     def test_encode_nested_scoped_package(self):
         """Encode scoped package with complex name."""
         from npm_collector import encode_scoped_package
+
         assert encode_scoped_package("@types/node") == "@types%2Fnode"
 
     def test_encode_unscoped_package(self):
         """Unscoped packages remain unchanged."""
         from npm_collector import encode_scoped_package
+
         assert encode_scoped_package("lodash") == "lodash"
         assert encode_scoped_package("express") == "express"
 
     def test_encode_package_with_hyphen(self):
         """Packages with hyphens remain unchanged."""
         from npm_collector import encode_scoped_package
+
         assert encode_scoped_package("react-dom") == "react-dom"
 
     def test_encode_scoped_package_with_hyphen(self):
         """Scoped packages with hyphens are encoded correctly."""
         from npm_collector import encode_scoped_package
+
         assert encode_scoped_package("@angular/core") == "@angular%2Fcore"
         assert encode_scoped_package("@vue/reactivity") == "@vue%2Freactivity"
 
@@ -163,10 +170,7 @@ class TestGetNpmMetadata:
         """Test fetching scoped package metadata."""
         from npm_collector import get_npm_metadata
 
-        scoped_response = self._create_npm_registry_response(
-            name="@babel/core",
-            version="7.24.0"
-        )
+        scoped_response = self._create_npm_registry_response(name="@babel/core", version="7.24.0")
 
         requested_urls = []
 
@@ -554,12 +558,15 @@ class TestGetDownloadStats:
         from npm_collector import get_download_stats
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={
-                "downloads": 5000000,
-                "start": "2024-01-08",
-                "end": "2024-01-14",
-                "package": "lodash",
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "downloads": 5000000,
+                    "start": "2024-01-08",
+                    "end": "2024-01-14",
+                    "package": "lodash",
+                },
+            )
 
         original_init = httpx.AsyncClient.__init__
 
@@ -600,10 +607,13 @@ class TestGetDownloadStats:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             nonlocal requested_url
             requested_url = str(request.url)
-            return httpx.Response(200, json={
-                "downloads": 1000000,
-                "package": "lodash",
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "downloads": 1000000,
+                    "package": "lodash",
+                },
+            )
 
         original_init = httpx.AsyncClient.__init__
 
@@ -631,10 +641,13 @@ class TestGetBulkDownloadStats:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if "lodash,express" in url:
-                return httpx.Response(200, json={
-                    "lodash": {"downloads": 5000000},
-                    "express": {"downloads": 3000000},
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "lodash": {"downloads": 5000000},
+                        "express": {"downloads": 3000000},
+                    },
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__

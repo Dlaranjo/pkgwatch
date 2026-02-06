@@ -111,22 +111,12 @@ def handler(event, context):
 
         # Check if user already has a referrer
         if meta.get("referred_by"):
-            return error_response(
-                409,
-                "already_referred",
-                "You've already used a referral code",
-                origin=origin
-            )
+            return error_response(409, "already_referred", "You've already used a referral code", origin=origin)
 
         # Check account age (14-day window)
         created_at = meta.get("created_at")
         if not created_at:
-            return error_response(
-                400,
-                "invalid_account",
-                "Unable to verify account creation date",
-                origin=origin
-            )
+            return error_response(400, "invalid_account", "Unable to verify account creation date", origin=origin)
 
         try:
             created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
@@ -138,15 +128,10 @@ def handler(event, context):
                     400,
                     "window_expired",
                     f"Referral codes can only be added within {LATE_ENTRY_DAYS} days of signup",
-                    origin=origin
+                    origin=origin,
                 )
         except (ValueError, TypeError):
-            return error_response(
-                400,
-                "invalid_account",
-                "Unable to verify account creation date",
-                origin=origin
-            )
+            return error_response(400, "invalid_account", "Unable to verify account creation date", origin=origin)
 
         # Look up the referrer
         referrer = lookup_referrer_by_code(code)
@@ -162,12 +147,7 @@ def handler(event, context):
 
         # Check for self-referral
         if is_self_referral(referrer_email, user_email):
-            return error_response(
-                400,
-                "self_referral",
-                "You cannot use your own referral code",
-                origin=origin
-            )
+            return error_response(400, "self_referral", "You cannot use your own referral code", origin=origin)
 
         # All checks passed - process the late referral
         referral_pending_expires = (now + timedelta(days=PENDING_TIMEOUT_DAYS)).isoformat()
@@ -217,7 +197,7 @@ def handler(event, context):
                 "message": f"Referral code applied! You've received {REFERRED_USER_BONUS:,} bonus requests.",
                 "bonus_added": REFERRED_USER_BONUS,
             },
-            origin=origin
+            origin=origin,
         )
 
     except Exception as e:

@@ -34,9 +34,7 @@ MIN_RESPONSE_TIME_SECONDS = 1.5
 dynamodb = boto3.resource("dynamodb")
 ses = boto3.client("ses")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
-VERIFICATION_EMAIL_SENDER = os.environ.get(
-    "VERIFICATION_EMAIL_SENDER", "noreply@pkgwatch.dev"
-)
+VERIFICATION_EMAIL_SENDER = os.environ.get("VERIFICATION_EMAIL_SENDER", "noreply@pkgwatch.dev")
 BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.dev")
 API_URL = os.environ.get("API_URL", "https://api.pkgwatch.dev")
 
@@ -103,7 +101,7 @@ def handler(event, context):
             400,
             "disposable_email",
             "Please use a permanent email address. Disposable email addresses are not allowed.",
-            origin=origin
+            origin=origin,
         )
 
     # Validate referral code format if provided

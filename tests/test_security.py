@@ -39,14 +39,12 @@ class TestSessionTokenSecurity:
 
         # Set up secrets manager with test secret
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
-        secretsmanager.create_secret(
-            Name="test-session-secret",
-            SecretString='{"secret": "super-secret-key-12345"}'
-        )
+        secretsmanager.create_secret(Name="test-session-secret", SecretString='{"secret": "super-secret-key-12345"}')
         os.environ["SESSION_SECRET_ARN"] = "test-session-secret"
 
         # Clear cache and import
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
         from api.auth_callback import _create_session_token, verify_session_token
 
@@ -86,12 +84,12 @@ class TestSessionTokenSecurity:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-session-secret-exp",
-            SecretString='{"secret": "super-secret-key-12345"}'
+            Name="test-session-secret-exp", SecretString='{"secret": "super-secret-key-12345"}'
         )
         os.environ["SESSION_SECRET_ARN"] = "test-session-secret-exp"
 
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
         from api.auth_callback import _create_session_token, verify_session_token
 
@@ -118,12 +116,12 @@ class TestSessionTokenSecurity:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-session-secret-mal",
-            SecretString='{"secret": "super-secret-key-12345"}'
+            Name="test-session-secret-mal", SecretString='{"secret": "super-secret-key-12345"}'
         )
         os.environ["SESSION_SECRET_ARN"] = "test-session-secret-mal"
 
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
         from api.auth_callback import verify_session_token
 
@@ -152,12 +150,12 @@ class TestSessionTokenSecurity:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-session-secret-forge",
-            SecretString='{"secret": "super-secret-key-12345"}'
+            Name="test-session-secret-forge", SecretString='{"secret": "super-secret-key-12345"}'
         )
         os.environ["SESSION_SECRET_ARN"] = "test-session-secret-forge"
 
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
         from api.auth_callback import verify_session_token
 
@@ -172,11 +170,7 @@ class TestSessionTokenSecurity:
         payload = base64.urlsafe_b64encode(json.dumps(attacker_data).encode()).decode()
 
         # Attacker guesses/uses wrong secret
-        forged_signature = hmac.new(
-            b"wrong-secret",
-            payload.encode(),
-            hashlib.sha256
-        ).hexdigest()
+        forged_signature = hmac.new(b"wrong-secret", payload.encode(), hashlib.sha256).hexdigest()
 
         forged_token = f"{payload}.{forged_signature}"
 
@@ -193,10 +187,12 @@ class TestSessionTokenSecurity:
         source = inspect.getsource(verify_session_token)
 
         # Should use hmac.compare_digest, not == for signature comparison
-        assert "hmac.compare_digest" in source, \
+        assert "hmac.compare_digest" in source, (
             "Session verification should use hmac.compare_digest for constant-time comparison"
-        assert "signature ==" not in source or "expected_sig ==" not in source, \
+        )
+        assert "signature ==" not in source or "expected_sig ==" not in source, (
             "Should not use == for signature comparison (timing attack vulnerability)"
+        )
 
 
 # =============================================================================
@@ -325,12 +321,12 @@ class TestAuthorizationIssues:
         # Set up secrets manager
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-session-secret-idor",
-            SecretString='{"secret": "super-secret-key-12345"}'
+            Name="test-session-secret-idor", SecretString='{"secret": "super-secret-key-12345"}'
         )
         os.environ["SESSION_SECRET_ARN"] = "test-session-secret-idor"
 
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
         from api.auth_callback import _create_session_token
 
@@ -365,12 +361,15 @@ class TestAuthorizationIssues:
             )
 
         # Create attacker's session
-        attacker_session = _create_session_token({
-            "user_id": "user_attacker",
-            "email": "attacker@example.com",
-            "tier": "free",
-            "exp": int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp()),
-        }, "super-secret-key-12345")
+        attacker_session = _create_session_token(
+            {
+                "user_id": "user_attacker",
+                "email": "attacker@example.com",
+                "tier": "free",
+                "exp": int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp()),
+            },
+            "super-secret-key-12345",
+        )
 
         from api.revoke_api_key import handler
 
@@ -399,12 +398,12 @@ class TestAuthorizationIssues:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-session-secret-list",
-            SecretString='{"secret": "super-secret-key-12345"}'
+            Name="test-session-secret-list", SecretString='{"secret": "super-secret-key-12345"}'
         )
         os.environ["SESSION_SECRET_ARN"] = "test-session-secret-list"
 
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
         from api.auth_callback import _create_session_token
 
@@ -437,12 +436,15 @@ class TestAuthorizationIssues:
         )
 
         # Create attacker's session
-        attacker_session = _create_session_token({
-            "user_id": "user_attacker",
-            "email": "attacker@example.com",
-            "tier": "free",
-            "exp": int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp()),
-        }, "super-secret-key-12345")
+        attacker_session = _create_session_token(
+            {
+                "user_id": "user_attacker",
+                "email": "attacker@example.com",
+                "tier": "free",
+                "exp": int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp()),
+            },
+            "super-secret-key-12345",
+        )
 
         from api.get_api_keys import handler
 
@@ -467,9 +469,7 @@ class TestInputInjection:
     """Test for SQL/NoSQL injection and path traversal."""
 
     @mock_aws
-    def test_package_name_injection_attempts(
-        self, seeded_packages_table, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_package_name_injection_attempts(self, seeded_packages_table, seeded_api_keys_table, api_gateway_event):
         """Should safely handle malicious package names."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
@@ -505,13 +505,10 @@ class TestInputInjection:
             result = handler(api_gateway_event, {})
 
             # Should return 404 (not found) not 500 (crash)
-            assert result["statusCode"] in [400, 404], \
-                f"Malicious input should not crash server: {name[:50]}..."
+            assert result["statusCode"] in [400, 404], f"Malicious input should not crash server: {name[:50]}..."
 
     @mock_aws
-    def test_ecosystem_injection_attempts(
-        self, seeded_packages_table, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_ecosystem_injection_attempts(self, seeded_packages_table, seeded_api_keys_table, api_gateway_event):
         """Should validate ecosystem parameter."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
@@ -537,8 +534,7 @@ class TestInputInjection:
             result = handler(api_gateway_event, {})
 
             # Should return 400 for invalid ecosystem, not crash
-            assert result["statusCode"] == 400, \
-                f"Invalid ecosystem should be rejected: {ecosystem[:50]}"
+            assert result["statusCode"] == 400, f"Invalid ecosystem should be rejected: {ecosystem[:50]}"
 
     @mock_aws
     def test_json_body_injection(self, seeded_api_keys_table, api_gateway_event):
@@ -569,8 +565,7 @@ class TestInputInjection:
             result = handler(api_gateway_event, {})
 
             # Should handle gracefully (400 or 429 for rate limit)
-            assert result["statusCode"] in [200, 400, 429], \
-                "Malicious body should not crash server"
+            assert result["statusCode"] in [200, 400, 429], "Malicious body should not crash server"
 
 
 # =============================================================================
@@ -590,12 +585,12 @@ class TestSensitiveDataExposure:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-session-secret-expose",
-            SecretString='{"secret": "super-secret-key-12345"}'
+            Name="test-session-secret-expose", SecretString='{"secret": "super-secret-key-12345"}'
         )
         os.environ["SESSION_SECRET_ARN"] = "test-session-secret-expose"
 
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
         from api.auth_callback import _create_session_token
 
@@ -615,12 +610,15 @@ class TestSensitiveDataExposure:
             }
         )
 
-        session_token = _create_session_token({
-            "user_id": "user_test",
-            "email": "test@example.com",
-            "tier": "pro",
-            "exp": int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp()),
-        }, "super-secret-key-12345")
+        session_token = _create_session_token(
+            {
+                "user_id": "user_test",
+                "email": "test@example.com",
+                "tier": "pro",
+                "exp": int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp()),
+            },
+            "super-secret-key-12345",
+        )
 
         from api.get_api_keys import handler
 
@@ -642,9 +640,7 @@ class TestSensitiveDataExposure:
             assert "pw_..." in key_info["key_prefix"]  # Masked format
 
     @mock_aws
-    def test_error_messages_dont_leak_internals(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_error_messages_dont_leak_internals(self, seeded_api_keys_table, api_gateway_event):
         """Error messages should not expose internal details."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
@@ -710,9 +706,7 @@ class TestRateLimitingSecurity:
         assert allowed2 is False
 
     @mock_aws
-    def test_demo_rate_limit_uses_verified_ip(
-        self, seeded_packages_table, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_demo_rate_limit_uses_verified_ip(self, seeded_packages_table, seeded_api_keys_table, api_gateway_event):
         """Demo rate limit should use API Gateway's verified sourceIp, not headers."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
@@ -726,7 +720,7 @@ class TestRateLimitingSecurity:
             },
             "requestContext": {
                 "identity": {"sourceIp": "192.168.1.100"}  # Real IP from API Gateway
-            }
+            },
         }
 
         client_ip = _get_client_ip(spoofed_event)
@@ -771,27 +765,21 @@ class TestStripeWebhookSecurity:
 
         # Set up Stripe secrets - inside the mock_dynamodb context
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
-        secretsmanager.create_secret(
-            Name="stripe-api-key",
-            SecretString='{"key": "sk_test_123"}'
-        )
-        secretsmanager.create_secret(
-            Name="stripe-webhook-secret",
-            SecretString='{"secret": "whsec_test123"}'
-        )
+        secretsmanager.create_secret(Name="stripe-api-key", SecretString='{"key": "sk_test_123"}')
+        secretsmanager.create_secret(Name="stripe-webhook-secret", SecretString='{"secret": "whsec_test123"}')
         os.environ["STRIPE_SECRET_ARN"] = "stripe-api-key"
         os.environ["STRIPE_WEBHOOK_SECRET_ARN"] = "stripe-webhook-secret"
 
         # Reload the module to pick up the mocked secretsmanager
         import api.stripe_webhook as webhook_module
+
         importlib.reload(webhook_module)
         handler = webhook_module.handler
 
         api_gateway_event["httpMethod"] = "POST"
-        api_gateway_event["body"] = json.dumps({
-            "type": "checkout.session.completed",
-            "data": {"object": {"customer_email": "test@example.com"}}
-        })
+        api_gateway_event["body"] = json.dumps(
+            {"type": "checkout.session.completed", "data": {"object": {"customer_email": "test@example.com"}}}
+        )
         api_gateway_event["headers"] = {}  # No Stripe-Signature
 
         result = handler(api_gateway_event, {})
@@ -812,31 +800,25 @@ class TestStripeWebhookSecurity:
 
         # Create secrets within the same mock context as mock_dynamodb
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
+        secretsmanager.create_secret(Name="stripe-api-key-inv", SecretString='{"key": "sk_test_123"}')
         secretsmanager.create_secret(
-            Name="stripe-api-key-inv",
-            SecretString='{"key": "sk_test_123"}'
-        )
-        secretsmanager.create_secret(
-            Name="stripe-webhook-secret-inv",
-            SecretString='{"secret": "whsec_realwebhooksecret"}'
+            Name="stripe-webhook-secret-inv", SecretString='{"secret": "whsec_realwebhooksecret"}'
         )
         os.environ["STRIPE_SECRET_ARN"] = "stripe-api-key-inv"
         os.environ["STRIPE_WEBHOOK_SECRET_ARN"] = "stripe-webhook-secret-inv"
 
         # Reload the module to pick up the mocked secretsmanager
         import api.stripe_webhook as webhook_module
+
         importlib.reload(webhook_module)
         handler = webhook_module.handler
 
         api_gateway_event["httpMethod"] = "POST"
-        api_gateway_event["body"] = json.dumps({
-            "type": "checkout.session.completed",
-            "data": {"object": {"customer_email": "test@example.com"}}
-        })
+        api_gateway_event["body"] = json.dumps(
+            {"type": "checkout.session.completed", "data": {"object": {"customer_email": "test@example.com"}}}
+        )
         # Attacker provides fake signature
-        api_gateway_event["headers"] = {
-            "Stripe-Signature": "t=123456,v1=fakesignature123"
-        }
+        api_gateway_event["headers"] = {"Stripe-Signature": "t=123456,v1=fakesignature123"}
 
         result = handler(api_gateway_event, {})
 
@@ -856,36 +838,28 @@ class TestStripeWebhookSecurity:
 
         # Create secrets within the same mock context as mock_dynamodb
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
-        secretsmanager.create_secret(
-            Name="stripe-api-key-replay",
-            SecretString='{"key": "sk_test_123"}'
-        )
-        secretsmanager.create_secret(
-            Name="stripe-webhook-secret-replay",
-            SecretString='{"secret": "whsec_test123456"}'
-        )
+        secretsmanager.create_secret(Name="stripe-api-key-replay", SecretString='{"key": "sk_test_123"}')
+        secretsmanager.create_secret(Name="stripe-webhook-secret-replay", SecretString='{"secret": "whsec_test123456"}')
         os.environ["STRIPE_SECRET_ARN"] = "stripe-api-key-replay"
         os.environ["STRIPE_WEBHOOK_SECRET_ARN"] = "stripe-webhook-secret-replay"
 
         # Reload the module to pick up the mocked secretsmanager
         import api.stripe_webhook as webhook_module
+
         importlib.reload(webhook_module)
         handler = webhook_module.handler
 
         # Create a valid-looking but old signature (replay attack)
-        payload = json.dumps({
-            "type": "checkout.session.completed",
-            "data": {"object": {"customer_email": "victim@example.com"}}
-        })
+        payload = json.dumps(
+            {"type": "checkout.session.completed", "data": {"object": {"customer_email": "victim@example.com"}}}
+        )
 
         # Old timestamp (5 minutes ago - Stripe default tolerance is 5 min)
         old_timestamp = str(int(time.time()) - 400)  # 6+ minutes old
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["body"] = payload
-        api_gateway_event["headers"] = {
-            "Stripe-Signature": f"t={old_timestamp},v1=somesignature"
-        }
+        api_gateway_event["headers"] = {"Stripe-Signature": f"t={old_timestamp},v1=somesignature"}
 
         result = handler(api_gateway_event, {})
 
@@ -911,12 +885,12 @@ class TestMagicLinkSecurity:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-session-secret-magic",
-            SecretString='{"secret": "super-secret-key-12345"}'
+            Name="test-session-secret-magic", SecretString='{"secret": "super-secret-key-12345"}'
         )
         os.environ["SESSION_SECRET_ARN"] = "test-session-secret-magic"
 
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -966,12 +940,12 @@ class TestMagicLinkSecurity:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-session-secret-expire",
-            SecretString='{"secret": "super-secret-key-12345"}'
+            Name="test-session-secret-expire", SecretString='{"secret": "super-secret-key-12345"}'
         )
         os.environ["SESSION_SECRET_ARN"] = "test-session-secret-expire"
 
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1051,12 +1025,12 @@ class TestCookieSecurity:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-session-secret-cookie",
-            SecretString='{"secret": "super-secret-key-12345"}'
+            Name="test-session-secret-cookie", SecretString='{"secret": "super-secret-key-12345"}'
         )
         os.environ["SESSION_SECRET_ARN"] = "test-session-secret-cookie"
 
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")

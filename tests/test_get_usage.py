@@ -72,6 +72,7 @@ class TestGetUsageHandler:
 
         # Simulate some usage
         import hashlib
+
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
         table.update_item(
             Key={"pk": "user_test123", "sk": key_hash},

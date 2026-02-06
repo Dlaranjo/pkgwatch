@@ -43,8 +43,7 @@ def handler(event, context):
     # Check main queue depth
     try:
         attrs = sqs.get_queue_attributes(
-            QueueUrl=QUEUE_URL,
-            AttributeNames=["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"]
+            QueueUrl=QUEUE_URL, AttributeNames=["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"]
         )
         queue_depth = int(attrs["Attributes"].get("ApproximateNumberOfMessages", 0))
         in_flight = int(attrs["Attributes"].get("ApproximateNumberOfMessagesNotVisible", 0))
@@ -63,10 +62,7 @@ def handler(event, context):
 
     # Check DLQ
     try:
-        attrs = sqs.get_queue_attributes(
-            QueueUrl=DLQ_URL,
-            AttributeNames=["ApproximateNumberOfMessages"]
-        )
+        attrs = sqs.get_queue_attributes(QueueUrl=DLQ_URL, AttributeNames=["ApproximateNumberOfMessages"])
         dlq_depth = int(attrs["Attributes"].get("ApproximateNumberOfMessages", 0))
 
         health["checks"]["dlq"] = {
@@ -116,7 +112,7 @@ def handler(event, context):
             "status": health["status"],
             "queue_depth": health["checks"].get("main_queue", {}).get("depth"),
             "dlq_depth": health["checks"].get("dlq", {}).get("depth"),
-        }
+        },
     )
 
     # Emit metrics

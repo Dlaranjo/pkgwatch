@@ -76,9 +76,7 @@ def handler(event, context):
     stripe_api_key = get_stripe_api_key()
     if not stripe_api_key:
         logger.error("Stripe API key not configured")
-        return error_response(
-            500, "stripe_not_configured", "Payment system not configured", origin=origin
-        )
+        return error_response(500, "stripe_not_configured", "Payment system not configured", origin=origin)
 
     stripe.api_key = stripe_api_key
 
@@ -92,18 +90,14 @@ def handler(event, context):
             session_token = cookies["session"].value
 
     if not session_token:
-        return error_response(
-            401, "unauthorized", "Please log in to upgrade", origin=origin
-        )
+        return error_response(401, "unauthorized", "Please log in to upgrade", origin=origin)
 
     # Import here to avoid circular imports at module level
     from api.auth_callback import verify_session_token
 
     session_data = verify_session_token(session_token)
     if not session_data:
-        return error_response(
-            401, "session_expired", "Session expired. Please log in again.", origin=origin
-        )
+        return error_response(401, "session_expired", "Session expired. Please log in again.", origin=origin)
 
     user_id = session_data.get("user_id")
     email = session_data.get("email")
@@ -112,9 +106,7 @@ def handler(event, context):
     try:
         body = json.loads(event.get("body", "{}") or "{}")
     except json.JSONDecodeError:
-        return error_response(
-            400, "invalid_json", "Request body must be valid JSON", origin=origin
-        )
+        return error_response(400, "invalid_json", "Request body must be valid JSON", origin=origin)
 
     tier = body.get("tier", "").lower()
 
@@ -130,9 +122,7 @@ def handler(event, context):
     new_price_id = TIER_TO_PRICE.get(tier)
     if not new_price_id:
         logger.error(f"Price ID not configured for tier: {tier}")
-        return error_response(
-            500, "price_not_configured", "Pricing not configured for this tier", origin=origin
-        )
+        return error_response(500, "price_not_configured", "Pricing not configured for this tier", origin=origin)
 
     # Get user's current subscription data from DynamoDB
     table = get_dynamodb().Table(API_KEYS_TABLE)
@@ -218,10 +208,12 @@ def handler(event, context):
             customer=stripe_customer_id,
             subscription=stripe_subscription_id,
             subscription_details={
-                "items": [{
-                    "id": current_item_id,
-                    "price": new_price_id,
-                }],
+                "items": [
+                    {
+                        "id": current_item_id,
+                        "price": new_price_id,
+                    }
+                ],
                 "proration_behavior": "always_invoice",
                 "proration_date": proration_date,
             },
@@ -262,9 +254,11 @@ def handler(event, context):
         # Get current period end from subscription item (not subscription object)
         subscription_item = subscription["items"]["data"][0]
         current_period_end = subscription_item.get("current_period_end")
-        period_end_str = datetime.fromtimestamp(
-            current_period_end, tz=timezone.utc
-        ).strftime("%Y-%m-%d") if current_period_end else None
+        period_end_str = (
+            datetime.fromtimestamp(current_period_end, tz=timezone.utc).strftime("%Y-%m-%d")
+            if current_period_end
+            else None
+        )
 
         logger.info(
             f"Generated upgrade preview for user {user_id}: "
@@ -272,26 +266,27 @@ def handler(event, context):
             f"credit_calculated: {credit_amount}, new_plan_calculated: {new_plan_amount}"
         )
 
-        return success_response({
-            "preview": {
-                "current_tier": current_tier,
-                "new_tier": tier,
-                "credit_amount_cents": credit_amount,
-                "new_plan_prorated_cents": new_plan_amount,
-                "amount_due_cents": amount_due,
-                "amount_due_formatted": amount_due_formatted,
-                "currency": currency,
-                "current_period_end": period_end_str,
-                "proration_date": proration_date,
-                "cancellation_will_clear": cancel_at_period_end,
-            }
-        }, origin=origin)
+        return success_response(
+            {
+                "preview": {
+                    "current_tier": current_tier,
+                    "new_tier": tier,
+                    "credit_amount_cents": credit_amount,
+                    "new_plan_prorated_cents": new_plan_amount,
+                    "amount_due_cents": amount_due,
+                    "amount_due_formatted": amount_due_formatted,
+                    "currency": currency,
+                    "current_period_end": period_end_str,
+                    "proration_date": proration_date,
+                    "cancellation_will_clear": cancel_at_period_end,
+                }
+            },
+            origin=origin,
+        )
 
     except stripe.StripeError as e:
         logger.error(f"Stripe error creating upgrade preview: {e}")
-        return error_response(
-            500, "stripe_error", "Failed to create upgrade preview", origin=origin
-        )
+        return error_response(500, "stripe_error", "Failed to create upgrade preview", origin=origin)
     except Exception as e:
         logger.error(f"Error creating upgrade preview: {e}")
         return error_response(500, "internal_error", "An error occurred", origin=origin)

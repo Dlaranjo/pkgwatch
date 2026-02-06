@@ -108,10 +108,12 @@ class TestRecoveryVerifyApiKey:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "api_key": test_key,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "api_key": test_key,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -146,10 +148,12 @@ class TestRecoveryVerifyApiKey:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "api_key": "pw_invalid_key_12345",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "api_key": "pw_invalid_key_12345",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -169,6 +173,7 @@ class TestRecoveryVerifyCode:
 
         # Generate and store recovery codes
         from shared.recovery_utils import generate_recovery_codes
+
         plaintext_codes, hashed_codes = generate_recovery_codes(count=4)
 
         # Store in USER_META
@@ -198,10 +203,12 @@ class TestRecoveryVerifyCode:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": plaintext_codes[0],  # Use first code
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": plaintext_codes[0],  # Use first code
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -224,6 +231,7 @@ class TestRecoveryVerifyCode:
 
         # Generate and store recovery codes
         from shared.recovery_utils import generate_recovery_codes
+
         _, hashed_codes = generate_recovery_codes(count=4)
 
         # Store in USER_META
@@ -252,10 +260,12 @@ class TestRecoveryVerifyCode:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": "AAAA-BBBB-CCCC-DDDD",  # Invalid code
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": "AAAA-BBBB-CCCC-DDDD",  # Invalid code
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -294,10 +304,12 @@ class TestRecoveryVerifyCode:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": "AAAA-BBBB-CCCC-DDDD",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": "AAAA-BBBB-CCCC-DDDD",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -337,10 +349,12 @@ class TestRecoveryUpdateEmail:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -379,10 +393,12 @@ class TestRecoveryUpdateEmail:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -398,10 +414,12 @@ class TestRecoveryUpdateEmail:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": "invalid-token-xyz",
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": "invalid-token-xyz",
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -421,6 +439,7 @@ class TestRecoveryVerifyCodeRaceCondition:
 
         # Generate and store recovery codes
         from shared.recovery_utils import generate_recovery_codes
+
         plaintext_codes, hashed_codes = generate_recovery_codes(count=4)
 
         # Store in USER_META
@@ -450,10 +469,12 @@ class TestRecoveryVerifyCodeRaceCondition:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": plaintext_codes[0],
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": plaintext_codes[0],
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -477,10 +498,12 @@ class TestRecoveryVerifyCodeRaceCondition:
         )
 
         event2 = {
-            "body": json.dumps({
-                "recovery_session_id": session_id2,
-                "recovery_code": plaintext_codes[0],  # Same code
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id2,
+                    "recovery_code": plaintext_codes[0],  # Same code
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -519,8 +542,10 @@ class TestRecoveryConfirmEmail:
         from api.recovery_confirm_email import handler
 
         # Mock session secret - need to patch both locations
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("api.recovery_confirm_email.ses") as mock_ses:
+        with (
+            patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"),
+            patch("api.recovery_confirm_email.ses") as mock_ses,
+        ):
             mock_ses.send_email = MagicMock()
 
             event = {
@@ -568,8 +593,7 @@ class TestRecoveryConfirmEmail:
         """Should reject invalid change token."""
         from api.recovery_confirm_email import handler
 
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("time.sleep"):
+        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), patch("time.sleep"):
             event = {
                 "queryStringParameters": {"token": "nonexistent-token"},
             }
@@ -604,9 +628,11 @@ class TestRecoveryConfirmEmail:
         }
 
         # First request should succeed
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("api.recovery_confirm_email.ses") as mock_ses, \
-             patch("time.sleep"):
+        with (
+            patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"),
+            patch("api.recovery_confirm_email.ses") as mock_ses,
+            patch("time.sleep"),
+        ):
             mock_ses.send_email = MagicMock()
             response1 = handler(event, None)
 
@@ -614,8 +640,7 @@ class TestRecoveryConfirmEmail:
         assert "email_changed=true" in response1["headers"]["Location"]
 
         # Second request with same token should fail
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("time.sleep"):
+        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), patch("time.sleep"):
             response2 = handler(event, None)
 
         assert response2["statusCode"] == 302
@@ -663,10 +688,12 @@ class TestRecoveryVerifyCodeErrors:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": "AAAA-BBBB-CCCC-DDDD",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": "AAAA-BBBB-CCCC-DDDD",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -683,21 +710,21 @@ class TestRecoveryVerifyCodeErrors:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": "test-session-123",
-                "recovery_code": "AAAA-BBBB-CCCC-DDDD",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": "test-session-123",
+                    "recovery_code": "AAAA-BBBB-CCCC-DDDD",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         # Mock the table scan to raise an error
-        with patch("time.sleep"), \
-             patch("api.recovery_verify_code.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_verify_code.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.scan.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
-                "Scan"
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "Scan"
             )
             response = handler(event, None)
 
@@ -727,30 +754,32 @@ class TestRecoveryVerifyCodeErrors:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": "AAAA-BBBB-CCCC-DDDD",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": "AAAA-BBBB-CCCC-DDDD",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         # Mock scan to work but get_item to fail
-        with patch("time.sleep"), \
-             patch("api.recovery_verify_code.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_verify_code.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.scan.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": f"RECOVERY_{session_id}",
-                    "email": "test@example.com",
-                    "ttl": int((now + timedelta(hours=1)).timestamp()),
-                    "verified": False,
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": f"RECOVERY_{session_id}",
+                        "email": "test@example.com",
+                        "ttl": int((now + timedelta(hours=1)).timestamp()),
+                        "verified": False,
+                    }
+                ]
             }
             mock_table.get_item.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
-                "GetItem"
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "GetItem"
             )
             response = handler(event, None)
 
@@ -765,6 +794,7 @@ class TestRecoveryVerifyCodeErrors:
 
         # Generate and store recovery codes
         from shared.recovery_utils import generate_recovery_codes
+
         plaintext_codes, hashed_codes = generate_recovery_codes(count=4)
 
         # Store in USER_META
@@ -794,26 +824,29 @@ class TestRecoveryVerifyCodeErrors:
         from api.recovery_verify_code import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "recovery_code": plaintext_codes[0],
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "recovery_code": plaintext_codes[0],
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         # Mock update_item to raise ConditionalCheckFailedException
-        with patch("time.sleep"), \
-             patch("api.recovery_verify_code.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_verify_code.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.scan.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": f"RECOVERY_{session_id}",
-                    "email": "test@example.com",
-                    "ttl": int((now + timedelta(hours=1)).timestamp()),
-                    "verified": False,
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": f"RECOVERY_{session_id}",
+                        "email": "test@example.com",
+                        "ttl": int((now + timedelta(hours=1)).timestamp()),
+                        "verified": False,
+                    }
+                ]
             }
             mock_table.get_item.return_value = {
                 "Item": {
@@ -823,8 +856,7 @@ class TestRecoveryVerifyCodeErrors:
                 }
             }
             mock_table.update_item.side_effect = ClientError(
-                {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Condition failed"}},
-                "UpdateItem"
+                {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Condition failed"}}, "UpdateItem"
             )
             response = handler(event, None)
 
@@ -877,10 +909,12 @@ class TestRecoveryUpdateEmailErrors:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -916,10 +950,12 @@ class TestRecoveryUpdateEmailErrors:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -968,10 +1004,12 @@ class TestRecoveryUpdateEmailErrors:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "taken@example.com",  # Already in use
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "taken@example.com",  # Already in use
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -988,20 +1026,20 @@ class TestRecoveryUpdateEmailErrors:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": "test-token-123",
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": "test-token-123",
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), \
-             patch("api.recovery_update_email.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_update_email.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.scan.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
-                "Scan"
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "Scan"
             )
             response = handler(event, None)
 
@@ -1034,16 +1072,17 @@ class TestRecoveryUpdateEmailErrors:
         from api.recovery_update_email import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_token": recovery_token,
-                "new_email": "new@example.com",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_token": recovery_token,
+                    "new_email": "new@example.com",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         # SES fails but operation should still succeed
-        with patch("time.sleep"), \
-             patch("api.recovery_update_email.ses") as mock_ses:
+        with patch("time.sleep"), patch("api.recovery_update_email.ses") as mock_ses:
             mock_ses.send_email.side_effect = Exception("SES failure")
             response = handler(event, None)
 
@@ -1092,10 +1131,12 @@ class TestRecoveryVerifyApiKeyErrors:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "api_key": test_key,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "api_key": test_key,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -1112,20 +1153,20 @@ class TestRecoveryVerifyApiKeyErrors:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": "test-session-123",
-                "api_key": "pw_test_key_12345",
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": "test-session-123",
+                    "api_key": "pw_test_key_12345",
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), \
-             patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.query.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
-                "Query"
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "Query"
             )
             response = handler(event, None)
 
@@ -1143,31 +1184,33 @@ class TestRecoveryVerifyApiKeyErrors:
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": "test-session-123",
-                "api_key": test_key,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": "test-session-123",
+                    "api_key": test_key,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
         _now = datetime.now(timezone.utc)
-        with patch("time.sleep"), \
-             patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             # First query succeeds (API key lookup)
             mock_table.query.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": key_hash,
-                    "key_hash": key_hash,
-                    "email": "test@example.com",
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": key_hash,
+                        "key_hash": key_hash,
+                        "email": "test@example.com",
+                    }
+                ]
             }
             # get_item fails
             mock_table.get_item.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
-                "GetItem"
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "GetItem"
             )
             response = handler(event, None)
 
@@ -1197,10 +1240,12 @@ class TestRecoveryVerifyApiKeyErrors:
         from api.recovery_verify_api_key import handler
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "api_key": test_key,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "api_key": test_key,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
@@ -1231,27 +1276,31 @@ class TestRecoveryVerifyApiKeyErrors:
         )
 
         from api.recovery_verify_api_key import handler
+
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
         event = {
-            "body": json.dumps({
-                "recovery_session_id": session_id,
-                "api_key": test_key,
-            }),
+            "body": json.dumps(
+                {
+                    "recovery_session_id": session_id,
+                    "api_key": test_key,
+                }
+            ),
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), \
-             patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.query.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": key_hash,
-                    "key_hash": key_hash,
-                    "email": "test@example.com",
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": key_hash,
+                        "key_hash": key_hash,
+                        "email": "test@example.com",
+                    }
+                ]
             }
             mock_table.get_item.return_value = {
                 "Item": {
@@ -1262,8 +1311,7 @@ class TestRecoveryVerifyApiKeyErrors:
                 }
             }
             mock_table.update_item.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
-                "UpdateItem"
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "UpdateItem"
             )
             response = handler(event, None)
 
@@ -1284,13 +1332,14 @@ class TestRecoveryConfirmEmailErrors:
             "queryStringParameters": {"token": "test-token-123"},
         }
 
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("api.recovery_confirm_email.dynamodb") as mock_ddb:
+        with (
+            patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"),
+            patch("api.recovery_confirm_email.dynamodb") as mock_ddb,
+        ):
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.scan.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
-                "Scan"
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "Scan"
             )
             response = handler(event, None)
 
@@ -1322,23 +1371,26 @@ class TestRecoveryConfirmEmailErrors:
             "queryStringParameters": {"token": change_token},
         }
 
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("api.recovery_confirm_email.dynamodb") as mock_ddb:
+        with (
+            patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"),
+            patch("api.recovery_confirm_email.dynamodb") as mock_ddb,
+        ):
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.scan.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": f"EMAIL_CHANGE_{change_token}",
-                    "old_email": "test@example.com",
-                    "new_email": "new@example.com",
-                    "change_token": change_token,
-                    "ttl": int((now + timedelta(hours=24)).timestamp()),
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": f"EMAIL_CHANGE_{change_token}",
+                        "old_email": "test@example.com",
+                        "new_email": "new@example.com",
+                        "change_token": change_token,
+                        "ttl": int((now + timedelta(hours=24)).timestamp()),
+                    }
+                ]
             }
             mock_table.query.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
-                "Query"
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "Query"
             )
             response = handler(event, None)
 
@@ -1372,31 +1424,36 @@ class TestRecoveryConfirmEmailErrors:
             "queryStringParameters": {"token": change_token},
         }
 
-        with patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"), \
-             patch("api.recovery_confirm_email.dynamodb") as mock_ddb:
+        with (
+            patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"),
+            patch("api.recovery_confirm_email.dynamodb") as mock_ddb,
+        ):
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.scan.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": f"EMAIL_CHANGE_{change_token}",
-                    "old_email": "test@example.com",
-                    "new_email": "new@example.com",
-                    "change_token": change_token,
-                    "ttl": int((now + timedelta(hours=24)).timestamp()),
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": f"EMAIL_CHANGE_{change_token}",
+                        "old_email": "test@example.com",
+                        "new_email": "new@example.com",
+                        "change_token": change_token,
+                        "ttl": int((now + timedelta(hours=24)).timestamp()),
+                    }
+                ]
             }
             mock_table.query.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": key_hash,
-                    "key_hash": key_hash,
-                    "email": "test@example.com",
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": key_hash,
+                        "key_hash": key_hash,
+                        "email": "test@example.com",
+                    }
+                ]
             }
             mock_table.delete_item.side_effect = ClientError(
-                {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Already deleted"}},
-                "DeleteItem"
+                {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Already deleted"}}, "DeleteItem"
             )
             response = handler(event, None)
 
@@ -1433,13 +1490,11 @@ class TestRecoveryInitiateErrors:
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), \
-             patch("api.recovery_initiate.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_initiate.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.query.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
-                "Query"
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "Query"
             )
             response = handler(event, None)
 
@@ -1453,6 +1508,7 @@ class TestRecoveryInitiateErrors:
         table, test_key = seeded_api_keys_table
 
         from api.recovery_initiate import handler
+
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
         event = {
@@ -1460,21 +1516,21 @@ class TestRecoveryInitiateErrors:
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), \
-             patch("api.recovery_initiate.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_initiate.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
             mock_table.query.return_value = {
-                "Items": [{
-                    "pk": "user_test123",
-                    "sk": key_hash,
-                    "email": "test@example.com",
-                    "email_verified": True,
-                }]
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": key_hash,
+                        "email": "test@example.com",
+                        "email_verified": True,
+                    }
+                ]
             }
             mock_table.put_item.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
-                "PutItem"
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "PutItem"
             )
             response = handler(event, None)
 

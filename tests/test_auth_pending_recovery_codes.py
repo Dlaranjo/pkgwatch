@@ -43,10 +43,7 @@ def mock_secretsmanager():
     """Mock Secrets Manager for session secret."""
     with mock_aws():
         sm = boto3.client("secretsmanager", region_name="us-east-1")
-        sm.create_secret(
-            Name="test-session-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
-        )
+        sm.create_secret(Name="test-session-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}')
         yield sm
 
 
@@ -147,6 +144,7 @@ def user_without_pending_codes(mock_dynamodb):
 def create_valid_session_token(user_id: str, email: str, tier: str = "free") -> str:
     """Create a valid session token for testing."""
     import api.auth_callback
+
     api.auth_callback._session_secret_cache = None
     api.auth_callback._session_secret_cache_time = 0.0
 
@@ -188,6 +186,7 @@ class TestPendingRecoveryCodesHappyPath:
     ):
         """Should return recovery codes for authenticated user with pending codes."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -215,6 +214,7 @@ class TestPendingRecoveryCodesHappyPath:
     ):
         """Pending codes should be atomically deleted after successful retrieval."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -243,6 +243,7 @@ class TestPendingRecoveryCodesHappyPath:
     ):
         """Should mark recovery_codes_shown=true in USER_META after retrieval."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -269,6 +270,7 @@ class TestPendingRecoveryCodesHappyPath:
     ):
         """Should handle lowercase 'cookie' header."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -291,6 +293,7 @@ class TestPendingRecoveryCodesHappyPath:
     ):
         """Should handle capitalized 'Cookie' header."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -313,6 +316,7 @@ class TestPendingRecoveryCodesHappyPath:
     ):
         """Response should include CORS headers for allowed origins."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -341,9 +345,7 @@ class TestPendingRecoveryCodesAuthFailures:
     """Tests for authentication failures."""
 
     @mock_aws
-    def test_returns_401_without_session_cookie(
-        self, mock_dynamodb, setup_env, api_gateway_event
-    ):
+    def test_returns_401_without_session_cookie(self, mock_dynamodb, setup_env, api_gateway_event):
         """Should return 401 when no session cookie is present."""
         from api.auth_pending_recovery_codes import handler
 
@@ -355,9 +357,7 @@ class TestPendingRecoveryCodesAuthFailures:
         assert "Not authenticated" in body["error"]["message"]
 
     @mock_aws
-    def test_returns_401_with_empty_cookie_header(
-        self, mock_dynamodb, setup_env, api_gateway_event
-    ):
+    def test_returns_401_with_empty_cookie_header(self, mock_dynamodb, setup_env, api_gateway_event):
         """Should return 401 when cookie header is empty."""
         from api.auth_pending_recovery_codes import handler
 
@@ -370,9 +370,7 @@ class TestPendingRecoveryCodesAuthFailures:
         assert body["error"]["code"] == "unauthorized"
 
     @mock_aws
-    def test_returns_401_with_cookie_but_no_session(
-        self, mock_dynamodb, setup_env, api_gateway_event
-    ):
+    def test_returns_401_with_cookie_but_no_session(self, mock_dynamodb, setup_env, api_gateway_event):
         """Should return 401 when cookie header exists but no session cookie."""
         from api.auth_pending_recovery_codes import handler
 
@@ -390,6 +388,7 @@ class TestPendingRecoveryCodesAuthFailures:
     ):
         """Should return 401 for invalid session token."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -410,6 +409,7 @@ class TestPendingRecoveryCodesAuthFailures:
     ):
         """Should return 401 for expired session token."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -434,6 +434,7 @@ class TestPendingRecoveryCodesAuthFailures:
     ):
         """Should return 401 for malformed session token (no dot separator)."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -453,6 +454,7 @@ class TestPendingRecoveryCodesAuthFailures:
     ):
         """Should return 401 for tampered session token (wrong signature)."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -489,6 +491,7 @@ class TestPendingRecoveryCodesEdgeCases:
     ):
         """Should return 404 when user has no pending recovery codes."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -514,6 +517,7 @@ class TestPendingRecoveryCodesEdgeCases:
     ):
         """Should return 404 on second retrieval attempt (one-time use)."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -537,9 +541,7 @@ class TestPendingRecoveryCodesEdgeCases:
         assert body["error"]["code"] == "no_pending_codes"
 
     @mock_aws
-    def test_handles_null_headers(
-        self, mock_dynamodb, setup_env, api_gateway_event
-    ):
+    def test_handles_null_headers(self, mock_dynamodb, setup_env, api_gateway_event):
         """Should handle null headers gracefully."""
         from api.auth_pending_recovery_codes import handler
 
@@ -550,9 +552,7 @@ class TestPendingRecoveryCodesEdgeCases:
         assert result["statusCode"] == 401
 
     @mock_aws
-    def test_handles_missing_headers_key(
-        self, mock_dynamodb, setup_env, api_gateway_event
-    ):
+    def test_handles_missing_headers_key(self, mock_dynamodb, setup_env, api_gateway_event):
         """Should handle missing headers key gracefully."""
         from api.auth_pending_recovery_codes import handler
 
@@ -568,6 +568,7 @@ class TestPendingRecoveryCodesEdgeCases:
     ):
         """Should continue and return codes even if USER_META update fails."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -585,7 +586,7 @@ class TestPendingRecoveryCodesEdgeCases:
         original_handler = handler
 
         # Mock update_item to fail for USER_META
-        with patch('api.auth_pending_recovery_codes.dynamodb') as mock_db:
+        with patch("api.auth_pending_recovery_codes.dynamodb") as mock_db:
             mock_table = MagicMock()
             mock_db.Table.return_value = mock_table
 
@@ -609,11 +610,10 @@ class TestPendingRecoveryCodesEdgeCases:
         assert body["codes"] == user_with_pending_codes["recovery_codes"]
 
     @mock_aws
-    def test_handles_empty_codes_array(
-        self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event
-    ):
+    def test_handles_empty_codes_array(self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event):
         """Should handle edge case of empty codes array."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -647,6 +647,7 @@ class TestPendingRecoveryCodesEdgeCases:
     ):
         """Should work even if USER_META record doesn't exist."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -691,6 +692,7 @@ class TestPendingRecoveryCodesDatabaseErrors:
     ):
         """Should return 500 on unexpected database errors."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -703,7 +705,7 @@ class TestPendingRecoveryCodesDatabaseErrors:
 
         api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
 
-        with patch('api.auth_pending_recovery_codes.dynamodb') as mock_db:
+        with patch("api.auth_pending_recovery_codes.dynamodb") as mock_db:
             mock_table = MagicMock()
             mock_db.Table.return_value = mock_table
             mock_table.delete_item.side_effect = Exception("Unexpected database error")
@@ -720,6 +722,7 @@ class TestPendingRecoveryCodesDatabaseErrors:
     ):
         """Should return 404 when conditional delete fails (codes attribute missing)."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -750,6 +753,7 @@ class TestPendingRecoveryCodesDatabaseErrors:
     ):
         """Should re-raise ClientError that is not ConditionalCheckFailedException."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -763,13 +767,8 @@ class TestPendingRecoveryCodesDatabaseErrors:
         api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
 
         # Mock a different ClientError (e.g., ProvisionedThroughputExceededException)
-        error_response = {
-            "Error": {
-                "Code": "ProvisionedThroughputExceededException",
-                "Message": "Throughput exceeded"
-            }
-        }
-        with patch('api.auth_pending_recovery_codes.dynamodb') as mock_db:
+        error_response = {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Throughput exceeded"}}
+        with patch("api.auth_pending_recovery_codes.dynamodb") as mock_db:
             mock_table = MagicMock()
             mock_db.Table.return_value = mock_table
             mock_table.delete_item.side_effect = ClientError(error_response, "DeleteItem")
@@ -787,6 +786,7 @@ class TestPendingRecoveryCodesDatabaseErrors:
     ):
         """Should return 404 when delete_item returns None for Attributes (defensive)."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -800,7 +800,7 @@ class TestPendingRecoveryCodesDatabaseErrors:
         api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
 
         # Mock delete_item to return empty response (Attributes is None)
-        with patch('api.auth_pending_recovery_codes.dynamodb') as mock_db:
+        with patch("api.auth_pending_recovery_codes.dynamodb") as mock_db:
             mock_table = MagicMock()
             mock_db.Table.return_value = mock_table
             # Return response without Attributes key (simulates edge case)
@@ -828,6 +828,7 @@ class TestPendingRecoveryCodesResponseFormat:
     ):
         """Verify success response has correct format."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -852,9 +853,7 @@ class TestPendingRecoveryCodesResponseFormat:
         assert "message" in body
 
     @mock_aws
-    def test_error_response_format(
-        self, mock_dynamodb, setup_env, api_gateway_event
-    ):
+    def test_error_response_format(self, mock_dynamodb, setup_env, api_gateway_event):
         """Verify error response has correct format."""
         from api.auth_pending_recovery_codes import handler
 
@@ -874,6 +873,7 @@ class TestPendingRecoveryCodesResponseFormat:
     ):
         """Verify 404 response has correct format."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -909,6 +909,7 @@ class TestPendingRecoveryCodesSecurity:
     ):
         """Codes should only be retrievable by the user who owns them."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -940,6 +941,7 @@ class TestPendingRecoveryCodesSecurity:
     ):
         """The conditional delete should prevent race condition exploits."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -970,6 +972,7 @@ class TestPendingRecoveryCodesSecurity:
     ):
         """Should include CORS headers for allowed origins."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -994,6 +997,7 @@ class TestPendingRecoveryCodesSecurity:
     ):
         """Should not include CORS headers for disallowed origins."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -1026,6 +1030,7 @@ class TestPendingRecoveryCodesConcurrency:
     ):
         """Simulates race condition where only one request should succeed."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
@@ -1056,6 +1061,7 @@ class TestPendingRecoveryCodesConcurrency:
     ):
         """Test that conditional delete requires 'codes' attribute to exist."""
         import api.auth_callback
+
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 

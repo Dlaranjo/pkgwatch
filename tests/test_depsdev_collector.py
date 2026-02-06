@@ -39,8 +39,10 @@ def run_async(coro):
 
 def create_mock_transport(handler):
     """Create a mock transport for httpx that routes requests to handler."""
+
     async def mock_handler(request: httpx.Request) -> httpx.Response:
         return handler(request)
+
     return httpx.MockTransport(mock_handler)
 
 
@@ -55,23 +57,27 @@ class TestEncodePackageName:
     def test_encode_simple_package(self):
         """Simple package names should be encoded."""
         from depsdev_collector import encode_package_name
+
         # Simple names don't have special chars, should stay same
         assert encode_package_name("lodash") == "lodash"
 
     def test_encode_scoped_package(self):
         """Scoped npm packages should be URL-encoded."""
         from depsdev_collector import encode_package_name
+
         # @ and / need to be encoded
         assert encode_package_name("@babel/core") == "%40babel%2Fcore"
 
     def test_encode_package_with_hyphen(self):
         """Package names with hyphens should be encoded properly."""
         from depsdev_collector import encode_package_name
+
         assert encode_package_name("react-dom") == "react-dom"
 
     def test_encode_scoped_package_complex(self):
         """Complex scoped packages should be fully encoded."""
         from depsdev_collector import encode_package_name
+
         assert encode_package_name("@types/node") == "%40types%2Fnode"
         assert encode_package_name("@angular/core") == "%40angular%2Fcore"
 
@@ -82,12 +88,14 @@ class TestEncodeRepoUrl:
     def test_encode_github_url(self):
         """GitHub URLs should be URL-encoded."""
         from depsdev_collector import encode_repo_url
+
         result = encode_repo_url("github.com/lodash/lodash")
         assert result == "github.com%2Flodash%2Flodash"
 
     def test_encode_gitlab_url(self):
         """GitLab URLs should be URL-encoded."""
         from depsdev_collector import encode_repo_url
+
         result = encode_repo_url("gitlab.com/user/repo")
         assert result == "gitlab.com%2Fuser%2Frepo"
 
@@ -442,11 +450,14 @@ class TestGetAdvisories:
         from depsdev_collector import get_advisories
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={
-                "advisories": [
-                    {"advisoryKey": {"id": "GHSA-test"}, "severity": "HIGH"},
-                ]
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "advisories": [
+                        {"advisoryKey": {"id": "GHSA-test"}, "severity": "HIGH"},
+                    ]
+                },
+            )
 
         original_init = httpx.AsyncClient.__init__
 
@@ -510,25 +521,29 @@ class TestGetDependentsCount:
             url = str(request.url)
             if ":dependents" in url:
                 # Some responses return list of dependents
-                return httpx.Response(200, json={
-                    "dependentCount": ["pkg1", "pkg2", "pkg3"]
-                })
+                return httpx.Response(200, json={"dependentCount": ["pkg1", "pkg2", "pkg3"]})
             elif "/versions/" in url:
-                return httpx.Response(200, json={
-                    "versionKey": {"version": "1.0.0"},
-                    "publishedAt": "2024-01-01T00:00:00Z",
-                    "licenses": ["MIT"],
-                    "relations": {"dependencies": []},
-                    "advisories": [],
-                    "links": [],
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "versionKey": {"version": "1.0.0"},
+                        "publishedAt": "2024-01-01T00:00:00Z",
+                        "licenses": ["MIT"],
+                        "relations": {"dependencies": []},
+                        "advisories": [],
+                        "links": [],
+                    },
+                )
             elif "/packages/" in url:
-                return httpx.Response(200, json={
-                    "packageKey": {"system": "NPM", "name": "test-pkg"},
-                    "versions": [
-                        {"versionKey": {"version": "1.0.0"}, "isDefault": True},
-                    ],
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "packageKey": {"system": "NPM", "name": "test-pkg"},
+                        "versions": [
+                            {"versionKey": {"version": "1.0.0"}, "isDefault": True},
+                        ],
+                    },
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
@@ -624,10 +639,13 @@ class TestGetDependencies:
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if "/packages/" in url:
-                return httpx.Response(200, json={
-                    "packageKey": {"system": "NPM", "name": "empty-pkg"},
-                    "versions": [],  # No versions
-                })
+                return httpx.Response(
+                    200,
+                    json={
+                        "packageKey": {"system": "NPM", "name": "empty-pkg"},
+                        "versions": [],  # No versions
+                    },
+                )
             return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__

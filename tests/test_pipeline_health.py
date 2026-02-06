@@ -116,33 +116,42 @@ class TestHealthyStatus:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             # Mock GitHub rate limit check
-            with patch.object(
-                pipeline_health,
-                "_get_rate_limit_window_key",
-                return_value="2024-01-01-12",
-                create=True,
-            ), patch.object(
-                pipeline_health,
-                "_get_total_github_calls",
-                return_value=100,
-                create=True,
+            with (
+                patch.object(
+                    pipeline_health,
+                    "_get_rate_limit_window_key",
+                    return_value="2024-01-01-12",
+                    create=True,
+                ),
+                patch.object(
+                    pipeline_health,
+                    "_get_total_github_calls",
+                    return_value=100,
+                    create=True,
+                ),
             ):
                 # Mock the import of package_collector functions
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     response = pipeline_health.handler({}, {})
 
         assert response["statusCode"] == 200
@@ -164,20 +173,26 @@ class TestHealthyStatus:
         for i in range(50):
             sqs.send_message(QueueUrl=main_queue_url, MessageBody=f"msg-{i}")
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
-            with patch.dict(sys.modules, {
-                "package_collector": MagicMock(
-                    _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                    _get_total_github_calls=lambda k: 500,
-                    GITHUB_HOURLY_LIMIT=4000,
-                )
-            }):
+            with patch.dict(
+                sys.modules,
+                {
+                    "package_collector": MagicMock(
+                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                        _get_total_github_calls=lambda k: 500,
+                        GITHUB_HOURLY_LIMIT=4000,
+                    )
+                },
+            ):
                 response = pipeline_health.handler({}, {})
 
         assert response["statusCode"] == 200
@@ -196,20 +211,26 @@ class TestHealthyStatus:
         for i in range(5):
             sqs.send_message(QueueUrl=dlq_url, MessageBody=f"dlq-msg-{i}")
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
-            with patch.dict(sys.modules, {
-                "package_collector": MagicMock(
-                    _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                    _get_total_github_calls=lambda k: 100,
-                    GITHUB_HOURLY_LIMIT=4000,
-                )
-            }):
+            with patch.dict(
+                sys.modules,
+                {
+                    "package_collector": MagicMock(
+                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                        _get_total_github_calls=lambda k: 100,
+                        GITHUB_HOURLY_LIMIT=4000,
+                    )
+                },
+            ):
                 response = pipeline_health.handler({}, {})
 
         assert response["statusCode"] == 200
@@ -234,11 +255,14 @@ class TestDegradedStatus:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             # Mock the SQS get_queue_attributes to return high queue depth
@@ -255,13 +279,16 @@ class TestDegradedStatus:
                 return original_get_attrs(QueueUrl=QueueUrl, AttributeNames=AttributeNames)
 
             with patch.object(pipeline_health.sqs, "get_queue_attributes", side_effect=mock_get_attrs):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     response = pipeline_health.handler({}, {})
 
         assert response["statusCode"] == 503
@@ -277,11 +304,14 @@ class TestDegradedStatus:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             # Mock the SQS get_queue_attributes for DLQ
@@ -302,13 +332,16 @@ class TestDegradedStatus:
                 }
 
             with patch.object(pipeline_health.sqs, "get_queue_attributes", side_effect=mock_get_attrs):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     response = pipeline_health.handler({}, {})
 
         assert response["statusCode"] == 503
@@ -324,21 +357,27 @@ class TestDegradedStatus:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             # 3200 / 4000 = 80% usage -> degraded
-            with patch.dict(sys.modules, {
-                "package_collector": MagicMock(
-                    _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                    _get_total_github_calls=lambda k: 3200,
-                    GITHUB_HOURLY_LIMIT=4000,
-                )
-            }):
+            with patch.dict(
+                sys.modules,
+                {
+                    "package_collector": MagicMock(
+                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                        _get_total_github_calls=lambda k: 3200,
+                        GITHUB_HOURLY_LIMIT=4000,
+                    )
+                },
+            ):
                 response = pipeline_health.handler({}, {})
 
         body = json.loads(response["body"])
@@ -361,11 +400,14 @@ class TestUnhealthyStatus:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             # Mock the SQS get_queue_attributes for DLQ overflow
@@ -384,13 +426,16 @@ class TestUnhealthyStatus:
                 }
 
             with patch.object(pipeline_health.sqs, "get_queue_attributes", side_effect=mock_get_attrs):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     response = pipeline_health.handler({}, {})
 
         assert response["statusCode"] == 503
@@ -406,11 +451,14 @@ class TestUnhealthyStatus:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             call_count = [0]
@@ -427,13 +475,16 @@ class TestUnhealthyStatus:
                 }
 
             with patch.object(pipeline_health.sqs, "get_queue_attributes", side_effect=mock_get_attrs):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     response = pipeline_health.handler({}, {})
 
         assert response["statusCode"] == 503
@@ -449,21 +500,27 @@ class TestUnhealthyStatus:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             # 3800 / 4000 = 95% usage -> unhealthy
-            with patch.dict(sys.modules, {
-                "package_collector": MagicMock(
-                    _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                    _get_total_github_calls=lambda k: 3800,
-                    GITHUB_HOURLY_LIMIT=4000,
-                )
-            }):
+            with patch.dict(
+                sys.modules,
+                {
+                    "package_collector": MagicMock(
+                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                        _get_total_github_calls=lambda k: 3800,
+                        GITHUB_HOURLY_LIMIT=4000,
+                    )
+                },
+            ):
                 response = pipeline_health.handler({}, {})
 
         assert response["statusCode"] == 503
@@ -488,21 +545,27 @@ class TestGitHubRateLimitCheck:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             # 2000 / 4000 = 50% usage -> healthy
-            with patch.dict(sys.modules, {
-                "package_collector": MagicMock(
-                    _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                    _get_total_github_calls=lambda k: 2000,
-                    GITHUB_HOURLY_LIMIT=4000,
-                )
-            }):
+            with patch.dict(
+                sys.modules,
+                {
+                    "package_collector": MagicMock(
+                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                        _get_total_github_calls=lambda k: 2000,
+                        GITHUB_HOURLY_LIMIT=4000,
+                    )
+                },
+            ):
                 response = pipeline_health.handler({}, {})
 
         body = json.loads(response["body"])
@@ -518,11 +581,14 @@ class TestGitHubRateLimitCheck:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             # Mock import error for package_collector
@@ -535,6 +601,7 @@ class TestGitHubRateLimitCheck:
             def handler_with_import_error(event, context):
                 # Temporarily make the import fail
                 import builtins
+
                 original_import = builtins.__import__
 
                 def mock_import(name, *args, **kwargs):
@@ -573,12 +640,15 @@ class TestCloudWatchMetrics:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-            "CLOUDWATCH_NAMESPACE": "PkgWatch-Test",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+                "CLOUDWATCH_NAMESPACE": "PkgWatch-Test",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             # Track emit_metric calls
@@ -589,13 +659,16 @@ class TestCloudWatchMetrics:
             with patch("shared.metrics.emit_metric") as mock_emit:
                 # Also patch it where it's imported
                 with patch.object(pipeline_health, "emit_metric", mock_emit):
-                    with patch.dict(sys.modules, {
-                        "package_collector": MagicMock(
-                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                            _get_total_github_calls=lambda k: 100,
-                            GITHUB_HOURLY_LIMIT=4000,
-                        )
-                    }):
+                    with patch.dict(
+                        sys.modules,
+                        {
+                            "package_collector": MagicMock(
+                                _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                                _get_total_github_calls=lambda k: 100,
+                                GITHUB_HOURLY_LIMIT=4000,
+                            )
+                        },
+                    ):
                         _response = pipeline_health.handler({}, {})
 
                         # Verify emit_metric was called
@@ -613,11 +686,14 @@ class TestCloudWatchMetrics:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             # Make emit_metric raise an error
@@ -625,13 +701,16 @@ class TestCloudWatchMetrics:
                 raise Exception("CloudWatch unavailable")
 
             with patch.object(pipeline_health, "emit_metric", failing_emit):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     # Should not raise, health check should complete
                     response = pipeline_health.handler({}, {})
 
@@ -647,11 +726,14 @@ class TestCloudWatchMetrics:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             emit_calls = []
@@ -660,13 +742,16 @@ class TestCloudWatchMetrics:
                 emit_calls.append((metric_name, value))
 
             with patch.object(pipeline_health, "emit_metric", track_emit):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     _response = pipeline_health.handler({}, {})
 
             # Find HealthStatus metric call
@@ -690,21 +775,28 @@ class TestErrorHandling:
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
         # Set only DLQ URL, not main queue
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": "",  # Empty URL
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": "",  # Empty URL
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+            clear=False,
+        ):
             pipeline_health = reload_pipeline_health()
             pipeline_health.QUEUE_URL = None  # Simulate missing env var
 
-            with patch.dict(sys.modules, {
-                "package_collector": MagicMock(
-                    _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                    _get_total_github_calls=lambda k: 100,
-                    GITHUB_HOURLY_LIMIT=4000,
-                )
-            }):
+            with patch.dict(
+                sys.modules,
+                {
+                    "package_collector": MagicMock(
+                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                        _get_total_github_calls=lambda k: 100,
+                        GITHUB_HOURLY_LIMIT=4000,
+                    )
+                },
+            ):
                 response = pipeline_health.handler({}, {})
 
         # Should return error status for main queue
@@ -720,11 +812,14 @@ class TestErrorHandling:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             call_count = [0]
@@ -742,13 +837,16 @@ class TestErrorHandling:
                 raise Exception("DLQ not accessible")
 
             with patch.object(pipeline_health.sqs, "get_queue_attributes", side_effect=mock_get_attrs):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     response = pipeline_health.handler({}, {})
 
         body = json.loads(response["body"])
@@ -767,11 +865,14 @@ class TestErrorHandling:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             def mock_get_attrs(QueueUrl, AttributeNames):
@@ -781,13 +882,16 @@ class TestErrorHandling:
                 )
 
             with patch.object(pipeline_health.sqs, "get_queue_attributes", side_effect=mock_get_attrs):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     response = pipeline_health.handler({}, {})
 
         assert response["statusCode"] == 503
@@ -811,20 +915,26 @@ class TestEdgeCases:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
-            with patch.dict(sys.modules, {
-                "package_collector": MagicMock(
-                    _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                    _get_total_github_calls=lambda k: 100,
-                    GITHUB_HOURLY_LIMIT=4000,
-                )
-            }):
+            with patch.dict(
+                sys.modules,
+                {
+                    "package_collector": MagicMock(
+                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                        _get_total_github_calls=lambda k: 100,
+                        GITHUB_HOURLY_LIMIT=4000,
+                    )
+                },
+            ):
                 response = pipeline_health.handler({}, {})
 
         body = json.loads(response["body"])
@@ -839,20 +949,26 @@ class TestEdgeCases:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
-            with patch.dict(sys.modules, {
-                "package_collector": MagicMock(
-                    _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                    _get_total_github_calls=lambda k: 100,
-                    GITHUB_HOURLY_LIMIT=4000,
-                )
-            }):
+            with patch.dict(
+                sys.modules,
+                {
+                    "package_collector": MagicMock(
+                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                        _get_total_github_calls=lambda k: 100,
+                        GITHUB_HOURLY_LIMIT=4000,
+                    )
+                },
+            ):
                 response = pipeline_health.handler({}, {})
 
         assert response["headers"]["Content-Type"] == "application/json"
@@ -864,11 +980,14 @@ class TestEdgeCases:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             def mock_get_attrs(QueueUrl, AttributeNames):
@@ -886,13 +1005,16 @@ class TestEdgeCases:
                 }
 
             with patch.object(pipeline_health.sqs, "get_queue_attributes", side_effect=mock_get_attrs):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     response = pipeline_health.handler({}, {})
 
         body = json.loads(response["body"])
@@ -905,11 +1027,14 @@ class TestEdgeCases:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
             captured_queue_url = pipeline_health.QUEUE_URL
 
@@ -928,13 +1053,16 @@ class TestEdgeCases:
                 }
 
             with patch.object(pipeline_health.sqs, "get_queue_attributes", side_effect=mock_get_attrs):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     response = pipeline_health.handler({}, {})
 
             body = json.loads(response["body"])
@@ -948,11 +1076,14 @@ class TestEdgeCases:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
             captured_queue_url = pipeline_health.QUEUE_URL
 
@@ -971,13 +1102,16 @@ class TestEdgeCases:
                 }
 
             with patch.object(pipeline_health.sqs, "get_queue_attributes", side_effect=mock_get_attrs):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     response = pipeline_health.handler({}, {})
 
             body = json.loads(response["body"])
@@ -991,11 +1125,14 @@ class TestEdgeCases:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
             _captured_queue_url = pipeline_health.QUEUE_URL
             captured_dlq_url = pipeline_health.DLQ_URL
@@ -1015,13 +1152,16 @@ class TestEdgeCases:
                 }
 
             with patch.object(pipeline_health.sqs, "get_queue_attributes", side_effect=mock_get_attrs):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     response = pipeline_health.handler({}, {})
 
             body = json.loads(response["body"])
@@ -1035,11 +1175,14 @@ class TestEdgeCases:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
             captured_dlq_url = pipeline_health.DLQ_URL
 
@@ -1058,13 +1201,16 @@ class TestEdgeCases:
                 }
 
             with patch.object(pipeline_health.sqs, "get_queue_attributes", side_effect=mock_get_attrs):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     response = pipeline_health.handler({}, {})
 
             body = json.loads(response["body"])
@@ -1078,11 +1224,14 @@ class TestEdgeCases:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
             captured_dlq_url = pipeline_health.DLQ_URL
 
@@ -1101,13 +1250,16 @@ class TestEdgeCases:
                 }
 
             with patch.object(pipeline_health.sqs, "get_queue_attributes", side_effect=mock_get_attrs):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     response = pipeline_health.handler({}, {})
 
             body = json.loads(response["body"])
@@ -1122,20 +1274,26 @@ class TestEdgeCases:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
-            with patch.dict(sys.modules, {
-                "package_collector": MagicMock(
-                    _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                    _get_total_github_calls=lambda k: 2999,
-                    GITHUB_HOURLY_LIMIT=4000,
-                )
-            }):
+            with patch.dict(
+                sys.modules,
+                {
+                    "package_collector": MagicMock(
+                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                        _get_total_github_calls=lambda k: 2999,
+                        GITHUB_HOURLY_LIMIT=4000,
+                    )
+                },
+            ):
                 response = pipeline_health.handler({}, {})
 
             body = json.loads(response["body"])
@@ -1148,20 +1306,26 @@ class TestEdgeCases:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
-            with patch.dict(sys.modules, {
-                "package_collector": MagicMock(
-                    _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                    _get_total_github_calls=lambda k: 3000,
-                    GITHUB_HOURLY_LIMIT=4000,
-                )
-            }):
+            with patch.dict(
+                sys.modules,
+                {
+                    "package_collector": MagicMock(
+                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                        _get_total_github_calls=lambda k: 3000,
+                        GITHUB_HOURLY_LIMIT=4000,
+                    )
+                },
+            ):
                 response = pipeline_health.handler({}, {})
 
             body = json.loads(response["body"])
@@ -1174,20 +1338,26 @@ class TestEdgeCases:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
-            with patch.dict(sys.modules, {
-                "package_collector": MagicMock(
-                    _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                    _get_total_github_calls=lambda k: 3600,
-                    GITHUB_HOURLY_LIMIT=4000,
-                )
-            }):
+            with patch.dict(
+                sys.modules,
+                {
+                    "package_collector": MagicMock(
+                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                        _get_total_github_calls=lambda k: 3600,
+                        GITHUB_HOURLY_LIMIT=4000,
+                    )
+                },
+            ):
                 response = pipeline_health.handler({}, {})
 
             body = json.loads(response["body"])
@@ -1210,11 +1380,14 @@ class TestStatusPriority:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
             captured_queue_url = pipeline_health.QUEUE_URL
             _captured_dlq_url = pipeline_health.DLQ_URL
@@ -1236,13 +1409,16 @@ class TestStatusPriority:
                 }
 
             with patch.object(pipeline_health.sqs, "get_queue_attributes", side_effect=mock_get_attrs):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     response = pipeline_health.handler({}, {})
 
             body = json.loads(response["body"])
@@ -1258,11 +1434,14 @@ class TestStatusPriority:
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
-        with patch.dict(os.environ, {
-            "PACKAGE_QUEUE_URL": main_queue_url,
-            "DLQ_URL": dlq_url,
-            "API_KEYS_TABLE": "pkgwatch-api-keys",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGE_QUEUE_URL": main_queue_url,
+                "DLQ_URL": dlq_url,
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
             pipeline_health = reload_pipeline_health()
 
             # Main queue error (sets unhealthy first)
@@ -1280,13 +1459,16 @@ class TestStatusPriority:
                 }
 
             with patch.object(pipeline_health.sqs, "get_queue_attributes", side_effect=mock_get_attrs):
-                with patch.dict(sys.modules, {
-                    "package_collector": MagicMock(
-                        _get_rate_limit_window_key=lambda: "2024-01-01-12",
-                        _get_total_github_calls=lambda k: 100,
-                        GITHUB_HOURLY_LIMIT=4000,
-                    )
-                }):
+                with patch.dict(
+                    sys.modules,
+                    {
+                        "package_collector": MagicMock(
+                            _get_rate_limit_window_key=lambda: "2024-01-01-12",
+                            _get_total_github_calls=lambda k: 100,
+                            GITHUB_HOURLY_LIMIT=4000,
+                        )
+                    },
+                ):
                     response = pipeline_health.handler({}, {})
 
         body = json.loads(response["body"])

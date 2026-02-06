@@ -4,7 +4,6 @@ Tests for scoring algorithms: health_score.py and abandonment_risk.py
 These are the core business logic - pure functions that must be reliable.
 """
 
-
 import pytest
 from freezegun import freeze_time
 
@@ -1012,8 +1011,7 @@ class TestRealPackageFixtures:
         result = calculate_health_score(lodash_fixture)
 
         assert result["health_score"] >= 70, (
-            f"Lodash scored {result['health_score']}, expected >= 70. "
-            f"Components: {result['components']}"
+            f"Lodash scored {result['health_score']}, expected >= 70. Components: {result['components']}"
         )
         assert result["risk_level"] in ["LOW", "MEDIUM"]
 
@@ -1026,8 +1024,7 @@ class TestRealPackageFixtures:
         result = calculate_health_score(react_fixture)
 
         assert result["health_score"] >= 80, (
-            f"React scored {result['health_score']}, expected >= 80. "
-            f"Components: {result['components']}"
+            f"React scored {result['health_score']}, expected >= 80. Components: {result['components']}"
         )
         assert result["risk_level"] == "LOW"
 
@@ -1042,8 +1039,7 @@ class TestRealPackageFixtures:
         result = calculate_health_score(abandoned_fixture)
 
         assert result["health_score"] < 40, (
-            f"Abandoned package scored {result['health_score']}, expected < 40. "
-            f"Components: {result['components']}"
+            f"Abandoned package scored {result['health_score']}, expected < 40. Components: {result['components']}"
         )
         assert result["risk_level"] == "CRITICAL"
 
@@ -1126,8 +1122,7 @@ class TestScoreStability:
 
         # A 5-day change shouldn't cause more than ~5 point score change
         assert score_diff < 5, (
-            f"Score changed by {score_diff} points for 5-day commit recency change. "
-            f"Expected < 5 point change."
+            f"Score changed by {score_diff} points for 5-day commit recency change. Expected < 5 point change."
         )
 
     def test_download_order_of_magnitude_changes(self):
@@ -1492,9 +1487,7 @@ class TestScorePackageHandler:
         assert body["ecosystem"] == "npm"
 
         # Verify data was persisted to DynamoDB
-        item = seeded_packages_table.get_item(
-            Key={"pk": "npm#lodash", "sk": "LATEST"}
-        ).get("Item")
+        item = seeded_packages_table.get_item(Key={"pk": "npm#lodash", "sk": "LATEST"}).get("Item")
         assert item is not None
         assert "scored_at" in item
         assert "health_score" in item
@@ -1692,7 +1685,7 @@ class TestDecimalConversion:
             "meta": {
                 "count": 10,  # int should remain int
                 "name": "test",  # str should remain str
-            }
+            },
         }
 
         result = to_decimal(data)
@@ -1756,11 +1749,13 @@ class TestMonotonicity:
         prev_score = -1
 
         for d in downloads:
-            score = _user_centric_health({
-                "weekly_downloads": d,
-                "dependents_count": 0,
-                "stars": 0,
-            })
+            score = _user_centric_health(
+                {
+                    "weekly_downloads": d,
+                    "dependents_count": 0,
+                    "stars": 0,
+                }
+            )
             assert score >= prev_score, f"Score decreased from {prev_score} to {score} at {d} downloads"
             prev_score = score
 
@@ -1780,10 +1775,12 @@ class TestMonotonicity:
         prev_score = -1
 
         for days in days_list:
-            score = _maintainer_health({
-                "days_since_last_commit": days,
-                "active_contributors_90d": 3,
-            })
+            score = _maintainer_health(
+                {
+                    "days_since_last_commit": days,
+                    "active_contributors_90d": 3,
+                }
+            )
             assert score >= prev_score, f"Score decreased from {prev_score} to {score} at {days} days"
             prev_score = score
 
@@ -1793,11 +1790,13 @@ class TestMonotonicity:
         prev_score = -1
 
         for openssf in openssf_scores:
-            score = _security_health({
-                "openssf_score": openssf,
-                "advisories": [],
-                "openssf_checks": [],
-            })
+            score = _security_health(
+                {
+                    "openssf_score": openssf,
+                    "advisories": [],
+                    "openssf_checks": [],
+                }
+            )
             assert score >= prev_score, f"Score decreased from {prev_score} to {score} at openssf={openssf}"
             prev_score = score
 

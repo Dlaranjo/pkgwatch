@@ -58,21 +58,21 @@ class TestCircuitBreakerWiring:
     def test_npm_collector_has_circuit_breaker_decorator(self):
         """Verify npm_collector.get_npm_metadata is decorated with circuit_breaker."""
         from npm_collector import get_npm_metadata
+
         # The decorated function has __wrapped__ attribute
-        assert hasattr(get_npm_metadata, '__wrapped__'), \
-            "get_npm_metadata should be decorated with @circuit_breaker"
+        assert hasattr(get_npm_metadata, "__wrapped__"), "get_npm_metadata should be decorated with @circuit_breaker"
 
     def test_depsdev_collector_has_circuit_breaker_decorator(self):
         """Verify depsdev_collector.get_package_info is decorated with circuit_breaker."""
         from depsdev_collector import get_package_info
-        assert hasattr(get_package_info, '__wrapped__'), \
-            "get_package_info should be decorated with @circuit_breaker"
+
+        assert hasattr(get_package_info, "__wrapped__"), "get_package_info should be decorated with @circuit_breaker"
 
     def test_bundlephobia_collector_has_circuit_breaker_decorator(self):
         """Verify bundlephobia_collector.get_bundle_size is decorated with circuit_breaker."""
         from bundlephobia_collector import get_bundle_size
-        assert hasattr(get_bundle_size, '__wrapped__'), \
-            "get_bundle_size should be decorated with @circuit_breaker"
+
+        assert hasattr(get_bundle_size, "__wrapped__"), "get_bundle_size should be decorated with @circuit_breaker"
 
 
 class TestCircuitOpenBehavior:
@@ -153,5 +153,5 @@ class TestGitHubCircuitBreakerManualIntegration:
 
         # Verify package_collector imports GITHUB_CIRCUIT
         import package_collector
-        assert hasattr(package_collector, 'GITHUB_CIRCUIT'), \
-            "package_collector should import GITHUB_CIRCUIT"
+
+        assert hasattr(package_collector, "GITHUB_CIRCUIT"), "package_collector should import GITHUB_CIRCUIT"

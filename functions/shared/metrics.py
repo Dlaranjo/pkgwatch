@@ -24,6 +24,7 @@ def _get_cloudwatch():
         _cloudwatch = boto3.client("cloudwatch")
     return _cloudwatch
 
+
 NAMESPACE = os.environ.get("CLOUDWATCH_NAMESPACE", "PkgWatch")
 
 
@@ -55,9 +56,7 @@ def emit_metric(
         }
 
         if dimensions:
-            metric_data["Dimensions"] = [
-                {"Name": k, "Value": v} for k, v in dimensions.items()
-            ]
+            metric_data["Dimensions"] = [{"Name": k, "Value": v} for k, v in dimensions.items()]
 
         _get_cloudwatch().put_metric_data(
             Namespace=NAMESPACE,
@@ -104,9 +103,7 @@ def emit_batch_metrics(metrics: list[Dict[str, Any]]) -> None:
 
             dimensions = metric.get("dimensions")
             if dimensions:
-                data["Dimensions"] = [
-                    {"Name": k, "Value": v} for k, v in dimensions.items()
-                ]
+                data["Dimensions"] = [{"Name": k, "Value": v} for k, v in dimensions.items()]
 
             metric_data.append(data)
 
@@ -158,7 +155,7 @@ def emit_circuit_breaker_metric(
         dimensions={
             "CircuitName": circuit_name,
             "State": state,
-        }
+        },
     )
 
 

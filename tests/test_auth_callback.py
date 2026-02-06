@@ -42,6 +42,7 @@ os.environ["SESSION_SECRET_ARN"] = "pkgwatch-test-session-secret"
 def reset_auth_callback_cache():
     """Reset the session secret cache in auth_callback module."""
     import api.auth_callback as auth_callback_module
+
     auth_callback_module._session_secret_cache = None
     auth_callback_module._session_secret_cache_time = 0.0
 
@@ -153,9 +154,7 @@ class TestValidTokenExchange:
         with mock_session_secret():
             from api.auth_callback import handler
 
-            base_event["queryStringParameters"] = {
-                "token": user_with_valid_magic_token["magic_token"]
-            }
+            base_event["queryStringParameters"] = {"token": user_with_valid_magic_token["magic_token"]}
 
             result = handler(base_event, {})
 
@@ -178,9 +177,7 @@ class TestValidTokenExchange:
         with mock_session_secret():
             from api.auth_callback import handler
 
-            base_event["queryStringParameters"] = {
-                "token": user_with_valid_magic_token["magic_token"]
-            }
+            base_event["queryStringParameters"] = {"token": user_with_valid_magic_token["magic_token"]}
 
             result = handler(base_event, {})
 
@@ -188,42 +185,34 @@ class TestValidTokenExchange:
 
             # Verify magic token was consumed (removed from database)
             from boto3.dynamodb.conditions import Key
+
             response = api_keys_table.query(
                 KeyConditionExpression=Key("pk").eq(user_with_valid_magic_token["user_id"]),
             )
-            api_key_item = [
-                i for i in response["Items"]
-                if i["sk"] == user_with_valid_magic_token["key_hash"]
-            ][0]
+            api_key_item = [i for i in response["Items"] if i["sk"] == user_with_valid_magic_token["key_hash"]][0]
 
             assert "magic_token" not in api_key_item
             assert "magic_expires" not in api_key_item
             assert "last_login" in api_key_item
 
     @mock_aws
-    def test_valid_token_sets_last_login(
-        self, mock_dynamodb, base_event, api_keys_table, user_with_valid_magic_token
-    ):
+    def test_valid_token_sets_last_login(self, mock_dynamodb, base_event, api_keys_table, user_with_valid_magic_token):
         """Should set last_login timestamp on successful exchange."""
         with mock_session_secret():
             from api.auth_callback import handler
 
             now = datetime.now(timezone.utc)
-            base_event["queryStringParameters"] = {
-                "token": user_with_valid_magic_token["magic_token"]
-            }
+            base_event["queryStringParameters"] = {"token": user_with_valid_magic_token["magic_token"]}
 
             handler(base_event, {})
 
             # Verify last_login was set
             from boto3.dynamodb.conditions import Key
+
             response = api_keys_table.query(
                 KeyConditionExpression=Key("pk").eq(user_with_valid_magic_token["user_id"]),
             )
-            api_key_item = [
-                i for i in response["Items"]
-                if i["sk"] == user_with_valid_magic_token["key_hash"]
-            ][0]
+            api_key_item = [i for i in response["Items"] if i["sk"] == user_with_valid_magic_token["key_hash"]][0]
 
             last_login = datetime.fromisoformat(api_key_item["last_login"].replace("Z", "+00:00"))
             diff = abs((last_login - now).total_seconds())
@@ -241,9 +230,7 @@ class TestExpiredTokenHandling:
         with mock_session_secret():
             from api.auth_callback import handler
 
-            base_event["queryStringParameters"] = {
-                "token": user_with_expired_magic_token["magic_token"]
-            }
+            base_event["queryStringParameters"] = {"token": user_with_expired_magic_token["magic_token"]}
 
             result = handler(base_event, {})
 
@@ -261,21 +248,17 @@ class TestExpiredTokenHandling:
         with mock_session_secret():
             from api.auth_callback import handler
 
-            base_event["queryStringParameters"] = {
-                "token": user_with_expired_magic_token["magic_token"]
-            }
+            base_event["queryStringParameters"] = {"token": user_with_expired_magic_token["magic_token"]}
 
             handler(base_event, {})
 
             # Verify magic token was cleaned up
             from boto3.dynamodb.conditions import Key
+
             response = api_keys_table.query(
                 KeyConditionExpression=Key("pk").eq(user_with_expired_magic_token["user_id"]),
             )
-            api_key_item = [
-                i for i in response["Items"]
-                if i["sk"] == user_with_expired_magic_token["key_hash"]
-            ][0]
+            api_key_item = [i for i in response["Items"] if i["sk"] == user_with_expired_magic_token["key_hash"]][0]
 
             assert "magic_token" not in api_key_item
             assert "magic_expires" not in api_key_item
@@ -285,16 +268,12 @@ class TestInvalidTokenHandling:
     """Tests for invalid/tampered token handling."""
 
     @mock_aws
-    def test_nonexistent_token_redirects_with_error(
-        self, mock_dynamodb, base_event, api_keys_table
-    ):
+    def test_nonexistent_token_redirects_with_error(self, mock_dynamodb, base_event, api_keys_table):
         """Should redirect to login with error for non-existent token."""
         with mock_session_secret():
             from api.auth_callback import handler
 
-            base_event["queryStringParameters"] = {
-                "token": "nonexistent_token_that_does_not_exist_12345"
-            }
+            base_event["queryStringParameters"] = {"token": "nonexistent_token_that_does_not_exist_12345"}
 
             result = handler(base_event, {})
 
@@ -321,9 +300,7 @@ class TestMissingTokenHandling:
     """Tests for missing token handling."""
 
     @mock_aws
-    def test_missing_token_parameter_redirects_with_error(
-        self, mock_dynamodb, base_event
-    ):
+    def test_missing_token_parameter_redirects_with_error(self, mock_dynamodb, base_event):
         """Should redirect to login with error when token parameter is missing."""
         from api.auth_callback import handler
 
@@ -354,16 +331,12 @@ class TestReplayAttackPrevention:
     """Tests for replay attack prevention (token already used)."""
 
     @mock_aws
-    def test_token_reuse_returns_error(
-        self, mock_dynamodb, base_event, api_keys_table, user_with_valid_magic_token
-    ):
+    def test_token_reuse_returns_error(self, mock_dynamodb, base_event, api_keys_table, user_with_valid_magic_token):
         """Should prevent token reuse (replay attack)."""
         with mock_session_secret():
             from api.auth_callback import handler
 
-            base_event["queryStringParameters"] = {
-                "token": user_with_valid_magic_token["magic_token"]
-            }
+            base_event["queryStringParameters"] = {"token": user_with_valid_magic_token["magic_token"]}
 
             # First use - should succeed
             result1 = handler(base_event, {})
@@ -395,10 +368,12 @@ class TestConditionalUpdateRaceCondition:
 
                 # GSI query returns the user (token exists)
                 mock_table.query.return_value = {
-                    "Items": [{
-                        "pk": user_with_valid_magic_token["user_id"],
-                        "sk": user_with_valid_magic_token["key_hash"],
-                    }]
+                    "Items": [
+                        {
+                            "pk": user_with_valid_magic_token["user_id"],
+                            "sk": user_with_valid_magic_token["key_hash"],
+                        }
+                    ]
                 }
 
                 # get_item returns full user data with token
@@ -423,9 +398,7 @@ class TestConditionalUpdateRaceCondition:
                 mock_table.update_item.side_effect = ClientError(error_response, "UpdateItem")
                 mock_db.Table.return_value = mock_table
 
-                base_event["queryStringParameters"] = {
-                    "token": user_with_valid_magic_token["magic_token"]
-                }
+                base_event["queryStringParameters"] = {"token": user_with_valid_magic_token["magic_token"]}
 
                 result = handler(base_event, {})
 
@@ -446,9 +419,7 @@ class TestSessionTokenCreation:
         with mock_session_secret():
             from api.auth_callback import handler
 
-            base_event["queryStringParameters"] = {
-                "token": user_with_valid_magic_token["magic_token"]
-            }
+            base_event["queryStringParameters"] = {"token": user_with_valid_magic_token["magic_token"]}
 
             result = handler(base_event, {})
 
@@ -480,9 +451,7 @@ class TestSessionTokenCreation:
             from api.auth_callback import SESSION_TTL_DAYS, handler
 
             now = datetime.now(timezone.utc)
-            base_event["queryStringParameters"] = {
-                "token": user_with_valid_magic_token["magic_token"]
-            }
+            base_event["queryStringParameters"] = {"token": user_with_valid_magic_token["magic_token"]}
 
             result = handler(base_event, {})
 
@@ -587,11 +556,7 @@ class TestSessionTokenVerification:
                 "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
             }
             payload = base64.urlsafe_b64encode(json.dumps(session_data).encode()).decode()
-            wrong_signature = hmac.new(
-                b"wrong-secret",
-                payload.encode(),
-                hashlib.sha256
-            ).hexdigest()
+            wrong_signature = hmac.new(b"wrong-secret", payload.encode(), hashlib.sha256).hexdigest()
             token = f"{payload}.{wrong_signature}"
 
             verified = verify_session_token(token)
@@ -652,9 +617,7 @@ class TestSessionSecretConfiguration:
         # But we need to patch the secretsmanager client to use mocked one
         sm = boto3.client("secretsmanager", region_name="us-east-1")
         with patch("api.auth_callback.secretsmanager", sm):
-            base_event["queryStringParameters"] = {
-                "token": user_with_valid_magic_token["magic_token"]
-            }
+            base_event["queryStringParameters"] = {"token": user_with_valid_magic_token["magic_token"]}
 
             result = handler(base_event, {})
 
@@ -694,9 +657,7 @@ class TestDatabaseErrorHandling:
             with patch("api.auth_callback.dynamodb") as mock_db:
                 mock_table = MagicMock()
                 # Query succeeds
-                mock_table.query.return_value = {
-                    "Items": [{"pk": "user_test", "sk": "key_hash"}]
-                }
+                mock_table.query.return_value = {"Items": [{"pk": "user_test", "sk": "key_hash"}]}
                 # get_item fails
                 mock_table.get_item.side_effect = Exception("DynamoDB error")
                 mock_db.Table.return_value = mock_table
@@ -721,25 +682,19 @@ class TestSecurityHeaders:
         with mock_session_secret():
             from api.auth_callback import handler
 
-            base_event["queryStringParameters"] = {
-                "token": user_with_valid_magic_token["magic_token"]
-            }
+            base_event["queryStringParameters"] = {"token": user_with_valid_magic_token["magic_token"]}
 
             result = handler(base_event, {})
 
             assert result["headers"].get("Cache-Control") == "no-store"
 
     @mock_aws
-    def test_redirect_includes_csp(
-        self, mock_dynamodb, base_event, api_keys_table, user_with_valid_magic_token
-    ):
+    def test_redirect_includes_csp(self, mock_dynamodb, base_event, api_keys_table, user_with_valid_magic_token):
         """Should include Content-Security-Policy header."""
         with mock_session_secret():
             from api.auth_callback import handler
 
-            base_event["queryStringParameters"] = {
-                "token": user_with_valid_magic_token["magic_token"]
-            }
+            base_event["queryStringParameters"] = {"token": user_with_valid_magic_token["magic_token"]}
 
             result = handler(base_event, {})
 
@@ -753,9 +708,7 @@ class TestSecurityHeaders:
         with mock_session_secret():
             from api.auth_callback import handler
 
-            base_event["queryStringParameters"] = {
-                "token": user_with_valid_magic_token["magic_token"]
-            }
+            base_event["queryStringParameters"] = {"token": user_with_valid_magic_token["magic_token"]}
 
             result = handler(base_event, {})
 
@@ -792,6 +745,7 @@ class TestSessionSecretCaching:
         # Function should return cached value without calling Secrets Manager
         with patch("api.auth_callback.secretsmanager") as mock_sm:
             from api.auth_callback import _get_session_secret
+
             secret = _get_session_secret()
 
             assert secret == "cached-secret-value"
@@ -808,12 +762,11 @@ class TestSessionSecretCaching:
 
         # Mock Secrets Manager to return fresh value
         mock_sm = MagicMock()
-        mock_sm.get_secret_value.return_value = {
-            "SecretString": json.dumps({"secret": "fresh-secret-value"})
-        }
+        mock_sm.get_secret_value.return_value = {"SecretString": json.dumps({"secret": "fresh-secret-value"})}
 
         with patch("api.auth_callback.secretsmanager", mock_sm):
             from api.auth_callback import _get_session_secret
+
             secret = _get_session_secret()
 
             assert secret == "fresh-secret-value"
@@ -825,9 +778,7 @@ class TestUserNotFoundAfterGSIQuery:
     """Tests for edge case where GSI returns result but user is not found."""
 
     @mock_aws
-    def test_user_not_found_after_gsi_query_redirects_with_error(
-        self, mock_dynamodb, base_event
-    ):
+    def test_user_not_found_after_gsi_query_redirects_with_error(self, mock_dynamodb, base_event):
         """Should redirect with error when GSI returns result but get_item returns nothing."""
         with mock_session_secret():
             from api.auth_callback import handler
@@ -835,9 +786,7 @@ class TestUserNotFoundAfterGSIQuery:
             with patch("api.auth_callback.dynamodb") as mock_db:
                 mock_table = MagicMock()
                 # GSI query returns a result
-                mock_table.query.return_value = {
-                    "Items": [{"pk": "user_test", "sk": "key_hash"}]
-                }
+                mock_table.query.return_value = {"Items": [{"pk": "user_test", "sk": "key_hash"}]}
                 # But get_item returns nothing (user was deleted between queries)
                 mock_table.get_item.return_value = {}
                 mock_db.Table.return_value = mock_table
@@ -866,6 +815,7 @@ class TestSessionSecretPlainStringFormat:
 
         with patch("api.auth_callback.secretsmanager", mock_sm):
             from api.auth_callback import _get_session_secret
+
             secret = _get_session_secret()
 
             assert secret == "plain-string-secret-value"

@@ -69,23 +69,27 @@ def handler(event, context):
 
                 if resp.status_code == 200:
                     data = resp.json()
-                    pending_updates.append({
-                        "pk": pkg["pk"],
-                        "openssf_score": data.get("score"),
-                        "openssf_checks": data.get("checks", []),
-                        "openssf_source": "direct_batch"
-                    })
+                    pending_updates.append(
+                        {
+                            "pk": pkg["pk"],
+                            "openssf_score": data.get("score"),
+                            "openssf_checks": data.get("checks", []),
+                            "openssf_source": "direct_batch",
+                        }
+                    )
                     updated += 1
                     processed += 1
                 elif resp.status_code == 404:
                     # Package not in OpenSSF - mark date only (don't set score to None)
                     # This allows retry later while preventing immediate re-fetch
-                    pending_updates.append({
-                        "pk": pkg["pk"],
-                        "openssf_score": None,  # Will be skipped in write
-                        "openssf_checks": None,
-                        "openssf_source": "not_found"
-                    })
+                    pending_updates.append(
+                        {
+                            "pk": pkg["pk"],
+                            "openssf_score": None,  # Will be skipped in write
+                            "openssf_checks": None,
+                            "openssf_source": "not_found",
+                        }
+                    )
                     processed += 1
                 elif resp.status_code == 429:
                     # Rate limited - stop batch
@@ -125,7 +129,7 @@ def _get_packages_needing_openssf(table, limit: int) -> list:
     response = table.scan(
         FilterExpression="attribute_not_exists(openssf_score) AND attribute_exists(repository_url)",
         ProjectionExpression="pk, repository_url, tier",
-        Limit=limit * 3  # Over-scan to allow tier sorting
+        Limit=limit * 3,  # Over-scan to allow tier sorting
     )
 
     items = response.get("Items", [])
@@ -150,7 +154,7 @@ def _get_packages_needing_openssf(table, limit: int) -> list:
             FilterExpression="attribute_exists(openssf_date) AND openssf_date < :threshold AND attribute_exists(repository_url)",
             ExpressionAttributeValues={":threshold": stale_threshold},
             ProjectionExpression="pk, repository_url, tier",
-            Limit=remaining * 2
+            Limit=remaining * 2,
         )
 
         for item in response.get("Items", []):
@@ -186,22 +190,14 @@ def _write_openssf_updates(table, updates: list):
                 table.update_item(
                     Key={"pk": update["pk"], "sk": "LATEST"},
                     UpdateExpression="SET openssf_score = :s, openssf_checks = :c, openssf_source = :src, openssf_date = :d",
-                    ExpressionAttributeValues={
-                        ":s": score,
-                        ":c": checks,
-                        ":src": update["openssf_source"],
-                        ":d": now
-                    }
+                    ExpressionAttributeValues={":s": score, ":c": checks, ":src": update["openssf_source"], ":d": now},
                 )
             else:
                 # For not_found, only update date and source (don't set score to None)
                 table.update_item(
                     Key={"pk": update["pk"], "sk": "LATEST"},
                     UpdateExpression="SET openssf_source = :src, openssf_date = :d",
-                    ExpressionAttributeValues={
-                        ":src": update["openssf_source"],
-                        ":d": now
-                    }
+                    ExpressionAttributeValues={":src": update["openssf_source"], ":d": now},
                 )
         except ClientError as e:
             logger.warning(f"Failed to update {update['pk']}: {e}")

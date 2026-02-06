@@ -56,11 +56,13 @@ def _format_openssf_checks(checks: list) -> dict:
         name = check.get("name", "")
         score = check.get("score", 0)
 
-        result["all_checks"].append({
-            "name": name,
-            "score": score,
-            "reason": check.get("reason", ""),
-        })
+        result["all_checks"].append(
+            {
+                "name": name,
+                "score": score,
+                "reason": check.get("reason", ""),
+            }
+        )
 
         if name in KEY_CHECKS:
             # Normalize to pass/partial/fail
@@ -187,6 +189,7 @@ def handler(event, context):
 
     # Handle URL-encoded package names (e.g., %40babel%2Fcore -> @babel/core)
     from urllib.parse import quote, unquote
+
     name = unquote(name)
 
     # Normalize npm package names to lowercase (npm is case-insensitive)
@@ -241,14 +244,16 @@ def handler(event, context):
                 "Retry-After": str(retry_after),
                 **cors_headers,
             },
-            "body": json.dumps({
-                "status": "collecting",
-                "package": name,
-                "ecosystem": ecosystem,
-                "data_status": data_status,
-                "message": "Package data is being collected. Retry after the specified interval or use ?include_incomplete=true to get partial data.",
-                "retry_after_seconds": retry_after,
-            }),
+            "body": json.dumps(
+                {
+                    "status": "collecting",
+                    "package": name,
+                    "ecosystem": ecosystem,
+                    "data_status": data_status,
+                    "message": "Package data is being collected. Retry after the specified interval or use ?include_incomplete=true to get partial data.",
+                    "retry_after_seconds": retry_after,
+                }
+            ),
         }
 
     # Note: Usage counter already incremented atomically in check_and_increment_usage
@@ -317,9 +322,7 @@ def handler(event, context):
 
         # authenticated_usage_count reflects the count AFTER this request was counted
         response_headers["X-RateLimit-Limit"] = str(user["monthly_limit"])
-        response_headers["X-RateLimit-Remaining"] = str(
-            max(0, user["monthly_limit"] - authenticated_usage_count)
-        )
+        response_headers["X-RateLimit-Remaining"] = str(max(0, user["monthly_limit"] - authenticated_usage_count))
         response_headers["X-RateLimit-Reset"] = str(reset_timestamp)
 
         # Check for usage alerts and add to response
@@ -357,14 +360,16 @@ def _rate_limit_response(user: dict, cors_headers: dict = None) -> dict:
     return {
         "statusCode": 429,
         "headers": headers,
-        "body": json.dumps({
-            "error": {
-                "code": "rate_limit_exceeded",
-                "message": f"Monthly limit of {user['monthly_limit']} requests exceeded",
-                "retry_after_seconds": seconds_until_reset,
-                "upgrade_url": "https://pkgwatch.dev/pricing",
+        "body": json.dumps(
+            {
+                "error": {
+                    "code": "rate_limit_exceeded",
+                    "message": f"Monthly limit of {user['monthly_limit']} requests exceeded",
+                    "retry_after_seconds": seconds_until_reset,
+                    "upgrade_url": "https://pkgwatch.dev/pricing",
+                }
             }
-        }),
+        ),
     }
 
 
@@ -382,12 +387,14 @@ def _demo_rate_limit_response(cors_headers: dict = None) -> dict:
     return {
         "statusCode": 429,
         "headers": headers,
-        "body": json.dumps({
-            "error": {
-                "code": "demo_rate_limit_exceeded",
-                "message": f"Demo limit of {DEMO_REQUESTS_PER_HOUR} requests per hour exceeded",
-                "retry_after_seconds": 3600,
-                "signup_url": "https://pkgwatch.dev/start",
+        "body": json.dumps(
+            {
+                "error": {
+                    "code": "demo_rate_limit_exceeded",
+                    "message": f"Demo limit of {DEMO_REQUESTS_PER_HOUR} requests per hour exceeded",
+                    "retry_after_seconds": 3600,
+                    "signup_url": "https://pkgwatch.dev/start",
+                }
             }
-        }),
+        ),
     }

@@ -42,6 +42,7 @@ def dlq_environment(monkeypatch):
     import importlib
 
     import collectors.dlq_processor as dlq_module
+
     importlib.reload(dlq_module)
 
     yield dlq_module
@@ -54,11 +55,13 @@ def sample_sqs_message():
     return {
         "MessageId": "msg-12345",
         "ReceiptHandle": "receipt-handle-abc123",
-        "Body": json.dumps({
-            "ecosystem": "npm",
-            "name": "test-package",
-            "tier": 1,
-        })
+        "Body": json.dumps(
+            {
+                "ecosystem": "npm",
+                "name": "test-package",
+                "tier": 1,
+            }
+        ),
     }
 
 
@@ -68,13 +71,15 @@ def sample_sqs_message_with_retry():
     return {
         "MessageId": "msg-retry-123",
         "ReceiptHandle": "receipt-handle-retry-abc",
-        "Body": json.dumps({
-            "ecosystem": "npm",
-            "name": "failing-package",
-            "tier": 1,
-            "_retry_count": 2,
-            "_last_error": "Connection timeout",
-        })
+        "Body": json.dumps(
+            {
+                "ecosystem": "npm",
+                "name": "failing-package",
+                "tier": 1,
+                "_retry_count": 2,
+                "_last_error": "Connection timeout",
+            }
+        ),
     }
 
 
@@ -111,6 +116,7 @@ class TestDLQHandler:
         import importlib
 
         import collectors.dlq_processor as dlq_module
+
         importlib.reload(dlq_module)
 
         result = dlq_module.handler({}, None)
@@ -119,9 +125,7 @@ class TestDLQHandler:
         assert "MAIN_QUEUE_URL not configured" in result["error"]
 
     @mock_aws
-    def test_handler_processes_messages(
-        self, mock_dynamodb, dlq_environment, sample_sqs_message
-    ):
+    def test_handler_processes_messages(self, mock_dynamodb, dlq_environment, sample_sqs_message):
         """Should process messages from DLQ and requeue them."""
         # Mock SQS calls
         with patch("collectors.dlq_processor.sqs") as mock_sqs:
@@ -208,22 +212,26 @@ class TestDLQHandler:
             {
                 "MessageId": "msg-requeue",
                 "ReceiptHandle": "receipt-1",
-                "Body": json.dumps({
-                    "ecosystem": "npm",
-                    "name": "test-requeue",
-                    "_retry_count": 1,
-                }),
+                "Body": json.dumps(
+                    {
+                        "ecosystem": "npm",
+                        "name": "test-requeue",
+                        "_retry_count": 1,
+                    }
+                ),
             },
             # Message 2: Will be permanently failed (retry count >= max)
             {
                 "MessageId": "msg-failed",
                 "ReceiptHandle": "receipt-2",
-                "Body": json.dumps({
-                    "ecosystem": "npm",
-                    "name": "test-failed",
-                    "_retry_count": 5,  # At max
-                    "_last_error": "Persistent error",
-                }),
+                "Body": json.dumps(
+                    {
+                        "ecosystem": "npm",
+                        "name": "test-failed",
+                        "_retry_count": 5,  # At max
+                        "_last_error": "Persistent error",
+                    }
+                ),
             },
             # Message 3: Invalid JSON, will be skipped
             {
@@ -247,9 +255,7 @@ class TestDLQHandler:
             # Skipped messages don't increment either counter
 
     @mock_aws
-    def test_handler_continues_after_message_processing_error(
-        self, mock_dynamodb, dlq_environment
-    ):
+    def test_handler_continues_after_message_processing_error(self, mock_dynamodb, dlq_environment):
         """Should continue processing remaining messages after one fails."""
         messages = [
             {
@@ -260,9 +266,10 @@ class TestDLQHandler:
             for i in range(3)
         ]
 
-        with patch("collectors.dlq_processor.sqs") as mock_sqs, \
-             patch("collectors.dlq_processor._process_dlq_message") as mock_process:
-
+        with (
+            patch("collectors.dlq_processor.sqs") as mock_sqs,
+            patch("collectors.dlq_processor._process_dlq_message") as mock_process,
+        ):
             mock_sqs.receive_message.side_effect = [
                 {"Messages": messages},
                 {"Messages": []},
@@ -293,9 +300,7 @@ class TestProcessDLQMessage:
     """Tests for _process_dlq_message function."""
 
     @mock_aws
-    def test_requeues_message_with_incremented_retry_count(
-        self, mock_dynamodb, dlq_environment, sample_sqs_message
-    ):
+    def test_requeues_message_with_incremented_retry_count(self, mock_dynamodb, dlq_environment, sample_sqs_message):
         """Should requeue message with retry count incremented."""
         with patch("collectors.dlq_processor.sqs") as mock_sqs:
             from collectors.dlq_processor import _process_dlq_message
@@ -313,9 +318,7 @@ class TestProcessDLQMessage:
             assert body["name"] == "test-package"
 
     @mock_aws
-    def test_applies_exponential_backoff_delay(
-        self, mock_dynamodb, dlq_environment, sample_sqs_message_with_retry
-    ):
+    def test_applies_exponential_backoff_delay(self, mock_dynamodb, dlq_environment, sample_sqs_message_with_retry):
         """Should apply exponential backoff delay based on retry count."""
         with patch("collectors.dlq_processor.sqs") as mock_sqs:
             from collectors.dlq_processor import _process_dlq_message
@@ -332,11 +335,13 @@ class TestProcessDLQMessage:
         message = {
             "MessageId": "msg-high-retry",
             "ReceiptHandle": "receipt-high",
-            "Body": json.dumps({
-                "ecosystem": "npm",
-                "name": "test",
-                "_retry_count": 4,  # Retry count below max, will be requeued
-            })
+            "Body": json.dumps(
+                {
+                    "ecosystem": "npm",
+                    "name": "test",
+                    "_retry_count": 4,  # Retry count below max, will be requeued
+                }
+            ),
         }
 
         with patch("collectors.dlq_processor.sqs") as mock_sqs:
@@ -349,19 +354,19 @@ class TestProcessDLQMessage:
             assert send_call.kwargs["DelaySeconds"] == 900
 
     @mock_aws
-    def test_stores_permanent_failure_after_max_retries(
-        self, mock_dynamodb, dlq_environment
-    ):
+    def test_stores_permanent_failure_after_max_retries(self, mock_dynamodb, dlq_environment):
         """Should store message as permanent failure after max retries."""
         message = {
             "MessageId": "msg-max-retry",
             "ReceiptHandle": "receipt-max",
-            "Body": json.dumps({
-                "ecosystem": "npm",
-                "name": "permanently-failing",
-                "_retry_count": 5,  # At max
-                "_last_error": "Persistent 404 error",
-            })
+            "Body": json.dumps(
+                {
+                    "ecosystem": "npm",
+                    "name": "permanently-failing",
+                    "_retry_count": 5,  # At max
+                    "_last_error": "Persistent 404 error",
+                }
+            ),
         }
 
         with patch("collectors.dlq_processor.sqs") as mock_sqs:
@@ -391,9 +396,7 @@ class TestProcessDLQMessage:
             assert failed_item["retry_count"] == 5
 
     @mock_aws
-    def test_deletes_message_after_successful_requeue(
-        self, mock_dynamodb, dlq_environment, sample_sqs_message
-    ):
+    def test_deletes_message_after_successful_requeue(self, mock_dynamodb, dlq_environment, sample_sqs_message):
         """Should delete message from DLQ after successful requeue."""
         with patch("collectors.dlq_processor.sqs") as mock_sqs:
             _process_dlq_message = dlq_environment._process_dlq_message
@@ -407,9 +410,7 @@ class TestProcessDLQMessage:
             assert delete_call.kwargs["ReceiptHandle"] == "receipt-handle-abc123"
 
     @mock_aws
-    def test_handles_invalid_json_in_message_body(
-        self, mock_dynamodb, dlq_environment
-    ):
+    def test_handles_invalid_json_in_message_body(self, mock_dynamodb, dlq_environment):
         """Should handle messages with invalid JSON gracefully."""
         invalid_message = {
             "MessageId": "msg-invalid",
@@ -428,9 +429,7 @@ class TestProcessDLQMessage:
             mock_sqs.delete_message.assert_called_once()
 
     @mock_aws
-    def test_does_not_delete_on_requeue_failure(
-        self, mock_dynamodb, dlq_environment, sample_sqs_message
-    ):
+    def test_does_not_delete_on_requeue_failure(self, mock_dynamodb, dlq_environment, sample_sqs_message):
         """Should not delete message from DLQ if requeue fails."""
         with patch("collectors.dlq_processor.sqs") as mock_sqs:
             # Make send_message fail
@@ -461,11 +460,13 @@ class TestExponentialBackoff:
         message = {
             "MessageId": "msg-1",
             "ReceiptHandle": "receipt-1",
-            "Body": json.dumps({
-                "ecosystem": "npm",
-                "name": "test",
-                "_retry_count": 0,
-            })
+            "Body": json.dumps(
+                {
+                    "ecosystem": "npm",
+                    "name": "test",
+                    "_retry_count": 0,
+                }
+            ),
         }
 
         with patch("collectors.dlq_processor.sqs") as mock_sqs:
@@ -480,11 +481,13 @@ class TestExponentialBackoff:
         message = {
             "MessageId": "msg-2",
             "ReceiptHandle": "receipt-2",
-            "Body": json.dumps({
-                "ecosystem": "npm",
-                "name": "test",
-                "_retry_count": 1,
-            })
+            "Body": json.dumps(
+                {
+                    "ecosystem": "npm",
+                    "name": "test",
+                    "_retry_count": 1,
+                }
+            ),
         }
 
         with patch("collectors.dlq_processor.sqs") as mock_sqs:
@@ -501,11 +504,13 @@ class TestExponentialBackoff:
         message = {
             "MessageId": "msg-3",
             "ReceiptHandle": "receipt-3",
-            "Body": json.dumps({
-                "ecosystem": "npm",
-                "name": "test",
-                "_retry_count": 2,
-            })
+            "Body": json.dumps(
+                {
+                    "ecosystem": "npm",
+                    "name": "test",
+                    "_retry_count": 2,
+                }
+            ),
         }
 
         with patch("collectors.dlq_processor.sqs") as mock_sqs:
@@ -522,11 +527,13 @@ class TestExponentialBackoff:
         message = {
             "MessageId": "msg-4",
             "ReceiptHandle": "receipt-4",
-            "Body": json.dumps({
-                "ecosystem": "npm",
-                "name": "test",
-                "_retry_count": 3,
-            })
+            "Body": json.dumps(
+                {
+                    "ecosystem": "npm",
+                    "name": "test",
+                    "_retry_count": 3,
+                }
+            ),
         }
 
         with patch("collectors.dlq_processor.sqs") as mock_sqs:
@@ -543,11 +550,13 @@ class TestExponentialBackoff:
         message = {
             "MessageId": "msg-5",
             "ReceiptHandle": "receipt-5",
-            "Body": json.dumps({
-                "ecosystem": "npm",
-                "name": "test",
-                "_retry_count": 4,
-            })
+            "Body": json.dumps(
+                {
+                    "ecosystem": "npm",
+                    "name": "test",
+                    "_retry_count": 4,
+                }
+            ),
         }
 
         with patch("collectors.dlq_processor.sqs") as mock_sqs:
@@ -598,9 +607,7 @@ class TestPermanentFailureStorage:
         assert "failed_at" in failed_item
 
     @mock_aws
-    def test_handles_missing_ecosystem_gracefully(
-        self, mock_dynamodb, dlq_environment
-    ):
+    def test_handles_missing_ecosystem_gracefully(self, mock_dynamodb, dlq_environment):
         """Should handle messages without ecosystem field."""
         from collectors.dlq_processor import _store_permanent_failure
 
@@ -638,9 +645,7 @@ class TestPermanentFailureStorage:
         assert items[0]["name"] == "unknown"
 
     @mock_aws
-    def test_handles_dynamodb_errors_gracefully(
-        self, mock_dynamodb, dlq_environment
-    ):
+    def test_handles_dynamodb_errors_gracefully(self, mock_dynamodb, dlq_environment):
         """Should not raise exception if DynamoDB storage fails."""
         with patch("collectors.dlq_processor.dynamodb") as mock_db:
             mock_table = MagicMock()
@@ -650,11 +655,7 @@ class TestPermanentFailureStorage:
             from collectors.dlq_processor import _store_permanent_failure
 
             # Should not raise exception
-            _store_permanent_failure(
-                {"ecosystem": "npm", "name": "test"},
-                "msg-error",
-                "Test error"
-            )
+            _store_permanent_failure({"ecosystem": "npm", "name": "test"}, "msg-error", "Test error")
 
 
 # =============================================================================
@@ -666,9 +667,7 @@ class TestEdgeCasesAndErrorHandling:
     """Tests for edge cases and error handling scenarios."""
 
     @mock_aws
-    def test_handles_message_without_receipt_handle(
-        self, mock_dynamodb, dlq_environment
-    ):
+    def test_handles_message_without_receipt_handle(self, mock_dynamodb, dlq_environment):
         """Should handle messages without ReceiptHandle field."""
         invalid_message = {
             "MessageId": "msg-no-handle",
@@ -686,20 +685,20 @@ class TestEdgeCasesAndErrorHandling:
             assert mock_sqs.send_message.called
 
     @mock_aws
-    def test_preserves_original_message_fields(
-        self, mock_dynamodb, dlq_environment
-    ):
+    def test_preserves_original_message_fields(self, mock_dynamodb, dlq_environment):
         """Should preserve all original message fields when requeuing."""
         message = {
             "MessageId": "msg-preserve",
             "ReceiptHandle": "receipt-preserve",
-            "Body": json.dumps({
-                "ecosystem": "npm",
-                "name": "test-package",
-                "tier": 2,
-                "custom_field": "custom_value",
-                "nested": {"key": "value"},
-            })
+            "Body": json.dumps(
+                {
+                    "ecosystem": "npm",
+                    "name": "test-package",
+                    "tier": 2,
+                    "custom_field": "custom_value",
+                    "nested": {"key": "value"},
+                }
+            ),
         }
 
         with patch("collectors.dlq_processor.sqs") as mock_sqs:
@@ -720,9 +719,7 @@ class TestEdgeCasesAndErrorHandling:
             assert body["_retry_count"] == 1
 
     @mock_aws
-    def test_handles_concurrent_processing_gracefully(
-        self, mock_dynamodb, dlq_environment
-    ):
+    def test_handles_concurrent_processing_gracefully(self, mock_dynamodb, dlq_environment):
         """Should handle concurrent processing attempts."""
         message = {
             "MessageId": "msg-concurrent",
@@ -740,13 +737,9 @@ class TestEdgeCasesAndErrorHandling:
             _process_dlq_message(message)
 
     @mock_aws
-    def test_logs_useful_information_for_debugging(
-        self, mock_dynamodb, dlq_environment, sample_sqs_message
-    ):
+    def test_logs_useful_information_for_debugging(self, mock_dynamodb, dlq_environment, sample_sqs_message):
         """Should log useful information for debugging."""
-        with patch("collectors.dlq_processor.sqs"), \
-             patch("collectors.dlq_processor.logger") as mock_logger:
-
+        with patch("collectors.dlq_processor.sqs"), patch("collectors.dlq_processor.logger") as mock_logger:
             from collectors.dlq_processor import _process_dlq_message
 
             _process_dlq_message(sample_sqs_message)

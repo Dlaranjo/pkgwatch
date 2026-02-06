@@ -177,9 +177,7 @@ class TestGetPackage:
     def test_retries_on_throttling(self, mock_packages_table):
         """Should retry on ProvisionedThroughputExceededException."""
         # Seed test data
-        mock_packages_table.put_item(
-            Item={"pk": "npm#test", "sk": "LATEST", "name": "test"}
-        )
+        mock_packages_table.put_item(Item={"pk": "npm#test", "sk": "LATEST", "name": "test"})
 
         call_count = 0
 
@@ -252,9 +250,7 @@ class TestGetPackage:
     def test_handles_internal_server_error_with_retry(self, mock_packages_table):
         """Should retry on InternalServerError."""
         # Seed test data
-        mock_packages_table.put_item(
-            Item={"pk": "npm#test", "sk": "LATEST", "name": "test"}
-        )
+        mock_packages_table.put_item(Item={"pk": "npm#test", "sk": "LATEST", "name": "test"})
 
         call_count = 0
 
@@ -290,9 +286,7 @@ class TestPutPackage:
         )
 
         # Verify stored
-        response = mock_packages_table.get_item(
-            Key={"pk": "npm#lodash", "sk": "LATEST"}
-        )
+        response = mock_packages_table.get_item(Key={"pk": "npm#lodash", "sk": "LATEST"})
         item = response.get("Item")
 
         assert item is not None
@@ -310,9 +304,7 @@ class TestPutPackage:
             tier=1,
         )
 
-        response = mock_packages_table.get_item(
-            Key={"pk": "npm#react", "sk": "LATEST"}
-        )
+        response = mock_packages_table.get_item(Key={"pk": "npm#react", "sk": "LATEST"})
         item = response.get("Item")
 
         assert item["tier"] == 1
@@ -321,9 +313,7 @@ class TestPutPackage:
         """Should add last_updated timestamp."""
         put_package("npm", "test-pkg", {})
 
-        response = mock_packages_table.get_item(
-            Key={"pk": "npm#test-pkg", "sk": "LATEST"}
-        )
+        response = mock_packages_table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})
         item = response.get("Item")
 
         assert "last_updated" in item
@@ -338,9 +328,7 @@ class TestPutPackage:
             {"valid_field": "value", "null_field": None},
         )
 
-        response = mock_packages_table.get_item(
-            Key={"pk": "npm#test-pkg", "sk": "LATEST"}
-        )
+        response = mock_packages_table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})
         item = response.get("Item")
 
         assert item["valid_field"] == "value"
@@ -354,9 +342,7 @@ class TestPutPackage:
             {"valid_field": "value", "empty_field": ""},
         )
 
-        response = mock_packages_table.get_item(
-            Key={"pk": "npm#test-pkg", "sk": "LATEST"}
-        )
+        response = mock_packages_table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})
         item = response.get("Item")
 
         assert item["valid_field"] == "value"
@@ -370,9 +356,7 @@ class TestPutPackage:
         # Update
         put_package("npm", "test-pkg", {"health_score": 75, "new_field": "added"})
 
-        response = mock_packages_table.get_item(
-            Key={"pk": "npm#test-pkg", "sk": "LATEST"}
-        )
+        response = mock_packages_table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})
         item = response.get("Item")
 
         assert item["health_score"] == 75
@@ -424,7 +408,7 @@ class TestQueryPackagesByRisk:
                     "pk": f"npm#pkg-{i}",
                     "sk": "LATEST",
                     "risk_level": "MEDIUM",
-                    "last_updated": f"2024-01-0{i+1}T00:00:00Z",
+                    "last_updated": f"2024-01-0{i + 1}T00:00:00Z",
                     "name": f"pkg-{i}",
                 }
             )
@@ -526,9 +510,7 @@ class TestUpdatePackageTier:
 
         update_package_tier("npm", "test-pkg", 1)
 
-        response = mock_packages_table.get_item(
-            Key={"pk": "npm#test-pkg", "sk": "LATEST"}
-        )
+        response = mock_packages_table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})
         assert response["Item"]["tier"] == 1
 
     def test_can_downgrade_tier(self, mock_packages_table):
@@ -543,9 +525,7 @@ class TestUpdatePackageTier:
 
         update_package_tier("npm", "test-pkg", 3)
 
-        response = mock_packages_table.get_item(
-            Key={"pk": "npm#test-pkg", "sk": "LATEST"}
-        )
+        response = mock_packages_table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})
         assert response["Item"]["tier"] == 3
 
 
@@ -572,9 +552,7 @@ class TestUpdatePackageScores:
             abandonment_risk={"probability": Decimal("0.15"), "risk_level": "LOW"},
         )
 
-        response = mock_packages_table.get_item(
-            Key={"pk": "npm#test-pkg", "sk": "LATEST"}
-        )
+        response = mock_packages_table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})
         item = response["Item"]
 
         assert float(item["health_score"]) == 85.5
@@ -603,9 +581,7 @@ class TestUpdatePackageScores:
             abandonment_risk={},
         )
 
-        response = mock_packages_table.get_item(
-            Key={"pk": "npm#test-pkg", "sk": "LATEST"}
-        )
+        response = mock_packages_table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})
         item = response["Item"]
 
         assert "scored_at" in item
@@ -618,15 +594,9 @@ class TestBatchGetPackages:
 
     def test_retrieves_multiple_packages(self, mock_packages_table):
         """Should retrieve multiple packages in one batch."""
-        mock_packages_table.put_item(
-            Item={"pk": "npm#lodash", "sk": "LATEST", "name": "lodash"}
-        )
-        mock_packages_table.put_item(
-            Item={"pk": "npm#react", "sk": "LATEST", "name": "react"}
-        )
-        mock_packages_table.put_item(
-            Item={"pk": "npm#vue", "sk": "LATEST", "name": "vue"}
-        )
+        mock_packages_table.put_item(Item={"pk": "npm#lodash", "sk": "LATEST", "name": "lodash"})
+        mock_packages_table.put_item(Item={"pk": "npm#react", "sk": "LATEST", "name": "react"})
+        mock_packages_table.put_item(Item={"pk": "npm#vue", "sk": "LATEST", "name": "vue"})
 
         result = batch_get_packages("npm", ["lodash", "react", "vue"])
 
@@ -644,9 +614,7 @@ class TestBatchGetPackages:
 
     def test_handles_missing_packages(self, mock_packages_table):
         """Should only return packages that exist."""
-        mock_packages_table.put_item(
-            Item={"pk": "npm#lodash", "sk": "LATEST", "name": "lodash"}
-        )
+        mock_packages_table.put_item(Item={"pk": "npm#lodash", "sk": "LATEST", "name": "lodash"})
 
         result = batch_get_packages("npm", ["lodash", "nonexistent"])
 
@@ -658,9 +626,7 @@ class TestBatchGetPackages:
         """Should handle batching for >25 packages (DynamoDB limit)."""
         # Seed 30 packages
         for i in range(30):
-            mock_packages_table.put_item(
-                Item={"pk": f"npm#pkg-{i}", "sk": "LATEST", "name": f"pkg-{i}"}
-            )
+            mock_packages_table.put_item(Item={"pk": f"npm#pkg-{i}", "sk": "LATEST", "name": f"pkg-{i}"})
 
         names = [f"pkg-{i}" for i in range(30)]
         result = batch_get_packages("npm", names)
@@ -669,9 +635,7 @@ class TestBatchGetPackages:
 
     def test_extracts_name_from_pk_correctly(self, mock_packages_table):
         """Should correctly extract package name from pk."""
-        mock_packages_table.put_item(
-            Item={"pk": "npm#@scope/package", "sk": "LATEST", "name": "@scope/package"}
-        )
+        mock_packages_table.put_item(Item={"pk": "npm#@scope/package", "sk": "LATEST", "name": "@scope/package"})
 
         result = batch_get_packages("npm", ["@scope/package"])
 
@@ -709,9 +673,7 @@ class TestBatchGetPackages:
                     return {
                         "Responses": {},
                         "UnprocessedKeys": {
-                            PACKAGES_TABLE: {
-                                "Keys": [{"pk": {"S": "npm#test"}, "sk": {"S": "LATEST"}}]
-                            }
+                            PACKAGES_TABLE: {"Keys": [{"pk": {"S": "npm#test"}, "sk": {"S": "LATEST"}}]}
                         },
                     }
                 # Second call succeeds
@@ -737,6 +699,7 @@ class TestTableNameConfiguration:
         """Should use PACKAGES_TABLE environment variable."""
         with patch.dict(os.environ, {"PACKAGES_TABLE": "custom-table-name"}):
             import importlib
+
             importlib.reload(dynamo_module)
 
             assert dynamo_module.PACKAGES_TABLE == "custom-table-name"
@@ -750,6 +713,7 @@ class TestTableNameConfiguration:
             # Remove PACKAGES_TABLE if it exists
             os.environ.pop("PACKAGES_TABLE", None)
             import importlib
+
             importlib.reload(dynamo_module)
 
             assert dynamo_module.PACKAGES_TABLE == "pkgwatch-packages"
@@ -761,9 +725,7 @@ class TestEdgeCases:
     def test_package_name_with_special_chars(self, mock_packages_table):
         """Should handle package names with special characters."""
         special_name = "@org/pkg-name.v2"
-        mock_packages_table.put_item(
-            Item={"pk": f"npm#{special_name}", "sk": "LATEST", "name": special_name}
-        )
+        mock_packages_table.put_item(Item={"pk": f"npm#{special_name}", "sk": "LATEST", "name": special_name})
 
         result = get_package("npm", special_name)
 
@@ -773,9 +735,7 @@ class TestEdgeCases:
     def test_very_long_package_name(self, mock_packages_table):
         """Should handle long package names."""
         long_name = "a" * 200
-        mock_packages_table.put_item(
-            Item={"pk": f"npm#{long_name}", "sk": "LATEST", "name": long_name}
-        )
+        mock_packages_table.put_item(Item={"pk": f"npm#{long_name}", "sk": "LATEST", "name": long_name})
 
         result = get_package("npm", long_name)
 

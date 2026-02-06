@@ -12,9 +12,7 @@ class TestPostScanHandler:
     """Tests for the post_scan Lambda handler."""
 
     @mock_aws
-    def test_scans_package_json_content(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_scans_package_json_content(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should scan dependencies from package.json content."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -23,10 +21,12 @@ class TestPostScanHandler:
 
         table, test_key = seeded_api_keys_table
 
-        package_json = json.dumps({
-            "name": "test-project",
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        package_json = json.dumps(
+            {
+                "name": "test-project",
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
@@ -42,9 +42,7 @@ class TestPostScanHandler:
         assert body["packages"][0]["health_score"] == 85
 
     @mock_aws
-    def test_scans_direct_dependencies_object(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_scans_direct_dependencies_object(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should scan dependencies from direct object."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -55,9 +53,11 @@ class TestPostScanHandler:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21", "abandoned-pkg": "^1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"lodash": "^4.17.21", "abandoned-pkg": "^1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -69,9 +69,7 @@ class TestPostScanHandler:
         assert body["packages"][0]["risk_level"] == "HIGH"
 
     @mock_aws
-    def test_returns_401_without_api_key(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_returns_401_without_api_key(self, mock_dynamodb, api_gateway_event):
         """Should return 401 for unauthenticated requests."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -79,9 +77,11 @@ class TestPostScanHandler:
         from api.post_scan import handler
 
         api_gateway_event["httpMethod"] = "POST"
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -90,9 +90,7 @@ class TestPostScanHandler:
         assert body["error"]["code"] == "invalid_api_key"
 
     @mock_aws
-    def test_returns_400_for_invalid_json(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_returns_400_for_invalid_json(self, seeded_api_keys_table, api_gateway_event):
         """Should return 400 for invalid JSON body."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -112,9 +110,7 @@ class TestPostScanHandler:
         assert body["error"]["code"] == "invalid_json"
 
     @mock_aws
-    def test_returns_400_for_no_dependencies(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_returns_400_for_no_dependencies(self, seeded_api_keys_table, api_gateway_event):
         """Should return 400 when no dependencies found."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -134,9 +130,7 @@ class TestPostScanHandler:
         assert body["error"]["code"] == "no_dependencies"
 
     @mock_aws
-    def test_tracks_not_found_packages(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_tracks_not_found_packages(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should track packages not found in database."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -147,9 +141,11 @@ class TestPostScanHandler:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21", "unknown-pkg": "^1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"lodash": "^4.17.21", "unknown-pkg": "^1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -160,9 +156,7 @@ class TestPostScanHandler:
         assert "unknown-pkg" in body["not_found"]
 
     @mock_aws
-    def test_counts_risk_levels(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_counts_risk_levels(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should count packages by risk level."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -173,9 +167,11 @@ class TestPostScanHandler:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21", "abandoned-pkg": "^1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"lodash": "^4.17.21", "abandoned-pkg": "^1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -187,9 +183,7 @@ class TestPostScanHandler:
         assert body["medium"] == 0
 
     @mock_aws
-    def test_includes_rate_limit_headers(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_includes_rate_limit_headers(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should include rate limit headers in response."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -200,9 +194,11 @@ class TestPostScanHandler:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -211,9 +207,7 @@ class TestPostScanHandler:
         assert "X-RateLimit-Remaining" in result["headers"]
 
     @mock_aws
-    def test_handles_dev_dependencies(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_handles_dev_dependencies(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should scan devDependencies as well."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -222,11 +216,13 @@ class TestPostScanHandler:
 
         table, test_key = seeded_api_keys_table
 
-        package_json = json.dumps({
-            "name": "test-project",
-            "dependencies": {},
-            "devDependencies": {"lodash": "^4.17.21"},
-        })
+        package_json = json.dumps(
+            {
+                "name": "test-project",
+                "dependencies": {},
+                "devDependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
@@ -244,9 +240,7 @@ class TestPostScanEcosystem:
     """Tests for ecosystem parameter handling."""
 
     @mock_aws
-    def test_default_ecosystem_is_npm(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_default_ecosystem_is_npm(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should default to npm ecosystem when not specified."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -257,9 +251,11 @@ class TestPostScanEcosystem:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -269,9 +265,7 @@ class TestPostScanEcosystem:
         assert body["packages"][0]["package"] == "lodash"
 
     @mock_aws
-    def test_explicit_npm_ecosystem(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_explicit_npm_ecosystem(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should scan npm packages when ecosystem is explicitly npm."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -282,10 +276,12 @@ class TestPostScanEcosystem:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "ecosystem": "npm",
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "ecosystem": "npm",
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -295,9 +291,7 @@ class TestPostScanEcosystem:
         assert body["packages"][0]["package"] == "lodash"
 
     @mock_aws
-    def test_pypi_ecosystem(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_pypi_ecosystem(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should scan PyPI packages when ecosystem is pypi."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -308,10 +302,12 @@ class TestPostScanEcosystem:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "ecosystem": "pypi",
-            "dependencies": {"requests": ">=2.28.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "ecosystem": "pypi",
+                "dependencies": {"requests": ">=2.28.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -335,10 +331,12 @@ class TestPostScanEcosystem:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "ecosystem": "pypi",
-            "dependencies": {"requests": ">=2.28.0", "old-flask-lib": ">=1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "ecosystem": "pypi",
+                "dependencies": {"requests": ">=2.28.0", "old-flask-lib": ">=1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -349,9 +347,7 @@ class TestPostScanEcosystem:
         assert body["high"] == 1
 
     @mock_aws
-    def test_invalid_ecosystem_returns_400(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_invalid_ecosystem_returns_400(self, seeded_api_keys_table, api_gateway_event):
         """Should return 400 for invalid ecosystem value."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -362,10 +358,12 @@ class TestPostScanEcosystem:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "ecosystem": "invalid",
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "ecosystem": "invalid",
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -374,9 +372,7 @@ class TestPostScanEcosystem:
         assert body["error"]["code"] == "invalid_ecosystem"
 
     @mock_aws
-    def test_ecosystem_case_sensitive(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_ecosystem_case_sensitive(self, seeded_api_keys_table, api_gateway_event):
         """Should reject uppercase ecosystem values (case-sensitive)."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -387,10 +383,12 @@ class TestPostScanEcosystem:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "ecosystem": "NPM",
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "ecosystem": "NPM",
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -399,9 +397,7 @@ class TestPostScanEcosystem:
         assert body["error"]["code"] == "invalid_ecosystem"
 
     @mock_aws
-    def test_ecosystem_non_string_returns_400(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_ecosystem_non_string_returns_400(self, seeded_api_keys_table, api_gateway_event):
         """Should return 400 when ecosystem is not a string."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -412,10 +408,12 @@ class TestPostScanEcosystem:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "ecosystem": ["npm"],  # Array instead of string
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "ecosystem": ["npm"],  # Array instead of string
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -441,9 +439,11 @@ class TestDataQualityInScan:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -456,9 +456,7 @@ class TestDataQualityInScan:
         assert "has_repository" in pkg["data_quality"]
 
     @mock_aws
-    def test_scan_summary_includes_quality_breakdown(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_scan_summary_includes_quality_breakdown(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should include verified/partial/unverified counts in response."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -519,13 +517,15 @@ class TestDataQualityInScan:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {
-                "verified-pkg": "^1.0.0",
-                "partial-pkg": "^1.0.0",
-                "minimal-pkg": "^1.0.0",
-            },
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {
+                    "verified-pkg": "^1.0.0",
+                    "partial-pkg": "^1.0.0",
+                    "minimal-pkg": "^1.0.0",
+                },
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -538,9 +538,7 @@ class TestDataQualityInScan:
         assert body["data_quality"]["unavailable_count"] == 0
 
     @mock_aws
-    def test_scan_summary_includes_unavailable_count(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_scan_summary_includes_unavailable_count(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should count abandoned_minimal packages as unavailable."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -569,9 +567,11 @@ class TestDataQualityInScan:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"abandoned-pkg": "^1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"abandoned-pkg": "^1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -586,9 +586,7 @@ class TestDataQualityInScan:
         assert pkg["data_quality"]["assessment"] == "UNAVAILABLE"
 
     @mock_aws
-    def test_scan_counts_verified_vs_unverified_risk(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_scan_counts_verified_vs_unverified_risk(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should separately count verified and unverified HIGH/CRITICAL packages."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -647,13 +645,15 @@ class TestDataQualityInScan:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {
-                "verified-high": "^1.0.0",
-                "unverified-critical": "^1.0.0",
-                "unverified-low": "^1.0.0",
-            },
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {
+                    "verified-high": "^1.0.0",
+                    "unverified-critical": "^1.0.0",
+                    "unverified-low": "^1.0.0",
+                },
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -692,9 +692,11 @@ class TestDataQualityInScan:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"complete-pkg": "^1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"complete-pkg": "^1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -734,9 +736,11 @@ class TestDataQualityInScan:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"legacy-pkg": "^1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"legacy-pkg": "^1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -748,9 +752,7 @@ class TestDataQualityInScan:
         assert pkg["data_quality"]["has_repository"] is False
 
     @mock_aws
-    def test_scan_data_quality_partial_with_repo(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_scan_data_quality_partial_with_repo(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should return PARTIAL for packages with partial data and repository."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -777,9 +779,11 @@ class TestDataQualityInScan:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"partial-repo-pkg": "^1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"partial-repo-pkg": "^1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -794,9 +798,7 @@ class TestExtractDependenciesEdgeCases:
     """Tests for _extract_dependencies() edge cases."""
 
     @mock_aws
-    def test_content_not_string_is_ignored(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_content_not_string_is_ignored(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should ignore content field if not a string."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -808,10 +810,12 @@ class TestExtractDependenciesEdgeCases:
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
         # content is an object instead of a string
-        api_gateway_event["body"] = json.dumps({
-            "content": {"dependencies": {"lodash": "1.0.0"}},
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "content": {"dependencies": {"lodash": "1.0.0"}},
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -821,9 +825,7 @@ class TestExtractDependenciesEdgeCases:
         assert body["total"] == 1
 
     @mock_aws
-    def test_dependencies_as_list(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_dependencies_as_list(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should accept dependencies as a list of package names."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -834,9 +836,11 @@ class TestExtractDependenciesEdgeCases:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": ["lodash", "abandoned-pkg"],
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": ["lodash", "abandoned-pkg"],
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -846,9 +850,7 @@ class TestExtractDependenciesEdgeCases:
         assert len(body["packages"]) == 2
 
     @mock_aws
-    def test_dev_dependencies_as_list(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_dev_dependencies_as_list(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should accept devDependencies as a list of package names."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -859,9 +861,11 @@ class TestExtractDependenciesEdgeCases:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "devDependencies": ["lodash"],
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "devDependencies": ["lodash"],
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -870,9 +874,7 @@ class TestExtractDependenciesEdgeCases:
         assert body["total"] == 1
 
     @mock_aws
-    def test_malformed_package_json_content(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_malformed_package_json_content(self, seeded_api_keys_table, api_gateway_event):
         """Should handle malformed package.json content gracefully."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -883,9 +885,11 @@ class TestExtractDependenciesEdgeCases:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "content": "{ invalid json }",
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "content": "{ invalid json }",
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -895,9 +899,7 @@ class TestExtractDependenciesEdgeCases:
         assert body["error"]["code"] == "no_dependencies"
 
     @mock_aws
-    def test_package_json_with_non_dict_dependencies(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_package_json_with_non_dict_dependencies(self, seeded_api_keys_table, api_gateway_event):
         """Should handle package.json with non-dict dependencies field."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -906,11 +908,13 @@ class TestExtractDependenciesEdgeCases:
 
         table, test_key = seeded_api_keys_table
 
-        package_json = json.dumps({
-            "name": "test-project",
-            "dependencies": "invalid",  # Not a dict
-            "devDependencies": 12345,   # Also invalid
-        })
+        package_json = json.dumps(
+            {
+                "name": "test-project",
+                "dependencies": "invalid",  # Not a dict
+                "devDependencies": 12345,  # Also invalid
+            }
+        )
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
@@ -923,9 +927,7 @@ class TestExtractDependenciesEdgeCases:
         assert body["error"]["code"] == "no_dependencies"
 
     @mock_aws
-    def test_filters_invalid_dependency_entries(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_filters_invalid_dependency_entries(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should filter out non-string dependency entries."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -936,9 +938,11 @@ class TestExtractDependenciesEdgeCases:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": ["lodash", "", None, 123, "abandoned-pkg"],
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": ["lodash", "", None, 123, "abandoned-pkg"],
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -948,9 +952,7 @@ class TestExtractDependenciesEdgeCases:
         assert body["total"] == 2
 
     @mock_aws
-    def test_direct_dev_dependencies_as_dict(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_direct_dev_dependencies_as_dict(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should accept devDependencies as a direct dict in body (not in content)."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -962,9 +964,11 @@ class TestExtractDependenciesEdgeCases:
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
         # devDependencies as a dict directly in the body (not inside content)
-        api_gateway_event["body"] = json.dumps({
-            "devDependencies": {"lodash": "^4.17.21", "abandoned-pkg": "^1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "devDependencies": {"lodash": "^4.17.21", "abandoned-pkg": "^1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -978,9 +982,7 @@ class TestRateLimiting:
     """Tests for rate limiting behavior."""
 
     @mock_aws
-    def test_rate_limit_exceeded(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_rate_limit_exceeded(self, mock_dynamodb, api_gateway_event):
         """Should return 429 when scanning would exceed rate limit."""
         import hashlib
 
@@ -1020,9 +1022,11 @@ class TestRateLimiting:
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
         # Try to scan 3 packages when only 1 request remains
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"pkg1": "1.0", "pkg2": "1.0", "pkg3": "1.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"pkg1": "1.0", "pkg2": "1.0", "pkg3": "1.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -1035,9 +1039,7 @@ class TestUsageAlerts:
     """Tests for usage alert levels."""
 
     @mock_aws
-    def test_usage_alert_warning_level(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_usage_alert_warning_level(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Should include warning alert when usage is 80-94%."""
         import hashlib
 
@@ -1076,9 +1078,11 @@ class TestUsageAlerts:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -1090,9 +1094,7 @@ class TestUsageAlerts:
         assert result["headers"]["X-Usage-Alert"] == "warning"
 
     @mock_aws
-    def test_usage_alert_critical_level(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_usage_alert_critical_level(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Should include critical alert when usage is 95-99%."""
         import hashlib
 
@@ -1131,9 +1133,11 @@ class TestUsageAlerts:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -1145,9 +1149,7 @@ class TestUsageAlerts:
         assert result["headers"]["X-Usage-Alert"] == "critical"
 
     @mock_aws
-    def test_usage_alert_exceeded_level(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_usage_alert_exceeded_level(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Should include exceeded alert when usage is 100%."""
         import hashlib
 
@@ -1186,9 +1188,11 @@ class TestUsageAlerts:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -1203,9 +1207,7 @@ class TestPackageQueueing:
     """Tests for package discovery queueing."""
 
     @mock_aws
-    def test_queues_not_found_packages(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_queues_not_found_packages(self, mock_dynamodb, api_gateway_event):
         """Should queue not-found packages for collection when SQS is configured."""
         import hashlib
 
@@ -1221,6 +1223,7 @@ class TestPackageQueueing:
 
         # Reset the cached SQS client in post_scan module
         import api.post_scan as post_scan_module
+
         post_scan_module._sqs = None
         post_scan_module.PACKAGE_QUEUE_URL = queue_url
 
@@ -1259,13 +1262,15 @@ class TestPackageQueueing:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {
-                "lodash": "^4.17.21",
-                "unknown-package-1": "^1.0.0",
-                "unknown-package-2": "^2.0.0",
-            },
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {
+                    "lodash": "^4.17.21",
+                    "unknown-package-1": "^1.0.0",
+                    "unknown-package-2": "^2.0.0",
+                },
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -1281,9 +1286,7 @@ class TestPackageQueueing:
         post_scan_module.PACKAGE_QUEUE_URL = None
 
     @mock_aws
-    def test_respects_max_queue_limit(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_respects_max_queue_limit(self, mock_dynamodb, api_gateway_event):
         """Should limit queued packages to MAX_QUEUE_PER_SCAN."""
         import hashlib
 
@@ -1299,6 +1302,7 @@ class TestPackageQueueing:
 
         # Reset the cached SQS client
         import api.post_scan as post_scan_module
+
         post_scan_module._sqs = None
         post_scan_module.PACKAGE_QUEUE_URL = queue_url
 
@@ -1326,9 +1330,11 @@ class TestPackageQueueing:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": unknown_deps,
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": unknown_deps,
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -1355,6 +1361,7 @@ class TestPackageQueueing:
 
         # Reset the module-level variable
         import api.post_scan as post_scan_module
+
         post_scan_module.PACKAGE_QUEUE_URL = None
         post_scan_module._sqs = None
 
@@ -1364,9 +1371,11 @@ class TestPackageQueueing:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"unknown-package": "^1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"unknown-package": "^1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -1379,9 +1388,7 @@ class TestPackageNameValidation:
     """Tests for package name validation in queueing."""
 
     @mock_aws
-    def test_filters_invalid_npm_package_names(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_filters_invalid_npm_package_names(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should filter out invalid npm package names when queueing."""
         import boto3
 
@@ -1393,6 +1400,7 @@ class TestPackageNameValidation:
         os.environ["PACKAGE_QUEUE_URL"] = queue_url
 
         import api.post_scan as post_scan_module
+
         post_scan_module._sqs = None
         post_scan_module.PACKAGE_QUEUE_URL = queue_url
 
@@ -1402,14 +1410,16 @@ class TestPackageNameValidation:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {
-                "valid-package": "1.0.0",
-                "../path-traversal": "1.0.0",  # Invalid
-                "_starts-with-underscore": "1.0.0",  # Invalid
-                ".starts-with-dot": "1.0.0",  # Invalid
-            },
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {
+                    "valid-package": "1.0.0",
+                    "../path-traversal": "1.0.0",  # Invalid
+                    "_starts-with-underscore": "1.0.0",  # Invalid
+                    ".starts-with-dot": "1.0.0",  # Invalid
+                },
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -1424,9 +1434,7 @@ class TestPackageNameValidation:
         post_scan_module._sqs = None
 
     @mock_aws
-    def test_validates_pypi_package_names(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_validates_pypi_package_names(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should validate PyPI package names for queueing."""
         import boto3
 
@@ -1438,6 +1446,7 @@ class TestPackageNameValidation:
         os.environ["PACKAGE_QUEUE_URL"] = queue_url
 
         import api.post_scan as post_scan_module
+
         post_scan_module._sqs = None
         post_scan_module.PACKAGE_QUEUE_URL = queue_url
 
@@ -1447,13 +1456,15 @@ class TestPackageNameValidation:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "ecosystem": "pypi",
-            "dependencies": {
-                "valid-pypi-pkg": "1.0.0",
-                "../invalid-path": "1.0.0",
-            },
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "ecosystem": "pypi",
+                "dependencies": {
+                    "valid-pypi-pkg": "1.0.0",
+                    "../invalid-path": "1.0.0",
+                },
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -1604,9 +1615,7 @@ class TestMediumRiskCounting:
     """Tests for MEDIUM risk level counting."""
 
     @mock_aws
-    def test_counts_medium_risk_packages(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_counts_medium_risk_packages(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should correctly count MEDIUM risk packages."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1630,9 +1639,11 @@ class TestMediumRiskCounting:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"medium-risk-pkg": "^1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"medium-risk-pkg": "^1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -1648,9 +1659,7 @@ class TestCriticalRiskCounting:
     """Tests for CRITICAL risk level counting."""
 
     @mock_aws
-    def test_counts_critical_risk_packages(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_counts_critical_risk_packages(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should correctly count CRITICAL risk packages."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1674,9 +1683,11 @@ class TestCriticalRiskCounting:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"critical-pkg": "^1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"critical-pkg": "^1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -1689,9 +1700,7 @@ class TestNpmCaseInsensitivity:
     """Tests for npm package name case-insensitivity."""
 
     @mock_aws
-    def test_normalizes_uppercase_npm_names(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_normalizes_uppercase_npm_names(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should normalize uppercase npm package names to lowercase for lookup."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1703,9 +1712,11 @@ class TestNpmCaseInsensitivity:
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
         # Use uppercase "LODASH" - should find "lodash" in DB
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"LODASH": "^4.17.21"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"LODASH": "^4.17.21"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -1719,9 +1730,7 @@ class TestNullBody:
     """Tests for handling null/None request body."""
 
     @mock_aws
-    def test_handles_null_body(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_handles_null_body(self, seeded_api_keys_table, api_gateway_event):
         """Should handle null body gracefully."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1745,9 +1754,7 @@ class TestQueueingEdgeCases:
     """Tests for edge cases in package queueing."""
 
     @mock_aws
-    def test_all_invalid_packages_returns_zero_queued(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_all_invalid_packages_returns_zero_queued(self, mock_dynamodb, api_gateway_event):
         """Should return 0 queued when all packages are invalid."""
         import hashlib
 
@@ -1762,6 +1769,7 @@ class TestQueueingEdgeCases:
         os.environ["PACKAGE_QUEUE_URL"] = queue_url
 
         import api.post_scan as post_scan_module
+
         post_scan_module._sqs = None
         post_scan_module.PACKAGE_QUEUE_URL = queue_url
 
@@ -1787,13 +1795,15 @@ class TestQueueingEdgeCases:
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
         # All invalid package names
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {
-                "../invalid1": "1.0.0",
-                "_invalid2": "1.0.0",
-                ".invalid3": "1.0.0",
-            },
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {
+                    "../invalid1": "1.0.0",
+                    "_invalid2": "1.0.0",
+                    ".invalid3": "1.0.0",
+                },
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -1836,13 +1846,10 @@ class TestSQSErrorHandling:
     """Tests for SQS error handling during queueing."""
 
     @mock_aws
-    def test_sqs_error_is_handled_gracefully(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_sqs_error_is_handled_gracefully(self, mock_dynamodb, api_gateway_event):
         """Should handle SQS errors gracefully without failing the request."""
         import hashlib
         from unittest.mock import MagicMock
-
 
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1851,6 +1858,7 @@ class TestSQSErrorHandling:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123456789/fake-queue"
 
         import api.post_scan as post_scan_module
+
         # Create a mock SQS client that raises an exception
         mock_sqs = MagicMock()
         mock_sqs.send_message_batch.side_effect = Exception("SQS error")
@@ -1878,9 +1886,11 @@ class TestSQSErrorHandling:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"unknown-pkg": "1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"unknown-pkg": "1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -1900,13 +1910,10 @@ class TestDynamoDBErrorHandling:
     """Tests for DynamoDB error handling during batch fetch."""
 
     @mock_aws
-    def test_batch_fetch_error_marks_packages_as_not_found(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_batch_fetch_error_marks_packages_as_not_found(self, mock_dynamodb, api_gateway_event):
         """Should handle DynamoDB errors gracefully by marking packages as not found."""
         import hashlib
         from unittest.mock import MagicMock, patch
-
 
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1938,9 +1945,11 @@ class TestDynamoDBErrorHandling:
 
             api_gateway_event["httpMethod"] = "POST"
             api_gateway_event["headers"]["x-api-key"] = test_key
-            api_gateway_event["body"] = json.dumps({
-                "dependencies": {"some-pkg": "1.0.0"},
-            })
+            api_gateway_event["body"] = json.dumps(
+                {
+                    "dependencies": {"some-pkg": "1.0.0"},
+                }
+            )
 
             result = handler(api_gateway_event, {})
 
@@ -1954,9 +1963,7 @@ class TestLargeDependencyLists:
     """Tests for handling large dependency lists to prevent DoS."""
 
     @mock_aws
-    def test_handles_500_dependencies(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_handles_500_dependencies(self, mock_dynamodb, api_gateway_event):
         """Should handle scanning 500 dependencies without timing out."""
         import hashlib
 
@@ -1987,9 +1994,11 @@ class TestLargeDependencyLists:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": large_deps,
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": large_deps,
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -2000,9 +2009,7 @@ class TestLargeDependencyLists:
         assert len(body["not_found"]) == 500
 
     @mock_aws
-    def test_rate_limits_enforce_on_large_scans(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_rate_limits_enforce_on_large_scans(self, mock_dynamodb, api_gateway_event):
         """Should rate limit before processing if batch would exceed limit."""
         import hashlib
 
@@ -2043,9 +2050,11 @@ class TestLargeDependencyLists:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": large_deps,
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": large_deps,
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -2059,9 +2068,7 @@ class TestUnicodePackageNames:
     """Tests for handling Unicode in package names."""
 
     @mock_aws
-    def test_handles_unicode_package_names_in_dependencies(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_handles_unicode_package_names_in_dependencies(self, seeded_api_keys_table, api_gateway_event):
         """Should handle Unicode package names without crashing."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -2073,13 +2080,15 @@ class TestUnicodePackageNames:
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
         # Include package names with Chinese, emoji, etc.
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {
-                "\u4e2d\u6587\u5305": "1.0.0",  # Chinese characters
-                "pkg-\ud83d\ude00": "1.0.0",  # Emoji (escaped)
-                "normal-pkg": "1.0.0",
-            },
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {
+                    "\u4e2d\u6587\u5305": "1.0.0",  # Chinese characters
+                    "pkg-\ud83d\ude00": "1.0.0",  # Emoji (escaped)
+                    "normal-pkg": "1.0.0",
+                },
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -2090,9 +2099,7 @@ class TestUnicodePackageNames:
         assert body["total"] >= 1
 
     @mock_aws
-    def test_handles_unicode_in_package_json_content(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_handles_unicode_in_package_json_content(self, seeded_api_keys_table, api_gateway_event):
         """Should handle Unicode in package.json content field."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -2102,11 +2109,13 @@ class TestUnicodePackageNames:
         table, test_key = seeded_api_keys_table
 
         # Package.json with Unicode name and description
-        package_json = json.dumps({
-            "name": "\u6d4b\u8bd5\u9879\u76ee",  # Chinese project name
-            "description": "A project with Unicode \u2764",
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        package_json = json.dumps(
+            {
+                "name": "\u6d4b\u8bd5\u9879\u76ee",  # Chinese project name
+                "description": "A project with Unicode \u2764",
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
@@ -2124,9 +2133,7 @@ class TestMalformedRequestPayloads:
     """Tests for malformed request payload handling."""
 
     @mock_aws
-    def test_handles_deeply_nested_json(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_handles_deeply_nested_json(self, seeded_api_keys_table, api_gateway_event):
         """Should handle deeply nested JSON without crashing."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -2152,9 +2159,7 @@ class TestMalformedRequestPayloads:
         assert body["error"]["code"] == "no_dependencies"
 
     @mock_aws
-    def test_handles_very_long_package_names(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_handles_very_long_package_names(self, seeded_api_keys_table, api_gateway_event):
         """Should handle very long package names gracefully."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -2168,9 +2173,11 @@ class TestMalformedRequestPayloads:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {long_name: "1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {long_name: "1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -2181,9 +2188,7 @@ class TestMalformedRequestPayloads:
         assert len(body["not_found"]) == 1
 
     @mock_aws
-    def test_handles_special_version_strings(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_handles_special_version_strings(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should handle unusual version strings."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -2194,11 +2199,13 @@ class TestMalformedRequestPayloads:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {
-                "lodash": "file:../local-lodash",  # Local file reference
-            },
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {
+                    "lodash": "file:../local-lodash",  # Local file reference
+                },
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -2219,12 +2226,14 @@ class TestMalformedRequestPayloads:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {
-                "lodash": "",  # Empty version
-                "abandoned-pkg": None,  # Null version
-            },
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {
+                    "lodash": "",  # Empty version
+                    "abandoned-pkg": None,  # Null version
+                },
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -2252,9 +2261,11 @@ class TestResponseBodyCompleteness:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21", "unknown-pkg": "^1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"lodash": "^4.17.21", "unknown-pkg": "^1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -2296,9 +2307,11 @@ class TestResponseBodyCompleteness:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -2320,9 +2333,7 @@ class TestErrorMessageQuality:
     """Tests to verify error messages are helpful and informative."""
 
     @mock_aws
-    def test_invalid_json_error_includes_details(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_invalid_json_error_includes_details(self, seeded_api_keys_table, api_gateway_event):
         """Invalid JSON error should include helpful message."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -2344,9 +2355,7 @@ class TestErrorMessageQuality:
         assert len(body["error"]["message"]) > 10  # Meaningful message
 
     @mock_aws
-    def test_rate_limit_error_includes_upgrade_info(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_rate_limit_error_includes_upgrade_info(self, mock_dynamodb, api_gateway_event):
         """Rate limit error should include upgrade and reset info."""
         import hashlib
 
@@ -2381,9 +2390,11 @@ class TestErrorMessageQuality:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"lodash": "^4.17.21"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -2402,9 +2413,7 @@ class TestUnprocessedKeysRetry:
     """Tests for UnprocessedKeys retry with exponential backoff (lines 298-307)."""
 
     @mock_aws
-    def test_retries_unprocessed_keys(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_retries_unprocessed_keys(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Should retry when DynamoDB returns UnprocessedKeys (lines 298-304)."""
         import hashlib
         from unittest.mock import MagicMock, patch
@@ -2444,9 +2453,7 @@ class TestUnprocessedKeysRetry:
                 ]
             },
             "UnprocessedKeys": {
-                "pkgwatch-packages": {
-                    "Keys": [{"pk": {"S": "npm#abandoned-pkg"}, "sk": {"S": "LATEST"}}]
-                }
+                "pkgwatch-packages": {"Keys": [{"pk": {"S": "npm#abandoned-pkg"}, "sk": {"S": "LATEST"}}]}
             },
         }
 
@@ -2465,17 +2472,18 @@ class TestUnprocessedKeysRetry:
             "UnprocessedKeys": {},
         }
 
-        with patch("api.post_scan.get_dynamodb") as mock_get_ddb, \
-             patch("api.post_scan.time.sleep"):  # Speed up test
+        with patch("api.post_scan.get_dynamodb") as mock_get_ddb, patch("api.post_scan.time.sleep"):  # Speed up test
             mock_ddb = MagicMock()
             mock_get_ddb.return_value = mock_ddb
             mock_ddb.batch_get_item.side_effect = [first_response, second_response]
 
             api_gateway_event["httpMethod"] = "POST"
             api_gateway_event["headers"]["x-api-key"] = test_key
-            api_gateway_event["body"] = json.dumps({
-                "dependencies": {"lodash": "^4.17.21", "abandoned-pkg": "^1.0.0"},
-            })
+            api_gateway_event["body"] = json.dumps(
+                {
+                    "dependencies": {"lodash": "^4.17.21", "abandoned-pkg": "^1.0.0"},
+                }
+            )
 
             result = handler(api_gateway_event, {})
 
@@ -2488,9 +2496,7 @@ class TestUnprocessedKeysRetry:
         assert mock_ddb.batch_get_item.call_count == 2
 
     @mock_aws
-    def test_max_retries_exceeded_logs_error(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_max_retries_exceeded_logs_error(self, mock_dynamodb, api_gateway_event):
         """Should log error and continue when max retries exceeded (lines 305-307)."""
         import hashlib
         from unittest.mock import MagicMock, patch
@@ -2520,23 +2526,22 @@ class TestUnprocessedKeysRetry:
         persistent_unprocessed = {
             "Responses": {"pkgwatch-packages": []},
             "UnprocessedKeys": {
-                "pkgwatch-packages": {
-                    "Keys": [{"pk": {"S": "npm#stubborn-pkg"}, "sk": {"S": "LATEST"}}]
-                }
+                "pkgwatch-packages": {"Keys": [{"pk": {"S": "npm#stubborn-pkg"}, "sk": {"S": "LATEST"}}]}
             },
         }
 
-        with patch("api.post_scan.get_dynamodb") as mock_get_ddb, \
-             patch("api.post_scan.time.sleep"):
+        with patch("api.post_scan.get_dynamodb") as mock_get_ddb, patch("api.post_scan.time.sleep"):
             mock_ddb = MagicMock()
             mock_get_ddb.return_value = mock_ddb
             mock_ddb.batch_get_item.return_value = persistent_unprocessed
 
             api_gateway_event["httpMethod"] = "POST"
             api_gateway_event["headers"]["x-api-key"] = test_key
-            api_gateway_event["body"] = json.dumps({
-                "dependencies": {"stubborn-pkg": "^1.0.0"},
-            })
+            api_gateway_event["body"] = json.dumps(
+                {
+                    "dependencies": {"stubborn-pkg": "^1.0.0"},
+                }
+            )
 
             result = handler(api_gateway_event, {})
 
@@ -2548,9 +2553,7 @@ class TestUnprocessedKeysRetry:
         assert mock_ddb.batch_get_item.call_count == 4
 
     @mock_aws
-    def test_exponential_backoff_timing(
-        self, mock_dynamodb, api_gateway_event
-    ):
+    def test_exponential_backoff_timing(self, mock_dynamodb, api_gateway_event):
         """Should use exponential backoff between retries."""
         import hashlib
         from unittest.mock import MagicMock, patch
@@ -2579,11 +2582,7 @@ class TestUnprocessedKeysRetry:
         # Return unprocessed on first 2 calls, then succeed
         unprocessed_response = {
             "Responses": {"pkgwatch-packages": []},
-            "UnprocessedKeys": {
-                "pkgwatch-packages": {
-                    "Keys": [{"pk": {"S": "npm#retry-pkg"}, "sk": {"S": "LATEST"}}]
-                }
-            },
+            "UnprocessedKeys": {"pkgwatch-packages": {"Keys": [{"pk": {"S": "npm#retry-pkg"}, "sk": {"S": "LATEST"}}]}},
         }
         final_response = {
             "Responses": {
@@ -2600,20 +2599,22 @@ class TestUnprocessedKeysRetry:
             "UnprocessedKeys": {},
         }
 
-        with patch("api.post_scan.get_dynamodb") as mock_get_ddb, \
-             patch("api.post_scan.time.sleep") as mock_sleep, \
-             patch("api.post_scan.random.uniform", return_value=0.005):  # Fixed jitter
+        with (
+            patch("api.post_scan.get_dynamodb") as mock_get_ddb,
+            patch("api.post_scan.time.sleep") as mock_sleep,
+            patch("api.post_scan.random.uniform", return_value=0.005),
+        ):  # Fixed jitter
             mock_ddb = MagicMock()
             mock_get_ddb.return_value = mock_ddb
-            mock_ddb.batch_get_item.side_effect = [
-                unprocessed_response, unprocessed_response, final_response
-            ]
+            mock_ddb.batch_get_item.side_effect = [unprocessed_response, unprocessed_response, final_response]
 
             api_gateway_event["httpMethod"] = "POST"
             api_gateway_event["headers"]["x-api-key"] = test_key
-            api_gateway_event["body"] = json.dumps({
-                "dependencies": {"retry-pkg": "^1.0.0"},
-            })
+            api_gateway_event["body"] = json.dumps(
+                {
+                    "dependencies": {"retry-pkg": "^1.0.0"},
+                }
+            )
 
             result = handler(api_gateway_event, {})
 
@@ -2630,9 +2631,7 @@ class TestPartialRiskCounting:
     """Tests for PARTIAL assessment with HIGH/CRITICAL risk (line 347)."""
 
     @mock_aws
-    def test_partial_high_risk_counts_as_unverified_risk(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_partial_high_risk_counts_as_unverified_risk(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should count PARTIAL packages with HIGH risk as unverified risk (line 347)."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -2661,9 +2660,11 @@ class TestPartialRiskCounting:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"partial-high": "^1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"partial-high": "^1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -2710,9 +2711,11 @@ class TestPartialRiskCounting:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"partial-crit": "^1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"partial-crit": "^1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -2752,9 +2755,11 @@ class TestPartialRiskCounting:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"partial-low": "^1.0.0"},
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {"partial-low": "^1.0.0"},
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -2765,9 +2770,7 @@ class TestPartialRiskCounting:
         assert body["verified_risk_count"] == 0
 
     @mock_aws
-    def test_mixed_assessment_risk_counting(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_mixed_assessment_risk_counting(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Should correctly count verified vs unverified risk across all assessment types."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -2858,15 +2861,17 @@ class TestPartialRiskCounting:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {
-                "v-high": "^1.0.0",
-                "p-crit": "^1.0.0",
-                "u-high": "^1.0.0",
-                "ua-crit": "^1.0.0",
-                "v-low": "^1.0.0",
-            },
-        })
+        api_gateway_event["body"] = json.dumps(
+            {
+                "dependencies": {
+                    "v-high": "^1.0.0",
+                    "p-crit": "^1.0.0",
+                    "u-high": "^1.0.0",
+                    "ua-crit": "^1.0.0",
+                    "v-low": "^1.0.0",
+                },
+            }
+        )
 
         result = handler(api_gateway_event, {})
 
@@ -2879,7 +2884,7 @@ class TestPartialRiskCounting:
         assert body["unverified_risk_count"] == 3
 
         # Data quality counts
-        assert body["data_quality"]["verified_count"] == 2   # v-high + v-low
-        assert body["data_quality"]["partial_count"] == 1     # p-crit
+        assert body["data_quality"]["verified_count"] == 2  # v-high + v-low
+        assert body["data_quality"]["partial_count"] == 1  # p-crit
         assert body["data_quality"]["unverified_count"] == 1  # u-high
         assert body["data_quality"]["unavailable_count"] == 1  # ua-crit

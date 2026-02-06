@@ -83,6 +83,7 @@ class TestGenerateRecoveryCodes:
 
         # First, set up existing codes
         from shared.recovery_utils import generate_recovery_codes
+
         old_codes, old_hashes = generate_recovery_codes(count=4)
 
         table.put_item(
@@ -148,6 +149,7 @@ class TestDeleteRecoveryCodes:
 
         # Set up existing codes
         from shared.recovery_utils import generate_recovery_codes
+
         _, hashes = generate_recovery_codes(count=4)
 
         table.put_item(
@@ -213,6 +215,7 @@ class TestRecoveryCodesStatus:
 
         # Set up existing codes (3 remaining)
         from shared.recovery_utils import generate_recovery_codes
+
         _, hashes = generate_recovery_codes(count=4)
         remaining_hashes = hashes[:3]  # Simulate 1 code used
 

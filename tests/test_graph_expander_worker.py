@@ -57,6 +57,7 @@ class TestGraphExpanderWorkerHandler:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         result = module.handler({"Records": []}, None)
@@ -74,6 +75,7 @@ class TestGraphExpanderWorkerHandler:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         result = module.handler({}, None)
@@ -92,15 +94,18 @@ class TestGraphExpanderWorkerHandler:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         event = {
             "Records": [
                 {
-                    "body": json.dumps({
-                        "packages": ["lodash"],
-                        "ecosystem": "npm",
-                    })
+                    "body": json.dumps(
+                        {
+                            "packages": ["lodash"],
+                            "ecosystem": "npm",
+                        }
+                    )
                 }
             ]
         }
@@ -125,15 +130,18 @@ class TestGraphExpanderWorkerHandler:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         event = {
             "Records": [
                 {
-                    "body": json.dumps({
-                        "packages": ["lodash", "express", "react"],
-                        "ecosystem": "npm",
-                    })
+                    "body": json.dumps(
+                        {
+                            "packages": ["lodash", "express", "react"],
+                            "ecosystem": "npm",
+                        }
+                    )
                 }
             ]
         }
@@ -158,6 +166,7 @@ class TestGraphExpanderWorkerHandler:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         event = {
@@ -185,15 +194,18 @@ class TestGraphExpanderWorkerHandler:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         event = {
             "Records": [
                 {
-                    "body": json.dumps({
-                        "packages": ["requests"],
-                        "ecosystem": "pypi",
-                    })
+                    "body": json.dumps(
+                        {
+                            "packages": ["requests"],
+                            "ecosystem": "pypi",
+                        }
+                    )
                 }
             ]
         }
@@ -216,6 +228,7 @@ class TestGraphExpanderWorkerHandler:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         event = {
@@ -239,6 +252,7 @@ class TestGraphExpanderWorkerHandler:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         event = {
@@ -272,6 +286,7 @@ class TestGraphExpanderWorkerHandler:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         event = {"Records": []}
@@ -291,15 +306,18 @@ class TestGraphExpanderWorkerHandler:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         event = {
             "Records": [
                 {
-                    "body": json.dumps({
-                        "packages": ["lodash"],
-                        # No ecosystem specified
-                    })
+                    "body": json.dumps(
+                        {
+                            "packages": ["lodash"],
+                            # No ecosystem specified
+                        }
+                    )
                 }
             ]
         }
@@ -323,16 +341,19 @@ class TestPackageExists:
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         table = mock_dynamodb.Table("pkgwatch-packages")
-        table.put_item(Item={
-            "pk": "npm#lodash",
-            "sk": "LATEST",
-            "name": "lodash",
-            "ecosystem": "npm",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#lodash",
+                "sk": "LATEST",
+                "name": "lodash",
+                "ecosystem": "npm",
+            }
+        )
 
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         result = module.package_exists(table, "npm", "lodash")
@@ -349,6 +370,7 @@ class TestPackageExists:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         result = module.package_exists(table, "npm", "nonexistent")
@@ -363,6 +385,7 @@ class TestPackageExists:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         mock_table = MagicMock()
@@ -382,14 +405,17 @@ class TestPackageExists:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         # Add a pypi package
-        table.put_item(Item={
-            "pk": "pypi#requests",
-            "sk": "LATEST",
-            "name": "requests",
-        })
+        table.put_item(
+            Item={
+                "pk": "pypi#requests",
+                "sk": "LATEST",
+                "name": "requests",
+            }
+        )
 
         # npm#requests should not exist
         assert module.package_exists(table, "npm", "requests") is False
@@ -408,6 +434,7 @@ class TestQueueForCollection:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         module.queue_for_collection("npm", "new-package")
@@ -433,6 +460,7 @@ class TestQueueForCollection:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         # Should not raise
@@ -446,6 +474,7 @@ class TestQueueForCollection:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         with patch.object(module, "sqs") as mock_sqs:
@@ -462,6 +491,7 @@ class TestQueueForCollection:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         module.queue_for_collection("pypi", "requests")
@@ -497,6 +527,7 @@ class TestGetCachedDependencies:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         result = module.get_cached_dependencies("npm", "lodash")
@@ -523,6 +554,7 @@ class TestGetCachedDependencies:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         result = module.get_cached_dependencies("npm", "old-package")
@@ -537,6 +569,7 @@ class TestGetCachedDependencies:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         result = module.get_cached_dependencies("npm", "not-cached")
@@ -551,6 +584,7 @@ class TestGetCachedDependencies:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         result = module.get_cached_dependencies("npm", "any-package")
@@ -573,6 +607,7 @@ class TestGetCachedDependencies:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         result = module.get_cached_dependencies("npm", "bad-data")
@@ -598,6 +633,7 @@ class TestGetCachedDependencies:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         result = module.get_cached_dependencies("npm", "fresh-pkg")
@@ -616,6 +652,7 @@ class TestCacheDependencies:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         module.cache_dependencies("npm", "express", ["body-parser", "cookie-parser"])
@@ -639,6 +676,7 @@ class TestCacheDependencies:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         # Should not raise
@@ -652,6 +690,7 @@ class TestCacheDependencies:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         with patch.object(module, "s3") as mock_s3:
@@ -668,6 +707,7 @@ class TestCacheDependencies:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         module.cache_dependencies("npm", "no-deps", [])
@@ -689,6 +729,7 @@ class TestCacheDependencies:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         module.cache_dependencies("pypi", "flask", ["werkzeug", "jinja2"])
@@ -716,17 +757,22 @@ class TestProcessPackageIntegration:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-packages")
 
         event = {
-            "Records": [{
-                "body": json.dumps({
-                    "packages": ["test-pkg"],
-                    "ecosystem": "npm",
-                })
-            }]
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "packages": ["test-pkg"],
+                            "ecosystem": "npm",
+                        }
+                    )
+                }
+            ]
         }
 
         # Mock cache miss and deps.dev returning a new dependency
@@ -757,15 +803,20 @@ class TestProcessPackageIntegration:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         event = {
-            "Records": [{
-                "body": json.dumps({
-                    "packages": ["test-pkg"],
-                    "ecosystem": "npm",
-                })
-            }]
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "packages": ["test-pkg"],
+                            "ecosystem": "npm",
+                        }
+                    )
+                }
+            ]
         }
 
         with patch.object(module, "get_cached_dependencies", return_value=["unpopular-dep"]):
@@ -787,24 +838,31 @@ class TestProcessPackageIntegration:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-packages")
 
         # Add existing dependency
-        table.put_item(Item={
-            "pk": "npm#existing-dep",
-            "sk": "LATEST",
-            "name": "existing-dep",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#existing-dep",
+                "sk": "LATEST",
+                "name": "existing-dep",
+            }
+        )
 
         event = {
-            "Records": [{
-                "body": json.dumps({
-                    "packages": ["test-pkg"],
-                    "ecosystem": "npm",
-                })
-            }]
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "packages": ["test-pkg"],
+                            "ecosystem": "npm",
+                        }
+                    )
+                }
+            ]
         }
 
         with patch.object(module, "get_cached_dependencies", return_value=["existing-dep"]):
@@ -823,16 +881,19 @@ class TestProcessPackageIntegration:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-packages")
 
         # Add existing dep
-        table.put_item(Item={
-            "pk": "npm#cached-dep",
-            "sk": "LATEST",
-            "name": "cached-dep",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#cached-dep",
+                "sk": "LATEST",
+                "name": "cached-dep",
+            }
+        )
 
         # Set up S3 cache
         s3 = boto3.client("s3", region_name="us-east-1")
@@ -847,12 +908,16 @@ class TestProcessPackageIntegration:
         )
 
         event = {
-            "Records": [{
-                "body": json.dumps({
-                    "packages": ["cached-pkg"],
-                    "ecosystem": "npm",
-                })
-            }]
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "packages": ["cached-pkg"],
+                            "ecosystem": "npm",
+                        }
+                    )
+                }
+            ]
         }
 
         with patch("collectors.depsdev_collector.get_dependencies", new_callable=AsyncMock) as mock_deps:
@@ -872,15 +937,20 @@ class TestProcessPackageIntegration:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         event = {
-            "Records": [{
-                "body": json.dumps({
-                    "packages": ["error-pkg"],
-                    "ecosystem": "npm",
-                })
-            }]
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "packages": ["error-pkg"],
+                            "ecosystem": "npm",
+                        }
+                    )
+                }
+            ]
         }
 
         with patch.object(module, "get_cached_dependencies", return_value=None):
@@ -904,15 +974,20 @@ class TestProcessPackageIntegration:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         event = {
-            "Records": [{
-                "body": json.dumps({
-                    "packages": ["test-pkg"],
-                    "ecosystem": "npm",
-                })
-            }]
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "packages": ["test-pkg"],
+                            "ecosystem": "npm",
+                        }
+                    )
+                }
+            ]
         }
 
         # Mock get_cached_dependencies and get_package_info,
@@ -926,8 +1001,7 @@ class TestProcessPackageIntegration:
                 mock_table = MagicMock()
                 mock_table.get_item.return_value = {}  # Package doesn't exist check
                 mock_table.put_item.side_effect = ClientError(
-                    {"Error": {"Code": "ConditionalCheckFailedException"}},
-                    "PutItem"
+                    {"Error": {"Code": "ConditionalCheckFailedException"}}, "PutItem"
                 )
 
                 with patch.object(module.dynamodb, "Table", return_value=mock_table):
@@ -948,32 +1022,44 @@ class TestProcessPackageIntegration:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-packages")
 
         # Add one existing dep
-        table.put_item(Item={
-            "pk": "npm#existing-dep",
-            "sk": "LATEST",
-            "name": "existing-dep",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#existing-dep",
+                "sk": "LATEST",
+                "name": "existing-dep",
+            }
+        )
 
         event = {
-            "Records": [{
-                "body": json.dumps({
-                    "packages": ["multi-deps-pkg"],
-                    "ecosystem": "npm",
-                })
-            }]
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "packages": ["multi-deps-pkg"],
+                            "ecosystem": "npm",
+                        }
+                    )
+                }
+            ]
         }
 
-        with patch.object(module, "get_cached_dependencies", return_value=[
-            "existing-dep",  # Already exists
-            "new-dep-1",     # New and popular
-            "new-dep-2",     # New and popular
-            "unpopular-dep", # New but unpopular
-        ]):
+        with patch.object(
+            module,
+            "get_cached_dependencies",
+            return_value=[
+                "existing-dep",  # Already exists
+                "new-dep-1",  # New and popular
+                "new-dep-2",  # New and popular
+                "unpopular-dep",  # New but unpopular
+            ],
+        ):
+
             async def mock_info(name, ecosystem):
                 if name == "unpopular-dep":
                     return {"dependents_count": 50}  # Below threshold
@@ -996,15 +1082,20 @@ class TestProcessPackageIntegration:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         event = {
-            "Records": [{
-                "body": json.dumps({
-                    "packages": ["test-pkg"],
-                    "ecosystem": "npm",
-                })
-            }]
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "packages": ["test-pkg"],
+                            "ecosystem": "npm",
+                        }
+                    )
+                }
+            ]
         }
 
         with patch.object(module, "get_cached_dependencies", return_value=["queued-dep"]):
@@ -1035,17 +1126,22 @@ class TestProcessPackageIntegration:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-packages")
 
         event = {
-            "Records": [{
-                "body": json.dumps({
-                    "packages": ["requests"],
-                    "ecosystem": "pypi",
-                })
-            }]
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "packages": ["requests"],
+                            "ecosystem": "pypi",
+                        }
+                    )
+                }
+            ]
         }
 
         with patch.object(module, "get_cached_dependencies", return_value=["urllib3"]):
@@ -1070,24 +1166,31 @@ class TestProcessPackageIntegration:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-packages")
 
         # Add existing dep so we don't try to insert
-        table.put_item(Item={
-            "pk": "npm#fetched-dep",
-            "sk": "LATEST",
-            "name": "fetched-dep",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#fetched-dep",
+                "sk": "LATEST",
+                "name": "fetched-dep",
+            }
+        )
 
         event = {
-            "Records": [{
-                "body": json.dumps({
-                    "packages": ["uncached-pkg"],
-                    "ecosystem": "npm",
-                })
-            }]
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "packages": ["uncached-pkg"],
+                            "ecosystem": "npm",
+                        }
+                    )
+                }
+            ]
         }
 
         with patch("collectors.depsdev_collector.get_dependencies", new_callable=AsyncMock) as mock_deps:
@@ -1115,15 +1218,20 @@ class TestProcessPackageIntegration:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         event = {
-            "Records": [{
-                "body": json.dumps({
-                    "packages": ["test-pkg"],
-                    "ecosystem": "npm",
-                })
-            }]
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "packages": ["test-pkg"],
+                            "ecosystem": "npm",
+                        }
+                    )
+                }
+            ]
         }
 
         with patch.object(module, "get_cached_dependencies", return_value=["unknown-dep"]):
@@ -1145,15 +1253,20 @@ class TestProcessPackageIntegration:
         import importlib
 
         import discovery.graph_expander_worker as module
+
         importlib.reload(module)
 
         event = {
-            "Records": [{
-                "body": json.dumps({
-                    "packages": ["no-deps-pkg"],
-                    "ecosystem": "npm",
-                })
-            }]
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "packages": ["no-deps-pkg"],
+                            "ecosystem": "npm",
+                        }
+                    )
+                }
+            ]
         }
 
         with patch.object(module, "get_cached_dependencies", return_value=None):

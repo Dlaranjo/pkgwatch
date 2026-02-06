@@ -24,13 +24,12 @@ from moto import mock_aws
 # Contract Validation Helpers
 # ============================================================================
 
+
 def assert_json_content_type(response: dict) -> None:
     """Assert response has JSON content type."""
     headers = response.get("headers", {})
     content_type = headers.get("Content-Type") or headers.get("content-type")
-    assert content_type == "application/json", (
-        f"Expected Content-Type: application/json, got: {content_type}"
-    )
+    assert content_type == "application/json", f"Expected Content-Type: application/json, got: {content_type}"
 
 
 def assert_error_response_format(response: dict) -> None:
@@ -86,13 +85,12 @@ def assert_status_code_matches_response(response: dict) -> None:
 # GET /v1/packages/{ecosystem}/{name} Contract Tests
 # ============================================================================
 
+
 class TestGetPackageContract:
     """Contract tests for GET /v1/packages/{ecosystem}/{name}."""
 
     @mock_aws
-    def test_success_response_format(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_success_response_format(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Success response should have correct format and all required fields."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -115,8 +113,13 @@ class TestGetPackageContract:
 
         # Required top-level fields
         required_fields = [
-            "package", "ecosystem", "health_score", "risk_level",
-            "components", "signals", "last_updated"
+            "package",
+            "ecosystem",
+            "health_score",
+            "risk_level",
+            "components",
+            "signals",
+            "last_updated",
         ]
         for field in required_fields:
             assert field in body, f"Missing required field: {field}"
@@ -128,20 +131,14 @@ class TestGetPackageContract:
         # health_score: 0-100 integer or None
         if body["health_score"] is not None:
             assert isinstance(body["health_score"], (int, float))
-            assert 0 <= body["health_score"] <= 100, (
-                f"health_score out of range: {body['health_score']}"
-            )
+            assert 0 <= body["health_score"] <= 100, f"health_score out of range: {body['health_score']}"
 
         # risk_level: one of LOW, MEDIUM, HIGH, CRITICAL or None
         valid_risk_levels = ["LOW", "MEDIUM", "HIGH", "CRITICAL", None]
-        assert body["risk_level"] in valid_risk_levels, (
-            f"Invalid risk_level: {body['risk_level']}"
-        )
+        assert body["risk_level"] in valid_risk_levels, f"Invalid risk_level: {body['risk_level']}"
 
     @mock_aws
-    def test_score_components_normalized(
-        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
-    ):
+    def test_score_components_normalized(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
         """Score components should be normalized 0-100."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -179,17 +176,11 @@ class TestGetPackageContract:
         if body.get("components"):
             for component, value in body["components"].items():
                 if value is not None:
-                    assert isinstance(value, (int, float)), (
-                        f"Component {component} should be numeric"
-                    )
-                    assert 0 <= value <= 100, (
-                        f"Component {component} out of range: {value}"
-                    )
+                    assert isinstance(value, (int, float)), f"Component {component} should be numeric"
+                    assert 0 <= value <= 100, f"Component {component} out of range: {value}"
 
     @mock_aws
-    def test_404_error_response_format(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_404_error_response_format(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """404 error response should have correct format."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -209,9 +200,7 @@ class TestGetPackageContract:
         assert body["error"]["code"] == "package_not_found"
 
     @mock_aws
-    def test_400_invalid_ecosystem_format(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_400_invalid_ecosystem_format(self, seeded_api_keys_table, api_gateway_event):
         """400 error for invalid ecosystem should have correct format."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -231,9 +220,7 @@ class TestGetPackageContract:
         assert body["error"]["code"] == "invalid_ecosystem"
 
     @mock_aws
-    def test_429_rate_limit_response_format(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_429_rate_limit_response_format(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """429 rate limit response should have correct format and headers."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -288,9 +275,7 @@ class TestGetPackageContract:
         assert "upgrade_url" in body["error"]
 
     @mock_aws
-    def test_demo_mode_rate_limit_response_format(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_demo_mode_rate_limit_response_format(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Demo mode 429 should have different error code and signup URL."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -325,9 +310,7 @@ class TestGetPackageContract:
         assert "signup_url" in body["error"]
 
     @mock_aws
-    def test_demo_mode_includes_demo_header(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_demo_mode_includes_demo_header(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Demo mode success response should include X-Demo-Mode header."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -347,13 +330,12 @@ class TestGetPackageContract:
 # POST /v1/scan Contract Tests
 # ============================================================================
 
+
 class TestPostScanContract:
     """Contract tests for POST /v1/scan."""
 
     @mock_aws
-    def test_success_response_format(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_success_response_format(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Success response should have correct format and all required fields."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -364,9 +346,7 @@ class TestPostScanContract:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21"}
-        })
+        api_gateway_event["body"] = json.dumps({"dependencies": {"lodash": "^4.17.21"}})
 
         result = handler(api_gateway_event, {})
 
@@ -396,9 +376,7 @@ class TestPostScanContract:
             assert "risk_level" in pkg, "Package entry missing 'risk_level'"
 
     @mock_aws
-    def test_packages_sorted_by_risk(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_packages_sorted_by_risk(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Packages should be sorted by risk level (CRITICAL first)."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -409,9 +387,7 @@ class TestPostScanContract:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21", "abandoned-pkg": "^1.0.0"}
-        })
+        api_gateway_event["body"] = json.dumps({"dependencies": {"lodash": "^4.17.21", "abandoned-pkg": "^1.0.0"}})
 
         result = handler(api_gateway_event, {})
         body = json.loads(result["body"])
@@ -434,9 +410,7 @@ class TestPostScanContract:
         from api.post_scan import handler
 
         api_gateway_event["httpMethod"] = "POST"
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21"}
-        })
+        api_gateway_event["body"] = json.dumps({"dependencies": {"lodash": "^4.17.21"}})
 
         result = handler(api_gateway_event, {})
 
@@ -491,9 +465,7 @@ class TestPostScanContract:
         assert body["error"]["code"] == "no_dependencies"
 
     @mock_aws
-    def test_not_found_packages_list(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_not_found_packages_list(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Response should include list of packages not found."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -504,9 +476,7 @@ class TestPostScanContract:
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps({
-            "dependencies": {"lodash": "^4.17.21", "nonexistent": "^1.0.0"}
-        })
+        api_gateway_event["body"] = json.dumps({"dependencies": {"lodash": "^4.17.21", "nonexistent": "^1.0.0"}})
 
         result = handler(api_gateway_event, {})
 
@@ -521,6 +491,7 @@ class TestPostScanContract:
 # ============================================================================
 # API Keys Endpoints Contract Tests
 # ============================================================================
+
 
 def _create_test_session_token(user_id: str, email: str, tier: str = "free") -> str:
     """Create a test session token."""
@@ -546,8 +517,7 @@ class TestGetApiKeysContract:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -567,6 +537,7 @@ class TestGetApiKeysContract:
 
         import api.auth_callback
         from api.get_api_keys import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_test", "test@example.com")
@@ -619,8 +590,7 @@ class TestCreateApiKeyContract:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -638,6 +608,7 @@ class TestCreateApiKeyContract:
 
         import api.auth_callback
         from api.create_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_create", "create@example.com", "pro")
@@ -662,8 +633,7 @@ class TestCreateApiKeyContract:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -684,6 +654,7 @@ class TestCreateApiKeyContract:
 
         import api.auth_callback
         from api.create_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_maxkeys", "maxkeys@example.com")
@@ -710,8 +681,7 @@ class TestRevokeApiKeyContract:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -734,6 +704,7 @@ class TestRevokeApiKeyContract:
 
         import api.auth_callback
         from api.revoke_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_revoke", "revoke@example.com")
@@ -755,8 +726,7 @@ class TestRevokeApiKeyContract:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -774,6 +744,7 @@ class TestRevokeApiKeyContract:
 
         import api.auth_callback
         from api.revoke_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_notfound", "notfound@example.com")
@@ -794,8 +765,7 @@ class TestRevokeApiKeyContract:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -813,6 +783,7 @@ class TestRevokeApiKeyContract:
 
         import api.auth_callback
         from api.revoke_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_onlykey", "onlykey@example.com")
@@ -833,6 +804,7 @@ class TestRevokeApiKeyContract:
 # Auth Endpoints Contract Tests
 # ============================================================================
 
+
 class TestAuthMeContract:
     """Contract tests for GET /auth/me."""
 
@@ -844,8 +816,7 @@ class TestAuthMeContract:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -865,6 +836,7 @@ class TestAuthMeContract:
 
         import api.auth_callback
         from api.auth_me import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_me", "me@example.com", "pro")
@@ -918,8 +890,7 @@ class TestAuthCallbackContract:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -942,6 +913,7 @@ class TestAuthCallbackContract:
 
         import api.auth_callback
         from api.auth_callback import handler
+
         api.auth_callback._session_secret_cache = None
 
         api_gateway_event["queryStringParameters"] = {"token": magic_token}
@@ -974,12 +946,12 @@ class TestAuthCallbackContract:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         import api.auth_callback
         from api.auth_callback import handler
+
         api.auth_callback._session_secret_cache = None
 
         api_gateway_event["queryStringParameters"] = {"token": "invalid"}
@@ -998,13 +970,12 @@ class TestAuthCallbackContract:
 # Cross-Cutting Contract Tests
 # ============================================================================
 
+
 class TestCorsHeaders:
     """Tests for CORS header handling."""
 
     @mock_aws
-    def test_cors_headers_for_allowed_origin(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_cors_headers_for_allowed_origin(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """Should include CORS headers for allowed origins."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1015,8 +986,10 @@ class TestCorsHeaders:
         import importlib
 
         import shared.response_utils
+
         importlib.reload(shared.response_utils)
         import api.get_package
+
         importlib.reload(api.get_package)
         from api.get_package import handler
 
@@ -1035,9 +1008,7 @@ class TestContentTypeConsistency:
     """Verify all endpoints return consistent Content-Type."""
 
     @mock_aws
-    def test_all_json_responses_have_content_type(
-        self, mock_dynamodb, seeded_packages_table, api_gateway_event
-    ):
+    def test_all_json_responses_have_content_type(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
         """All JSON responses should have Content-Type: application/json."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"

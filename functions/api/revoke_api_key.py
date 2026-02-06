@@ -92,15 +92,10 @@ def handler(event, context):
 
             if "Item" not in meta_response:
                 # USER_META doesn't exist - count existing keys and calculate total usage
-                active_keys = [
-                    i for i in items
-                    if i.get("sk") not in ("PENDING", "USER_META")
-                ]
+                active_keys = [i for i in items if i.get("sk") not in ("PENDING", "USER_META")]
                 current_count = len(active_keys)
                 # Sum existing usage across all keys for authoritative count
-                total_usage = sum(
-                    int(i.get("requests_this_month", 0)) for i in active_keys
-                )
+                total_usage = sum(int(i.get("requests_this_month", 0)) for i in active_keys)
 
                 # Initialize USER_META with current count and aggregated usage
                 try:
@@ -168,7 +163,7 @@ def handler(event, context):
                             400,
                             "cannot_revoke_last_key",
                             "Cannot revoke your only API key. Create a new one first.",
-                            origin=origin
+                            origin=origin,
                         )
                 logger.error(f"Transaction failed: {e}")
                 return error_response(500, "internal_error", "Failed to revoke API key", origin=origin)
@@ -188,5 +183,3 @@ def handler(event, context):
         "headers": response_headers,
         "body": "",
     }
-
-

@@ -51,8 +51,7 @@ class TestGetApiKeysHandler:
         # Set up secrets manager mock
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -74,6 +73,7 @@ class TestGetApiKeysHandler:
 
         import api.auth_callback
         from api.get_api_keys import handler
+
         api.auth_callback._session_secret_cache = None
 
         # Create valid session token
@@ -116,8 +116,7 @@ class TestCreateApiKeyHandler:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -137,6 +136,7 @@ class TestCreateApiKeyHandler:
 
         import api.auth_callback
         from api.create_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_create123", "create@example.com", "pro")
@@ -159,8 +159,7 @@ class TestCreateApiKeyHandler:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -180,6 +179,7 @@ class TestCreateApiKeyHandler:
 
         import api.auth_callback
         from api.create_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_no_meta", "nometa@example.com")
@@ -204,8 +204,7 @@ class TestCreateApiKeyHandler:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -226,6 +225,7 @@ class TestCreateApiKeyHandler:
 
         import api.auth_callback
         from api.create_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_has_usage", "hasusage@example.com")
@@ -252,8 +252,7 @@ class TestCreateApiKeyHandler:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -280,6 +279,7 @@ class TestCreateApiKeyHandler:
 
         import api.auth_callback
         from api.create_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_with_meta", "withmeta@example.com")
@@ -303,8 +303,7 @@ class TestCreateApiKeyHandler:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -325,6 +324,7 @@ class TestCreateApiKeyHandler:
 
         import api.auth_callback
         from api.create_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_maxkeys", "maxkeys@example.com")
@@ -365,8 +365,7 @@ class TestRevokeApiKeyHandler:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -389,6 +388,7 @@ class TestRevokeApiKeyHandler:
 
         import api.auth_callback
         from api.revoke_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_revoke123", "revoke@example.com")
@@ -414,8 +414,7 @@ class TestRevokeApiKeyHandler:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -435,6 +434,7 @@ class TestRevokeApiKeyHandler:
 
         import api.auth_callback
         from api.revoke_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_onlykey", "onlykey@example.com")
@@ -457,8 +457,7 @@ class TestRevokeApiKeyHandler:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -478,6 +477,7 @@ class TestRevokeApiKeyHandler:
 
         import api.auth_callback
         from api.revoke_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_notfound", "notfound@example.com")
@@ -498,13 +498,13 @@ class TestRevokeApiKeyHandler:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         import api.auth_callback
         from api.create_api_key import handler as create_handler
         from api.get_api_keys import handler as get_handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_suffix_test", "suffix@example.com", "pro")
@@ -532,8 +532,9 @@ class TestRevokeApiKeyHandler:
         listed_key_prefix = get_body["api_keys"][0]["key_prefix"]
 
         # The key_prefix should contain the actual key suffix, not the hash suffix
-        assert listed_key_prefix.endswith(actual_suffix), \
+        assert listed_key_prefix.endswith(actual_suffix), (
             f"Listed key suffix '{listed_key_prefix}' should end with actual key suffix '{actual_suffix}'"
+        )
 
 
 class TestGetApiKeysFiltering:
@@ -547,8 +548,7 @@ class TestGetApiKeysFiltering:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -577,6 +577,7 @@ class TestGetApiKeysFiltering:
 
         import api.auth_callback
         from api.get_api_keys import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_filter_test", "filter@example.com")
@@ -596,8 +597,7 @@ class TestGetApiKeysFiltering:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -627,6 +627,7 @@ class TestGetApiKeysFiltering:
 
         import api.auth_callback
         from api.get_api_keys import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_meta_filter", "meta_filter@example.com")
@@ -646,8 +647,7 @@ class TestGetApiKeysFiltering:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -676,6 +676,7 @@ class TestGetApiKeysFiltering:
 
         import api.auth_callback
         from api.get_api_keys import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_recovery_filter", "recovery@example.com")
@@ -699,8 +700,7 @@ class TestCreateApiKeyWithName:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -720,6 +720,7 @@ class TestCreateApiKeyWithName:
 
         import api.auth_callback
         from api.create_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_named_key", "named@example.com", "pro")
@@ -732,9 +733,7 @@ class TestCreateApiKeyWithName:
         assert result["statusCode"] == 201
 
         # Verify the key was created with the custom name
-        response = table.query(
-            KeyConditionExpression=boto3.dynamodb.conditions.Key("pk").eq("user_named_key")
-        )
+        response = table.query(KeyConditionExpression=boto3.dynamodb.conditions.Key("pk").eq("user_named_key"))
         # Find the new key (not the existing one)
         new_key = None
         for item in response["Items"]:
@@ -753,8 +752,7 @@ class TestCreateApiKeyWithName:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -774,6 +772,7 @@ class TestCreateApiKeyWithName:
 
         import api.auth_callback
         from api.create_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_default_name", "default@example.com")
@@ -797,12 +796,12 @@ class TestRevokeApiKeyEdgeCases:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         import api.auth_callback
         from api.revoke_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_missing_id", "missing@example.com")
@@ -824,16 +823,17 @@ class TestRevokeApiKeyEdgeCases:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         import api.auth_callback
         from api.revoke_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         # Create expired session token
         from api.auth_callback import _create_session_token
+
         expired_data = {
             "user_id": "user_expired",
             "email": "expired@example.com",
@@ -858,8 +858,7 @@ class TestRevokeApiKeyEdgeCases:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -891,6 +890,7 @@ class TestRevokeApiKeyEdgeCases:
 
         import api.auth_callback
         from api.revoke_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_count_test", "count@example.com")
@@ -918,8 +918,7 @@ class TestApiKeysCorsHandling:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -937,6 +936,7 @@ class TestApiKeysCorsHandling:
 
         import api.auth_callback
         from api.get_api_keys import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_cors", "cors@example.com")
@@ -956,8 +956,7 @@ class TestApiKeysCorsHandling:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -975,6 +974,7 @@ class TestApiKeysCorsHandling:
 
         import api.auth_callback
         from api.create_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_cors_create", "cors_create@example.com")
@@ -999,8 +999,7 @@ class TestApiKeysResponseFormat:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1018,6 +1017,7 @@ class TestApiKeysResponseFormat:
 
         import api.auth_callback
         from api.get_api_keys import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_cache", "cache@example.com")
@@ -1037,8 +1037,7 @@ class TestApiKeysResponseFormat:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1056,6 +1055,7 @@ class TestApiKeysResponseFormat:
 
         import api.auth_callback
         from api.create_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_message", "message@example.com")
@@ -1077,8 +1077,7 @@ class TestApiKeysResponseFormat:
 
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
-            Name="test-secret",
-            SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
+            Name="test-secret", SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1096,6 +1095,7 @@ class TestApiKeysResponseFormat:
 
         import api.auth_callback
         from api.create_api_key import handler
+
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_keyid", "keyid@example.com")

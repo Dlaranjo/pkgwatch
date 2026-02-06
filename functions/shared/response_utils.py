@@ -20,9 +20,7 @@ _DEV_ORIGINS = [
     "http://localhost:3000",
 ]
 ALLOWED_ORIGINS: List[str] = (
-    _PROD_ORIGINS + _DEV_ORIGINS
-    if os.environ.get("ALLOW_DEV_CORS") == "true"
-    else _PROD_ORIGINS
+    _PROD_ORIGINS + _DEV_ORIGINS if os.environ.get("ALLOW_DEV_CORS") == "true" else _PROD_ORIGINS
 )
 
 
@@ -55,9 +53,7 @@ def decimal_default(obj: Any) -> Any:
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
-def json_response(
-    status_code: int, body: dict, headers: Optional[dict] = None
-) -> dict:
+def json_response(status_code: int, body: dict, headers: Optional[dict] = None) -> dict:
     """
     Create standardized JSON response.
 

@@ -64,9 +64,7 @@ def handler(event, context):
     stripe_api_key = get_stripe_api_key()
     if not stripe_api_key:
         logger.error("Stripe API key not configured")
-        return error_response(
-            500, "stripe_not_configured", "Payment system not configured", origin=origin
-        )
+        return error_response(500, "stripe_not_configured", "Payment system not configured", origin=origin)
 
     stripe.api_key = stripe_api_key
 
@@ -80,18 +78,14 @@ def handler(event, context):
             session_token = cookies["session"].value
 
     if not session_token:
-        return error_response(
-            401, "unauthorized", "Please log in to upgrade", origin=origin
-        )
+        return error_response(401, "unauthorized", "Please log in to upgrade", origin=origin)
 
     # Import here to avoid circular imports at module level
     from api.auth_callback import verify_session_token
 
     session_data = verify_session_token(session_token)
     if not session_data:
-        return error_response(
-            401, "session_expired", "Session expired. Please log in again.", origin=origin
-        )
+        return error_response(401, "session_expired", "Session expired. Please log in again.", origin=origin)
 
     user_id = session_data.get("user_id")
     email = session_data.get("email")
@@ -100,9 +94,7 @@ def handler(event, context):
     try:
         body = json.loads(event.get("body", "{}") or "{}")
     except json.JSONDecodeError:
-        return error_response(
-            400, "invalid_json", "Request body must be valid JSON", origin=origin
-        )
+        return error_response(400, "invalid_json", "Request body must be valid JSON", origin=origin)
 
     tier = body.get("tier", "").lower()
 
@@ -150,9 +142,7 @@ def handler(event, context):
     price_id = TIER_TO_PRICE[tier]
     if not price_id:
         logger.error(f"Price ID not configured for tier: {tier}")
-        return error_response(
-            500, "price_not_configured", "Pricing not configured for this tier", origin=origin
-        )
+        return error_response(500, "price_not_configured", "Pricing not configured for this tier", origin=origin)
 
     # Prevent downgrade via checkout (should use customer portal instead)
     if TIER_ORDER.get(tier, 0) <= TIER_ORDER.get(current_tier, 0):
@@ -199,9 +189,7 @@ def handler(event, context):
 
     except stripe.StripeError as e:
         logger.error(f"Stripe error creating checkout session: {e}")
-        return error_response(
-            500, "stripe_error", "Failed to create checkout session", origin=origin
-        )
+        return error_response(500, "stripe_error", "Failed to create checkout session", origin=origin)
     except Exception as e:
         logger.error(f"Error creating checkout session: {e}")
         return error_response(500, "internal_error", "An error occurred", origin=origin)

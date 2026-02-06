@@ -50,9 +50,7 @@ def handler(event, context):
     table = dynamodb.Table(table_name)
 
     # Feature flag for billing cycle reset (allows rollback)
-    billing_cycle_enabled = os.environ.get(
-        "BILLING_CYCLE_RESET_ENABLED", "true"
-    ).lower() == "true"
+    billing_cycle_enabled = os.environ.get("BILLING_CYCLE_RESET_ENABLED", "true").lower() == "true"
 
     reset_time = datetime.now(timezone.utc).isoformat()
     reset_month = datetime.now(timezone.utc).strftime("%Y-%m")
@@ -160,9 +158,7 @@ def handler(event, context):
 def _get_reset_state(table, reset_month: str) -> dict | None:
     """Get stored reset state for the current month."""
     try:
-        response = table.get_item(
-            Key={"pk": RESET_STATE_PK, "sk": RESET_STATE_SK}
-        )
+        response = table.get_item(Key={"pk": RESET_STATE_PK, "sk": RESET_STATE_SK})
         item = response.get("Item")
         if item and item.get("reset_month") == reset_month:
             return item
@@ -193,9 +189,7 @@ def _store_reset_state(table, reset_month: str, last_key: dict, items_so_far: in
 def _clear_reset_state(table):
     """Clear stored reset state after successful completion."""
     try:
-        table.delete_item(
-            Key={"pk": RESET_STATE_PK, "sk": RESET_STATE_SK}
-        )
+        table.delete_item(Key={"pk": RESET_STATE_PK, "sk": RESET_STATE_SK})
         logger.info("Cleared reset state after completion")
     except Exception as e:
         logger.error(f"Error clearing reset state: {e}")

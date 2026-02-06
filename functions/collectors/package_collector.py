@@ -63,9 +63,9 @@ DEDUP_WINDOW_MINUTES = int(os.environ.get("DEDUP_WINDOW_MINUTES", "30"))
 # Circuit breaker errors indicate service outages that may take longer to recover
 # Rate limit errors typically resolve within an hour
 STALE_DATA_THRESHOLDS = {
-    "circuit_open": 14,       # Circuit breaker - service likely recovering, accept 2-week old data
-    "rate_limit_exceeded": 7, # Rate limit - will resolve within the hour
-    "default": 7,             # Other errors - be conservative
+    "circuit_open": 14,  # Circuit breaker - service likely recovering, accept 2-week old data
+    "rate_limit_exceeded": 7,  # Rate limit - will resolve within the hour
+    "default": 7,  # Other errors - be conservative
 }
 
 # Semaphore to limit concurrent GitHub API calls per Lambda instance
@@ -100,6 +100,7 @@ def get_github_semaphore() -> asyncio.Semaphore:
 
     return _github_semaphore
 
+
 # Global rate limiting with sharded counters
 # Distributes writes across 10 partitions to avoid hot partition issues
 RATE_LIMIT_SHARDS = 10
@@ -109,13 +110,13 @@ GITHUB_HOURLY_LIMIT = 4000  # Leave buffer from 5000/hour limit
 
 # Patterns to redact from error messages (security)
 _SENSITIVE_PATTERNS = [
-    (re.compile(r'arn:aws:[^:]*:[^:]*:\d{12}:[^\s]*', re.IGNORECASE), 'arn:aws:***:***:***:***'),
-    (re.compile(r'ghp_[a-zA-Z0-9]{36}', re.IGNORECASE), 'ghp_***'),
-    (re.compile(r'gho_[a-zA-Z0-9]{36}', re.IGNORECASE), 'gho_***'),
-    (re.compile(r'github_pat_[a-zA-Z0-9_]{22,}', re.IGNORECASE), 'github_pat_***'),
-    (re.compile(r'sk-[a-zA-Z0-9]{32,}', re.IGNORECASE), 'sk-***'),
-    (re.compile(r'Bearer\s+[a-zA-Z0-9._-]+', re.IGNORECASE), 'Bearer ***'),
-    (re.compile(r'\d{12}'), '***'),  # AWS account IDs
+    (re.compile(r"arn:aws:[^:]*:[^:]*:\d{12}:[^\s]*", re.IGNORECASE), "arn:aws:***:***:***:***"),
+    (re.compile(r"ghp_[a-zA-Z0-9]{36}", re.IGNORECASE), "ghp_***"),
+    (re.compile(r"gho_[a-zA-Z0-9]{36}", re.IGNORECASE), "gho_***"),
+    (re.compile(r"github_pat_[a-zA-Z0-9_]{22,}", re.IGNORECASE), "github_pat_***"),
+    (re.compile(r"sk-[a-zA-Z0-9]{32,}", re.IGNORECASE), "sk-***"),
+    (re.compile(r"Bearer\s+[a-zA-Z0-9._-]+", re.IGNORECASE), "Bearer ***"),
+    (re.compile(r"\d{12}"), "***"),  # AWS account IDs
 ]
 
 
@@ -293,7 +294,7 @@ def _check_and_increment_github_rate_limit_sync() -> bool:
                     "shard_id": shard_id,
                     "window_key": window_key,
                     "per_shard_limit": per_shard_limit,
-                }
+                },
             )
             return False
 
@@ -340,9 +341,7 @@ def _store_collection_error_sync(ecosystem: str, name: str, error_msg: str) -> N
         table.update_item(
             Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"},
             UpdateExpression=(
-                "SET collection_error = :error, "
-                "collection_error_class = :error_class, "
-                "collection_error_at = :now"
+                "SET collection_error = :error, collection_error_class = :error_class, collection_error_at = :now"
             ),
             ExpressionAttributeValues={
                 ":error": error_msg,
@@ -432,9 +431,9 @@ def _extract_cached_github_fields(existing: dict) -> dict:
 def _has_github_data(data: dict) -> bool:
     """Check if data has valid GitHub fields (not just zeros)."""
     return (
-        data.get("stars") is not None or
-        data.get("days_since_last_commit") is not None or
-        data.get("commits_90d") is not None
+        data.get("stars") is not None
+        or data.get("days_since_last_commit") is not None
+        or data.get("commits_90d") is not None
     )
 
 
@@ -462,8 +461,9 @@ def _get_stale_threshold_days(error_reason: str) -> int:
 
 class FallbackMode(Enum):
     """Fallback mode for stale data handling."""
+
     STANDARD = "standard"  # {source}_freshness pattern
-    GLOBAL = "global"      # data_freshness pattern (deps.dev)
+    GLOBAL = "global"  # data_freshness pattern (deps.dev)
 
 
 async def _try_stale_fallback(
@@ -533,12 +533,7 @@ async def _try_stale_fallback(
     return True
 
 
-async def _try_github_stale_fallback(
-    combined_data: dict,
-    ecosystem: str,
-    name: str,
-    error_reason: str
-) -> None:
+async def _try_github_stale_fallback(combined_data: dict, ecosystem: str, name: str, error_reason: str) -> None:
     """
     Try to use stale GitHub data as fallback when GitHub collection fails.
 
@@ -553,8 +548,7 @@ async def _try_github_stale_fallback(
         max_age = _get_stale_threshold_days(error_reason)
         if _is_data_acceptable(existing, max_age_days=max_age):
             logger.info(
-                f"Using stale GitHub data for {ecosystem}/{name} "
-                f"(max_age={max_age} days, reason={error_reason})"
+                f"Using stale GitHub data for {ecosystem}/{name} (max_age={max_age} days, reason={error_reason})"
             )
             cached_fields = _extract_cached_github_fields(existing)
             # Only add non-None fields
@@ -643,11 +637,7 @@ def _should_run_collector(source: str, retry_sources: list) -> bool:
 
 
 async def collect_package_data(
-    ecosystem: str,
-    name: str,
-    existing: dict = None,
-    retry_sources: list = None,
-    bulk_downloads: dict = None
+    ecosystem: str, name: str, existing: dict = None, retry_sources: list = None, bulk_downloads: dict = None
 ) -> dict:
     """
     Collect comprehensive package data from all sources with graceful degradation.
@@ -705,9 +695,15 @@ async def collect_package_data(
 
         # Try to use stale/cached data as fallback
         await _try_stale_fallback(
-            combined_data, ecosystem, name, "deps.dev", "circuit_open",
-            _extract_cached_fields, existing,
-            mode=FallbackMode.GLOBAL, reason_prefix="deps.dev_"
+            combined_data,
+            ecosystem,
+            name,
+            "deps.dev",
+            "circuit_open",
+            _extract_cached_fields,
+            existing,
+            mode=FallbackMode.GLOBAL,
+            reason_prefix="deps.dev_",
         )
 
     except Exception as e:
@@ -716,9 +712,15 @@ async def collect_package_data(
 
         # Try to use stale/cached data as fallback
         await _try_stale_fallback(
-            combined_data, ecosystem, name, "deps.dev", "unavailable",
-            _extract_cached_fields, existing,
-            mode=FallbackMode.GLOBAL, reason_prefix="deps.dev_"
+            combined_data,
+            ecosystem,
+            name,
+            "deps.dev",
+            "unavailable",
+            _extract_cached_fields,
+            existing,
+            mode=FallbackMode.GLOBAL,
+            reason_prefix="deps.dev_",
         )
 
     # 2. npm and bundlephobia data (run in parallel - they don't depend on each other)
@@ -777,8 +779,7 @@ async def collect_package_data(
             logger.warning(f"npm rate limit reached, skipping for {name}")
             combined_data["npm_error"] = "rate_limit_exceeded"
             await _try_stale_fallback(
-                combined_data, ecosystem, name, "npm", "rate_limit_exceeded",
-                _extract_cached_npm_fields, existing
+                combined_data, ecosystem, name, "npm", "rate_limit_exceeded", _extract_cached_npm_fields, existing
             )
         else:
             npm_result = None  # Skipped due to selective retry
@@ -791,9 +792,14 @@ async def collect_package_data(
             logger.warning(f"Bundlephobia rate limit reached, skipping for {name}")
             combined_data["bundlephobia_error"] = "rate_limit_exceeded"
             await _try_stale_fallback(
-                combined_data, ecosystem, name, "bundlephobia", "rate_limit_exceeded",
-                _extract_cached_bundlephobia_fields, existing,
-                require_any_cached_value=True
+                combined_data,
+                ecosystem,
+                name,
+                "bundlephobia",
+                "rate_limit_exceeded",
+                _extract_cached_bundlephobia_fields,
+                existing,
+                require_any_cached_value=True,
             )
         else:
             bundle_result = None  # Skipped due to selective retry
@@ -804,15 +810,13 @@ async def collect_package_data(
                 logger.warning(f"npm circuit open for {name}")
                 combined_data["npm_error"] = "circuit_open"
                 await _try_stale_fallback(
-                    combined_data, ecosystem, name, "npm", "circuit_open",
-                    _extract_cached_npm_fields, existing
+                    combined_data, ecosystem, name, "npm", "circuit_open", _extract_cached_npm_fields, existing
                 )
             elif isinstance(npm_result, Exception):
                 logger.error(f"Failed to fetch npm data for {name}: {npm_result}")
                 combined_data["npm_error"] = _sanitize_error(str(npm_result))
                 await _try_stale_fallback(
-                    combined_data, ecosystem, name, "npm", str(npm_result)[:50],
-                    _extract_cached_npm_fields, existing
+                    combined_data, ecosystem, name, "npm", str(npm_result)[:50], _extract_cached_npm_fields, existing
                 )
             else:
                 npm_data = npm_result
@@ -848,17 +852,27 @@ async def collect_package_data(
                 logger.warning(f"Bundlephobia circuit open for {name}")
                 combined_data["bundlephobia_error"] = "circuit_open"
                 await _try_stale_fallback(
-                    combined_data, ecosystem, name, "bundlephobia", "circuit_open",
-                    _extract_cached_bundlephobia_fields, existing,
-                    require_any_cached_value=True
+                    combined_data,
+                    ecosystem,
+                    name,
+                    "bundlephobia",
+                    "circuit_open",
+                    _extract_cached_bundlephobia_fields,
+                    existing,
+                    require_any_cached_value=True,
                 )
             elif isinstance(bundle_result, Exception):
                 logger.warning(f"Failed to fetch bundle size for {name}: {bundle_result}")
                 combined_data["bundlephobia_error"] = _sanitize_error(str(bundle_result))
                 await _try_stale_fallback(
-                    combined_data, ecosystem, name, "bundlephobia", str(bundle_result)[:50],
-                    _extract_cached_bundlephobia_fields, existing,
-                    require_any_cached_value=True
+                    combined_data,
+                    ecosystem,
+                    name,
+                    "bundlephobia",
+                    str(bundle_result)[:50],
+                    _extract_cached_bundlephobia_fields,
+                    existing,
+                    require_any_cached_value=True,
                 )
             elif "error" not in bundle_result:
                 combined_data["bundlephobia"] = bundle_result
@@ -866,9 +880,7 @@ async def collect_package_data(
                 combined_data["bundle_size"] = bundle_result.get("size", 0)
                 combined_data["bundle_size_gzip"] = bundle_result.get("gzip", 0)
                 combined_data["bundle_size_category"] = bundle_result.get("size_category")
-                combined_data["bundle_dependency_count"] = bundle_result.get(
-                    "dependency_count", 0
-                )
+                combined_data["bundle_dependency_count"] = bundle_result.get("dependency_count", 0)
             else:
                 combined_data["bundlephobia_error"] = bundle_result.get("error")
 
@@ -903,12 +915,8 @@ async def collect_package_data(
                     if existing and existing.get("downloads_fetched_at"):
                         try:
                             fetched_at = existing.get("downloads_fetched_at", "")
-                            fetched_time = datetime.fromisoformat(
-                                fetched_at.replace("Z", "+00:00")
-                            )
-                            age_hours = (
-                                datetime.now(timezone.utc) - fetched_time
-                            ).total_seconds() / 3600
+                            fetched_time = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+                            age_hours = (datetime.now(timezone.utc) - fetched_time).total_seconds() / 3600
                             if age_hours < 168:  # 7 days
                                 batch_downloads = existing.get("weekly_downloads", 0)
                                 # Use batch downloads if they're better than inline
@@ -946,23 +954,20 @@ async def collect_package_data(
                 logger.warning(f"PyPI circuit open for {name}")
                 combined_data["pypi_error"] = "circuit_open"
                 await _try_stale_fallback(
-                    combined_data, ecosystem, name, "pypi", "circuit_open",
-                    _extract_cached_pypi_fields, existing
+                    combined_data, ecosystem, name, "pypi", "circuit_open", _extract_cached_pypi_fields, existing
                 )
             except Exception as e:
                 logger.error(f"Failed to fetch PyPI data for {name}: {e}")
                 combined_data["pypi_error"] = _sanitize_error(str(e))
                 await _try_stale_fallback(
-                    combined_data, ecosystem, name, "pypi", "exception",
-                    _extract_cached_pypi_fields, existing
+                    combined_data, ecosystem, name, "pypi", "exception", _extract_cached_pypi_fields, existing
                 )
         elif should_fetch_pypi:
             # Wanted to fetch but rate limited - try stale fallback
             logger.warning(f"PyPI rate limit reached, skipping for {name}")
             combined_data["pypi_error"] = "rate_limit_exceeded"
             await _try_stale_fallback(
-                combined_data, ecosystem, name, "pypi", "rate_limit_exceeded",
-                _extract_cached_pypi_fields, existing
+                combined_data, ecosystem, name, "pypi", "rate_limit_exceeded", _extract_cached_pypi_fields, existing
             )
         # else: skipped due to selective retry, cached data already applied above
 
@@ -1001,18 +1006,14 @@ async def collect_package_data(
                     async with get_github_semaphore():
                         # Check global rate limit before making GitHub API call
                         if not await _check_and_increment_github_rate_limit():
-                            logger.warning(
-                                f"Skipping GitHub for {ecosystem}/{name} - global rate limit"
-                            )
+                            logger.warning(f"Skipping GitHub for {ecosystem}/{name} - global rate limit")
                             combined_data["github_error"] = "rate_limit_exceeded"
                             github_failed = True
                             github_error_reason = "rate_limit_exceeded"
                         else:
                             github_token = get_github_token()
                             github_collector = GitHubCollector(token=github_token)
-                            github_data = await github_collector.get_repo_metrics(
-                                owner, repo
-                            )
+                            github_data = await github_collector.get_repo_metrics(owner, repo)
 
                             if "error" not in github_data:
                                 # Record success for circuit breaker (thread-safe)
@@ -1024,34 +1025,18 @@ async def collect_package_data(
                                 # Supplement with GitHub-specific data
                                 combined_data["stars"] = github_data.get("stars", 0)
                                 combined_data["forks"] = github_data.get("forks", 0)
-                                combined_data["open_issues"] = github_data.get(
-                                    "open_issues", 0
-                                )
-                                combined_data["days_since_last_commit"] = github_data.get(
-                                    "days_since_last_commit"
-                                )
-                                combined_data["commits_90d"] = github_data.get(
-                                    "commits_90d", 0
-                                )
-                                combined_data["active_contributors_90d"] = github_data.get(
-                                    "active_contributors_90d", 0
-                                )
-                                combined_data["total_contributors"] = github_data.get(
-                                    "total_contributors", 0
-                                )
+                                combined_data["open_issues"] = github_data.get("open_issues", 0)
+                                combined_data["days_since_last_commit"] = github_data.get("days_since_last_commit")
+                                combined_data["commits_90d"] = github_data.get("commits_90d", 0)
+                                combined_data["active_contributors_90d"] = github_data.get("active_contributors_90d", 0)
+                                combined_data["total_contributors"] = github_data.get("total_contributors", 0)
                                 # True bus factor (contribution distribution analysis)
-                                combined_data["true_bus_factor"] = github_data.get(
-                                    "true_bus_factor", 1
+                                combined_data["true_bus_factor"] = github_data.get("true_bus_factor", 1)
+                                combined_data["bus_factor_confidence"] = github_data.get("bus_factor_confidence", "LOW")
+                                combined_data["contribution_distribution"] = github_data.get(
+                                    "contribution_distribution", []
                                 )
-                                combined_data["bus_factor_confidence"] = github_data.get(
-                                    "bus_factor_confidence", "LOW"
-                                )
-                                combined_data[
-                                    "contribution_distribution"
-                                ] = github_data.get("contribution_distribution", [])
-                                combined_data["archived"] = github_data.get(
-                                    "archived", False
-                                )
+                                combined_data["archived"] = github_data.get("archived", False)
                             else:
                                 # Check if error is transient or not
                                 error_type = github_data.get("error", "")
@@ -1063,9 +1048,7 @@ async def collect_package_data(
                                     await GITHUB_CIRCUIT.record_failure_async()
                                 else:
                                     # Non-transient error - don't count against circuit breaker
-                                    logger.debug(
-                                        f"GitHub non-transient error for {ecosystem}/{name}: {error_type}"
-                                    )
+                                    logger.debug(f"GitHub non-transient error for {ecosystem}/{name}: {error_type}")
                                 combined_data["github_error"] = error_type
                                 github_failed = True
                                 github_error_reason = error_type
@@ -1080,9 +1063,7 @@ async def collect_package_data(
 
             # Try stale data fallback if GitHub collection failed
             if github_failed:
-                await _try_github_stale_fallback(
-                    combined_data, ecosystem, name, github_error_reason
-                )
+                await _try_github_stale_fallback(combined_data, ecosystem, name, github_error_reason)
 
     # Note: Bundlephobia is now fetched in parallel with npm data in section 2
 
@@ -1125,7 +1106,9 @@ async def collect_package_data(
                                 combined_data["openssf_source"] = "direct"
                                 combined_data["openssf_freshness"] = "fresh"
                                 combined_data.setdefault("sources", []).append("openssf")
-                                logger.info(f"Got OpenSSF score {openssf_data['openssf_score']} from direct API for {name}")
+                                logger.info(
+                                    f"Got OpenSSF score {openssf_data['openssf_score']} from direct API for {name}"
+                                )
                             else:
                                 # 404 or parse error - not a failure, just no data available
                                 await OPENSSF_CIRCUIT.record_success_async()
@@ -1266,8 +1249,8 @@ def store_package_data_sync(ecosystem: str, name: str, data: dict, tier: int):
         "openssf_score": data.get("openssf_score"),
         "openssf_checks": data.get("openssf_checks", []),
         "openssf_source": data.get("openssf_source"),  # "deps.dev", "direct", "cached", or "cached_fresh"
-        "openssf_date": data.get("openssf_date"),      # Date the scorecard was generated
-        "openssf_freshness": data.get("openssf_freshness"),      # "fresh", "stale", or None
+        "openssf_date": data.get("openssf_date"),  # Date the scorecard was generated
+        "openssf_freshness": data.get("openssf_freshness"),  # "fresh", "stale", or None
         "openssf_stale_reason": data.get("openssf_stale_reason"),  # Error that triggered stale fallback
         # Source-specific freshness tracking (Fix 4)
         "npm_freshness": data.get("npm_freshness"),
@@ -1316,16 +1299,10 @@ def store_package_data_sync(ecosystem: str, name: str, data: dict, tier: int):
     existing_retry = data.get("_existing_retry_count", 0)
     if data_status == "minimal" and existing_retry >= MAX_RETRY_COUNT:
         data_status = "abandoned_minimal"
-        logger.info(
-            f"Package {ecosystem}/{name} marked as abandoned_minimal "
-            f"after {existing_retry} retries"
-        )
+        logger.info(f"Package {ecosystem}/{name} marked as abandoned_minimal after {existing_retry} retries")
     elif data_status == "partial" and existing_retry >= MAX_RETRY_COUNT:
         data_status = "abandoned_partial"
-        logger.info(
-            f"Package {ecosystem}/{name} marked as abandoned_partial "
-            f"after {existing_retry} retries"
-        )
+        logger.info(f"Package {ecosystem}/{name} marked as abandoned_partial after {existing_retry} retries")
 
     item["data_status"] = data_status
     item["missing_sources"] = missing_sources
@@ -1368,10 +1345,7 @@ async def store_package_data(ecosystem: str, name: str, data: dict, tier: int):
     await asyncio.to_thread(store_package_data_sync, ecosystem, name, data, tier)
 
 
-async def process_single_package(
-    message: dict,
-    bulk_downloads: dict = None
-) -> tuple[bool, str, Optional[str]]:
+async def process_single_package(message: dict, bulk_downloads: dict = None) -> tuple[bool, str, Optional[str]]:
     """Process a single package message with deduplication.
 
     Args:
@@ -1418,9 +1392,7 @@ async def process_single_package(
 
     # Log what we're about to do
     if retry_sources:
-        logger.info(
-            f"Selective retry for {ecosystem}/{name} (tier {tier}, sources={retry_sources})"
-        )
+        logger.info(f"Selective retry for {ecosystem}/{name} (tier {tier}, sources={retry_sources})")
     else:
         logger.info(f"Collecting data for {ecosystem}/{name} (tier {tier}, force={force_refresh})")
 
@@ -1487,8 +1459,7 @@ async def process_batch(records: list) -> tuple[int, list[str]]:
     # Pre-fetch download stats in bulk for npm packages (reduces API calls by ~127x)
     # Only fetch for unscoped packages - scoped packages (@scope/name) must be fetched individually
     npm_packages = [
-        msg["name"] for msg, _ in parsed_messages
-        if msg.get("ecosystem") == "npm" and not msg["name"].startswith("@")
+        msg["name"] for msg, _ in parsed_messages if msg.get("ecosystem") == "npm" and not msg["name"].startswith("@")
     ]
     bulk_downloads = {}
     if npm_packages:
@@ -1526,16 +1497,13 @@ async def process_batch(records: list) -> tuple[int, list[str]]:
                 dimensions={
                     "Ecosystem": ecosystem,
                     "Reason": error_type[:50],
-                }
+                },
             )
         elif isinstance(result, tuple) and len(result) >= 3:
             success, _pkg_name, error_reason = result[0], result[1], result[2]
             if success:
                 successes += 1
-                emit_metric(
-                    "PackagesCollected",
-                    dimensions={"Ecosystem": ecosystem}
-                )
+                emit_metric("PackagesCollected", dimensions={"Ecosystem": ecosystem})
             else:
                 failed_message_ids.append(message_id)
                 reason = error_reason or "unknown"
@@ -1545,7 +1513,7 @@ async def process_batch(records: list) -> tuple[int, list[str]]:
                     dimensions={
                         "Ecosystem": ecosystem,
                         "Reason": reason[:50],
-                    }
+                    },
                 )
         else:
             failed_message_ids.append(message_id)
@@ -1553,12 +1521,14 @@ async def process_batch(records: list) -> tuple[int, list[str]]:
 
     # Emit batch metrics
     batch_duration = time.time() - start_time
-    emit_batch_metrics([
-        {"metric_name": "BatchProcessingTime", "value": batch_duration, "unit": "Seconds"},
-        {"metric_name": "BatchSize", "value": len(records)},
-        {"metric_name": "BatchSuccesses", "value": successes},
-        {"metric_name": "BatchFailures", "value": len(failed_message_ids)},
-    ])
+    emit_batch_metrics(
+        [
+            {"metric_name": "BatchProcessingTime", "value": batch_duration, "unit": "Seconds"},
+            {"metric_name": "BatchSize", "value": len(records)},
+            {"metric_name": "BatchSuccesses", "value": successes},
+            {"metric_name": "BatchFailures", "value": len(failed_message_ids)},
+        ]
+    )
 
     return successes, failed_message_ids
 
@@ -1580,7 +1550,7 @@ def handler(event, context):
     messages will be retried, successful ones won't be reprocessed.
     """
     configure_structured_logging()
-    request_id_var.set(getattr(context, 'aws_request_id', 'unknown'))
+    request_id_var.set(getattr(context, "aws_request_id", "unknown"))
 
     records = event.get("Records", [])
     logger.info(f"Processing {len(records)} messages")
@@ -1599,18 +1569,18 @@ def handler(event, context):
     # SQS will only retry the failed messages, not the entire batch
     response = {
         "statusCode": 200,
-        "body": json.dumps({
-            "processed": successes + failures,
-            "successes": successes,
-            "failures": failures,
-        }),
+        "body": json.dumps(
+            {
+                "processed": successes + failures,
+                "successes": successes,
+                "failures": failures,
+            }
+        ),
     }
 
     # Add batchItemFailures if any messages failed
     # This tells SQS which specific messages to retry
     if failed_message_ids:
-        response["batchItemFailures"] = [
-            {"itemIdentifier": msg_id} for msg_id in failed_message_ids if msg_id
-        ]
+        response["batchItemFailures"] = [{"itemIdentifier": msg_id} for msg_id in failed_message_ids if msg_id]
 
     return response

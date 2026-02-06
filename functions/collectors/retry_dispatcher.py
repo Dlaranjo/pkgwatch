@@ -34,7 +34,7 @@ MAX_DISPATCH_PER_RUN = int(os.environ.get("MAX_DISPATCH_PER_RUN", "300"))
 def handler(event, context):
     """Find incomplete packages due for retry and dispatch."""
     configure_structured_logging()
-    request_id_var.set(getattr(context, 'aws_request_id', 'unknown'))
+    request_id_var.set(getattr(context, "aws_request_id", "unknown"))
 
     if not PACKAGE_QUEUE_URL:
         logger.error("PACKAGE_QUEUE_URL not configured")
@@ -67,16 +67,10 @@ def handler(event, context):
             # Note: CDK still has "data-status-index" due to CloudFormation drift.
             response = table.query(
                 IndexName="data-status-index-v2",
-                KeyConditionExpression=(
-                    Key("data_status").eq(status)
-                    & Key("next_retry_at").lte(now.isoformat())
-                ),
+                KeyConditionExpression=(Key("data_status").eq(status) & Key("next_retry_at").lte(now.isoformat())),
                 FilterExpression=(
                     Attr("retry_count").lt(MAX_RETRY_COUNT)
-                    & (
-                        Attr("retry_dispatched_at").not_exists()
-                        | Attr("retry_dispatched_at").lt(one_hour_ago)
-                    )
+                    & (Attr("retry_dispatched_at").not_exists() | Attr("retry_dispatched_at").lt(one_hour_ago))
                 ),
                 Limit=MAX_DISPATCH_PER_RUN // 2,
             )
@@ -99,7 +93,7 @@ def handler(event, context):
         if dispatched >= MAX_DISPATCH_PER_RUN:
             break
 
-        if context and hasattr(context, 'get_remaining_time_in_millis'):
+        if context and hasattr(context, "get_remaining_time_in_millis"):
             remaining_ms = context.get_remaining_time_in_millis()
             if remaining_ms < 15000:
                 logger.warning(f"Approaching timeout ({remaining_ms}ms remaining), stopping early")

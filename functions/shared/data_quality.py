@@ -29,9 +29,7 @@ def get_assessment_category(data_status: str, has_repo: bool) -> str:
     return "UNVERIFIED"
 
 
-def get_quality_explanation(
-    data_status: str, missing_sources: list, has_repo: bool
-) -> str:
+def get_quality_explanation(data_status: str, missing_sources: list, has_repo: bool) -> str:
     """
     Generate human-readable explanation of data quality.
 
@@ -137,10 +135,6 @@ def is_queryable(data: dict) -> bool:
 
     has_version = latest_version is not None
     has_score = health_score is not None
-    has_usage_signal = (
-        weekly_downloads > 0 or
-        dependents_count > 0 or
-        data_status == "complete"
-    )
+    has_usage_signal = weekly_downloads > 0 or dependents_count > 0 or data_status == "complete"
 
     return has_version and has_score and has_usage_signal

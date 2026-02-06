@@ -66,10 +66,7 @@ def handler(event, context):
         # Query for referrals due for retention check
         response = events_table.query(
             IndexName="retention-due-index",
-            KeyConditionExpression=(
-                Key("needs_retention_check").eq("true") &
-                Key("retention_check_date").lte(now_iso)
-            ),
+            KeyConditionExpression=(Key("needs_retention_check").eq("true") & Key("retention_check_date").lte(now_iso)),
             Limit=100,  # Process in batches
         )
 
@@ -104,9 +101,7 @@ def handler(event, context):
                         if subscription.status in ["active", "trialing"]:
                             has_active_subscription = True
                     except stripe.StripeError as e:
-                        logger.warning(
-                            f"Error checking subscription {stripe_subscription_id}: {e}"
-                        )
+                        logger.warning(f"Error checking subscription {stripe_subscription_id}: {e}")
 
                 if has_active_subscription:
                     # Credit referrer with retention bonus
@@ -129,14 +124,12 @@ def handler(event, context):
                     )
 
                     logger.info(
-                        f"Retention bonus: credited {referrer_id} with {actual_reward} "
-                        f"for referred user {referred_id}"
+                        f"Retention bonus: credited {referrer_id} with {actual_reward} for referred user {referred_id}"
                     )
                     credited += 1
                 else:
                     logger.info(
-                        f"Skipping retention for {referred_id} - "
-                        f"subscription not active (referrer: {referrer_id})"
+                        f"Skipping retention for {referred_id} - subscription not active (referrer: {referrer_id})"
                     )
 
                 # Clear the retention check flag (regardless of outcome)
@@ -150,9 +143,7 @@ def handler(event, context):
         logger.error(f"Error querying retention-due-index: {e}")
         return {"processed": 0, "credited": 0, "error": str(e)}
 
-    logger.info(
-        f"Retention check complete: processed={processed}, credited={credited}, errors={errors}"
-    )
+    logger.info(f"Retention check complete: processed={processed}, credited={credited}, errors={errors}")
 
     return {
         "processed": processed,

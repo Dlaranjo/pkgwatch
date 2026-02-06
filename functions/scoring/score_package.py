@@ -60,7 +60,7 @@ def _retry_sync(
     base_delay: float = DYNAMODB_BASE_DELAY,
     max_delay: float = DYNAMODB_MAX_DELAY,
     retryable_exceptions: tuple = (ClientError,),
-    **kwargs
+    **kwargs,
 ) -> T:
     """
     Execute sync function with retry logic and exponential backoff.
@@ -93,18 +93,17 @@ def _retry_sync(
                         "function": func.__name__,
                         "attempts": max_retries + 1,
                         "error_type": type(e).__name__,
-                    }
+                    },
                 )
                 raise
 
             # Exponential backoff with jitter
-            delay = min(base_delay * (2 ** attempt), max_delay)
+            delay = min(base_delay * (2**attempt), max_delay)
             jitter = random.uniform(0, delay * 0.3)
             sleep_time = delay + jitter
 
             logger.warning(
-                f"Attempt {attempt + 1}/{max_retries + 1} failed, "
-                f"retrying in {sleep_time:.2f}s: {type(e).__name__}"
+                f"Attempt {attempt + 1}/{max_retries + 1} failed, retrying in {sleep_time:.2f}s: {type(e).__name__}"
             )
             time.sleep(sleep_time)
 
@@ -131,6 +130,7 @@ def from_decimal(obj):
     elif isinstance(obj, list):
         return [from_decimal(v) for v in obj]
     return obj
+
 
 # Lazy initialization - avoid boto3 calls at import time
 # This prevents cold start failures if credentials are not yet available
@@ -167,7 +167,7 @@ def handler(event, context):
         extra={
             "request_id": request_id,
             "event_type": "stream_batch" if "Records" in event else event.get("action", "single_package"),
-        }
+        },
     )
 
     if "Records" in event:
@@ -196,10 +196,7 @@ def _score_single_package(event: dict) -> dict:
 
     # Fetch package data with retry
     try:
-        response = _retry_sync(
-            table.get_item,
-            Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"}
-        )
+        response = _retry_sync(table.get_item, Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"})
         item = response.get("Item")
 
         if not item:
@@ -311,15 +308,17 @@ def _score_single_package(event: dict) -> dict:
 
     return {
         "statusCode": 200,
-        "body": json.dumps({
-            "package": name,
-            "ecosystem": ecosystem,
-            "health_score": health_result["health_score"],
-            "risk_level": health_result["risk_level"],
-            "components": health_result["components"],
-            "confidence": health_result["confidence"],
-            "abandonment_risk": abandonment_result,
-        }),
+        "body": json.dumps(
+            {
+                "package": name,
+                "ecosystem": ecosystem,
+                "health_score": health_result["health_score"],
+                "risk_level": health_result["risk_level"],
+                "components": health_result["components"],
+                "confidence": health_result["confidence"],
+                "abandonment_risk": abandonment_result,
+            }
+        ),
     }
 
 
@@ -417,26 +416,26 @@ def _process_stream_batch(event: dict) -> dict:
             "skipped": skipped,
             "failures": failures,
             "failed_item_count": len(failed_item_ids),
-        }
+        },
     )
 
     # Return batchItemFailures for DynamoDB Streams partial batch retry
     # This allows Lambda to retry only the failed records instead of the entire batch
     response = {
         "statusCode": 200,
-        "body": json.dumps({
-            "processed": successes + failures + skipped,
-            "successes": successes,
-            "skipped": skipped,
-            "failures": failures,
-        }),
+        "body": json.dumps(
+            {
+                "processed": successes + failures + skipped,
+                "successes": successes,
+                "skipped": skipped,
+                "failures": failures,
+            }
+        ),
     }
 
     # Add batchItemFailures if there are failed items to retry
     if failed_item_ids:
-        response["batchItemFailures"] = [
-            {"itemIdentifier": item_id} for item_id in failed_item_ids
-        ]
+        response["batchItemFailures"] = [{"itemIdentifier": item_id} for item_id in failed_item_ids]
 
     return response
 
@@ -456,8 +455,10 @@ def _recalculate_all() -> dict:
     logger.warning("_recalculate_all is disabled - use Step Functions for batch operations")
     return {
         "statusCode": 501,
-        "body": json.dumps({
-            "error": "Batch recalculation is disabled",
-            "message": "This operation is not safe for production. Use Step Functions workflow for batch recalculation.",
-        }),
+        "body": json.dumps(
+            {
+                "error": "Batch recalculation is disabled",
+                "message": "This operation is not safe for production. Use Step Functions workflow for batch recalculation.",
+            }
+        ),
     }

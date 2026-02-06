@@ -95,9 +95,7 @@ def calculate_abandonment_risk(data: dict, months: int = 12) -> dict:
         days = 365
     # Clamp to non-negative (negative days would break risk calculation)
     if days < 0:
-        logger.warning(
-            f"Negative days_since_last_commit in abandonment: {days}, clamping to 0"
-        )
+        logger.warning(f"Negative days_since_last_commit in abandonment: {days}, clamping to 0")
         days = 0
     days = max(0, days)  # Defense in depth
     inactivity_risk = 1 - math.exp(-days / 180)
@@ -129,9 +127,7 @@ def calculate_abandonment_risk(data: dict, months: int = 12) -> dict:
             from datetime import datetime, timezone
 
             if isinstance(last_published, str):
-                published_date = datetime.fromisoformat(
-                    last_published.replace("Z", "+00:00")
-                )
+                published_date = datetime.fromisoformat(last_published.replace("Z", "+00:00"))
             else:
                 published_date = last_published
 
@@ -142,9 +138,7 @@ def calculate_abandonment_risk(data: dict, months: int = 12) -> dict:
             days_since_release = (now - published_date).days
             # Clamp to non-negative (future dates would break risk calculation)
             if days_since_release < 0:
-                logger.warning(
-                    f"Negative days_since_release in abandonment: {days_since_release}, clamping to 0"
-                )
+                logger.warning(f"Negative days_since_release in abandonment: {days_since_release}, clamping to 0")
                 days_since_release = 0
             days_since_release = max(0, days_since_release)  # Defense in depth
         except (ValueError, TypeError):
@@ -153,12 +147,7 @@ def calculate_abandonment_risk(data: dict, months: int = 12) -> dict:
     release_risk = 1 - math.exp(-days_since_release / 365)
 
     # Weighted combination
-    risk_score = (
-        inactivity_risk * 0.35
-        + bus_factor_risk * 0.30
-        + adoption_risk * 0.20
-        + release_risk * 0.15
-    )
+    risk_score = inactivity_risk * 0.35 + bus_factor_risk * 0.30 + adoption_risk * 0.20 + release_risk * 0.15
 
     # Adjust for time horizon using Weibull survival analysis
     # This provides more realistic risk progression than linear scaling
@@ -199,7 +188,7 @@ def calculate_abandonment_risk(data: dict, months: int = 12) -> dict:
         # Sanitize to prevent XSS - strip only HTML-dangerous characters
         # Preserves useful chars like :, /, @, ' for package references and URLs
         # This is user-controlled data from npm registry that could contain malicious content
-        sanitized = re.sub(r'[<>&"]', '', str(deprecation_msg)[:200])
+        sanitized = re.sub(r'[<>&"]', "", str(deprecation_msg)[:200])
         if sanitized.strip():
             factors.append(f"Deprecation note: {sanitized.strip()}")
 

@@ -148,15 +148,14 @@ class TestCheckAndIncrementUsageWithBonus:
         """Should allow request within monthly limit."""
         # Reset auth module cache
         import shared.auth as auth_module
+
         auth_module._dynamodb = None
 
         from shared.auth import check_and_increment_usage_with_bonus
 
         table, user_id, key_hash = user_with_bonus
 
-        allowed, usage, bonus = check_and_increment_usage_with_bonus(
-            user_id, key_hash, limit=5000, count=1
-        )
+        allowed, usage, bonus = check_and_increment_usage_with_bonus(user_id, key_hash, limit=5000, count=1)
 
         assert allowed is True
         assert usage == 1
@@ -165,6 +164,7 @@ class TestCheckAndIncrementUsageWithBonus:
     def test_allows_request_using_bonus_at_limit(self, user_at_monthly_limit):
         """Should allow request using bonus when at monthly limit."""
         import shared.auth as auth_module
+
         auth_module._dynamodb = None
 
         from shared.auth import check_and_increment_usage_with_bonus
@@ -172,9 +172,7 @@ class TestCheckAndIncrementUsageWithBonus:
         table, user_id, key_hash = user_at_monthly_limit
 
         # Request 1 more should use bonus
-        allowed, usage, bonus = check_and_increment_usage_with_bonus(
-            user_id, key_hash, limit=5000, count=1
-        )
+        allowed, usage, bonus = check_and_increment_usage_with_bonus(user_id, key_hash, limit=5000, count=1)
 
         assert allowed is True
         assert usage == 5001  # Over monthly limit
@@ -183,6 +181,7 @@ class TestCheckAndIncrementUsageWithBonus:
     def test_rejects_request_when_no_credits(self, mock_dynamodb):
         """Should reject request when no monthly or bonus credits available."""
         import shared.auth as auth_module
+
         auth_module._dynamodb = None
 
         from shared.auth import check_and_increment_usage_with_bonus
@@ -210,9 +209,7 @@ class TestCheckAndIncrementUsageWithBonus:
             }
         )
 
-        allowed, usage, bonus = check_and_increment_usage_with_bonus(
-            user_id, key_hash, limit=5000, count=1
-        )
+        allowed, usage, bonus = check_and_increment_usage_with_bonus(user_id, key_hash, limit=5000, count=1)
 
         assert allowed is False
         assert usage == 5000
@@ -221,9 +218,11 @@ class TestCheckAndIncrementUsageWithBonus:
     def test_triggers_activity_gate_at_threshold(self, user_with_pending_referral):
         """Should trigger activity gate when crossing 100 packages threshold."""
         import shared.auth as auth_module
+
         auth_module._dynamodb = None
 
         import shared.referral_utils as referral_module
+
         referral_module._dynamodb = None
 
         from shared.auth import check_and_increment_usage_with_bonus
@@ -231,9 +230,7 @@ class TestCheckAndIncrementUsageWithBonus:
         table, events_table, user_id, key_hash, referrer_id = user_with_pending_referral
 
         # This request should push total to 100 and trigger activity gate
-        allowed, usage, bonus = check_and_increment_usage_with_bonus(
-            user_id, key_hash, limit=5000, count=1
-        )
+        allowed, usage, bonus = check_and_increment_usage_with_bonus(user_id, key_hash, limit=5000, count=1)
 
         assert allowed is True
 
@@ -252,6 +249,7 @@ class TestCheckAndIncrementUsageWithBonus:
     def test_batch_request_uses_bonus_correctly(self, user_at_monthly_limit):
         """Should handle batch requests crossing into bonus correctly."""
         import shared.auth as auth_module
+
         auth_module._dynamodb = None
 
         from shared.auth import check_and_increment_usage_with_bonus
@@ -259,9 +257,7 @@ class TestCheckAndIncrementUsageWithBonus:
         table, user_id, key_hash = user_at_monthly_limit
 
         # Request 100 packages (all from bonus since at limit)
-        allowed, usage, bonus = check_and_increment_usage_with_bonus(
-            user_id, key_hash, limit=5000, count=100
-        )
+        allowed, usage, bonus = check_and_increment_usage_with_bonus(user_id, key_hash, limit=5000, count=100)
 
         assert allowed is True
         assert usage == 5100
@@ -270,6 +266,7 @@ class TestCheckAndIncrementUsageWithBonus:
     def test_rejects_batch_exceeding_available(self, mock_dynamodb):
         """Should reject batch request exceeding available credits."""
         import shared.auth as auth_module
+
         auth_module._dynamodb = None
 
         from shared.auth import check_and_increment_usage_with_bonus
@@ -298,15 +295,14 @@ class TestCheckAndIncrementUsageWithBonus:
         )
 
         # Request 100 should be rejected (only 50 available)
-        allowed, usage, bonus = check_and_increment_usage_with_bonus(
-            user_id, key_hash, limit=5000, count=100
-        )
+        allowed, usage, bonus = check_and_increment_usage_with_bonus(user_id, key_hash, limit=5000, count=100)
 
         assert allowed is False
 
     def test_handles_missing_user_meta(self, mock_dynamodb):
         """Should handle case where USER_META doesn't exist."""
         import shared.auth as auth_module
+
         auth_module._dynamodb = None
 
         from shared.auth import check_and_increment_usage_with_bonus
@@ -326,9 +322,7 @@ class TestCheckAndIncrementUsageWithBonus:
         )
 
         # Should still work with defaults (0 usage, 0 bonus)
-        allowed, usage, bonus = check_and_increment_usage_with_bonus(
-            user_id, key_hash, limit=5000, count=1
-        )
+        allowed, usage, bonus = check_and_increment_usage_with_bonus(user_id, key_hash, limit=5000, count=1)
 
         assert allowed is True
         assert usage == 1

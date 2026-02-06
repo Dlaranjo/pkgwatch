@@ -50,11 +50,11 @@ def calculate_health_score(data: dict) -> dict:
     # Weighted combination (v2 weights)
     # Security extracted from Community and given dedicated 15% weight
     raw_score = (
-        maintainer * 0.25 +      # was 0.30
-        user_centric * 0.30 +    # unchanged - most predictive
-        evolution * 0.20 +       # was 0.25
-        community * 0.10 +       # was 0.15 (security extracted)
-        security * 0.15          # NEW
+        maintainer * 0.25  # was 0.30
+        + user_centric * 0.30  # unchanged - most predictive
+        + evolution * 0.20  # was 0.25
+        + community * 0.10  # was 0.15 (security extracted)
+        + security * 0.15  # NEW
     )
 
     # Clamp final score to valid range (0-100)
@@ -63,10 +63,7 @@ def calculate_health_score(data: dict) -> dict:
 
     # Add confidence interval to the score
     margin = confidence.get("interval_margin", 10)
-    confidence_interval = [
-        max(0, health_score - margin),
-        min(100, health_score + margin)
-    ]
+    confidence_interval = [max(0, health_score - margin), min(100, health_score + margin)]
 
     return {
         "health_score": health_score,
@@ -274,9 +271,7 @@ def _evolution_health(data: dict) -> float:
     if last_published:
         try:
             if isinstance(last_published, str):
-                published_date = datetime.fromisoformat(
-                    last_published.replace("Z", "+00:00")
-                )
+                published_date = datetime.fromisoformat(last_published.replace("Z", "+00:00"))
             else:
                 published_date = last_published
 
@@ -287,9 +282,7 @@ def _evolution_health(data: dict) -> float:
             days_since_release = (now - published_date).days
             # Clamp to non-negative (future dates would cause exp() > 1)
             if days_since_release < 0:
-                logger.warning(
-                    f"Negative days_since_release: {days_since_release}, clamping to 0"
-                )
+                logger.warning(f"Negative days_since_release: {days_since_release}, clamping to 0")
                 days_since_release = 0
             days_since_release = max(0, days_since_release)  # Defense in depth
             release_score = math.exp(-0.693 * days_since_release / 180)
@@ -299,10 +292,7 @@ def _evolution_health(data: dict) -> float:
     # Commit activity: log-scaled continuous function
     # log10(50) ~= 1.7, normalize so 50+ commits/90d = ~1.0
     # Prefer bot-filtered commit count if available
-    commits_90d = max(
-        0,
-        data.get("commits_90d_non_bot", data.get("commits_90d", 0)) or 0
-    )  # Clamp negative
+    commits_90d = max(0, data.get("commits_90d_non_bot", data.get("commits_90d", 0)) or 0)  # Clamp negative
     activity_score = min(math.log10(commits_90d + 1) / 1.7, 1.0)
 
     # Apply maturity factor as floor for stable packages
@@ -360,9 +350,7 @@ def _security_health(data: dict) -> float:
             openssf_val = float(openssf)
             # Check for NaN and infinity which would propagate through calculations
             if math.isnan(openssf_val) or math.isinf(openssf_val):
-                logger.warning(
-                    f"Invalid openssf_score value ({openssf_val}), using default"
-                )
+                logger.warning(f"Invalid openssf_score value ({openssf_val}), using default")
                 openssf_score = 0.3
             else:
                 openssf_score = max(0.0, min(openssf_val / 10.0, 1.0))
@@ -400,8 +388,7 @@ def _security_health(data: dict) -> float:
     MAX_OPENSSF_CHECKS = 100
     openssf_checks = (data.get("openssf_checks", []) or [])[:MAX_OPENSSF_CHECKS]
     has_security_policy = any(
-        isinstance(c, dict) and c.get("name") == "Security-Policy" and c.get("score", 0) >= 5
-        for c in openssf_checks
+        isinstance(c, dict) and c.get("name") == "Security-Policy" and c.get("score", 0) >= 5 for c in openssf_checks
     )
     security_policy_score = 1.0 if has_security_policy else 0.3
 
@@ -425,11 +412,7 @@ def _calculate_confidence(data: dict) -> dict:
         "prs_merged_90d",
         "prs_opened_90d",
     ]
-    present = sum(
-        1
-        for f in required_fields
-        if data.get(f) is not None and data.get(f) != 0
-    )
+    present = sum(1 for f in required_fields if data.get(f) is not None and data.get(f) != 0)
     completeness = present / len(required_fields)
 
     # Package age (cold start penalty)
@@ -473,9 +456,7 @@ def _calculate_confidence(data: dict) -> dict:
     if last_updated:
         try:
             if isinstance(last_updated, str):
-                updated_date = datetime.fromisoformat(
-                    last_updated.replace("Z", "+00:00")
-                )
+                updated_date = datetime.fromisoformat(last_updated.replace("Z", "+00:00"))
             else:
                 updated_date = last_updated
 
@@ -538,9 +519,7 @@ def _calculate_confidence(data: dict) -> dict:
         # (packages with repository_url but no GitHub data)
         if data.get("repository_url"):
             margin = max(margin, 20)
-            logger.debug(
-                f"GitHub error with repository_url present, widened margin to {margin}"
-            )
+            logger.debug(f"GitHub error with repository_url present, widened margin to {margin}")
 
     return {
         "score": round(confidence_score * 100, 1),

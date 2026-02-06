@@ -169,17 +169,19 @@ def _record_billing_event(event: dict, status: str, error: str = None):
         ttl = int((datetime.now(timezone.utc) + timedelta(days=90)).timestamp())
         customer_id = event.get("data", {}).get("object", {}).get("customer") or "unknown"
 
-        table.put_item(Item={
-            "pk": event["id"],
-            "sk": event["type"],
-            "customer_id": customer_id,
-            "processed_at": datetime.now(timezone.utc).isoformat(),
-            "event_created_at": event.get("created"),  # Stripe's event timestamp
-            "livemode": event.get("livemode"),  # Distinguish test vs production
-            "status": status,
-            "error": error,
-            "ttl": ttl,
-        })
+        table.put_item(
+            Item={
+                "pk": event["id"],
+                "sk": event["type"],
+                "customer_id": customer_id,
+                "processed_at": datetime.now(timezone.utc).isoformat(),
+                "event_created_at": event.get("created"),  # Stripe's event timestamp
+                "livemode": event.get("livemode"),  # Distinguish test vs production
+                "status": status,
+                "error": error,
+                "ttl": ttl,
+            }
+        )
     except Exception as e:
         # Best-effort - audit recording should not block webhook response
         logger.error(f"Failed to record billing event {event.get('id')}: {e}")
@@ -217,9 +219,7 @@ def handler(event, context):
 
     # Verify webhook signature
     try:
-        stripe_event = stripe.Webhook.construct_event(
-            payload, sig_header, webhook_secret
-        )
+        stripe_event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
     except stripe.SignatureVerificationError as e:
         logger.warning(f"Invalid Stripe signature: {e}")
         return error_response(400, "invalid_signature", "Invalid signature")
@@ -292,11 +292,13 @@ def handler(event, context):
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({
-                "error": {"code": "stripe_validation_error", "message": "Stripe validation error"},
-                "received": True,
-                "processed": False,
-            }),
+            "body": json.dumps(
+                {
+                    "error": {"code": "stripe_validation_error", "message": "Stripe validation error"},
+                    "received": True,
+                    "processed": False,
+                }
+            ),
         }
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         # Data validation errors are permanent - return 200, don't retry
@@ -306,11 +308,13 @@ def handler(event, context):
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({
-                "error": {"code": "invalid_event_data", "message": "Invalid event data"},
-                "received": True,
-                "processed": False,
-            }),
+            "body": json.dumps(
+                {
+                    "error": {"code": "invalid_event_data", "message": "Invalid event data"},
+                    "received": True,
+                    "processed": False,
+                }
+            ),
         }
     except Exception as e:
         # Unknown errors - release claim and return 500 to be safe
@@ -385,9 +389,7 @@ def _process_paid_referral_reward(user_id: str, referred_email: str):
         actual_reward = add_bonus_with_cap(referrer_id, reward_amount)
 
         # Calculate retention check date (2 months from now)
-        retention_check_date = (
-            datetime.now(timezone.utc) + timedelta(days=30 * RETENTION_MONTHS)
-        ).isoformat()
+        retention_check_date = (datetime.now(timezone.utc) + timedelta(days=30 * RETENTION_MONTHS)).isoformat()
 
         # Record paid event with retention check
         record_referral_event(
@@ -418,8 +420,7 @@ def _process_paid_referral_reward(user_id: str, referred_email: str):
         )
 
         logger.info(
-            f"Paid referral reward: credited {referrer_id} with {actual_reward} "
-            f"for referred user {user_id} upgrade"
+            f"Paid referral reward: credited {referrer_id} with {actual_reward} for referred user {user_id} upgrade"
         )
 
     except Exception as e:
@@ -449,6 +450,7 @@ def _handle_checkout_completed(session: dict):
 
     # Get subscription details to determine tier and billing cycle
     import stripe
+
     subscription = stripe.Subscription.retrieve(subscription_id)
     subscription_item = subscription["items"]["data"][0]
     price_id = subscription_item["price"]["id"]
@@ -459,10 +461,7 @@ def _handle_checkout_completed(session: dict):
     current_period_start = subscription_item.get("current_period_start")
     current_period_end = subscription_item.get("current_period_end")
 
-    logger.info(
-        f"Subscription tier from price {price_id}: {tier}, "
-        f"period={current_period_start}-{current_period_end}"
-    )
+    logger.info(f"Subscription tier from price {price_id}: {tier}, period={current_period_start}-{current_period_end}")
 
     # Check if this is an upgrade (existing customer) vs new signup
     is_upgrade = customer_id and _customer_exists(customer_id)
@@ -473,7 +472,10 @@ def _handle_checkout_completed(session: dict):
     if customer_email:
         # Reset usage on upgrade to give users a fresh start with new limit
         _update_user_tier(
-            customer_email, tier, customer_id, subscription_id,
+            customer_email,
+            tier,
+            customer_id,
+            subscription_id,
             reset_usage=is_upgrade,
             current_period_start=current_period_start,
             current_period_end=current_period_end,
@@ -482,7 +484,8 @@ def _handle_checkout_completed(session: dict):
         # Existing customer upgrading - lookup by customer ID
         logger.info(f"Upgrading existing customer {customer_id} to {tier}")
         _update_user_tier_by_customer_id(
-            customer_id, tier,
+            customer_id,
+            tier,
             current_period_start=current_period_start,
             current_period_end=current_period_end,
         )
@@ -763,9 +766,7 @@ def _handle_payment_failed(invoice: dict):
                     UpdateExpression="SET payment_failures = :fails",
                     ExpressionAttributeValues={":fails": attempt_count},
                 )
-                logger.info(
-                    f"Payment failed for {item['pk']}, {days_remaining} days left in grace period"
-                )
+                logger.info(f"Payment failed for {item['pk']}, {days_remaining} days left in grace period")
         else:
             # 2nd failure - just track the failure count
             table.update_item(
@@ -789,10 +790,7 @@ def _handle_invoice_paid(invoice: dict):
     subscription_id = invoice.get("subscription")
     billing_reason = invoice.get("billing_reason")
 
-    logger.info(
-        f"Invoice paid for customer {customer_id}, "
-        f"subscription={subscription_id}, reason={billing_reason}"
-    )
+    logger.info(f"Invoice paid for customer {customer_id}, subscription={subscription_id}, reason={billing_reason}")
 
     if not customer_id:
         logger.warning("No customer ID in paid invoice")
@@ -808,9 +806,7 @@ def _handle_invoice_paid(invoice: dict):
     period_start, period_end = _extract_period_from_invoice(invoice)
 
     if not period_start or not period_end:
-        logger.warning(
-            f"Could not extract period from invoice for customer {customer_id}"
-        )
+        logger.warning(f"Could not extract period from invoice for customer {customer_id}")
         return
 
     # Reset usage with idempotency check
@@ -834,10 +830,7 @@ def _handle_charge_refunded(charge: dict):
     amount_refunded = charge.get("amount_refunded", 0)
     refund_reason = charge.get("refund_reason") or "not_specified"
 
-    logger.info(
-        f"Refund processed for customer {customer_id}: "
-        f"${amount_refunded/100:.2f} (reason: {refund_reason})"
-    )
+    logger.info(f"Refund processed for customer {customer_id}: ${amount_refunded / 100:.2f} (reason: {refund_reason})")
 
 
 def _handle_dispute_created(dispute: dict):
@@ -855,10 +848,7 @@ def _handle_dispute_created(dispute: dict):
     reason = dispute.get("reason", "not_specified")
     amount = dispute.get("amount", 0)
 
-    logger.warning(
-        f"Dispute created for customer {customer_id}: "
-        f"${amount/100:.2f} (reason: {reason})"
-    )
+    logger.warning(f"Dispute created for customer {customer_id}: ${amount / 100:.2f} (reason: {reason})")
 
     # Notify admins via SNS if configured
     alert_topic_arn = os.environ.get("ALERT_TOPIC_ARN")
@@ -874,7 +864,7 @@ def _handle_dispute_created(dispute: dict):
             Message=(
                 f"A payment dispute has been created.\n\n"
                 f"Customer ID: {customer_id}\n"
-                f"Amount: ${amount/100:.2f}\n"
+                f"Amount: ${amount / 100:.2f}\n"
                 f"Reason: {reason}\n\n"
                 f"Please investigate in the Stripe dashboard."
             ),
@@ -937,9 +927,7 @@ def _reset_user_usage_for_billing_cycle(
 
     items = response.get("Items", [])
     if not items:
-        logger.warning(
-            f"No user found for Stripe customer {customer_id} during billing reset"
-        )
+        logger.warning(f"No user found for Stripe customer {customer_id} during billing reset")
         return
 
     user_id = items[0]["pk"]  # Get user_id for USER_META update
@@ -966,8 +954,7 @@ def _reset_user_usage_for_billing_cycle(
                     "REMOVE first_payment_failure_at"
                 ),
                 ConditionExpression=(
-                    "attribute_not_exists(last_reset_period_start) OR "
-                    "last_reset_period_start < :period_start"
+                    "attribute_not_exists(last_reset_period_start) OR last_reset_period_start < :period_start"
                 ),
                 ExpressionAttributeValues={
                     ":zero": 0,
@@ -1261,18 +1248,22 @@ def _update_user_subscription_state(
                     f"requests (limit: {new_limit}). User is over limit until reset."
                 )
 
-            update_expr_parts.extend([
-                "tier = :tier",
-                "tier_updated_at = :now",
-                "payment_failures = :zero",
-                "monthly_limit = :limit",
-            ])
-            expr_values.update({
-                ":tier": tier,
-                ":now": datetime.now(timezone.utc).isoformat(),
-                ":zero": 0,
-                ":limit": new_limit,
-            })
+            update_expr_parts.extend(
+                [
+                    "tier = :tier",
+                    "tier_updated_at = :now",
+                    "payment_failures = :zero",
+                    "monthly_limit = :limit",
+                ]
+            )
+            expr_values.update(
+                {
+                    ":tier": tier,
+                    ":now": datetime.now(timezone.utc).isoformat(),
+                    ":zero": 0,
+                    ":limit": new_limit,
+                }
+            )
 
             # Reset usage on upgrade
             if is_upgrade:
@@ -1295,9 +1286,7 @@ def _update_user_subscription_state(
         if cancellation_pending and cancellation_date:
             update_expr_parts.append("cancellation_date = :cancel_date")
             expr_values[":cancel_date"] = cancellation_date
-            logger.info(
-                f"User {item['pk']} subscription set to cancel at {cancellation_date}"
-            )
+            logger.info(f"User {item['pk']} subscription set to cancel at {cancellation_date}")
         else:
             # Clear cancellation date if not canceling
             update_expr_parts.append("cancellation_date = :null_date")

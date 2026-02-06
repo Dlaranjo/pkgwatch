@@ -5,7 +5,6 @@ Tests cover classification of transient vs permanent errors
 for DLQ retry decision logic.
 """
 
-
 from shared.error_classification import (
     PERMANENT_PATTERNS,
     TRANSIENT_PATTERNS,

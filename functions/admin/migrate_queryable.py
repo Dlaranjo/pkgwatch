@@ -52,10 +52,7 @@ def handler(event, context):
     batch_size = event.get("batch_size", 100)
     max_items = event.get("max_items", 0)
 
-    logger.info(
-        f"Starting queryable migration: dry_run={dry_run}, "
-        f"batch_size={batch_size}, max_items={max_items}"
-    )
+    logger.info(f"Starting queryable migration: dry_run={dry_run}, batch_size={batch_size}, max_items={max_items}")
 
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(PACKAGES_TABLE)
@@ -135,10 +132,7 @@ def handler(event, context):
                 if not data_status:
                     has_version = item.get("latest_version") is not None
                     has_score = item.get("health_score") is not None
-                    has_usage = (
-                        int(item.get("weekly_downloads", 0)) > 0
-                        or int(item.get("dependents_count", 0)) > 0
-                    )
+                    has_usage = int(item.get("weekly_downloads", 0)) > 0 or int(item.get("dependents_count", 0)) > 0
                     has_missing = bool(item.get("missing_sources"))
 
                     if has_version and has_score and has_usage:
@@ -215,9 +209,7 @@ def handler(event, context):
             {
                 "dry_run": dry_run,
                 "stats": stats,
-                "message": "Migration complete"
-                if not dry_run
-                else "Dry run complete - no changes made",
+                "message": "Migration complete" if not dry_run else "Dry run complete - no changes made",
             },
             indent=2,
         ),

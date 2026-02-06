@@ -16,13 +16,9 @@ from typing import Optional, Tuple
 # - Scope: @[a-z0-9_][a-z0-9._~-]*/ (underscore OK in scope)
 # - Package name: [a-z0-9][a-z0-9._~-]* (NO underscore/dot at start)
 # - re.IGNORECASE for legacy uppercase packages
-NPM_PACKAGE_PATTERN = re.compile(
-    r"^(@[a-z0-9_][a-z0-9._~-]*/)?[a-z0-9][a-z0-9._~-]*$", re.IGNORECASE
-)
+NPM_PACKAGE_PATTERN = re.compile(r"^(@[a-z0-9_][a-z0-9._~-]*/)?[a-z0-9][a-z0-9._~-]*$", re.IGNORECASE)
 
-PYPI_PACKAGE_PATTERN = re.compile(
-    r"^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9])$"
-)
+PYPI_PACKAGE_PATTERN = re.compile(r"^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9])$")
 
 MAX_NPM_PACKAGE_LENGTH = 214
 MAX_PYPI_PACKAGE_LENGTH = 128

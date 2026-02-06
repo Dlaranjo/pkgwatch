@@ -42,7 +42,7 @@ def create_session_token(
     email: str,
     tier: str = "free",
     expired: bool = False,
-    secret: str = "test-secret-key-for-signing-sessions-1234567890"
+    secret: str = "test-secret-key-for-signing-sessions-1234567890",
 ) -> str:
     """Create a session token for testing.
 
@@ -68,9 +68,7 @@ def create_session_token(
         "exp": int(session_expires.timestamp()),
     }
     payload = base64.urlsafe_b64encode(json.dumps(session_data).encode()).decode()
-    signature = hmac.new(
-        secret.encode(), payload.encode(), hashlib.sha256
-    ).hexdigest()
+    signature = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return f"{payload}.{signature}"
 
 
@@ -141,9 +139,7 @@ class TestAddReferralCodeAuthentication:
         assert body["error"]["code"] == "session_expired"
 
     @patch("api.auth_callback._get_session_secret")
-    def test_returns_401_for_invalid_user_id_format_not_starting_with_user_(
-        self, mock_secret, mock_dynamodb
-    ):
+    def test_returns_401_for_invalid_user_id_format_not_starting_with_user_(self, mock_secret, mock_dynamodb):
         """Should return 401 when user_id doesn't start with 'user_'."""
         mock_secret.return_value = "test-secret-key-for-signing-sessions-1234567890"
 
@@ -446,6 +442,7 @@ class TestAddReferralCodeInputValidation:
 
         # Reset shared.referral_utils module cache
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -522,6 +519,7 @@ class TestAddReferralCodeBusinessLogic:
     def reset_referral_utils_cache(self, mock_dynamodb):
         """Reset referral_utils module cache before each test."""
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
         yield mock_dynamodb
 
@@ -918,6 +916,7 @@ class TestAddReferralCodeSuccess:
     def reset_referral_utils_cache(self, mock_dynamodb):
         """Reset referral_utils module cache before each test."""
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
         yield mock_dynamodb
 
@@ -990,9 +989,7 @@ class TestAddReferralCodeSuccess:
         assert referrer["referral_pending_count"] == 1
 
         # Verify pending referral event was recorded
-        response = events_table.get_item(
-            Key={"pk": "user_referrer", "sk": "user_referred#pending"}
-        )
+        response = events_table.get_item(Key={"pk": "user_referrer", "sk": "user_referred#pending"})
         assert "Item" in response
         event_item = response["Item"]
         assert event_item["event_type"] == "pending"
@@ -1207,6 +1204,7 @@ class TestAddReferralCodeErrorHandling:
     def reset_referral_utils_cache(self, mock_dynamodb):
         """Reset referral_utils module cache before each test."""
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
         yield mock_dynamodb
 
@@ -1221,8 +1219,7 @@ class TestAddReferralCodeErrorHandling:
         # Mock DynamoDB to raise an error
         mock_table = MagicMock()
         mock_table.get_item.side_effect = ClientError(
-            {"Error": {"Code": "InternalServerError", "Message": "Test error"}},
-            "GetItem"
+            {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "GetItem"
         )
         mock_db.Table.return_value = mock_table
 
@@ -1260,10 +1257,7 @@ class TestAddReferralCodeCORSHeaders:
 
         event = {
             "httpMethod": "POST",
-            "headers": {
-                "cookie": f"session={session_token}",
-                "origin": "https://pkgwatch.dev"
-            },
+            "headers": {"cookie": f"session={session_token}", "origin": "https://pkgwatch.dev"},
             "pathParameters": {},
             "queryStringParameters": {},
             "body": json.dumps({"code": "ab"}),  # Invalid code
@@ -1284,10 +1278,7 @@ class TestAddReferralCodeCORSHeaders:
 
         event = {
             "httpMethod": "POST",
-            "headers": {
-                "Cookie": "session=invalid",
-                "Origin": "https://pkgwatch.dev"
-            },
+            "headers": {"Cookie": "session=invalid", "Origin": "https://pkgwatch.dev"},
             "pathParameters": {},
             "queryStringParameters": {},
             "body": json.dumps({"code": "abc12345"}),
@@ -1324,6 +1315,7 @@ class TestAddReferralCodeEdgeCases:
     def reset_referral_utils_cache(self, mock_dynamodb):
         """Reset referral_utils module cache before each test."""
         import shared.referral_utils as referral_utils_module
+
         referral_utils_module._dynamodb = None
         yield mock_dynamodb
 

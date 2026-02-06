@@ -32,8 +32,7 @@ def setup_session_secret():
 
     client = boto3.client("secretsmanager", region_name="us-east-1")
     client.create_secret(
-        Name="pkgwatch/session-secret",
-        SecretString=json.dumps({"secret": "test-session-secret-12345"})
+        Name="pkgwatch/session-secret", SecretString=json.dumps({"secret": "test-session-secret-12345"})
     )
     os.environ["SESSION_SECRET_ARN"] = "pkgwatch/session-secret"
     return "test-session-secret-12345"
@@ -45,10 +44,7 @@ def setup_stripe_secret():
     import boto3
 
     client = boto3.client("secretsmanager", region_name="us-east-1")
-    client.create_secret(
-        Name="pkgwatch/stripe-secret",
-        SecretString=json.dumps({"key": "sk_test_12345"})
-    )
+    client.create_secret(Name="pkgwatch/stripe-secret", SecretString=json.dumps({"key": "sk_test_12345"}))
     os.environ["STRIPE_SECRET_ARN"] = "pkgwatch/stripe-secret"
     return "sk_test_12345"
 
@@ -56,11 +52,7 @@ def setup_stripe_secret():
 def create_session_token(data: dict, secret: str) -> str:
     """Create a signed session token for testing."""
     payload = base64.urlsafe_b64encode(json.dumps(data).encode()).decode()
-    signature = hmac.new(
-        secret.encode(),
-        payload.encode(),
-        hashlib.sha256
-    ).hexdigest()
+    signature = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return f"{payload}.{signature}"
 
 
@@ -106,11 +98,13 @@ class TestAuthMeSessionValidation:
         """Should return 401 when no session cookie is provided."""
         # Clear cache to pick up new secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         event = {
@@ -128,11 +122,13 @@ class TestAuthMeSessionValidation:
     def test_empty_cookie_returns_401(self, aws_credentials, mock_dynamodb, setup_session_secret):
         """Should return 401 when cookie header is empty."""
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         event = {
@@ -150,11 +146,13 @@ class TestAuthMeSessionValidation:
     def test_invalid_session_token_returns_401(self, aws_credentials, mock_dynamodb, setup_session_secret):
         """Should return 401 when session token is invalid."""
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         event = {
@@ -173,11 +171,13 @@ class TestAuthMeSessionValidation:
         """Should return 401 when session token is expired."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         # Create expired session (1 day ago)
@@ -206,11 +206,13 @@ class TestAuthMeSessionValidation:
         """Should return 401 when session signature is invalid."""
         setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         # Create token with wrong secret
@@ -240,11 +242,13 @@ class TestAuthMeUserRetrieval:
         """Should return user info for valid session."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         # Create test user
@@ -279,11 +283,13 @@ class TestAuthMeUserRetrieval:
         """Should return 404 when user not found in DynamoDB."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         # Create session for non-existent user
@@ -311,21 +317,25 @@ class TestAuthMeUserRetrieval:
         """Should skip PENDING records when looking for API keys."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create PENDING record (from incomplete signup)
-        table.put_item(Item={
-            "pk": "user_pending_test",
-            "sk": "PENDING",
-            "email": "pending@example.com",
-        })
+        table.put_item(
+            Item={
+                "pk": "user_pending_test",
+                "sk": "PENDING",
+                "email": "pending@example.com",
+            }
+        )
 
         # Create valid API key record
         create_test_user(table, "user_pending_test", "pending@example.com", tier="free")
@@ -354,11 +364,13 @@ class TestAuthMeUserRetrieval:
         """Should return usage count from USER_META record."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -389,11 +401,13 @@ class TestAuthMeUserRetrieval:
         """Should sum per-key counters when USER_META doesn't have requests_this_month."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -401,21 +415,25 @@ class TestAuthMeUserRetrieval:
         # Create multiple API keys with usage
         create_test_user(table, "user_multikey", "multi@example.com", tier="free", requests_this_month=100)
         key_hash2 = hashlib.sha256(b"pw_test_key2").hexdigest()
-        table.put_item(Item={
-            "pk": "user_multikey",
-            "sk": key_hash2,
-            "key_hash": key_hash2,
-            "email": "multi@example.com",
-            "tier": "free",
-            "requests_this_month": 200,
-        })
+        table.put_item(
+            Item={
+                "pk": "user_multikey",
+                "sk": key_hash2,
+                "key_hash": key_hash2,
+                "email": "multi@example.com",
+                "tier": "free",
+                "requests_this_month": 200,
+            }
+        )
 
         # Create USER_META without requests_this_month (old schema)
-        table.put_item(Item={
-            "pk": "user_multikey",
-            "sk": "USER_META",
-            "key_count": 2,
-        })
+        table.put_item(
+            Item={
+                "pk": "user_multikey",
+                "sk": "USER_META",
+                "key_count": 2,
+            }
+        )
 
         session_data = {
             "user_id": "user_multikey",
@@ -442,10 +460,13 @@ class TestAuthMeStripeRefresh:
     """Tests for Stripe subscription refresh logic."""
 
     @mock_aws
-    def test_refresh_stripe_updates_user_data(self, aws_credentials, mock_dynamodb, setup_session_secret, setup_stripe_secret):
+    def test_refresh_stripe_updates_user_data(
+        self, aws_credentials, mock_dynamodb, setup_session_secret, setup_stripe_secret
+    ):
         """Should refresh data from Stripe when requested."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
@@ -465,7 +486,9 @@ class TestAuthMeStripeRefresh:
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         create_test_user(
-            table, "user_stripe", "stripe@example.com",
+            table,
+            "user_stripe",
+            "stripe@example.com",
             tier="starter",
             stripe_subscription_id="sub_test123",
             stripe_customer_id="cus_test123",
@@ -491,7 +514,7 @@ class TestAuthMeStripeRefresh:
                         "current_period_end": 1735689600,  # Future timestamp
                     }
                 ]
-            }
+            },
         }
 
         with patch("stripe.Subscription.retrieve", return_value=mock_subscription):
@@ -508,15 +531,19 @@ class TestAuthMeStripeRefresh:
         assert body["data_source"] == "live"
 
     @mock_aws
-    def test_no_refresh_without_subscription(self, aws_credentials, mock_dynamodb, setup_session_secret, setup_stripe_secret):
+    def test_no_refresh_without_subscription(
+        self, aws_credentials, mock_dynamodb, setup_session_secret, setup_stripe_secret
+    ):
         """Should not attempt refresh for users without subscription."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -546,15 +573,19 @@ class TestAuthMeStripeRefresh:
         assert body["data_source"] == "cache"
 
     @mock_aws
-    def test_stripe_error_returns_cached_data(self, aws_credentials, mock_dynamodb, setup_session_secret, setup_stripe_secret):
+    def test_stripe_error_returns_cached_data(
+        self, aws_credentials, mock_dynamodb, setup_session_secret, setup_stripe_secret
+    ):
         """Should return cached data when Stripe API fails."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
@@ -563,7 +594,9 @@ class TestAuthMeStripeRefresh:
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         create_test_user(
-            table, "user_stripe_fail", "stripefail@example.com",
+            table,
+            "user_stripe_fail",
+            "stripefail@example.com",
             tier="pro",
             stripe_subscription_id="sub_test456",
         )
@@ -578,6 +611,7 @@ class TestAuthMeStripeRefresh:
         token = create_session_token(session_data, secret)
 
         import stripe
+
         with patch("stripe.Subscription.retrieve", side_effect=stripe.StripeError("API error")):
             event = {
                 "headers": {"cookie": f"session={token}"},
@@ -592,15 +626,19 @@ class TestAuthMeStripeRefresh:
         assert body["data_source"] == "cache"  # Fallback to cache
 
     @mock_aws
-    def test_refresh_handles_cancelled_subscription(self, aws_credentials, mock_dynamodb, setup_session_secret, setup_stripe_secret):
+    def test_refresh_handles_cancelled_subscription(
+        self, aws_credentials, mock_dynamodb, setup_session_secret, setup_stripe_secret
+    ):
         """Should handle subscription that's set to cancel."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
@@ -609,7 +647,9 @@ class TestAuthMeStripeRefresh:
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         create_test_user(
-            table, "user_cancel", "cancel@example.com",
+            table,
+            "user_cancel",
+            "cancel@example.com",
             tier="pro",
             stripe_subscription_id="sub_cancel123",
         )
@@ -633,7 +673,7 @@ class TestAuthMeStripeRefresh:
                         "current_period_end": 1735689600,
                     }
                 ]
-            }
+            },
         }
 
         with patch("stripe.Subscription.retrieve", return_value=mock_subscription):
@@ -650,15 +690,19 @@ class TestAuthMeStripeRefresh:
         assert body["cancellation_date"] == 1735689600
 
     @mock_aws
-    def test_refresh_downgrades_inactive_subscription(self, aws_credentials, mock_dynamodb, setup_session_secret, setup_stripe_secret):
+    def test_refresh_downgrades_inactive_subscription(
+        self, aws_credentials, mock_dynamodb, setup_session_secret, setup_stripe_secret
+    ):
         """Should downgrade to free tier when subscription is not active."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
@@ -667,7 +711,9 @@ class TestAuthMeStripeRefresh:
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         create_test_user(
-            table, "user_inactive", "inactive@example.com",
+            table,
+            "user_inactive",
+            "inactive@example.com",
             tier="pro",
             stripe_subscription_id="sub_inactive123",
         )
@@ -709,11 +755,13 @@ class TestAuthMeReferralAndBonus:
         """Should return user's referral code."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -744,17 +792,20 @@ class TestAuthMeReferralAndBonus:
         """Should return bonus credit balance."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         create_test_user(table, "user_bonus", "bonus@example.com", tier="free")
         create_user_meta(
-            table, "user_bonus",
+            table,
+            "user_bonus",
             bonus_requests=15000,
             bonus_requests_lifetime=50000,
         )
@@ -785,11 +836,13 @@ class TestAuthMeReferralAndBonus:
         """Should show can_add_referral=True within 14-day window."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -824,11 +877,13 @@ class TestAuthMeReferralAndBonus:
         """Should show can_add_referral=False if user already has referrer."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -861,11 +916,13 @@ class TestAuthMeReferralAndBonus:
         """Should calculate effective_limit as monthly + bonus."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -902,11 +959,13 @@ class TestAuthMeCORS:
         """Should include CORS headers for allowed origin."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -939,11 +998,13 @@ class TestAuthMeCORS:
         """Error responses should include CORS headers."""
         setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         event = {
@@ -967,11 +1028,13 @@ class TestAuthMeErrorHandling:
         """Should return 500 for unexpected errors."""
         secret = setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         session_data = {
@@ -1002,11 +1065,13 @@ class TestAuthMeErrorHandling:
         """Should handle None headers gracefully."""
         setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         event = {
@@ -1027,11 +1092,13 @@ class TestStripeKeyCache:
         """Should cache Stripe API key and reuse it."""
         setup_session_secret
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         # Clear cache
@@ -1056,6 +1123,7 @@ class TestStripeKeyCache:
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         billing_utils._stripe_api_key_cache = None
@@ -1075,13 +1143,14 @@ class TestStripeKeyCache:
         client = boto3.client("secretsmanager", region_name="us-east-1")
         client.create_secret(
             Name="pkgwatch/stripe-plain",
-            SecretString="sk_plain_text_key"  # Not JSON
+            SecretString="sk_plain_text_key",  # Not JSON
         )
         os.environ["STRIPE_SECRET_ARN"] = "pkgwatch/stripe-plain"
 
         import importlib
 
         import api.auth_me as module
+
         importlib.reload(module)
 
         billing_utils._stripe_api_key_cache = None

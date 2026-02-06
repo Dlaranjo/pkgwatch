@@ -844,11 +844,13 @@ class TestIntegration:
             tier = 1  # Default
             items = []
             for i in range(200):  # More than MAX_PACKAGES / 2
-                items.append({
-                    "pk": f"npm#pkg-{i}",
-                    "sk": "LATEST",
-                    "tier": tier,
-                })
+                items.append(
+                    {
+                        "pk": f"npm#pkg-{i}",
+                        "sk": "LATEST",
+                        "tier": tier,
+                    }
+                )
             return {"Items": items}
 
         mock_table.query.return_value = mock_query()

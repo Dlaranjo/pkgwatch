@@ -117,6 +117,7 @@ class TestCreateBillingPortalHandler:
         import importlib
 
         import api.create_billing_portal as portal_module
+
         importlib.reload(portal_module)
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
@@ -186,6 +187,7 @@ class TestCreateBillingPortalHandler:
         )
 
         import api.create_billing_portal as portal_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -195,6 +197,7 @@ class TestCreateBillingPortalHandler:
 
                 with patch.object(portal_module, "stripe") as mock_stripe:
                     import stripe as real_stripe
+
                     mock_stripe.StripeError = real_stripe.StripeError
                     mock_stripe.billing_portal.Session.create.side_effect = real_stripe.StripeError("API Error")
 
@@ -284,6 +287,7 @@ class TestBillingPortalCorsHandling:
         )
 
         import api.create_billing_portal as portal_module
+
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -547,6 +551,7 @@ class TestBillingPortalReturnUrl:
         import importlib
 
         import api.create_billing_portal as portal_module
+
         importlib.reload(portal_module)
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0

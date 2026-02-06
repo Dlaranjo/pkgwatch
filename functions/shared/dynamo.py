@@ -44,12 +44,11 @@ def get_package(ecosystem: str, name: str, max_retries: int = 3) -> Optional[Pac
             if error_code in THROTTLING_ERRORS:
                 if attempt < max_retries - 1:
                     # Exponential backoff with jitter to prevent thundering herd
-                    base_delay = min(0.1 * (2 ** attempt), 2.0)
+                    base_delay = min(0.1 * (2**attempt), 2.0)
                     jitter = random.uniform(0, base_delay * 0.5)
                     delay = base_delay + jitter
                     logger.warning(
-                        f"DynamoDB throttled for {ecosystem}/{name}, "
-                        f"retry {attempt + 1}/{max_retries} in {delay:.2f}s"
+                        f"DynamoDB throttled for {ecosystem}/{name}, retry {attempt + 1}/{max_retries} in {delay:.2f}s"
                     )
                     time.sleep(delay)
                     continue
@@ -255,10 +254,12 @@ def batch_get_packages(ecosystem: str, names: list[str]) -> dict[str, dict]:
                     break
 
                 # Exponential backoff with jitter to prevent thundering herd
-                base_delay = min(0.1 * (2 ** retry_count), 2.0)
+                base_delay = min(0.1 * (2**retry_count), 2.0)
                 jitter = random.uniform(0, base_delay * 0.5)
                 delay = base_delay + jitter
-                logger.warning(f"Retry {retry_count}/{max_retries}: {unprocessed_count} unprocessed keys (delay: {delay:.2f}s)")
+                logger.warning(
+                    f"Retry {retry_count}/{max_retries}: {unprocessed_count} unprocessed keys (delay: {delay:.2f}s)"
+                )
                 time.sleep(delay)
                 request_items = unprocessed
             else:

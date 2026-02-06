@@ -113,7 +113,7 @@ def handler(event, context):
             return _timed_redirect_with_error(
                 start_time,
                 "token_already_used",
-                "This verification link has already been used. Please request a new one."
+                "This verification link has already been used. Please request a new one.",
             )
         logger.error(f"Failed to delete pending record: {e}")
         return _timed_redirect_with_error(start_time, "internal_error", "Failed to verify token")
@@ -128,9 +128,7 @@ def handler(event, context):
             expires = datetime.fromisoformat(expires_str.replace("Z", "+00:00"))
             if expires < now:
                 return _timed_redirect_with_error(
-                    start_time,
-                    "token_expired",
-                    "Verification link has expired. Please sign up again."
+                    start_time, "token_expired", "Verification link has expired. Please sign up again."
                 )
         except (ValueError, TypeError):
             pass
@@ -276,7 +274,9 @@ def handler(event, context):
             "exp": int(session_expires.timestamp()),
         }
         session_token = _create_session_token(session_data, session_secret)
-        cookie_value = f"session={session_token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL_DAYS * 86400}"
+        cookie_value = (
+            f"session={session_token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL_DAYS * 86400}"
+        )
     else:
         cookie_value = None
         logger.warning("Could not create session - SESSION_SECRET_ARN not configured")
@@ -301,10 +301,12 @@ def handler(event, context):
 
 def _redirect_with_error(code: str, message: str) -> dict:
     """Redirect to signup page with error message."""
-    redirect_params = urlencode({
-        "error": code,
-        "message": message,
-    })
+    redirect_params = urlencode(
+        {
+            "error": code,
+            "message": message,
+        }
+    )
     return {
         "statusCode": 302,
         "headers": {

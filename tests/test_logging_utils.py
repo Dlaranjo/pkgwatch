@@ -165,6 +165,7 @@ class TestStructuredFormatter:
             raise ValueError("Test error")
         except ValueError:
             import sys
+
             exc_info = sys.exc_info()
 
         record = logging.LogRecord(
@@ -275,11 +276,7 @@ class TestSetRequestId:
 
     def test_extracts_api_gateway_request_id(self):
         """Should extract requestId from API Gateway event."""
-        event = {
-            "requestContext": {
-                "requestId": "api-gw-req-123"
-            }
-        }
+        event = {"requestContext": {"requestId": "api-gw-req-123"}}
 
         result = set_request_id(event)
 
@@ -288,12 +285,7 @@ class TestSetRequestId:
 
     def test_extracts_x_request_id_header_lowercase(self):
         """Should extract x-request-id header (lowercase)."""
-        event = {
-            "requestContext": {},
-            "headers": {
-                "x-request-id": "header-req-456"
-            }
-        }
+        event = {"requestContext": {}, "headers": {"x-request-id": "header-req-456"}}
 
         result = set_request_id(event)
 
@@ -302,12 +294,7 @@ class TestSetRequestId:
 
     def test_extracts_x_request_id_header_camelcase(self):
         """Should extract X-Request-Id header (camelCase)."""
-        event = {
-            "requestContext": {},
-            "headers": {
-                "X-Request-Id": "header-req-789"
-            }
-        }
+        event = {"requestContext": {}, "headers": {"X-Request-Id": "header-req-789"}}
 
         result = set_request_id(event)
 
@@ -316,14 +303,7 @@ class TestSetRequestId:
 
     def test_api_gateway_id_takes_priority(self):
         """API Gateway requestId should take priority over header."""
-        event = {
-            "requestContext": {
-                "requestId": "api-gw-priority"
-            },
-            "headers": {
-                "x-request-id": "header-ignored"
-            }
-        }
+        event = {"requestContext": {"requestId": "api-gw-priority"}, "headers": {"x-request-id": "header-ignored"}}
 
         result = set_request_id(event)
 
@@ -341,10 +321,7 @@ class TestSetRequestId:
 
     def test_handles_none_headers(self):
         """Should handle None headers gracefully."""
-        event = {
-            "requestContext": {},
-            "headers": None
-        }
+        event = {"requestContext": {}, "headers": None}
 
         result = set_request_id(event)
 
@@ -353,9 +330,7 @@ class TestSetRequestId:
 
     def test_handles_missing_request_context(self):
         """Should handle missing requestContext."""
-        event = {
-            "headers": {"x-request-id": "fallback-header"}
-        }
+        event = {"headers": {"x-request-id": "fallback-header"}}
 
         result = set_request_id(event)
 
@@ -363,9 +338,7 @@ class TestSetRequestId:
 
     def test_sets_context_variable(self):
         """Should set the context variable for later access."""
-        event = {
-            "requestContext": {"requestId": "ctx-test-123"}
-        }
+        event = {"requestContext": {"requestId": "ctx-test-123"}}
 
         set_request_id(event)
 

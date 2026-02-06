@@ -29,9 +29,7 @@ RESEND_COOLDOWN_SECONDS = 60
 dynamodb = boto3.resource("dynamodb")
 ses = boto3.client("ses")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
-VERIFICATION_EMAIL_SENDER = os.environ.get(
-    "VERIFICATION_EMAIL_SENDER", "noreply@pkgwatch.dev"
-)
+VERIFICATION_EMAIL_SENDER = os.environ.get("VERIFICATION_EMAIL_SENDER", "noreply@pkgwatch.dev")
 BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.dev")
 API_URL = os.environ.get("API_URL", "https://api.pkgwatch.dev")
 
@@ -115,8 +113,8 @@ def handler(event, context):
                             429,
                             "cooldown",
                             f"Please wait {remaining} seconds before requesting another email.",
-                            origin=origin
-                        )
+                            origin=origin,
+                        ),
                     )
             except (ValueError, TypeError):
                 pass

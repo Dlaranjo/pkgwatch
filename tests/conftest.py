@@ -48,6 +48,7 @@ def reset_aws_clients():
     yield
     try:
         from shared.aws_clients import reset_clients
+
         reset_clients()
     except ImportError:
         pass
@@ -81,6 +82,7 @@ def _reset_circuits():
             PYPI_CIRCUIT,
             CircuitBreakerState,
         )
+
         GITHUB_CIRCUIT._state = CircuitBreakerState()
         NPM_CIRCUIT._state = CircuitBreakerState()
         DEPSDEV_CIRCUIT._state = CircuitBreakerState()
@@ -103,6 +105,7 @@ def reset_session_secret_cache():
     # Reset AFTER test
     try:
         import api.auth_callback as auth_callback
+
         auth_callback._session_secret_cache = None
         auth_callback._session_secret_cache_time = 0.0
     except ImportError:
@@ -243,7 +246,7 @@ def create_dynamodb_tables(dynamodb):
     dynamodb.create_table(
         TableName="pkgwatch-billing-events",
         KeySchema=[
-            {"AttributeName": "pk", "KeyType": "HASH"},   # event_id
+            {"AttributeName": "pk", "KeyType": "HASH"},  # event_id
             {"AttributeName": "sk", "KeyType": "RANGE"},  # event_type
         ],
         AttributeDefinitions=[
@@ -269,7 +272,7 @@ def create_dynamodb_tables(dynamodb):
     dynamodb.create_table(
         TableName="pkgwatch-referral-events",
         KeySchema=[
-            {"AttributeName": "pk", "KeyType": "HASH"},   # referrer_id
+            {"AttributeName": "pk", "KeyType": "HASH"},  # referrer_id
             {"AttributeName": "sk", "KeyType": "RANGE"},  # referred_id#event_type
         ],
         AttributeDefinitions=[

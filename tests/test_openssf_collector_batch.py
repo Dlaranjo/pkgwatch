@@ -31,29 +31,30 @@ class TestHandler:
         table = dynamodb.Table("pkgwatch-packages")
 
         # Add packages needing OpenSSF (no openssf_score but has repository_url)
-        table.put_item(Item={
-            "pk": "npm#lodash",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "lodash",
-            "tier": 1,
-            "repository_url": "https://github.com/lodash/lodash",
-        })
-        table.put_item(Item={
-            "pk": "npm#express",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "express",
-            "tier": 2,
-            "repository_url": "https://github.com/expressjs/express",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#lodash",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "lodash",
+                "tier": 1,
+                "repository_url": "https://github.com/lodash/lodash",
+            }
+        )
+        table.put_item(
+            Item={
+                "pk": "npm#express",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "express",
+                "tier": 2,
+                "repository_url": "https://github.com/expressjs/express",
+            }
+        )
 
         # Mock HTTP client
         def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={
-                "score": 7.5,
-                "checks": [{"name": "Maintained", "score": 10}]
-            })
+            return httpx.Response(200, json={"score": 7.5, "checks": [{"name": "Maintained", "score": 10}]})
 
         transport = httpx.MockTransport(mock_handler)
         original_init = httpx.Client.__init__
@@ -72,6 +73,7 @@ class TestHandler:
             with patch("collectors.openssf_collector_batch.time.sleep"):
                 with patch("collectors.openssf_collector_batch._write_openssf_updates", mock_write):
                     from collectors.openssf_collector_batch import handler
+
                     result = handler({}, None)
 
         assert result["packages_updated"] == 2
@@ -93,16 +95,19 @@ class TestHandler:
         create_dynamodb_tables(dynamodb)
         table = dynamodb.Table("pkgwatch-packages")
 
-        table.put_item(Item={
-            "pk": "npm#lodash",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "lodash",
-            "openssf_score": Decimal("8.0"),  # Already has score
-            "repository_url": "https://github.com/lodash/lodash",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#lodash",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "lodash",
+                "openssf_score": Decimal("8.0"),  # Already has score
+                "repository_url": "https://github.com/lodash/lodash",
+            }
+        )
 
         from collectors.openssf_collector_batch import handler
+
         result = handler({}, None)
 
         assert result["packages_updated"] == 0
@@ -116,16 +121,19 @@ class TestHandler:
         table = dynamodb.Table("pkgwatch-packages")
 
         # Add package without repository_url
-        table.put_item(Item={
-            "pk": "npm#no-repo",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "no-repo",
-            "tier": 1,
-            # No repository_url
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#no-repo",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "no-repo",
+                "tier": 1,
+                # No repository_url
+            }
+        )
 
         from collectors.openssf_collector_batch import handler
+
         result = handler({}, None)
 
         assert result["packages_updated"] == 0
@@ -139,18 +147,21 @@ class TestHandler:
         table = dynamodb.Table("pkgwatch-packages")
 
         # Add package with non-GitHub repository
-        table.put_item(Item={
-            "pk": "npm#gitlab-pkg",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "gitlab-pkg",
-            "tier": 1,
-            "repository_url": "https://gitlab.com/user/repo",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#gitlab-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "gitlab-pkg",
+                "tier": 1,
+                "repository_url": "https://gitlab.com/user/repo",
+            }
+        )
 
         # Mock parse_github_url to return None for non-GitHub URLs
         with patch("collectors.openssf_collector_batch.parse_github_url", return_value=None):
             from collectors.openssf_collector_batch import handler
+
             result = handler({}, None)
 
         assert result["packages_updated"] == 0
@@ -163,14 +174,16 @@ class TestHandler:
         create_dynamodb_tables(dynamodb)
         table = dynamodb.Table("pkgwatch-packages")
 
-        table.put_item(Item={
-            "pk": "npm#unknown",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "unknown",
-            "tier": 1,
-            "repository_url": "https://github.com/unknown/unknown",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#unknown",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "unknown",
+                "tier": 1,
+                "repository_url": "https://github.com/unknown/unknown",
+            }
+        )
 
         # Mock HTTP client to return 404
         def mock_handler(request: httpx.Request) -> httpx.Response:
@@ -192,6 +205,7 @@ class TestHandler:
             with patch("collectors.openssf_collector_batch.time.sleep"):
                 with patch("collectors.openssf_collector_batch._write_openssf_updates", mock_write):
                     from collectors.openssf_collector_batch import handler
+
                     result = handler({}, None)
 
         assert result["total_processed"] == 1
@@ -212,14 +226,16 @@ class TestHandler:
 
         # Add multiple packages
         for i in range(5):
-            table.put_item(Item={
-                "pk": f"npm#pkg{i}",
-                "sk": "LATEST",
-                "ecosystem": "npm",
-                "name": f"pkg{i}",
-                "tier": 1,
-                "repository_url": f"https://github.com/owner/pkg{i}",
-            })
+            table.put_item(
+                Item={
+                    "pk": f"npm#pkg{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "npm",
+                    "name": f"pkg{i}",
+                    "tier": 1,
+                    "repository_url": f"https://github.com/owner/pkg{i}",
+                }
+            )
 
         # Mock HTTP client - 2 successes then 429
         call_count = [0]
@@ -241,6 +257,7 @@ class TestHandler:
             with patch("collectors.openssf_collector_batch.time.sleep"):
                 with patch("collectors.openssf_collector_batch._write_openssf_updates"):
                     from collectors.openssf_collector_batch import handler
+
                     result = handler({}, None)
 
         # Should have processed 2 before 429
@@ -255,22 +272,26 @@ class TestHandler:
         create_dynamodb_tables(dynamodb)
         table = dynamodb.Table("pkgwatch-packages")
 
-        table.put_item(Item={
-            "pk": "npm#pkg1",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "pkg1",
-            "tier": 1,
-            "repository_url": "https://github.com/owner/pkg1",
-        })
-        table.put_item(Item={
-            "pk": "npm#pkg2",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "pkg2",
-            "tier": 1,
-            "repository_url": "https://github.com/owner/pkg2",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#pkg1",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "pkg1",
+                "tier": 1,
+                "repository_url": "https://github.com/owner/pkg1",
+            }
+        )
+        table.put_item(
+            Item={
+                "pk": "npm#pkg2",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "pkg2",
+                "tier": 1,
+                "repository_url": "https://github.com/owner/pkg2",
+            }
+        )
 
         # Mock HTTP client - first fails, second succeeds
         def mock_handler(request: httpx.Request) -> httpx.Response:
@@ -290,6 +311,7 @@ class TestHandler:
             with patch("collectors.openssf_collector_batch.time.sleep"):
                 with patch("collectors.openssf_collector_batch._write_openssf_updates"):
                     from collectors.openssf_collector_batch import handler
+
                     result = handler({}, None)
 
         # 500 errors fall through without incrementing processed (code quirk)
@@ -309,40 +331,49 @@ class TestGetPackagesNeedingOpenssf:
         table = dynamodb.Table("pkgwatch-packages")
 
         # Add packages with different tiers
-        table.put_item(Item={
-            "pk": "npm#tier3",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "tier3",
-            "tier": 3,
-            "repository_url": "https://github.com/owner/tier3",
-        })
-        table.put_item(Item={
-            "pk": "npm#tier1",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "tier1",
-            "tier": 1,
-            "repository_url": "https://github.com/owner/tier1",
-        })
-        table.put_item(Item={
-            "pk": "npm#tiernone",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "tiernone",
-            # No tier
-            "repository_url": "https://github.com/owner/tiernone",
-        })
-        table.put_item(Item={
-            "pk": "npm#tier2",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "tier2",
-            "tier": 2,
-            "repository_url": "https://github.com/owner/tier2",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#tier3",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "tier3",
+                "tier": 3,
+                "repository_url": "https://github.com/owner/tier3",
+            }
+        )
+        table.put_item(
+            Item={
+                "pk": "npm#tier1",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "tier1",
+                "tier": 1,
+                "repository_url": "https://github.com/owner/tier1",
+            }
+        )
+        table.put_item(
+            Item={
+                "pk": "npm#tiernone",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "tiernone",
+                # No tier
+                "repository_url": "https://github.com/owner/tiernone",
+            }
+        )
+        table.put_item(
+            Item={
+                "pk": "npm#tier2",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "tier2",
+                "tier": 2,
+                "repository_url": "https://github.com/owner/tier2",
+            }
+        )
 
         from collectors.openssf_collector_batch import _get_packages_needing_openssf
+
         packages = _get_packages_needing_openssf(table, limit=10)
 
         # Should be sorted: tier1, tier2, tier3, tiernone
@@ -359,30 +390,35 @@ class TestGetPackagesNeedingOpenssf:
 
         # Add 2 packages missing openssf_score
         for i in range(2):
-            table.put_item(Item={
-                "pk": f"npm#new{i}",
-                "sk": "LATEST",
-                "ecosystem": "npm",
-                "name": f"new{i}",
-                "tier": 1,
-                "repository_url": f"https://github.com/owner/new{i}",
-            })
+            table.put_item(
+                Item={
+                    "pk": f"npm#new{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "npm",
+                    "name": f"new{i}",
+                    "tier": 1,
+                    "repository_url": f"https://github.com/owner/new{i}",
+                }
+            )
 
         # Add stale packages (openssf_date > 7 days old)
         stale_date = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
         for i in range(3):
-            table.put_item(Item={
-                "pk": f"npm#stale{i}",
-                "sk": "LATEST",
-                "ecosystem": "npm",
-                "name": f"stale{i}",
-                "tier": 2,
-                "openssf_score": Decimal("5.0"),  # Has score but stale
-                "openssf_date": stale_date,
-                "repository_url": f"https://github.com/owner/stale{i}",
-            })
+            table.put_item(
+                Item={
+                    "pk": f"npm#stale{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "npm",
+                    "name": f"stale{i}",
+                    "tier": 2,
+                    "openssf_score": Decimal("5.0"),  # Has score but stale
+                    "openssf_date": stale_date,
+                    "repository_url": f"https://github.com/owner/stale{i}",
+                }
+            )
 
         from collectors.openssf_collector_batch import _get_packages_needing_openssf
+
         packages = _get_packages_needing_openssf(table, limit=5)
 
         # Should get 2 new + 3 stale = 5
@@ -396,31 +432,36 @@ class TestGetPackagesNeedingOpenssf:
         table = dynamodb.Table("pkgwatch-packages")
 
         # Add package that could appear in both phases
-        table.put_item(Item={
-            "pk": "npm#shared",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "shared",
-            "tier": 1,
-            "repository_url": "https://github.com/owner/shared",
-            # No openssf_score - will be in Phase 1
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#shared",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "shared",
+                "tier": 1,
+                "repository_url": "https://github.com/owner/shared",
+                # No openssf_score - will be in Phase 1
+            }
+        )
 
         # Add stale packages for Phase 2
         stale_date = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
         for i in range(2):
-            table.put_item(Item={
-                "pk": f"npm#stale{i}",
-                "sk": "LATEST",
-                "ecosystem": "npm",
-                "name": f"stale{i}",
-                "tier": 2,
-                "openssf_score": Decimal("5.0"),
-                "openssf_date": stale_date,
-                "repository_url": f"https://github.com/owner/stale{i}",
-            })
+            table.put_item(
+                Item={
+                    "pk": f"npm#stale{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "npm",
+                    "name": f"stale{i}",
+                    "tier": 2,
+                    "openssf_score": Decimal("5.0"),
+                    "openssf_date": stale_date,
+                    "repository_url": f"https://github.com/owner/stale{i}",
+                }
+            )
 
         from collectors.openssf_collector_batch import _get_packages_needing_openssf
+
         packages = _get_packages_needing_openssf(table, limit=10)
 
         # Should have no duplicates
@@ -435,26 +476,31 @@ class TestGetPackagesNeedingOpenssf:
         table = dynamodb.Table("pkgwatch-packages")
 
         # Add package without repository_url
-        table.put_item(Item={
-            "pk": "npm#no-repo",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "no-repo",
-            "tier": 1,
-            # No repository_url
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#no-repo",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "no-repo",
+                "tier": 1,
+                # No repository_url
+            }
+        )
 
         # Add package with repository_url
-        table.put_item(Item={
-            "pk": "npm#has-repo",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "has-repo",
-            "tier": 1,
-            "repository_url": "https://github.com/owner/repo",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#has-repo",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "has-repo",
+                "tier": 1,
+                "repository_url": "https://github.com/owner/repo",
+            }
+        )
 
         from collectors.openssf_collector_batch import _get_packages_needing_openssf
+
         packages = _get_packages_needing_openssf(table, limit=10)
 
         # Should only get the one with repository_url
@@ -473,22 +519,27 @@ class TestWriteOpenSSFUpdates:
         table = dynamodb.Table("pkgwatch-packages")
 
         # Add initial package
-        table.put_item(Item={
-            "pk": "npm#lodash",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "lodash",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#lodash",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "lodash",
+            }
+        )
 
         # Use Decimal for DynamoDB compatibility
-        updates = [{
-            "pk": "npm#lodash",
-            "openssf_score": Decimal("7.5"),
-            "openssf_checks": [{"name": "Maintained", "score": 10}],
-            "openssf_source": "direct_batch"
-        }]
+        updates = [
+            {
+                "pk": "npm#lodash",
+                "openssf_score": Decimal("7.5"),
+                "openssf_checks": [{"name": "Maintained", "score": 10}],
+                "openssf_source": "direct_batch",
+            }
+        ]
 
         from collectors.openssf_collector_batch import _write_openssf_updates
+
         _write_openssf_updates(table, updates)
 
         # Verify all fields updated
@@ -506,21 +557,26 @@ class TestWriteOpenSSFUpdates:
         table = dynamodb.Table("pkgwatch-packages")
 
         # Add initial package
-        table.put_item(Item={
-            "pk": "npm#unknown",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "unknown",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#unknown",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "unknown",
+            }
+        )
 
-        updates = [{
-            "pk": "npm#unknown",
-            "openssf_score": None,  # None means not found
-            "openssf_checks": None,
-            "openssf_source": "not_found"
-        }]
+        updates = [
+            {
+                "pk": "npm#unknown",
+                "openssf_score": None,  # None means not found
+                "openssf_checks": None,
+                "openssf_source": "not_found",
+            }
+        ]
 
         from collectors.openssf_collector_batch import _write_openssf_updates
+
         _write_openssf_updates(table, updates)
 
         # Verify only source and date updated, NOT score
@@ -538,12 +594,14 @@ class TestWriteOpenSSFUpdates:
         table = dynamodb.Table("pkgwatch-packages")
 
         # Add only one package
-        table.put_item(Item={
-            "pk": "npm#good",
-            "sk": "LATEST",
-            "ecosystem": "npm",
-            "name": "good",
-        })
+        table.put_item(
+            Item={
+                "pk": "npm#good",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "good",
+            }
+        )
 
         updates = [
             # First update will create a new item (DynamoDB allows this)
@@ -553,6 +611,7 @@ class TestWriteOpenSSFUpdates:
         ]
 
         from collectors.openssf_collector_batch import _write_openssf_updates
+
         # Should not raise
         _write_openssf_updates(table, updates)
 
@@ -573,14 +632,16 @@ class TestIncrementalWrites:
 
         # Add 15 packages (should trigger 2 writes: at 10 and at 15)
         for i in range(15):
-            table.put_item(Item={
-                "pk": f"npm#pkg{i}",
-                "sk": "LATEST",
-                "ecosystem": "npm",
-                "name": f"pkg{i}",
-                "tier": 1,
-                "repository_url": f"https://github.com/owner/pkg{i}",
-            })
+            table.put_item(
+                Item={
+                    "pk": f"npm#pkg{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "npm",
+                    "name": f"pkg{i}",
+                    "tier": 1,
+                    "repository_url": f"https://github.com/owner/pkg{i}",
+                }
+            )
 
         # Mock HTTP client
         def mock_handler(request: httpx.Request) -> httpx.Response:
@@ -602,6 +663,7 @@ class TestIncrementalWrites:
             with patch("collectors.openssf_collector_batch.time.sleep"):
                 with patch("collectors.openssf_collector_batch._write_openssf_updates", mock_write):
                     from collectors.openssf_collector_batch import handler
+
                     result = handler({}, None)
 
         # Should have called _write_openssf_updates twice (at 10 and at end with 5)

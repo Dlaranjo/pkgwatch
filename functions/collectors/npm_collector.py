@@ -20,7 +20,7 @@ import sys
 import httpx
 
 sys.path.insert(0, os.path.dirname(__file__))  # Add collectors directory
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))  # Add functions directory
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))  # Add functions directory
 from http_client import get_http_client
 
 from shared.circuit_breaker import NPM_CIRCUIT, circuit_breaker
@@ -80,7 +80,7 @@ async def retry_with_backoff(
                 raise last_exception
 
             # Equal jitter: 50% fixed backoff + 50% random (better thundering herd prevention)
-            base = base_delay * (2 ** attempt)
+            base = base_delay * (2**attempt)
             delay = base * 0.5 + random.uniform(0, base * 0.5)
             logger.warning(f"Attempt {attempt + 1} failed, retrying in {delay:.2f}s: {last_exception}")
             await asyncio.sleep(delay)
@@ -172,11 +172,7 @@ async def get_npm_metadata(name: str) -> dict:
 
     # Clean up repository URL
     if repository_url:
-        repository_url = (
-            repository_url.replace("git+", "")
-            .replace("git://", "https://")
-            .replace(".git", "")
-        )
+        repository_url = repository_url.replace("git+", "").replace("git://", "https://").replace(".git", "")
 
     # 2. Download statistics (separate API)
     weekly_downloads = 0

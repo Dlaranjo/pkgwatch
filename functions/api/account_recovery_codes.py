@@ -135,9 +135,7 @@ def _handle_generate_codes(user_id: str, origin: str | None) -> dict:
 
     except ClientError as e:
         logger.error(f"Error generating recovery codes: {e}")
-        return error_response(
-            500, "internal_error", "Failed to generate recovery codes", origin=origin
-        )
+        return error_response(500, "internal_error", "Failed to generate recovery codes", origin=origin)
 
 
 def _handle_delete_codes(user_id: str, origin: str | None) -> dict:
@@ -171,9 +169,7 @@ def _handle_delete_codes(user_id: str, origin: str | None) -> dict:
                 origin=origin,
             )
         logger.error(f"Error deleting recovery codes: {e}")
-        return error_response(
-            500, "internal_error", "Failed to invalidate recovery codes", origin=origin
-        )
+        return error_response(500, "internal_error", "Failed to invalidate recovery codes", origin=origin)
 
 
 def _handle_get_status(user_id: str, origin: str | None) -> dict:
@@ -211,6 +207,4 @@ def _handle_get_status(user_id: str, origin: str | None) -> dict:
 
     except ClientError as e:
         logger.error(f"Error getting recovery codes status: {e}")
-        return error_response(
-            500, "internal_error", "Failed to get recovery codes status", origin=origin
-        )
+        return error_response(500, "internal_error", "Failed to get recovery codes status", origin=origin)

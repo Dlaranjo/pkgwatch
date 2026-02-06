@@ -63,9 +63,7 @@ def handler(event, context):
 
         # Get pending key display record
         table = dynamodb.Table(API_KEYS_TABLE)
-        response = table.get_item(
-            Key={"pk": user_id, "sk": "PENDING_DISPLAY"}
-        )
+        response = table.get_item(Key={"pk": user_id, "sk": "PENDING_DISPLAY"})
 
         pending_item = response.get("Item")
         if not pending_item:
@@ -73,16 +71,14 @@ def handler(event, context):
                 404,
                 "no_pending_key",
                 "No pending key found. It may have already been retrieved or expired.",
-                origin=origin
+                origin=origin,
             )
 
         api_key = pending_item.get("api_key")
 
         # Delete the pending record (one-time use)
         try:
-            table.delete_item(
-                Key={"pk": user_id, "sk": "PENDING_DISPLAY"}
-            )
+            table.delete_item(Key={"pk": user_id, "sk": "PENDING_DISPLAY"})
         except Exception as e:
             logger.warning(f"Failed to delete pending key record: {e}")
             # Continue anyway - TTL will clean it up
@@ -97,10 +93,12 @@ def handler(event, context):
         return {
             "statusCode": 200,
             "headers": response_headers,
-            "body": json.dumps({
-                "api_key": api_key,
-                "message": "This key will only be shown once. Please copy it now.",
-            }),
+            "body": json.dumps(
+                {
+                    "api_key": api_key,
+                    "message": "This key will only be shown once. Please copy it now.",
+                }
+            ),
         }
 
     except Exception as e:

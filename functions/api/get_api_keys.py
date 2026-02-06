@@ -76,14 +76,16 @@ def handler(event, context):
             key_hash = sk or ""
             # Use stored key_suffix if available, fall back to hash suffix for old keys
             key_suffix = item.get("key_suffix") or key_hash[-8:]
-            api_keys.append({
-                "key_id": key_hash[:16],  # First 16 chars of hash as identifier
-                "key_prefix": f"pw_....{key_suffix}",  # Show actual key suffix
-                "tier": item.get("tier", "free"),
-                "requests_this_month": item.get("requests_this_month", 0),
-                "created_at": item.get("created_at"),
-                "last_used": item.get("last_used"),
-            })
+            api_keys.append(
+                {
+                    "key_id": key_hash[:16],  # First 16 chars of hash as identifier
+                    "key_prefix": f"pw_....{key_suffix}",  # Show actual key suffix
+                    "tier": item.get("tier", "free"),
+                    "requests_this_month": item.get("requests_this_month", 0),
+                    "created_at": item.get("created_at"),
+                    "last_used": item.get("last_used"),
+                }
+            )
 
     except Exception as e:
         logger.error(f"Error fetching API keys: {e}")
@@ -101,5 +103,3 @@ def handler(event, context):
         "headers": response_headers,
         "body": json.dumps({"api_keys": api_keys}, default=decimal_default),
     }
-
-

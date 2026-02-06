@@ -76,41 +76,36 @@ def handler(event, context):
         seconds_until_reset = (reset_date - now).total_seconds()
 
         # Calculate usage percentage
-        usage_percentage = (
-            requests_this_month / user["monthly_limit"] * 100
-            if user["monthly_limit"] > 0
-            else 0
-        )
+        usage_percentage = requests_this_month / user["monthly_limit"] * 100 if user["monthly_limit"] > 0 else 0
 
         response_headers = {
             "Content-Type": "application/json",
             "Cache-Control": "no-store, no-cache, must-revalidate",
             "X-RateLimit-Limit": str(user["monthly_limit"]),
-            "X-RateLimit-Remaining": str(
-                max(0, user["monthly_limit"] - requests_this_month)
-            ),
+            "X-RateLimit-Remaining": str(max(0, user["monthly_limit"] - requests_this_month)),
         }
         response_headers.update(get_cors_headers(origin))
 
         return {
             "statusCode": 200,
             "headers": response_headers,
-            "body": json.dumps({
-                "tier": user["tier"],
-                "usage": {
-                    "requests_this_month": requests_this_month,
-                    "monthly_limit": user["monthly_limit"],
-                    "remaining": max(0, user["monthly_limit"] - requests_this_month),
-                    "usage_percentage": round(usage_percentage, 1),
+            "body": json.dumps(
+                {
+                    "tier": user["tier"],
+                    "usage": {
+                        "requests_this_month": requests_this_month,
+                        "monthly_limit": user["monthly_limit"],
+                        "remaining": max(0, user["monthly_limit"] - requests_this_month),
+                        "usage_percentage": round(usage_percentage, 1),
+                    },
+                    "reset": {
+                        "date": reset_date.isoformat(),
+                        "seconds_until_reset": int(seconds_until_reset),
+                    },
+                    "limits_by_tier": {tier: limit for tier, limit in TIER_LIMITS.items()},
                 },
-                "reset": {
-                    "date": reset_date.isoformat(),
-                    "seconds_until_reset": int(seconds_until_reset),
-                },
-                "limits_by_tier": {
-                    tier: limit for tier, limit in TIER_LIMITS.items()
-                },
-            }, default=decimal_default),
+                default=decimal_default,
+            ),
         }
     except Exception as e:
         logger.error(f"Error in get_usage handler: {e}")

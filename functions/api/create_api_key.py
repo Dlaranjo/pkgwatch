@@ -102,7 +102,7 @@ def handler(event, context):
                 400,
                 "max_keys_reached",
                 f"Maximum {MAX_KEYS_PER_USER} API keys allowed. Revoke an existing key to create a new one.",
-                origin=origin
+                origin=origin,
             )
 
     except Exception as e:
@@ -151,37 +151,39 @@ def handler(event, context):
 
     if user_meta is not None:
         # Increment existing USER_META.key_count
-        transact_items.append({
-            "Update": {
-                "TableName": API_KEYS_TABLE,
-                "Key": {
-                    "pk": {"S": user_id},
-                    "sk": {"S": "USER_META"},
-                },
-                "UpdateExpression": "SET key_count = key_count + :inc",
-                "ExpressionAttributeValues": {
-                    ":inc": {"N": "1"},
-                },
+        transact_items.append(
+            {
+                "Update": {
+                    "TableName": API_KEYS_TABLE,
+                    "Key": {
+                        "pk": {"S": user_id},
+                        "sk": {"S": "USER_META"},
+                    },
+                    "UpdateExpression": "SET key_count = key_count + :inc",
+                    "ExpressionAttributeValues": {
+                        ":inc": {"N": "1"},
+                    },
+                }
             }
-        })
+        )
     else:
         # Create USER_META with key_count and aggregated requests_this_month
         # Aggregate existing usage to prevent gaming via key creation
-        total_usage = sum(
-            int(key.get("requests_this_month", 0)) for key in active_keys
-        )
-        transact_items.append({
-            "Put": {
-                "TableName": API_KEYS_TABLE,
-                "Item": {
-                    "pk": {"S": user_id},
-                    "sk": {"S": "USER_META"},
-                    "key_count": {"N": str(current_count + 1)},
-                    "requests_this_month": {"N": str(total_usage)},
-                },
-                "ConditionExpression": "attribute_not_exists(pk) OR attribute_not_exists(sk)",
+        total_usage = sum(int(key.get("requests_this_month", 0)) for key in active_keys)
+        transact_items.append(
+            {
+                "Put": {
+                    "TableName": API_KEYS_TABLE,
+                    "Item": {
+                        "pk": {"S": user_id},
+                        "sk": {"S": "USER_META"},
+                        "key_count": {"N": str(current_count + 1)},
+                        "requests_this_month": {"N": str(total_usage)},
+                    },
+                    "ConditionExpression": "attribute_not_exists(pk) OR attribute_not_exists(sk)",
+                }
             }
-        })
+        )
 
     # Atomically create key and update USER_META
     # This prevents race conditions where the same key hash could be created twice
@@ -192,12 +194,7 @@ def handler(event, context):
         if error_code == "TransactionCanceledException":
             # Key already exists (hash collision - extremely rare) or race condition
             logger.warning(f"Key creation transaction failed for {user_id}: {e}")
-            return error_response(
-                409,
-                "key_creation_failed",
-                "Failed to create key. Please try again.",
-                origin=origin
-            )
+            return error_response(409, "key_creation_failed", "Failed to create key. Please try again.", origin=origin)
         logger.error(f"Error creating API key: {e}")
         return error_response(500, "internal_error", "Failed to create API key", origin=origin)
 
@@ -210,9 +207,11 @@ def handler(event, context):
     return {
         "statusCode": 201,
         "headers": response_headers,
-        "body": json.dumps({
-            "api_key": api_key,
-            "key_id": key_hash[:16],
-            "message": "API key created. Save this key - it won't be shown again.",
-        }),
+        "body": json.dumps(
+            {
+                "api_key": api_key,
+                "key_id": key_hash[:16],
+                "message": "API key created. Save this key - it won't be shown again.",
+            }
+        ),
     }

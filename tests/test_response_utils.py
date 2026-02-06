@@ -158,10 +158,7 @@ class TestErrorResponse:
             origin="https://pkgwatch.dev",
         )
 
-        assert (
-            result["headers"]["Access-Control-Allow-Origin"]
-            == "https://pkgwatch.dev"
-        )
+        assert result["headers"]["Access-Control-Allow-Origin"] == "https://pkgwatch.dev"
 
     def test_includes_request_id_when_set(self):
         """Should include request_id in error body when context var is set."""
@@ -226,14 +223,9 @@ class TestSuccessResponse:
         """Should include CORS headers when origin is allowed."""
         from shared.response_utils import success_response
 
-        result = success_response(
-            {"data": "test"}, origin="https://pkgwatch.dev"
-        )
+        result = success_response({"data": "test"}, origin="https://pkgwatch.dev")
 
-        assert (
-            result["headers"]["Access-Control-Allow-Origin"]
-            == "https://pkgwatch.dev"
-        )
+        assert result["headers"]["Access-Control-Allow-Origin"] == "https://pkgwatch.dev"
 
 
 class TestRedirectResponse:

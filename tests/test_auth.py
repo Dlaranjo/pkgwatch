@@ -4,7 +4,6 @@ Tests for authentication and API key management.
 Security-critical code - high coverage required.
 """
 
-
 import pytest
 from moto import mock_aws
 
@@ -89,7 +88,7 @@ class TestValidateApiKey:
         # Test SQL injection-style attack patterns
         malicious_keys = [
             "pw_' OR '1'='1",
-            "pw_\"; DROP TABLE users;--",
+            'pw_"; DROP TABLE users;--',
             "pw_<script>alert('xss')</script>",
             "pw_\x00null_byte",
             "pw_\n\r\t",  # Control characters
@@ -169,8 +168,7 @@ class TestGenerateApiKey:
         assert len(api_key) >= 46, f"Key too short: {len(api_key)} chars"
         # Verify key contains only URL-safe characters after prefix
         key_body = api_key[3:]  # Remove "pw_"
-        assert all(c.isalnum() or c in "-_" for c in key_body), \
-            f"Key contains invalid characters: {key_body}"
+        assert all(c.isalnum() or c in "-_" for c in key_body), f"Key contains invalid characters: {key_body}"
 
     @mock_aws
     def test_keys_are_unique(self, aws_credentials, mock_dynamodb):
@@ -235,17 +233,16 @@ class TestGenerateApiKey:
         assert len(items) == 1
 
         stored_suffix = items[0].get("key_suffix")
-        assert stored_suffix == expected_suffix, \
+        assert stored_suffix == expected_suffix, (
             f"Stored key_suffix '{stored_suffix}' should match actual suffix '{expected_suffix}'"
+        )
 
         # Verify suffix length is exactly 8
-        assert len(stored_suffix) == 8, \
-            f"Key suffix should be 8 chars, got {len(stored_suffix)}"
+        assert len(stored_suffix) == 8, f"Key suffix should be 8 chars, got {len(stored_suffix)}"
 
         # Verify suffix is different from key_hash suffix (security check)
         key_hash = items[0].get("key_hash")
-        assert key_hash[-8:] != stored_suffix, \
-            "Key suffix should be from actual key, not from hash"
+        assert key_hash[-8:] != stored_suffix, "Key suffix should be from actual key, not from hash"
 
     @mock_aws
     def test_payment_failures_initialized_to_zero(self, aws_credentials, mock_dynamodb):
@@ -485,6 +482,7 @@ class TestUserLevelRateLimiting:
 
         # Create USER_META first (normally done by create_api_key.py)
         import boto3
+
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
         table.put_item(Item={"pk": user_id, "sk": "USER_META", "key_count": 0, "requests_this_month": 0})
 
@@ -530,9 +528,7 @@ class TestUserLevelRateLimiting:
         user = validate_api_key(api_key)
 
         # Batch increment by 10
-        allowed, count = check_and_increment_usage_batch(
-            user["user_id"], user["key_hash"], 5000, count=10
-        )
+        allowed, count = check_and_increment_usage_batch(user["user_id"], user["key_hash"], 5000, count=10)
         assert allowed
         assert count == 10
 
@@ -618,12 +614,14 @@ class TestUserLevelRateLimiting:
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
 
         # Create USER_META with initial usage
-        table.put_item(Item={
-            "pk": user_id,
-            "sk": "USER_META",
-            "key_count": 2,
-            "requests_this_month": 100,
-        })
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "key_count": 2,
+                "requests_this_month": 100,
+            }
+        )
 
         # Create two keys
         key1 = generate_api_key(user_id, tier="free")
@@ -657,12 +655,14 @@ class TestUserLevelRateLimiting:
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
 
         # Create USER_META at limit
-        table.put_item(Item={
-            "pk": user_id,
-            "sk": "USER_META",
-            "key_count": 1,
-            "requests_this_month": 5000,  # At free tier limit
-        })
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "key_count": 1,
+                "requests_this_month": 5000,  # At free tier limit
+            }
+        )
 
         # Create first key
         key1 = generate_api_key(user_id, tier="free")
@@ -887,8 +887,7 @@ class TestValidateApiKeyCircuitBreaker:
 
         # Create a throttling error
         throttle_error = ClientError(
-            {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Rate exceeded"}},
-            "Query"
+            {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Rate exceeded"}}, "Query"
         )
 
         with patch("shared.auth.get_dynamodb") as mock_ddb:
@@ -914,10 +913,7 @@ class TestValidateApiKeyCircuitBreaker:
 
         DYNAMODB_CIRCUIT._state = CircuitBreakerState()
 
-        throttle_error = ClientError(
-            {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
-            "Query"
-        )
+        throttle_error = ClientError({"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}}, "Query")
 
         with patch("shared.auth.get_dynamodb") as mock_ddb:
             mock_table = MagicMock()
@@ -980,6 +976,7 @@ class TestCheckAndIncrementUsageCircuitBreaker:
             return original_update_item(*args, **kwargs)
 
         import boto3
+
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
         original_update_item = table.update_item
 
@@ -1007,16 +1004,18 @@ class TestCheckAndIncrementUsageCircuitBreaker:
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
 
         # Set USER_META at limit
-        table.put_item(Item={
-            "pk": user_id, "sk": "USER_META",
-            "requests_this_month": 100,
-        })
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "requests_this_month": 100,
+            }
+        )
 
         # The condition check will fail (rate limit exceeded), then get_item
         # for current count should also fail
         condition_error = ClientError(
-            {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Limit exceeded"}},
-            "UpdateItem"
+            {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Limit exceeded"}}, "UpdateItem"
         )
 
         call_count = [0]
@@ -1052,8 +1051,7 @@ class TestCheckAndIncrementUsageCircuitBreaker:
         DYNAMODB_CIRCUIT._state = CircuitBreakerState()
 
         throttle_error = ClientError(
-            {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Rate exceeded"}},
-            "UpdateItem"
+            {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Rate exceeded"}}, "UpdateItem"
         )
 
         mock_table = MagicMock()
@@ -1096,6 +1094,7 @@ class TestCheckAndIncrementUsageBatchCircuitBreaker:
         user = validate_api_key(api_key)
 
         import boto3
+
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
         original_update = table.update_item
         call_count = [0]
@@ -1126,8 +1125,7 @@ class TestCheckAndIncrementUsageBatchCircuitBreaker:
         from shared.auth import check_and_increment_usage_batch
 
         condition_error = ClientError(
-            {"Error": {"Code": "ConditionalCheckFailedException", "Message": ""}},
-            "UpdateItem"
+            {"Error": {"Code": "ConditionalCheckFailedException", "Message": ""}}, "UpdateItem"
         )
 
         mock_table = MagicMock()
@@ -1153,10 +1151,7 @@ class TestCheckAndIncrementUsageBatchCircuitBreaker:
 
         DYNAMODB_CIRCUIT._state = CircuitBreakerState()
 
-        throttle_error = ClientError(
-            {"Error": {"Code": "RequestLimitExceeded", "Message": ""}},
-            "UpdateItem"
-        )
+        throttle_error = ClientError({"Error": {"Code": "RequestLimitExceeded", "Message": ""}}, "UpdateItem")
 
         mock_table = MagicMock()
         mock_table.update_item.side_effect = throttle_error
@@ -1198,16 +1193,17 @@ class TestCheckAndIncrementUsageWithBonus:
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
 
         # Set up USER_META with some usage and bonus
-        table.put_item(Item={
-            "pk": user_id, "sk": "USER_META",
-            "requests_this_month": 10,
-            "bonus_requests": 500,
-            "total_packages_scanned": 5,
-        })
-
-        allowed, count, bonus = check_and_increment_usage_with_bonus(
-            user_id, "some_hash", limit=5000, count=1
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "requests_this_month": 10,
+                "bonus_requests": 500,
+                "total_packages_scanned": 5,
+            }
         )
+
+        allowed, count, bonus = check_and_increment_usage_with_bonus(user_id, "some_hash", limit=5000, count=1)
 
         assert allowed is True
         assert count == 11
@@ -1224,16 +1220,17 @@ class TestCheckAndIncrementUsageWithBonus:
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
 
         # Set up USER_META at monthly limit with bonus credits available
-        table.put_item(Item={
-            "pk": user_id, "sk": "USER_META",
-            "requests_this_month": 100,
-            "bonus_requests": 500,
-            "total_packages_scanned": 50,
-        })
-
-        allowed, count, bonus = check_and_increment_usage_with_bonus(
-            user_id, "some_hash", limit=100, count=1
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "requests_this_month": 100,
+                "bonus_requests": 500,
+                "total_packages_scanned": 50,
+            }
         )
+
+        allowed, count, bonus = check_and_increment_usage_with_bonus(user_id, "some_hash", limit=100, count=1)
 
         assert allowed is True
         assert count == 101  # 100 + 1
@@ -1249,16 +1246,17 @@ class TestCheckAndIncrementUsageWithBonus:
         user_id = "user_full_deny"
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
 
-        table.put_item(Item={
-            "pk": user_id, "sk": "USER_META",
-            "requests_this_month": 100,
-            "bonus_requests": 0,
-            "total_packages_scanned": 50,
-        })
-
-        allowed, count, bonus = check_and_increment_usage_with_bonus(
-            user_id, "some_hash", limit=100, count=1
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "requests_this_month": 100,
+                "bonus_requests": 0,
+                "total_packages_scanned": 50,
+            }
         )
+
+        allowed, count, bonus = check_and_increment_usage_with_bonus(user_id, "some_hash", limit=100, count=1)
 
         assert allowed is False
         assert count == 100
@@ -1278,12 +1276,15 @@ class TestCheckAndIncrementUsageWithBonus:
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
 
         # Set up near-depleted bonus
-        table.put_item(Item={
-            "pk": user_id, "sk": "USER_META",
-            "requests_this_month": 100,
-            "bonus_requests": 1,
-            "total_packages_scanned": 50,
-        })
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "requests_this_month": 100,
+                "bonus_requests": 1,
+                "total_packages_scanned": 50,
+            }
+        )
 
         original_update = table.update_item
         call_count = [0]
@@ -1296,7 +1297,7 @@ class TestCheckAndIncrementUsageWithBonus:
                 if "bonus_requests" in update_expr and "bonus_requests - " in update_expr:
                     raise ClientError(
                         {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Bonus depleted"}},
-                        "UpdateItem"
+                        "UpdateItem",
                     )
             return original_update(**kwargs)
 
@@ -1305,9 +1306,7 @@ class TestCheckAndIncrementUsageWithBonus:
             patched_table.update_item = simulate_race
             patched_table.get_item = table.get_item
             mock_ddb.return_value.Table.return_value = patched_table
-            allowed, count, bonus = check_and_increment_usage_with_bonus(
-                user_id, "some_hash", limit=100, count=1
-            )
+            allowed, count, bonus = check_and_increment_usage_with_bonus(user_id, "some_hash", limit=100, count=1)
 
         assert allowed is False
         assert bonus == 0
@@ -1326,12 +1325,15 @@ class TestCheckAndIncrementUsageWithBonus:
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
 
         # Set up at a point where monthly still has room
-        table.put_item(Item={
-            "pk": user_id, "sk": "USER_META",
-            "requests_this_month": 99,
-            "bonus_requests": 10,
-            "total_packages_scanned": 50,
-        })
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "requests_this_month": 99,
+                "bonus_requests": 10,
+                "total_packages_scanned": 50,
+            }
+        )
 
         original_update = table.update_item
         call_count = [0]
@@ -1340,11 +1342,12 @@ class TestCheckAndIncrementUsageWithBonus:
             call_count[0] += 1
             cond_expr = kwargs.get("ConditionExpression", "")
             # The monthly increment path uses ConditionExpression with max_allowed
-            if "max_allowed" in str(kwargs.get("ExpressionAttributeValues", {})) or \
-               "requests_this_month < :max_allowed" in cond_expr:
+            if (
+                "max_allowed" in str(kwargs.get("ExpressionAttributeValues", {}))
+                or "requests_this_month < :max_allowed" in cond_expr
+            ):
                 raise ClientError(
-                    {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Race"}},
-                    "UpdateItem"
+                    {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Race"}}, "UpdateItem"
                 )
             return original_update(**kwargs)
 
@@ -1353,9 +1356,7 @@ class TestCheckAndIncrementUsageWithBonus:
             patched_table.update_item = simulate_race
             patched_table.get_item = table.get_item
             mock_ddb.return_value.Table.return_value = patched_table
-            allowed, count, bonus = check_and_increment_usage_with_bonus(
-                user_id, "some_hash", limit=100, count=1
-            )
+            allowed, count, bonus = check_and_increment_usage_with_bonus(user_id, "some_hash", limit=100, count=1)
 
         assert allowed is False
         assert count == 99
@@ -1373,12 +1374,15 @@ class TestCheckAndIncrementUsageWithBonus:
         user_id = "user_perkey_bonus"
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
 
-        table.put_item(Item={
-            "pk": user_id, "sk": "USER_META",
-            "requests_this_month": 10,
-            "bonus_requests": 0,
-            "total_packages_scanned": 5,
-        })
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "requests_this_month": 10,
+                "bonus_requests": 0,
+                "total_packages_scanned": 5,
+            }
+        )
 
         original_update = table.update_item
         call_count = [0]
@@ -1393,13 +1397,12 @@ class TestCheckAndIncrementUsageWithBonus:
 
         with patch("shared.auth.get_dynamodb") as mock_ddb:
             from unittest.mock import MagicMock
+
             patched_table = MagicMock(wraps=table)
             patched_table.update_item = selective_fail
             patched_table.get_item = table.get_item
             mock_ddb.return_value.Table.return_value = patched_table
-            allowed, count, bonus = check_and_increment_usage_with_bonus(
-                user_id, "some_hash", limit=5000, count=1
-            )
+            allowed, count, bonus = check_and_increment_usage_with_bonus(user_id, "some_hash", limit=5000, count=1)
 
         assert allowed is True
 
@@ -1416,8 +1419,7 @@ class TestCheckAndIncrementUsageWithBonus:
         DYNAMODB_CIRCUIT._state = CircuitBreakerState()
 
         throttle_error = ClientError(
-            {"Error": {"Code": "InternalServerError", "Message": "DynamoDB is overloaded"}},
-            "GetItem"
+            {"Error": {"Code": "InternalServerError", "Message": "DynamoDB is overloaded"}}, "GetItem"
         )
 
         mock_table = MagicMock()
@@ -1444,31 +1446,34 @@ class TestCheckAndIncrementUsageWithBonus:
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
 
         # Set up referred user just below threshold (100)
-        table.put_item(Item={
-            "pk": user_id, "sk": "USER_META",
-            "requests_this_month": 98,
-            "bonus_requests": 0,
-            "total_packages_scanned": 99,  # One more and we cross threshold
-            "referral_pending": True,
-            "referred_by": referrer_id,
-            "referral_pending_expires": (
-                __import__("datetime").datetime.now(
-                    __import__("datetime").timezone.utc
-                ) + __import__("datetime").timedelta(days=30)
-            ).isoformat(),
-        })
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "requests_this_month": 98,
+                "bonus_requests": 0,
+                "total_packages_scanned": 99,  # One more and we cross threshold
+                "referral_pending": True,
+                "referred_by": referrer_id,
+                "referral_pending_expires": (
+                    __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+                    + __import__("datetime").timedelta(days=30)
+                ).isoformat(),
+            }
+        )
 
         # Set up referrer USER_META
-        table.put_item(Item={
-            "pk": referrer_id, "sk": "USER_META",
-            "bonus_requests": 0,
-            "bonus_requests_lifetime": 0,
-        })
+        table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": "USER_META",
+                "bonus_requests": 0,
+                "bonus_requests_lifetime": 0,
+            }
+        )
 
         with patch("shared.auth._trigger_referral_activity_gate") as mock_trigger:
-            allowed, count, bonus = check_and_increment_usage_with_bonus(
-                user_id, "some_hash", limit=5000, count=1
-            )
+            allowed, count, bonus = check_and_increment_usage_with_bonus(user_id, "some_hash", limit=5000, count=1)
 
         assert allowed is True
         mock_trigger.assert_called_once()
@@ -1499,12 +1504,15 @@ class TestTriggerReferralActivityGate:
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
 
         # Create USER_META with expired referral
-        table.put_item(Item={
-            "pk": user_id, "sk": "USER_META",
-            "referral_pending": True,
-            "referred_by": "user_referrer",
-            "referral_pending_expires": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
-        })
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "referral_pending": True,
+                "referred_by": "user_referrer",
+                "referral_pending_expires": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+            }
+        )
 
         meta = {
             "referred_by": "user_referrer",
@@ -1532,12 +1540,15 @@ class TestTriggerReferralActivityGate:
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
 
         # USER_META already has referral_activity_credited = True (another request won)
-        table.put_item(Item={
-            "pk": user_id, "sk": "USER_META",
-            "referral_pending": True,
-            "referred_by": referrer_id,
-            "referral_activity_credited": True,
-        })
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "referral_pending": True,
+                "referred_by": referrer_id,
+                "referral_activity_credited": True,
+            }
+        )
 
         meta = {
             "referred_by": referrer_id,
@@ -1560,26 +1571,34 @@ class TestTriggerReferralActivityGate:
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
 
         # Create referred user META with pending referral
-        table.put_item(Item={
-            "pk": user_id, "sk": "USER_META",
-            "referral_pending": True,
-            "referred_by": referrer_id,
-        })
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "referral_pending": True,
+                "referred_by": referrer_id,
+            }
+        )
 
         # Create referrer USER_META
-        table.put_item(Item={
-            "pk": referrer_id, "sk": "USER_META",
-            "bonus_requests": 0,
-            "bonus_requests_lifetime": 0,
-        })
+        table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": "USER_META",
+                "bonus_requests": 0,
+                "bonus_requests_lifetime": 0,
+            }
+        )
 
         meta = {
             "referred_by": referrer_id,
         }
 
-        with patch("shared.referral_utils.add_bonus_with_cap", return_value=5000) as mock_bonus, \
-             patch("shared.referral_utils.update_referral_event_to_credited") as mock_event, \
-             patch("shared.referral_utils.update_referrer_stats") as mock_stats:
+        with (
+            patch("shared.referral_utils.add_bonus_with_cap", return_value=5000) as mock_bonus,
+            patch("shared.referral_utils.update_referral_event_to_credited") as mock_event,
+            patch("shared.referral_utils.update_referrer_stats") as mock_stats,
+        ):
             _trigger_referral_activity_gate(user_id, meta)
 
         mock_bonus.assert_called_once_with(referrer_id, 5000)
@@ -1599,11 +1618,14 @@ class TestTriggerReferralActivityGate:
         referrer_id = "user_referrer_error"
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
 
-        table.put_item(Item={
-            "pk": user_id, "sk": "USER_META",
-            "referral_pending": True,
-            "referred_by": referrer_id,
-        })
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "referral_pending": True,
+                "referred_by": referrer_id,
+            }
+        )
 
         meta = {"referred_by": referrer_id}
 

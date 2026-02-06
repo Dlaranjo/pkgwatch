@@ -66,6 +66,7 @@ DEFAULT_LIMITS = httpx.Limits(
     keepalive_expiry=30.0,  # Seconds before closing idle connections
 )
 
+
 def _use_connection_pooling() -> bool:
     """Check if connection pooling is enabled (runtime check)."""
     return os.environ.get("USE_CONNECTION_POOLING", "true").lower() == "true"
@@ -201,6 +202,7 @@ def get_github_client(headers: dict) -> httpx.AsyncClient:
     # Create a cache key from the Authorization header (or empty string if none)
     # Use hash to avoid storing tokens in memory as plain text
     import hashlib
+
     auth_header = headers.get("Authorization", "")
     token_hash = hashlib.sha256(auth_header.encode()).hexdigest()[:16]
 
