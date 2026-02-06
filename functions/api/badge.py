@@ -166,7 +166,7 @@ def handler(event, context):
     # Extract query parameters
     query_params = event.get("queryStringParameters") or {}
     style = query_params.get("style", "flat")
-    label = query_params.get("label", "pkgwatch")
+    label = query_params.get("label", "pkgwatch")[:100]
 
     # Validate style parameter
     if style not in ("flat", "flat-square"):

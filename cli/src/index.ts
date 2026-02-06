@@ -281,7 +281,7 @@ function printPackageDetails(pkg: PackageHealthFull): void {
   console.log("");
 
   // Feedback link for score disputes
-  console.log(pc.dim(`  Wrong score? ${pc.underline(`https://github.com/Dlaranjo/pkgwatch/issues/new?title=Score+feedback:+${pkg.ecosystem}/${pkg.package}&labels=score-feedback`)}`));
+  console.log(pc.dim(`  Wrong score? ${pc.underline(`https://github.com/Dlaranjo/pkgwatch/issues/new?title=Score+feedback:+${encodeURIComponent(pkg.ecosystem)}/${encodeURIComponent(pkg.package)}&labels=score-feedback`)}`));
   console.log("");
 }
 

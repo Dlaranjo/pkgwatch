@@ -10,7 +10,6 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from decimal import Decimal
 
 from shared.logging_utils import configure_structured_logging, set_request_id
 
@@ -18,14 +17,13 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # Import from shared module (bundled with Lambda)
-from shared.auth import validate_api_key, check_and_increment_usage_with_bonus
-from shared.response_utils import decimal_default, error_response, get_cors_headers, ALLOWED_ORIGINS
-from shared.rate_limit_utils import check_usage_alerts, get_reset_timestamp
+from shared.auth import check_and_increment_usage_with_bonus, validate_api_key
+from shared.aws_clients import get_dynamodb
+from shared.constants import DEMO_REQUESTS_PER_HOUR
 from shared.data_quality import build_data_quality_full, is_queryable
 from shared.package_validation import normalize_npm_name
-from shared.constants import DEMO_REQUESTS_PER_HOUR
-from shared.aws_clients import get_dynamodb
-
+from shared.rate_limit_utils import check_usage_alerts
+from shared.response_utils import decimal_default, error_response, get_cors_headers
 
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 DEMO_RATE_LIMIT_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
@@ -188,7 +186,7 @@ def handler(event, context):
         return error_response(400, "missing_parameter", "Package name is required", headers=cors_headers)
 
     # Handle URL-encoded package names (e.g., %40babel%2Fcore -> @babel/core)
-    from urllib.parse import unquote
+    from urllib.parse import quote, unquote
     name = unquote(name)
 
     # Normalize npm package names to lowercase (npm is case-insensitive)
@@ -290,7 +288,7 @@ def handler(event, context):
         # Data completeness transparency
         "data_quality": build_data_quality_full(item),
         # Feedback link for score disputes
-        "feedback_url": f"https://github.com/Dlaranjo/pkgwatch/issues/new?title=Score+feedback:+{ecosystem}/{name}&labels=score-feedback",
+        "feedback_url": f"https://github.com/Dlaranjo/pkgwatch/issues/new?title=Score+feedback:+{quote(ecosystem, safe='')}/{quote(name, safe='')}&labels=score-feedback",
     }
 
     # Build response headers
