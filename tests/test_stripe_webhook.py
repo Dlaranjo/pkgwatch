@@ -38,7 +38,8 @@ class TestStripeWebhookHandler:
         # Should fail due to missing secrets
         assert result["statusCode"] == 500
         body = json.loads(result["body"])
-        assert body["error"] == "Stripe not configured"
+        assert body["error"]["code"] == "stripe_not_configured"
+        assert body["error"]["message"] == "Stripe not configured"
 
     @mock_aws
     def test_price_to_tier_mapping_handles_empty_env_vars(self, mock_dynamodb):
@@ -2264,7 +2265,8 @@ class TestHandlerSignatureValidation:
 
         assert result["statusCode"] == 400
         body = json.loads(result["body"])
-        assert body["error"] == "Missing Stripe signature"
+        assert body["error"]["code"] == "missing_signature"
+        assert body["error"]["message"] == "Missing Stripe signature"
 
 
 class TestGetUserIdLookups:
@@ -2809,7 +2811,8 @@ class TestWebhookSignatureTampering:
         # Should be rejected - signature doesn't match tampered payload
         assert result["statusCode"] == 400
         body = json.loads(result["body"])
-        assert body["error"] == "Invalid signature"
+        assert body["error"]["code"] == "invalid_signature"
+        assert body["error"]["message"] == "Invalid signature"
 
     @mock_aws
     def test_expired_signature_rejected(self, mock_dynamodb, api_gateway_event):
@@ -2848,7 +2851,8 @@ class TestWebhookSignatureTampering:
         # Should be rejected due to timestamp tolerance
         assert result["statusCode"] == 400
         body = json.loads(result["body"])
-        assert body["error"] == "Invalid signature"
+        assert body["error"]["code"] == "invalid_signature"
+        assert body["error"]["message"] == "Invalid signature"
 
     @mock_aws
     def test_replay_attack_prevented_by_idempotency(self, mock_dynamodb, api_gateway_event):
@@ -2895,7 +2899,8 @@ class TestWebhookSignatureTampering:
 
         assert result["statusCode"] == 400
         body = json.loads(result["body"])
-        assert body["error"] == "Invalid signature"
+        assert body["error"]["code"] == "invalid_signature"
+        assert body["error"]["message"] == "Invalid signature"
 
     @mock_aws
     def test_wrong_webhook_secret_rejected(self, mock_dynamodb, api_gateway_event):
@@ -2934,7 +2939,8 @@ class TestWebhookSignatureTampering:
 
         assert result["statusCode"] == 400
         body = json.loads(result["body"])
-        assert body["error"] == "Invalid signature"
+        assert body["error"]["code"] == "invalid_signature"
+        assert body["error"]["message"] == "Invalid signature"
 
 
 class TestWebhookErrorResponseQuality:
@@ -2991,11 +2997,12 @@ class TestWebhookErrorResponseQuality:
         body = json.loads(result["body"])
         # Should just say "Invalid signature", not "signature mismatch" or
         # "expected X got Y" which could leak information
-        assert body["error"] == "Invalid signature"
+        assert body["error"]["code"] == "invalid_signature"
+        assert body["error"]["message"] == "Invalid signature"
         # Should NOT contain detailed information
-        assert "expected" not in body.get("error", "").lower()
-        assert "hmac" not in body.get("error", "").lower()
-        assert "secret" not in body.get("error", "").lower()
+        assert "expected" not in body.get("error", {}).get("message", "").lower()
+        assert "hmac" not in body.get("error", {}).get("message", "").lower()
+        assert "secret" not in body.get("error", {}).get("message", "").lower()
 
 
 class TestGetStripeSecretsPlainTextFallback:
@@ -3100,7 +3107,8 @@ class TestHandlerFullEventFlow:
 
         assert result["statusCode"] == 400
         body = json.loads(result["body"])
-        assert body["error"] == "Invalid webhook payload"
+        assert body["error"]["code"] == "invalid_webhook_payload"
+        assert body["error"]["message"] == "Invalid webhook payload"
 
     @mock_aws
     def test_successful_event_processing_returns_200(self, mock_dynamodb, api_gateway_event):
@@ -3205,7 +3213,8 @@ class TestHandlerFullEventFlow:
 
         assert result["statusCode"] == 500
         body = json.loads(result["body"])
-        assert body["error"] == "Temporary error, please retry"
+        assert body["error"]["code"] == "temporary_error"
+        assert body["error"]["message"] == "Temporary error, please retry"
 
         # Event claim should have been released to allow retry
         table = mock_dynamodb.Table("pkgwatch-billing-events")
@@ -3246,7 +3255,8 @@ class TestHandlerFullEventFlow:
         body = json.loads(result["body"])
         assert body["received"] is True
         assert body["processed"] is False
-        assert body["error"] == "Invalid event data"
+        assert body["error"]["code"] == "invalid_event_data"
+        assert body["error"]["message"] == "Invalid event data"
 
     @mock_aws
     def test_unexpected_exception_releases_claim_returns_500(self, mock_dynamodb, api_gateway_event):
@@ -3277,7 +3287,8 @@ class TestHandlerFullEventFlow:
 
         assert result["statusCode"] == 500
         body = json.loads(result["body"])
-        assert body["error"] == "Processing failed"
+        assert body["error"]["code"] == "processing_failed"
+        assert body["error"]["message"] == "Processing failed"
 
     @mock_aws
     def test_stripe_api_connection_error_releases_claim_returns_500(self, mock_dynamodb, api_gateway_event):
@@ -3312,7 +3323,8 @@ class TestHandlerFullEventFlow:
 
         assert result["statusCode"] == 500
         body = json.loads(result["body"])
-        assert body["error"] == "Stripe error, please retry"
+        assert body["error"]["code"] == "stripe_error"
+        assert body["error"]["message"] == "Stripe error, please retry"
 
     @mock_aws
     def test_permanent_stripe_error_returns_200_processed_false(self, mock_dynamodb, api_gateway_event):
@@ -3349,7 +3361,8 @@ class TestHandlerFullEventFlow:
         body = json.loads(result["body"])
         assert body["received"] is True
         assert body["processed"] is False
-        assert body["error"] == "Stripe validation error"
+        assert body["error"]["code"] == "stripe_validation_error"
+        assert body["error"]["message"] == "Stripe validation error"
 
 
 class TestHandlerEventRouting:

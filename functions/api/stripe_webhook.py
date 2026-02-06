@@ -17,6 +17,7 @@ from botocore.exceptions import ClientError
 from datetime import datetime, timezone, timedelta
 
 from shared.logging_utils import configure_structured_logging, set_request_id
+from shared.response_utils import error_response
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -220,11 +221,7 @@ def handler(event, context):
 
     if not stripe_api_key or not webhook_secret:
         logger.error("Stripe secrets not configured")
-        return {
-            "statusCode": 500,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": "Stripe not configured"}),
-        }
+        return error_response(500, "stripe_not_configured", "Stripe not configured")
 
     stripe.api_key = stripe_api_key
 
@@ -235,11 +232,7 @@ def handler(event, context):
 
     if not sig_header:
         logger.warning("Missing Stripe signature")
-        return {
-            "statusCode": 400,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": "Missing Stripe signature"}),
-        }
+        return error_response(400, "missing_signature", "Missing Stripe signature")
 
     # Verify webhook signature
     try:
@@ -248,18 +241,10 @@ def handler(event, context):
         )
     except stripe.SignatureVerificationError as e:
         logger.warning(f"Invalid Stripe signature: {e}")
-        return {
-            "statusCode": 400,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": "Invalid signature"}),
-        }
+        return error_response(400, "invalid_signature", "Invalid signature")
     except Exception as e:
         logger.error(f"Webhook error: {e}")
-        return {
-            "statusCode": 400,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": "Invalid webhook payload"}),
-        }
+        return error_response(400, "invalid_webhook_payload", "Invalid webhook payload")
 
     # Handle event types
     event_type = stripe_event["type"]
@@ -312,21 +297,13 @@ def handler(event, context):
         _release_event_claim(stripe_event["id"], event_type)
         _record_billing_event(stripe_event, "failed", str(e))
         logger.error(f"Transient error handling {event_type}: {e}")
-        return {
-            "statusCode": 500,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": "Temporary error, please retry"}),
-        }
+        return error_response(500, "temporary_error", "Temporary error, please retry")
     except (stripe.error.APIConnectionError, stripe.error.RateLimitError, stripe.error.APIError) as e:
         # Transient Stripe errors - release claim so retry can re-process
         _release_event_claim(stripe_event["id"], event_type)
         _record_billing_event(stripe_event, "failed", str(e))
         logger.error(f"Transient Stripe error handling {event_type}: {e}")
-        return {
-            "statusCode": 500,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": "Stripe error, please retry"}),
-        }
+        return error_response(500, "stripe_error", "Stripe error, please retry")
     except stripe.error.StripeError as e:
         # Permanent Stripe errors (InvalidRequestError, AuthenticationError, etc.)
         _record_billing_event(stripe_event, "failed", str(e))
@@ -334,7 +311,11 @@ def handler(event, context):
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"received": True, "processed": False, "error": "Stripe validation error"}),
+            "body": json.dumps({
+                "error": {"code": "stripe_validation_error", "message": "Stripe validation error"},
+                "received": True,
+                "processed": False,
+            }),
         }
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         # Data validation errors are permanent - return 200, don't retry
@@ -344,18 +325,18 @@ def handler(event, context):
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"received": True, "processed": False, "error": "Invalid event data"}),
+            "body": json.dumps({
+                "error": {"code": "invalid_event_data", "message": "Invalid event data"},
+                "received": True,
+                "processed": False,
+            }),
         }
     except Exception as e:
         # Unknown errors - release claim and return 500 to be safe
         _release_event_claim(stripe_event["id"], event_type)
         _record_billing_event(stripe_event, "failed", str(e))
         logger.error(f"Unexpected error handling {event_type}: {e}", exc_info=True)
-        return {
-            "statusCode": 500,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": "Processing failed"}),
-        }
+        return error_response(500, "processing_failed", "Processing failed")
 
     return {
         "statusCode": 200,

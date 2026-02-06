@@ -1523,7 +1523,7 @@ class TestGetResetTimestamp:
 
     def test_returns_integer_timestamp(self):
         """Should return an integer Unix timestamp."""
-        from api.post_scan import get_reset_timestamp
+        from shared.rate_limit_utils import get_reset_timestamp
 
         timestamp = get_reset_timestamp()
         assert isinstance(timestamp, int)
@@ -1532,7 +1532,7 @@ class TestGetResetTimestamp:
     def test_timestamp_is_in_future(self):
         """Should return a timestamp in the future."""
         import time
-        from api.post_scan import get_reset_timestamp
+        from shared.rate_limit_utils import get_reset_timestamp
 
         timestamp = get_reset_timestamp()
         assert timestamp > int(time.time())
@@ -1543,7 +1543,7 @@ class TestCheckUsageAlerts:
 
     def test_no_alert_below_80_percent(self):
         """Should return None when usage is below 80%."""
-        from api.post_scan import check_usage_alerts
+        from shared.rate_limit_utils import check_usage_alerts
 
         user = {"monthly_limit": 1000}
         result = check_usage_alerts(user, 790)  # 79%
@@ -1551,7 +1551,7 @@ class TestCheckUsageAlerts:
 
     def test_warning_at_80_percent(self):
         """Should return warning at 80% usage."""
-        from api.post_scan import check_usage_alerts
+        from shared.rate_limit_utils import check_usage_alerts
 
         user = {"monthly_limit": 1000}
         result = check_usage_alerts(user, 800)  # 80%
@@ -1561,7 +1561,7 @@ class TestCheckUsageAlerts:
 
     def test_critical_at_95_percent(self):
         """Should return critical at 95% usage."""
-        from api.post_scan import check_usage_alerts
+        from shared.rate_limit_utils import check_usage_alerts
 
         user = {"monthly_limit": 1000}
         result = check_usage_alerts(user, 950)  # 95%
@@ -1571,7 +1571,7 @@ class TestCheckUsageAlerts:
 
     def test_exceeded_at_100_percent(self):
         """Should return exceeded at 100% usage."""
-        from api.post_scan import check_usage_alerts
+        from shared.rate_limit_utils import check_usage_alerts
 
         user = {"monthly_limit": 1000}
         result = check_usage_alerts(user, 1000)  # 100%
@@ -1581,7 +1581,7 @@ class TestCheckUsageAlerts:
 
     def test_exceeded_over_100_percent(self):
         """Should return exceeded when over 100% usage."""
-        from api.post_scan import check_usage_alerts
+        from shared.rate_limit_utils import check_usage_alerts
 
         user = {"monthly_limit": 1000}
         result = check_usage_alerts(user, 1100)  # 110%
@@ -1590,7 +1590,7 @@ class TestCheckUsageAlerts:
 
     def test_zero_limit_returns_exceeded(self):
         """Should return exceeded when limit is 0."""
-        from api.post_scan import check_usage_alerts
+        from shared.rate_limit_utils import check_usage_alerts
 
         user = {"monthly_limit": 0}
         result = check_usage_alerts(user, 1)
@@ -1813,11 +1813,11 @@ class TestDecemberMonthHandling:
         """Should handle year boundary when current month is December."""
         from unittest.mock import patch
         from datetime import datetime, timezone
-        from api.post_scan import get_reset_timestamp
+        from shared.rate_limit_utils import get_reset_timestamp
 
         # Mock datetime to December 15
         mock_now = datetime(2025, 12, 15, 10, 30, 0, tzinfo=timezone.utc)
-        with patch("api.post_scan.datetime") as mock_datetime:
+        with patch("shared.rate_limit_utils.datetime") as mock_datetime:
             mock_datetime.now.return_value = mock_now
             mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
@@ -1927,10 +1927,10 @@ class TestDynamoDBErrorHandling:
         from api.post_scan import handler
 
         # Mock the dynamodb resource to raise an error during batch_get_item
-        with patch("api.post_scan.dynamodb") as mock_ddb:
-            mock_resource = MagicMock()
-            mock_resource.batch_get_item.side_effect = Exception("DynamoDB error")
-            mock_ddb.batch_get_item = mock_resource.batch_get_item
+        with patch("api.post_scan._get_dynamodb") as mock_get_ddb:
+            mock_ddb = MagicMock()
+            mock_get_ddb.return_value = mock_ddb
+            mock_ddb.batch_get_item.side_effect = Exception("DynamoDB error")
 
             api_gateway_event["httpMethod"] = "POST"
             api_gateway_event["headers"]["x-api-key"] = test_key
@@ -2461,8 +2461,10 @@ class TestUnprocessedKeysRetry:
             "UnprocessedKeys": {},
         }
 
-        with patch("api.post_scan.dynamodb") as mock_ddb, \
+        with patch("api.post_scan._get_dynamodb") as mock_get_ddb, \
              patch("api.post_scan.time.sleep"):  # Speed up test
+            mock_ddb = MagicMock()
+            mock_get_ddb.return_value = mock_ddb
             mock_ddb.batch_get_item.side_effect = [first_response, second_response]
 
             api_gateway_event["httpMethod"] = "POST"
@@ -2520,8 +2522,10 @@ class TestUnprocessedKeysRetry:
             },
         }
 
-        with patch("api.post_scan.dynamodb") as mock_ddb, \
+        with patch("api.post_scan._get_dynamodb") as mock_get_ddb, \
              patch("api.post_scan.time.sleep"):
+            mock_ddb = MagicMock()
+            mock_get_ddb.return_value = mock_ddb
             mock_ddb.batch_get_item.return_value = persistent_unprocessed
 
             api_gateway_event["httpMethod"] = "POST"
@@ -2592,9 +2596,11 @@ class TestUnprocessedKeysRetry:
             "UnprocessedKeys": {},
         }
 
-        with patch("api.post_scan.dynamodb") as mock_ddb, \
+        with patch("api.post_scan._get_dynamodb") as mock_get_ddb, \
              patch("api.post_scan.time.sleep") as mock_sleep, \
              patch("api.post_scan.random.uniform", return_value=0.005):  # Fixed jitter
+            mock_ddb = MagicMock()
+            mock_get_ddb.return_value = mock_ddb
             mock_ddb.batch_get_item.side_effect = [
                 unprocessed_response, unprocessed_response, final_response
             ]

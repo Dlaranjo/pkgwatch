@@ -43,6 +43,7 @@ from rate_limit_utils import check_and_increment_external_rate_limit
 from package_validation import validate_npm_package_name, validate_pypi_package_name
 from error_classification import classify_error as _classify_error
 from data_quality import is_queryable
+from logging_utils import configure_structured_logging, request_id_var
 
 # Backward compatibility alias for tests
 _is_queryable = is_queryable
@@ -1594,6 +1595,9 @@ def handler(event, context):
     Returns batchItemFailures for partial batch failure handling - only failed
     messages will be retried, successful ones won't be reprocessed.
     """
+    configure_structured_logging()
+    request_id_var.set(getattr(context, 'aws_request_id', 'unknown'))
+
     records = event.get("Records", [])
     logger.info(f"Processing {len(records)} messages")
 

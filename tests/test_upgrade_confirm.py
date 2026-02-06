@@ -14,6 +14,8 @@ import stripe as stripe_module
 from botocore.exceptions import ClientError
 from moto import mock_aws
 
+import shared.billing_utils as billing_utils
+
 
 class TestUpgradeConfirmHandler:
     """Tests for the upgrade confirm Lambda handler."""
@@ -26,10 +28,10 @@ class TestUpgradeConfirmHandler:
 
         # Clear cache
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             from api.upgrade_confirm import handler
 
             api_gateway_event["httpMethod"] = "POST"
@@ -47,10 +49,10 @@ class TestUpgradeConfirmHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token", return_value=None):
                 from api.upgrade_confirm import handler
 
@@ -70,10 +72,10 @@ class TestUpgradeConfirmHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_123", "email": "test@example.com"}
 
@@ -95,10 +97,10 @@ class TestUpgradeConfirmHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_123", "email": "test@example.com"}
 
@@ -135,11 +137,11 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -175,11 +177,11 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_free", "email": "free@example.com"}
 
@@ -217,11 +219,11 @@ class TestUpgradeConfirmHandler:
 
         import api.upgrade_confirm as confirm_module
         import stripe as stripe_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -277,11 +279,11 @@ class TestUpgradeConfirmHandler:
 
         import api.upgrade_confirm as confirm_module
         import stripe as stripe_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -336,11 +338,11 @@ class TestUpgradeConfirmHandler:
 
         import api.upgrade_confirm as confirm_module
         import stripe as stripe_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -436,11 +438,11 @@ class TestUpgradeConfirmHandler:
 
         import api.upgrade_confirm as confirm_module
         import stripe as stripe_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -517,11 +519,11 @@ class TestUpgradeConfirmHandler:
 
         import api.upgrade_confirm as confirm_module
         import stripe as stripe_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -561,10 +563,10 @@ class TestUpgradeConfirmHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value=None):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value=None):
             from api.upgrade_confirm import handler
 
             api_gateway_event["httpMethod"] = "POST"
@@ -583,10 +585,10 @@ class TestUpgradeConfirmHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_123", "email": "test@example.com"}
 
@@ -612,10 +614,10 @@ class TestUpgradeConfirmHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_123", "email": "test@example.com"}
 
@@ -642,14 +644,14 @@ class TestUpgradeConfirmHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         # Ensure the pro price is NOT configured
         original_price = confirm_module.TIER_TO_PRICE.get("pro")
         confirm_module.TIER_TO_PRICE["pro"] = None
 
         try:
-            with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+            with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
                 with patch("api.auth_callback.verify_session_token") as mock_verify:
                     mock_verify.return_value = {"user_id": "user_123", "email": "test@example.com"}
 
@@ -692,11 +694,11 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_pro", "email": "pro@example.com"}
 
@@ -737,11 +739,11 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_business", "email": "business@example.com"}
 
@@ -782,11 +784,11 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -837,11 +839,11 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -889,11 +891,11 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -945,11 +947,11 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -1020,11 +1022,11 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -1075,7 +1077,7 @@ class TestUpgradeConfirmHandler:
                     mock_dynamodb_resource = MagicMock()
                     mock_dynamodb_resource.Table.return_value = mock_table
 
-                    with patch.object(confirm_module, "dynamodb", mock_dynamodb_resource):
+                    with patch.object(confirm_module, "_get_dynamodb", return_value=mock_dynamodb_resource):
                         api_gateway_event["httpMethod"] = "POST"
                         api_gateway_event["headers"]["cookie"] = "session=valid"
                         api_gateway_event["body"] = json.dumps({"tier": "pro", "proration_date": int(time.time())})
@@ -1103,11 +1105,11 @@ class TestUpgradeConfirmHandler:
         key_hash = hashlib.sha256(b"pw_test").hexdigest()
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -1159,7 +1161,7 @@ class TestUpgradeConfirmHandler:
                     mock_dynamodb_resource = MagicMock()
                     mock_dynamodb_resource.Table.return_value = mock_table
 
-                    with patch.object(confirm_module, "dynamodb", mock_dynamodb_resource):
+                    with patch.object(confirm_module, "_get_dynamodb", return_value=mock_dynamodb_resource):
                         api_gateway_event["httpMethod"] = "POST"
                         api_gateway_event["headers"]["cookie"] = "session=valid"
                         api_gateway_event["body"] = json.dumps({"tier": "pro", "proration_date": int(time.time())})
@@ -1195,11 +1197,11 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -1255,11 +1257,11 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -1310,11 +1312,11 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -1365,11 +1367,11 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["business"] = "price_business_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -1436,11 +1438,11 @@ class TestUpgradeConfirmHandler:
         )
 
         import api.upgrade_confirm as confirm_module
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(confirm_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -1474,47 +1476,42 @@ class TestUpgradeConfirmHandler:
 
 
 class TestGetStripeApiKey:
-    """Tests for the _get_stripe_api_key function (lines 55-75)."""
+    """Tests for the get_stripe_api_key function in shared.billing_utils."""
 
     @mock_aws
     def test_returns_cached_key_within_ttl(self):
-        """Should return cached key when cache is still valid (line 55-56)."""
-        import api.upgrade_confirm as confirm_module
+        """Should return cached key when cache is still valid."""
+        billing_utils._stripe_api_key_cache = "sk_cached_key"
+        billing_utils._stripe_api_key_cache_time = time.time()  # Just cached
 
-        confirm_module._stripe_api_key_cache = "sk_cached_key"
-        confirm_module._stripe_api_key_cache_time = time.time()  # Just cached
-
-        result = confirm_module._get_stripe_api_key()
+        result = billing_utils.get_stripe_api_key()
 
         assert result == "sk_cached_key"
 
     @mock_aws
     def test_returns_none_when_no_secret_arn(self):
-        """Should return None when STRIPE_SECRET_ARN is not set (line 58-59)."""
-        import api.upgrade_confirm as confirm_module
+        """Should return None when STRIPE_SECRET_ARN is not set."""
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
-
-        original_arn = confirm_module.STRIPE_SECRET_ARN
-        confirm_module.STRIPE_SECRET_ARN = None
+        original_arn = billing_utils.STRIPE_SECRET_ARN
+        billing_utils.STRIPE_SECRET_ARN = None
 
         try:
-            result = confirm_module._get_stripe_api_key()
+            result = billing_utils.get_stripe_api_key()
             assert result is None
         finally:
-            confirm_module.STRIPE_SECRET_ARN = original_arn
+            billing_utils.STRIPE_SECRET_ARN = original_arn
 
     @mock_aws
     def test_retrieves_key_from_json_secret(self):
-        """Should parse JSON secret and extract key (lines 62-72)."""
-        import api.upgrade_confirm as confirm_module
-
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        """Should parse JSON secret and extract key."""
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
         secret_arn = "arn:aws:secretsmanager:us-east-1:123456789:secret:test-stripe"
-        confirm_module.STRIPE_SECRET_ARN = secret_arn
+        original_arn = billing_utils.STRIPE_SECRET_ARN
+        billing_utils.STRIPE_SECRET_ARN = secret_arn
 
         # Create the secret in mocked Secrets Manager
         sm_client = boto3.client("secretsmanager", region_name="us-east-1")
@@ -1524,25 +1521,24 @@ class TestGetStripeApiKey:
         )
 
         try:
-            result = confirm_module._get_stripe_api_key()
+            result = billing_utils.get_stripe_api_key()
             assert result == "sk_live_from_json"
-            assert confirm_module._stripe_api_key_cache == "sk_live_from_json"
-            assert confirm_module._stripe_api_key_cache_time > 0
+            assert billing_utils._stripe_api_key_cache == "sk_live_from_json"
+            assert billing_utils._stripe_api_key_cache_time > 0
         finally:
-            confirm_module.STRIPE_SECRET_ARN = None
-            confirm_module._stripe_api_key_cache = None
-            confirm_module._stripe_api_key_cache_time = 0.0
+            billing_utils.STRIPE_SECRET_ARN = original_arn
+            billing_utils._stripe_api_key_cache = None
+            billing_utils._stripe_api_key_cache_time = 0.0
 
     @mock_aws
     def test_retrieves_plain_string_secret(self):
-        """Should handle plain string secret (not JSON) (lines 67-68)."""
-        import api.upgrade_confirm as confirm_module
-
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        """Should handle plain string secret (not JSON)."""
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
         secret_arn = "arn:aws:secretsmanager:us-east-1:123456789:secret:test-stripe-plain"
-        confirm_module.STRIPE_SECRET_ARN = secret_arn
+        original_arn = billing_utils.STRIPE_SECRET_ARN
+        billing_utils.STRIPE_SECRET_ARN = secret_arn
 
         sm_client = boto3.client("secretsmanager", region_name="us-east-1")
         sm_client.create_secret(
@@ -1551,43 +1547,41 @@ class TestGetStripeApiKey:
         )
 
         try:
-            result = confirm_module._get_stripe_api_key()
+            result = billing_utils.get_stripe_api_key()
             assert result == "sk_live_plain_string"
         finally:
-            confirm_module.STRIPE_SECRET_ARN = None
-            confirm_module._stripe_api_key_cache = None
-            confirm_module._stripe_api_key_cache_time = 0.0
+            billing_utils.STRIPE_SECRET_ARN = original_arn
+            billing_utils._stripe_api_key_cache = None
+            billing_utils._stripe_api_key_cache_time = 0.0
 
     @mock_aws
     def test_returns_none_on_client_error(self):
-        """Should return None when Secrets Manager call fails (lines 73-75)."""
-        import api.upgrade_confirm as confirm_module
-
-        confirm_module._stripe_api_key_cache = None
-        confirm_module._stripe_api_key_cache_time = 0.0
+        """Should return None when Secrets Manager call fails."""
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
         # Set ARN to a secret that does not exist
-        confirm_module.STRIPE_SECRET_ARN = "arn:aws:secretsmanager:us-east-1:123456789:secret:nonexistent"
+        original_arn = billing_utils.STRIPE_SECRET_ARN
+        billing_utils.STRIPE_SECRET_ARN = "arn:aws:secretsmanager:us-east-1:123456789:secret:nonexistent"
 
         try:
-            result = confirm_module._get_stripe_api_key()
+            result = billing_utils.get_stripe_api_key()
             assert result is None
         finally:
-            confirm_module.STRIPE_SECRET_ARN = None
-            confirm_module._stripe_api_key_cache = None
-            confirm_module._stripe_api_key_cache_time = 0.0
+            billing_utils.STRIPE_SECRET_ARN = original_arn
+            billing_utils._stripe_api_key_cache = None
+            billing_utils._stripe_api_key_cache_time = 0.0
 
     @mock_aws
     def test_cache_expires_after_ttl(self):
         """Should re-fetch key when cache has expired."""
-        import api.upgrade_confirm as confirm_module
-
-        confirm_module._stripe_api_key_cache = "sk_old_cached"
+        billing_utils._stripe_api_key_cache = "sk_old_cached"
         # Set cache time to well beyond the TTL
-        confirm_module._stripe_api_key_cache_time = time.time() - confirm_module.STRIPE_CACHE_TTL - 10
+        billing_utils._stripe_api_key_cache_time = time.time() - billing_utils.STRIPE_CACHE_TTL - 10
 
         secret_arn = "arn:aws:secretsmanager:us-east-1:123456789:secret:test-stripe-ttl"
-        confirm_module.STRIPE_SECRET_ARN = secret_arn
+        original_arn = billing_utils.STRIPE_SECRET_ARN
+        billing_utils.STRIPE_SECRET_ARN = secret_arn
 
         sm_client = boto3.client("secretsmanager", region_name="us-east-1")
         sm_client.create_secret(
@@ -1596,10 +1590,10 @@ class TestGetStripeApiKey:
         )
 
         try:
-            result = confirm_module._get_stripe_api_key()
+            result = billing_utils.get_stripe_api_key()
             assert result == "sk_new_from_sm"
-            assert confirm_module._stripe_api_key_cache == "sk_new_from_sm"
+            assert billing_utils._stripe_api_key_cache == "sk_new_from_sm"
         finally:
-            confirm_module.STRIPE_SECRET_ARN = None
-            confirm_module._stripe_api_key_cache = None
-            confirm_module._stripe_api_key_cache_time = 0.0
+            billing_utils.STRIPE_SECRET_ARN = original_arn
+            billing_utils._stripe_api_key_cache = None
+            billing_utils._stripe_api_key_cache_time = 0.0

@@ -12,6 +12,7 @@ Rate limited: 10 requests per IP per day.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -75,9 +76,9 @@ def handler(event, context):
     if ecosystem == "npm":
         name = normalize_npm_name(name)
 
-    # Check rate limit
+    # Check and record rate limit atomically
     client_ip = get_client_ip(event)
-    if rate_limit_exceeded(client_ip):
+    if not check_and_record_rate_limit(client_ip):
         return error_response(
             429,
             "rate_limit_exceeded",
@@ -127,7 +128,9 @@ def handler(event, context):
                 "created_at": now,
                 "last_updated": now,
                 "data_status": "pending",
-                "requested_by_ip": client_ip,
+                "requested_by_ip_hash": hashlib.sha256(
+                    (client_ip + os.environ.get("IP_HASH_SALT", "pkgwatch")).encode()
+                ).hexdigest()[:16],
             },
             ConditionExpression="attribute_not_exists(pk)",
         )
@@ -166,9 +169,6 @@ def handler(event, context):
         except Exception as e:
             logger.error(f"Failed to queue package for collection: {e}")
 
-    # Record rate limit usage
-    record_rate_limit_usage(client_ip)
-
     logger.info(f"User requested new package: {ecosystem}/{name} from {client_ip}")
 
     return success_response(
@@ -199,51 +199,31 @@ def get_client_ip(event: dict) -> str:
     return "unknown"
 
 
-def rate_limit_exceeded(client_ip: str) -> bool:
-    """Check if IP has exceeded daily rate limit."""
+def check_and_record_rate_limit(client_ip: str) -> bool:
+    """Atomically check and increment rate limit. Returns True if allowed."""
+    from botocore.exceptions import ClientError
+
     table = _get_dynamodb().Table(API_KEYS_TABLE)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     rate_limit_key = f"RATE_LIMIT#{client_ip}#{today}"
-
-    try:
-        response = table.get_item(
-            Key={"pk": rate_limit_key, "sk": "request_package"},
-            ProjectionExpression="request_count",
-        )
-        if "Item" in response:
-            count = response["Item"].get("request_count", 0)
-            return count >= RATE_LIMIT_PER_DAY
-    except Exception as e:
-        logger.warning(f"Rate limit check failed: {e}")
-
-    return False
-
-
-def record_rate_limit_usage(client_ip: str):
-    """Record rate limit usage for IP."""
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    rate_limit_key = f"RATE_LIMIT#{client_ip}#{today}"
-
-    # Set TTL to midnight + 1 day
-    tomorrow = datetime.now(timezone.utc).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    ttl = int((tomorrow.timestamp()) + 86400)
-
+    ttl = int(datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()) + 86400
     try:
         table.update_item(
             Key={"pk": rate_limit_key, "sk": "request_package"},
             UpdateExpression="SET request_count = if_not_exists(request_count, :zero) + :inc, #ttl = :ttl",
+            ConditionExpression="attribute_not_exists(request_count) OR request_count < :limit",
             ExpressionAttributeNames={"#ttl": "ttl"},
-            ExpressionAttributeValues={
-                ":zero": 0,
-                ":inc": 1,
-                ":ttl": ttl,
-            },
+            ExpressionAttributeValues={":zero": 0, ":inc": 1, ":limit": RATE_LIMIT_PER_DAY, ":ttl": ttl},
         )
+        return True
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return False
+        logger.warning(f"Rate limit check failed: {e}")
+        return False  # Fail closed
     except Exception as e:
-        logger.warning(f"Failed to record rate limit usage: {e}")
+        logger.warning(f"Rate limit check failed: {e}")
+        return False  # Fail closed
 
 
 async def validate_package_exists(name: str, ecosystem: str) -> bool:

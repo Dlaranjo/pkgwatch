@@ -23,6 +23,8 @@ import boto3
 import pytest
 from moto import mock_aws
 
+import shared.billing_utils as billing_utils
+
 
 @pytest.fixture
 def setup_session_secret():
@@ -445,8 +447,11 @@ class TestAuthMeStripeRefresh:
             os.environ.pop(key, None)
         importlib.reload(module)
 
-        # Clear Stripe key cache
-        module._stripe_api_key_cache = None
+        # Clear Stripe key cache and reset lazy client for moto
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        billing_utils._secretsmanager = None
+        billing_utils.STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         create_test_user(
@@ -539,7 +544,10 @@ class TestAuthMeStripeRefresh:
         import importlib
         import api.auth_me as module
         importlib.reload(module)
-        module._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        billing_utils._secretsmanager = None
+        billing_utils.STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         create_test_user(
@@ -581,7 +589,10 @@ class TestAuthMeStripeRefresh:
         import importlib
         import api.auth_me as module
         importlib.reload(module)
-        module._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        billing_utils._secretsmanager = None
+        billing_utils.STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         create_test_user(
@@ -635,7 +646,10 @@ class TestAuthMeStripeRefresh:
         import importlib
         import api.auth_me as module
         importlib.reload(module)
-        module._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        billing_utils._secretsmanager = None
+        billing_utils.STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         create_test_user(
@@ -947,7 +961,9 @@ class TestAuthMeErrorHandling:
         token = create_session_token(session_data, secret)
 
         # Mock DynamoDB to raise an error
-        with patch.object(module.dynamodb, "Table", side_effect=Exception("DynamoDB error")):
+        mock_ddb = MagicMock()
+        mock_ddb.Table.side_effect = Exception("DynamoDB error")
+        with patch.object(module, "_get_dynamodb", return_value=mock_ddb):
             event = {
                 "headers": {"cookie": f"session={token}"},
                 "queryStringParameters": None,
@@ -995,15 +1011,17 @@ class TestStripeKeyCache:
         importlib.reload(module)
 
         # Clear cache
-        module._stripe_api_key_cache = None
-        module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        billing_utils._secretsmanager = None  # Reset lazy client so moto is used
+        billing_utils.STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
 
         # First call should fetch from Secrets Manager
-        key1 = module._get_stripe_api_key()
+        key1 = billing_utils.get_stripe_api_key()
         assert key1 == "sk_test_12345"
 
         # Second call should use cache
-        key2 = module._get_stripe_api_key()
+        key2 = billing_utils.get_stripe_api_key()
         assert key2 == "sk_test_12345"
 
     @mock_aws
@@ -1015,11 +1033,16 @@ class TestStripeKeyCache:
         import api.auth_me as module
         importlib.reload(module)
 
-        module._stripe_api_key_cache = None
-        module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        original_arn = billing_utils.STRIPE_SECRET_ARN
+        billing_utils.STRIPE_SECRET_ARN = None
 
-        key = module._get_stripe_api_key()
-        assert key is None
+        try:
+            key = billing_utils.get_stripe_api_key()
+            assert key is None
+        finally:
+            billing_utils.STRIPE_SECRET_ARN = original_arn
 
     @mock_aws
     def test_stripe_key_handles_plain_text_secret(self, aws_credentials, mock_dynamodb):
@@ -1035,8 +1058,10 @@ class TestStripeKeyCache:
         import api.auth_me as module
         importlib.reload(module)
 
-        module._stripe_api_key_cache = None
-        module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        billing_utils._secretsmanager = None  # Reset lazy client so moto is used
+        billing_utils.STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
 
-        key = module._get_stripe_api_key()
+        key = billing_utils.get_stripe_api_key()
         assert key == "sk_plain_text_key"

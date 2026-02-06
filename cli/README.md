@@ -216,4 +216,4 @@ express@5.2.1
 
 ## License
 
-Proprietary - All rights reserved
+MIT License - see [LICENSE](./LICENSE) for details

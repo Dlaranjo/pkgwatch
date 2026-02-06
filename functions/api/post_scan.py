@@ -9,7 +9,6 @@ import json
 import logging
 import os
 import random
-import re
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -114,54 +113,20 @@ def _queue_packages_for_collection(packages: list[str], ecosystem: str) -> int:
 # Import from shared module (bundled with Lambda)
 from shared.auth import validate_api_key, check_and_increment_usage_with_bonus
 from shared.response_utils import error_response, decimal_default, get_cors_headers
+from shared.rate_limit_utils import get_reset_timestamp, check_usage_alerts
 from shared.data_quality import build_data_quality_compact
 
 
-def get_reset_timestamp() -> int:
-    """Get Unix timestamp for start of next month (when usage resets)."""
-    now = datetime.now(timezone.utc)
-
-    # First day of next month
-    if now.month == 12:
-        next_month = datetime(now.year + 1, 1, 1, tzinfo=timezone.utc)
-    else:
-        next_month = datetime(now.year, now.month + 1, 1, tzinfo=timezone.utc)
-
-    return int(next_month.timestamp())
+# Lazy initialization for DynamoDB
+_dynamodb = None
 
 
-def check_usage_alerts(user: dict, current_usage: int) -> Optional[dict]:
-    """
-    Check if user is approaching rate limit and return alert info.
-
-    Returns dict with alert level and message if applicable, None otherwise.
-    """
-    limit = user.get("monthly_limit", 5000)
-    usage_percent = (current_usage / limit) * 100 if limit > 0 else 100
-
-    if usage_percent >= 100:
-        return {
-            "level": "exceeded",
-            "percent": 100,
-            "message": f"Monthly limit exceeded. Upgrade at https://pkgwatch.dev/pricing",
-        }
-    elif usage_percent >= 95:
-        return {
-            "level": "critical",
-            "percent": round(usage_percent, 1),
-            "message": f"Only {limit - current_usage} requests remaining this month",
-        }
-    elif usage_percent >= 80:
-        return {
-            "level": "warning",
-            "percent": round(usage_percent, 1),
-            "message": f"{round(100 - usage_percent, 1)}% of monthly quota remaining",
-        }
-
-    return None
-
-
-dynamodb = boto3.resource("dynamodb")
+def _get_dynamodb():
+    """Get DynamoDB resource, creating it lazily on first use."""
+    global _dynamodb
+    if _dynamodb is None:
+        _dynamodb = boto3.resource("dynamodb")
+    return _dynamodb
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 
 
@@ -271,7 +236,7 @@ def handler(event, context):
             retry_delay = 0.1  # 100ms initial delay
 
             for attempt in range(max_retries + 1):
-                response = dynamodb.batch_get_item(RequestItems=request_items)
+                response = _get_dynamodb().batch_get_item(RequestItems=request_items)
 
                 # Process found items
                 for item in response.get("Responses", {}).get(PACKAGES_TABLE, []):

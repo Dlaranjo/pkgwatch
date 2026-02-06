@@ -988,7 +988,7 @@ class TestReferralRetentionCheckHandler:
 
         return api_table, events_table, referrer_id, referred_id
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     def test_handles_empty_retention_queue(self, mock_stripe_key, mock_dynamodb):
         """Should handle case with no referrals due for retention."""
         mock_stripe_key.return_value = "sk_test_fake"
@@ -1005,7 +1005,7 @@ class TestReferralRetentionCheckHandler:
         assert result["credited"] == 0
         assert result["errors"] == 0
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     def test_returns_error_when_stripe_not_configured(self, mock_stripe_key, mock_dynamodb):
         """Should return error when Stripe API key is not available."""
         mock_stripe_key.return_value = None
@@ -1021,7 +1021,7 @@ class TestReferralRetentionCheckHandler:
         assert result["credited"] == 0
         assert result["error"] == "Stripe not configured"
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     def test_credits_referrer_when_subscription_active(
         self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
@@ -1067,7 +1067,7 @@ class TestReferralRetentionCheckHandler:
         assert item["bonus_requests"] == 25000
         assert item["bonus_requests_lifetime"] == 25000
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     def test_credits_referrer_when_subscription_trialing(
         self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
@@ -1104,7 +1104,7 @@ class TestReferralRetentionCheckHandler:
         assert result["processed"] == 1
         assert result["credited"] == 1
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     def test_skips_credit_when_subscription_canceled(
         self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
@@ -1144,7 +1144,7 @@ class TestReferralRetentionCheckHandler:
         item = response["Item"]
         assert item["bonus_requests"] == 0
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     def test_skips_credit_when_no_subscription_found(
         self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
@@ -1177,7 +1177,7 @@ class TestReferralRetentionCheckHandler:
         assert result["processed"] == 1
         assert result["credited"] == 0
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     def test_handles_stripe_api_error_gracefully(
         self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
@@ -1213,7 +1213,7 @@ class TestReferralRetentionCheckHandler:
         assert result["credited"] == 0
         assert result["errors"] == 0  # Stripe errors are warnings, not errors
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     def test_clears_retention_flag_regardless_of_outcome(
         self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
@@ -1253,7 +1253,7 @@ class TestReferralRetentionCheckHandler:
         assert item.get("needs_retention_check") is None
         assert item.get("retention_check_date") is None
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     def test_processes_multiple_referrals_from_same_referrer(
         self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
@@ -1325,7 +1325,7 @@ class TestReferralRetentionCheckHandler:
         assert item["bonus_requests"] == 50000  # 25000 * 2
         assert item["bonus_requests_lifetime"] == 50000
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     def test_retention_check_date_boundary_future_date_not_processed(
         self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
@@ -1373,7 +1373,7 @@ class TestReferralRetentionCheckHandler:
         assert result["processed"] == 0
         assert result["credited"] == 0
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     def test_retention_check_date_boundary_exactly_now(
         self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
@@ -1433,7 +1433,7 @@ class TestReferralRetentionCheckHandler:
         assert result["processed"] == 1
         assert result["credited"] == 1
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     def test_retention_check_60_days_after_paid(
         self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
@@ -1497,7 +1497,7 @@ class TestReferralRetentionCheckHandler:
         assert result["processed"] == 1
         assert result["credited"] == 1
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     def test_records_retained_event(
         self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
@@ -1537,7 +1537,7 @@ class TestReferralRetentionCheckHandler:
         assert item["event_type"] == "retained"
         assert item["reward_amount"] == 25000
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     def test_updates_referrer_retained_stats(
         self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
@@ -1573,7 +1573,7 @@ class TestReferralRetentionCheckHandler:
         item = response["Item"]
         assert item["referral_retained"] == 1  # Was 0, now 1
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("api.referral_retention_check._get_dynamodb")
     def test_handles_dynamodb_query_error(self, mock_get_dynamodb, mock_stripe_key, mock_dynamodb):
         """Should handle DynamoDB errors during index query."""
@@ -1600,7 +1600,7 @@ class TestReferralRetentionCheckHandler:
         assert result["credited"] == 0
         assert "error" in result
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     def test_handles_processing_error_continues_with_others(
         self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
@@ -1680,7 +1680,7 @@ class TestReferralRetentionCheckHandler:
         assert result["processed"] == 2
         assert result["credited"] >= 1
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     def test_bonus_cap_applied_on_retention_credit(
         self, mock_stripe_retrieve, mock_stripe_key, mock_dynamodb
@@ -1745,7 +1745,7 @@ class TestReferralRetentionCheckHandler:
         item = response["Item"]
         assert item["bonus_requests_lifetime"] == 500000  # At cap
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     def test_skips_pending_and_user_meta_records(
         self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
@@ -1792,61 +1792,72 @@ class TestReferralRetentionCheckHandler:
 
 
 class TestGetStripeApiKey:
-    """Tests for _get_stripe_api_key function."""
+    """Tests for get_stripe_api_key function in shared.billing_utils."""
 
     @pytest.fixture(autouse=True)
     def setup_env(self):
         """Setup environment for Stripe tests."""
+        import shared.billing_utils as billing_utils
+
         original_env = os.environ.copy()
         os.environ["STRIPE_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123456789:secret:test-stripe"
 
-        # Reload the module to pick up new environment variable
-        import api.referral_retention_check as retention_module
-        # Reimport with updated env
-        import importlib
-        importlib.reload(retention_module)
-        retention_module._secretsmanager = None
+        # Update billing_utils to pick up new environment variable
+        original_arn = billing_utils.STRIPE_SECRET_ARN
+        billing_utils.STRIPE_SECRET_ARN = os.environ["STRIPE_SECRET_ARN"]
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        billing_utils._secretsmanager = None
 
         yield
 
         os.environ.clear()
         os.environ.update(original_env)
-        # Reload again to restore original
-        importlib.reload(retention_module)
+        billing_utils.STRIPE_SECRET_ARN = original_arn
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-    @patch("api.referral_retention_check._get_secretsmanager")
+    @patch("shared.billing_utils._get_secretsmanager")
     def test_retrieves_key_from_json_secret(self, mock_get_sm):
         """Should retrieve Stripe key from JSON secret."""
+        import shared.billing_utils as billing_utils
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+
         mock_sm = MagicMock()
         mock_sm.get_secret_value.return_value = {
             "SecretString": '{"key": "sk_test_json_key"}'
         }
         mock_get_sm.return_value = mock_sm
 
-        from api.referral_retention_check import _get_stripe_api_key
-
-        result = _get_stripe_api_key()
+        result = billing_utils.get_stripe_api_key()
 
         assert result == "sk_test_json_key"
 
-    @patch("api.referral_retention_check._get_secretsmanager")
+    @patch("shared.billing_utils._get_secretsmanager")
     def test_retrieves_key_from_plain_string_secret(self, mock_get_sm):
         """Should retrieve Stripe key from plain string secret."""
+        import shared.billing_utils as billing_utils
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+
         mock_sm = MagicMock()
         mock_sm.get_secret_value.return_value = {
             "SecretString": "sk_test_plain_key"
         }
         mock_get_sm.return_value = mock_sm
 
-        from api.referral_retention_check import _get_stripe_api_key
-
-        result = _get_stripe_api_key()
+        result = billing_utils.get_stripe_api_key()
 
         assert result == "sk_test_plain_key"
 
-    @patch("api.referral_retention_check._get_secretsmanager")
+    @patch("shared.billing_utils._get_secretsmanager")
     def test_handles_secrets_manager_error(self, mock_get_sm):
         """Should return None when Secrets Manager fails."""
+        import shared.billing_utils as billing_utils
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+
         from botocore.exceptions import ClientError
 
         mock_sm = MagicMock()
@@ -1856,39 +1867,41 @@ class TestGetStripeApiKey:
         )
         mock_get_sm.return_value = mock_sm
 
-        from api.referral_retention_check import _get_stripe_api_key
-
-        result = _get_stripe_api_key()
+        result = billing_utils.get_stripe_api_key()
 
         assert result is None
 
-    @patch("api.referral_retention_check._get_secretsmanager")
+    @patch("shared.billing_utils._get_secretsmanager")
     def test_uses_json_key_field_when_present(self, mock_get_sm):
         """Should prefer 'key' field from JSON over entire string."""
+        import shared.billing_utils as billing_utils
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+
         mock_sm = MagicMock()
         mock_sm.get_secret_value.return_value = {
             "SecretString": '{"key": "sk_test_from_key_field", "other": "value"}'
         }
         mock_get_sm.return_value = mock_sm
 
-        from api.referral_retention_check import _get_stripe_api_key
-
-        result = _get_stripe_api_key()
+        result = billing_utils.get_stripe_api_key()
 
         assert result == "sk_test_from_key_field"
 
-    @patch("api.referral_retention_check._get_secretsmanager")
+    @patch("shared.billing_utils._get_secretsmanager")
     def test_falls_back_to_secret_string_when_key_empty(self, mock_get_sm):
         """Should fall back to full secret string when 'key' field is empty."""
+        import shared.billing_utils as billing_utils
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+
         mock_sm = MagicMock()
         mock_sm.get_secret_value.return_value = {
             "SecretString": '{"key": "", "fallback": "data"}'
         }
         mock_get_sm.return_value = mock_sm
 
-        from api.referral_retention_check import _get_stripe_api_key
-
-        result = _get_stripe_api_key()
+        result = billing_utils.get_stripe_api_key()
 
         # Falls back to the entire JSON string when key is empty
         assert result == '{"key": "", "fallback": "data"}'
@@ -1900,25 +1913,28 @@ class TestRetentionCheckNoStripeArn:
     @pytest.fixture(autouse=True)
     def setup_env(self):
         """Setup environment without Stripe ARN."""
+        import shared.billing_utils as billing_utils
+
         original_env = os.environ.copy()
         # Ensure STRIPE_SECRET_ARN is not set
         os.environ.pop("STRIPE_SECRET_ARN", None)
 
-        import api.referral_retention_check as retention_module
-        import importlib
-        importlib.reload(retention_module)
+        original_arn = billing_utils.STRIPE_SECRET_ARN
+        billing_utils.STRIPE_SECRET_ARN = None
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
         yield
 
         os.environ.clear()
         os.environ.update(original_env)
-        importlib.reload(retention_module)
+        billing_utils.STRIPE_SECRET_ARN = original_arn
 
     def test_returns_not_configured_when_no_arn(self, mock_dynamodb):
         """Should return error when STRIPE_SECRET_ARN is not set."""
-        from api.referral_retention_check import _get_stripe_api_key
+        import shared.billing_utils as billing_utils
 
-        result = _get_stripe_api_key()
+        result = billing_utils.get_stripe_api_key()
 
         assert result is None
 
@@ -1939,7 +1955,7 @@ class TestRetentionCheckErrorRecovery:
         os.environ.clear()
         os.environ.update(original_env)
 
-    @patch("api.referral_retention_check._get_stripe_api_key")
+    @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
     @patch("api.referral_retention_check.add_bonus_with_cap")
     def test_increments_error_count_on_processing_exception(

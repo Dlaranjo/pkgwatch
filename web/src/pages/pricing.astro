@@ -301,6 +301,21 @@ const faqSchema = {
         </div>
       </div>
     </div>
+
+    <!-- Toast notification -->
+    <div id="pricing-toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4">
+      <div class="bg-red-900/90 border border-red-500/30 text-red-200 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3">
+        <svg class="w-5 h-5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span id="pricing-toast-text" class="text-sm"></span>
+        <button id="pricing-toast-close" class="ml-auto text-red-400 hover:text-red-300" aria-label="Close notification">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
 </Layout>
 
 <script>
@@ -407,11 +422,11 @@ const faqSchema = {
       } else if (response.status === 401) {
         window.location.href = `/start?redirect=${encodeURIComponent('/pricing')}`;
       } else {
-        alert(data.error?.message || 'Failed to load upgrade preview');
+        showToast(data.error?.message || 'Failed to load upgrade preview');
       }
     } catch (error) {
       console.error('Upgrade preview error:', error);
-      alert('Network error. Please try again.');
+      showToast('Network error. Please try again.');
     } finally {
       button.disabled = false;
       button.textContent = originalText;
@@ -516,7 +531,7 @@ const faqSchema = {
         if (data.checkout_url.startsWith('https://checkout.stripe.com/')) {
           window.location.href = data.checkout_url;
         } else {
-          alert('Invalid checkout URL received. Please try again.');
+          showToast('Invalid checkout URL received. Please try again.');
           button.disabled = false;
           button.textContent = originalText;
         }
@@ -529,16 +544,30 @@ const faqSchema = {
         button.textContent = originalText;
         await showUpgradePreview(tier, button);
       } else {
-        alert(data.error?.message || 'Failed to start checkout');
+        showToast(data.error?.message || 'Failed to start checkout');
         button.disabled = false;
         button.textContent = originalText;
       }
     } catch (error) {
       console.error('Checkout error:', error);
-      alert('Network error. Please try again.');
+      showToast('Network error. Please try again.');
       button.disabled = false;
       button.textContent = originalText;
     }
+  }
+
+  function showToast(message: string, duration = 5000) {
+    const toast = document.getElementById('pricing-toast');
+    const text = document.getElementById('pricing-toast-text');
+    const closeBtn = document.getElementById('pricing-toast-close');
+    if (!toast || !text) return;
+    text.textContent = message;
+    toast.classList.remove('hidden');
+    const timer = setTimeout(() => toast.classList.add('hidden'), duration);
+    closeBtn?.addEventListener('click', () => {
+      clearTimeout(timer);
+      toast.classList.add('hidden');
+    }, { once: true });
   }
 
   // Initialize on page load

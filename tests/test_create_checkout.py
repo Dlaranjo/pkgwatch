@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from moto import mock_aws
 
+import shared.billing_utils as billing_utils
+
 
 class TestCreateCheckoutHandler:
     """Tests for the create checkout Lambda handler."""
@@ -22,10 +24,10 @@ class TestCreateCheckoutHandler:
 
         # Clear the API key cache
         import api.create_checkout as checkout_module
-        checkout_module._stripe_api_key_cache = None
-        checkout_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(checkout_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_checkout.get_stripe_api_key", return_value="sk_test_123"):
             from api.create_checkout import handler
 
             api_gateway_event["httpMethod"] = "POST"
@@ -43,10 +45,10 @@ class TestCreateCheckoutHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.create_checkout as checkout_module
-        checkout_module._stripe_api_key_cache = None
-        checkout_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(checkout_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_checkout.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token", return_value=None):
                 from api.create_checkout import handler
 
@@ -66,10 +68,10 @@ class TestCreateCheckoutHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.create_checkout as checkout_module
-        checkout_module._stripe_api_key_cache = None
-        checkout_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(checkout_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_checkout.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_123", "email": "test@example.com"}
 
@@ -91,10 +93,10 @@ class TestCreateCheckoutHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.create_checkout as checkout_module
-        checkout_module._stripe_api_key_cache = None
-        checkout_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(checkout_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_checkout.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_123", "email": "test@example.com"}
 
@@ -129,12 +131,12 @@ class TestCreateCheckoutHandler:
         )
 
         import api.create_checkout as checkout_module
-        checkout_module._stripe_api_key_cache = None
-        checkout_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         # Set price IDs directly since module reads env at import time
         checkout_module.TIER_TO_PRICE["starter"] = "price_starter_123"
 
-        with patch.object(checkout_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_checkout.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_pro", "email": "pro@example.com"}
 
@@ -169,11 +171,11 @@ class TestCreateCheckoutHandler:
         )
 
         import api.create_checkout as checkout_module
-        checkout_module._stripe_api_key_cache = None
-        checkout_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         checkout_module.TIER_TO_PRICE["starter"] = "price_starter_123"
 
-        with patch.object(checkout_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_checkout.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -209,11 +211,11 @@ class TestCreateCheckoutHandler:
         )
 
         import api.create_checkout as checkout_module
-        checkout_module._stripe_api_key_cache = None
-        checkout_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         checkout_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(checkout_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_checkout.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_free", "email": "free@example.com"}
 
@@ -263,11 +265,11 @@ class TestCreateCheckoutHandler:
         )
 
         import api.create_checkout as checkout_module
-        checkout_module._stripe_api_key_cache = None
-        checkout_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         checkout_module.TIER_TO_PRICE["business"] = "price_business_123"
 
-        with patch.object(checkout_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_checkout.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -298,10 +300,10 @@ class TestCreateCheckoutHandler:
         os.environ["STRIPE_SECRET_ARN"] = ""
 
         import api.create_checkout as checkout_module
-        checkout_module._stripe_api_key_cache = None
-        checkout_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(checkout_module, "_get_stripe_api_key", return_value=None):
+        with patch("api.create_checkout.get_stripe_api_key", return_value=None):
             from api.create_checkout import handler
 
             api_gateway_event["httpMethod"] = "POST"
@@ -333,12 +335,12 @@ class TestCreateCheckoutHandler:
         )
 
         import api.create_checkout as checkout_module
-        checkout_module._stripe_api_key_cache = None
-        checkout_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         # Force TIER_TO_PRICE to have None for starter
         checkout_module.TIER_TO_PRICE["starter"] = None
 
-        with patch.object(checkout_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_checkout.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_free", "email": "free@example.com"}
 

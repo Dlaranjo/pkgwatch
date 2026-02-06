@@ -25,6 +25,7 @@ dynamodb = boto3.resource("dynamodb")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
 from metrics import emit_metric, emit_batch_metrics, emit_dlq_metric
 from error_classification import classify_error
+from logging_utils import configure_structured_logging, request_id_var
 
 DLQ_URL = os.environ.get("DLQ_URL")
 MAIN_QUEUE_URL = os.environ.get("MAIN_QUEUE_URL")
@@ -64,6 +65,9 @@ def handler(event, context):
 
     Scheduled to run every 15 minutes via EventBridge.
     """
+    configure_structured_logging()
+    request_id_var.set(getattr(context, 'aws_request_id', 'unknown'))
+
     if not DLQ_URL:
         logger.error("DLQ_URL not configured")
         return {"error": "DLQ_URL not configured"}
@@ -80,6 +84,12 @@ def handler(event, context):
     # Process messages in batches until queue is empty or we hit a limit
     max_iterations = 10  # Process up to 100 messages per invocation
     for _ in range(max_iterations):
+        if context and hasattr(context, 'get_remaining_time_in_millis'):
+            remaining_ms = context.get_remaining_time_in_millis()
+            if remaining_ms < 30000:
+                logger.warning(f"Approaching timeout ({remaining_ms}ms remaining), stopping early")
+                break
+
         # Receive up to 10 messages
         response = sqs.receive_message(
             QueueUrl=DLQ_URL,

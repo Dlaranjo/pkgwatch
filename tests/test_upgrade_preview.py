@@ -13,6 +13,8 @@ import pytest
 import stripe as stripe_module
 from moto import mock_aws
 
+import shared.billing_utils as billing_utils
+
 
 class TestUpgradePreviewHandler:
     """Tests for the upgrade preview Lambda handler."""
@@ -25,10 +27,10 @@ class TestUpgradePreviewHandler:
 
         # Clear cache
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             from api.upgrade_preview import handler
 
             api_gateway_event["httpMethod"] = "POST"
@@ -46,10 +48,10 @@ class TestUpgradePreviewHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token", return_value=None):
                 from api.upgrade_preview import handler
 
@@ -69,10 +71,10 @@ class TestUpgradePreviewHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_123", "email": "test@example.com"}
 
@@ -94,10 +96,10 @@ class TestUpgradePreviewHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_123", "email": "test@example.com"}
 
@@ -133,11 +135,11 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_free", "email": "free@example.com"}
 
@@ -174,11 +176,11 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_pro", "email": "pro@example.com"}
 
@@ -215,11 +217,11 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_business", "email": "business@example.com"}
 
@@ -256,11 +258,11 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -304,11 +306,11 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -351,11 +353,11 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -423,11 +425,11 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -479,11 +481,11 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -536,11 +538,11 @@ class TestUpgradePreviewHandler:
 
         import api.upgrade_preview as preview_module
         import stripe as stripe_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -566,10 +568,10 @@ class TestUpgradePreviewHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value=None):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value=None):
             from api.upgrade_preview import handler
 
             api_gateway_event["httpMethod"] = "POST"
@@ -588,10 +590,10 @@ class TestUpgradePreviewHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_123", "email": "test@example.com"}
 
@@ -616,14 +618,14 @@ class TestUpgradePreviewHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         # Ensure price is NOT configured
         original_price = preview_module.TIER_TO_PRICE.get("pro")
         preview_module.TIER_TO_PRICE["pro"] = None
 
         try:
-            with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+            with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
                 with patch("api.auth_callback.verify_session_token") as mock_verify:
                     mock_verify.return_value = {"user_id": "user_123", "email": "test@example.com"}
 
@@ -680,11 +682,11 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -739,11 +741,11 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -800,11 +802,11 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -849,11 +851,11 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_pending_only", "email": "pending@example.com"}
 
@@ -890,11 +892,11 @@ class TestUpgradePreviewHandler:
         )
 
         import api.upgrade_preview as preview_module
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["business"] = "price_business_123"
 
-        with patch.object(preview_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.upgrade_preview.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_starter", "email": "starter@example.com"}
 
@@ -941,47 +943,42 @@ class TestUpgradePreviewHandler:
 
 
 class TestPreviewGetStripeApiKey:
-    """Tests for the _get_stripe_api_key function in upgrade_preview (lines 52-72)."""
+    """Tests for the get_stripe_api_key function in shared.billing_utils."""
 
     @mock_aws
     def test_returns_cached_key_within_ttl(self):
-        """Should return cached key when cache is still valid (lines 52-53)."""
-        import api.upgrade_preview as preview_module
+        """Should return cached key when cache is still valid."""
+        billing_utils._stripe_api_key_cache = "sk_cached_key"
+        billing_utils._stripe_api_key_cache_time = time.time()
 
-        preview_module._stripe_api_key_cache = "sk_cached_key"
-        preview_module._stripe_api_key_cache_time = time.time()
-
-        result = preview_module._get_stripe_api_key()
+        result = billing_utils.get_stripe_api_key()
 
         assert result == "sk_cached_key"
 
     @mock_aws
     def test_returns_none_when_no_secret_arn(self):
-        """Should return None when STRIPE_SECRET_ARN is not set (lines 55-56)."""
-        import api.upgrade_preview as preview_module
+        """Should return None when STRIPE_SECRET_ARN is not set."""
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
-
-        original_arn = preview_module.STRIPE_SECRET_ARN
-        preview_module.STRIPE_SECRET_ARN = None
+        original_arn = billing_utils.STRIPE_SECRET_ARN
+        billing_utils.STRIPE_SECRET_ARN = None
 
         try:
-            result = preview_module._get_stripe_api_key()
+            result = billing_utils.get_stripe_api_key()
             assert result is None
         finally:
-            preview_module.STRIPE_SECRET_ARN = original_arn
+            billing_utils.STRIPE_SECRET_ARN = original_arn
 
     @mock_aws
     def test_retrieves_key_from_json_secret(self):
-        """Should parse JSON secret and extract key (lines 58-69)."""
-        import api.upgrade_preview as preview_module
-
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        """Should parse JSON secret and extract key."""
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
         secret_arn = "arn:aws:secretsmanager:us-east-1:123456789:secret:test-stripe-preview"
-        preview_module.STRIPE_SECRET_ARN = secret_arn
+        original_arn = billing_utils.STRIPE_SECRET_ARN
+        billing_utils.STRIPE_SECRET_ARN = secret_arn
 
         sm_client = boto3.client("secretsmanager", region_name="us-east-1")
         sm_client.create_secret(
@@ -990,25 +987,24 @@ class TestPreviewGetStripeApiKey:
         )
 
         try:
-            result = preview_module._get_stripe_api_key()
+            result = billing_utils.get_stripe_api_key()
             assert result == "sk_live_preview_json"
-            assert preview_module._stripe_api_key_cache == "sk_live_preview_json"
-            assert preview_module._stripe_api_key_cache_time > 0
+            assert billing_utils._stripe_api_key_cache == "sk_live_preview_json"
+            assert billing_utils._stripe_api_key_cache_time > 0
         finally:
-            preview_module.STRIPE_SECRET_ARN = None
-            preview_module._stripe_api_key_cache = None
-            preview_module._stripe_api_key_cache_time = 0.0
+            billing_utils.STRIPE_SECRET_ARN = original_arn
+            billing_utils._stripe_api_key_cache = None
+            billing_utils._stripe_api_key_cache_time = 0.0
 
     @mock_aws
     def test_retrieves_plain_string_secret(self):
-        """Should handle plain string secret (not JSON) (lines 64-65)."""
-        import api.upgrade_preview as preview_module
-
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
+        """Should handle plain string secret (not JSON)."""
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
         secret_arn = "arn:aws:secretsmanager:us-east-1:123456789:secret:test-stripe-preview-plain"
-        preview_module.STRIPE_SECRET_ARN = secret_arn
+        original_arn = billing_utils.STRIPE_SECRET_ARN
+        billing_utils.STRIPE_SECRET_ARN = secret_arn
 
         sm_client = boto3.client("secretsmanager", region_name="us-east-1")
         sm_client.create_secret(
@@ -1017,41 +1013,39 @@ class TestPreviewGetStripeApiKey:
         )
 
         try:
-            result = preview_module._get_stripe_api_key()
+            result = billing_utils.get_stripe_api_key()
             assert result == "sk_live_plain_preview"
         finally:
-            preview_module.STRIPE_SECRET_ARN = None
-            preview_module._stripe_api_key_cache = None
-            preview_module._stripe_api_key_cache_time = 0.0
+            billing_utils.STRIPE_SECRET_ARN = original_arn
+            billing_utils._stripe_api_key_cache = None
+            billing_utils._stripe_api_key_cache_time = 0.0
 
     @mock_aws
     def test_returns_none_on_client_error(self):
-        """Should return None when Secrets Manager call fails (lines 70-72)."""
-        import api.upgrade_preview as preview_module
+        """Should return None when Secrets Manager call fails."""
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        preview_module._stripe_api_key_cache = None
-        preview_module._stripe_api_key_cache_time = 0.0
-
-        preview_module.STRIPE_SECRET_ARN = "arn:aws:secretsmanager:us-east-1:123456789:secret:nonexistent"
+        original_arn = billing_utils.STRIPE_SECRET_ARN
+        billing_utils.STRIPE_SECRET_ARN = "arn:aws:secretsmanager:us-east-1:123456789:secret:nonexistent"
 
         try:
-            result = preview_module._get_stripe_api_key()
+            result = billing_utils.get_stripe_api_key()
             assert result is None
         finally:
-            preview_module.STRIPE_SECRET_ARN = None
-            preview_module._stripe_api_key_cache = None
-            preview_module._stripe_api_key_cache_time = 0.0
+            billing_utils.STRIPE_SECRET_ARN = original_arn
+            billing_utils._stripe_api_key_cache = None
+            billing_utils._stripe_api_key_cache_time = 0.0
 
     @mock_aws
     def test_cache_expires_after_ttl(self):
         """Should re-fetch key when cache has expired."""
-        import api.upgrade_preview as preview_module
-
-        preview_module._stripe_api_key_cache = "sk_old_cached"
-        preview_module._stripe_api_key_cache_time = time.time() - preview_module.STRIPE_CACHE_TTL - 10
+        billing_utils._stripe_api_key_cache = "sk_old_cached"
+        billing_utils._stripe_api_key_cache_time = time.time() - billing_utils.STRIPE_CACHE_TTL - 10
 
         secret_arn = "arn:aws:secretsmanager:us-east-1:123456789:secret:test-stripe-preview-ttl"
-        preview_module.STRIPE_SECRET_ARN = secret_arn
+        original_arn = billing_utils.STRIPE_SECRET_ARN
+        billing_utils.STRIPE_SECRET_ARN = secret_arn
 
         sm_client = boto3.client("secretsmanager", region_name="us-east-1")
         sm_client.create_secret(
@@ -1060,10 +1054,10 @@ class TestPreviewGetStripeApiKey:
         )
 
         try:
-            result = preview_module._get_stripe_api_key()
+            result = billing_utils.get_stripe_api_key()
             assert result == "sk_refreshed_key"
-            assert preview_module._stripe_api_key_cache == "sk_refreshed_key"
+            assert billing_utils._stripe_api_key_cache == "sk_refreshed_key"
         finally:
-            preview_module.STRIPE_SECRET_ARN = None
-            preview_module._stripe_api_key_cache = None
-            preview_module._stripe_api_key_cache_time = 0.0
+            billing_utils.STRIPE_SECRET_ARN = original_arn
+            billing_utils._stripe_api_key_cache = None
+            billing_utils._stripe_api_key_cache_time = 0.0

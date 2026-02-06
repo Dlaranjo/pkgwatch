@@ -25,14 +25,6 @@ from botocore.exceptions import ClientError
 
 from .circuit_breaker import DYNAMODB_CIRCUIT
 
-# DynamoDB throttling error codes that should trigger retry
-THROTTLING_ERRORS = (
-    "ProvisionedThroughputExceededException",
-    "RequestLimitExceeded",
-    "ThrottlingException",
-    "InternalServerError",
-)
-
 # Lazy initialization to avoid boto3 resource creation at import time
 # This prevents "NoRegionError" during test collection when AWS isn't configured
 _dynamodb = None
@@ -47,7 +39,7 @@ def _get_dynamodb():
     return _dynamodb
 
 # Import tier limits from constants (single source of truth)
-from .constants import TIER_LIMITS
+from .constants import THROTTLING_ERRORS, TIER_LIMITS
 
 
 def generate_api_key(user_id: str, tier: str = "free", email: str = None) -> str:

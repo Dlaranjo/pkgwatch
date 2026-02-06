@@ -51,3 +51,11 @@ GITHUB_TIMEOUT = 45.0
 # Rate limit shards
 RATE_LIMIT_SHARDS = 10
 GITHUB_HOURLY_LIMIT = 4000
+
+# DynamoDB throttling error codes that should trigger retry
+THROTTLING_ERRORS = (
+    "ProvisionedThroughputExceededException",
+    "RequestLimitExceeded",
+    "ThrottlingException",
+    "InternalServerError",
+)

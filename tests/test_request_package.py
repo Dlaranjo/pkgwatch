@@ -179,9 +179,9 @@ class TestRequestPackageHandler:
 
         importlib.reload(module)
 
-        # Mock rate_limit_exceeded to return True
-        with patch.object(module, "rate_limit_exceeded") as mock_rate_limit:
-            mock_rate_limit.return_value = True
+        # Mock check_and_record_rate_limit to return False (rate limited)
+        with patch.object(module, "check_and_record_rate_limit") as mock_rate_limit:
+            mock_rate_limit.return_value = False
 
             event = {**api_gateway_event, "body": json.dumps({"name": "test-pkg"})}
             result = module.handler(event, None)
@@ -236,8 +236,8 @@ class TestRateLimitHelpers:
 
         importlib.reload(module)
 
-        result = module.rate_limit_exceeded("192.168.1.1")
-        assert result is False
+        result = module.check_and_record_rate_limit("192.168.1.1")
+        assert result is True
 
     @mock_aws
     def test_rate_limit_exceeded_after_limit(self, mock_dynamodb):
@@ -260,12 +260,12 @@ class TestRateLimitHelpers:
             }
         )
 
-        result = module.rate_limit_exceeded("192.168.1.1")
-        assert result is True
+        result = module.check_and_record_rate_limit("192.168.1.1")
+        assert result is False
 
     @mock_aws
-    def test_record_rate_limit_usage(self, mock_dynamodb):
-        """Should increment request count for IP."""
+    def test_check_and_record_rate_limit_increments_count(self, mock_dynamodb):
+        """Should atomically check and increment request count for IP."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import importlib
@@ -273,7 +273,8 @@ class TestRateLimitHelpers:
 
         importlib.reload(module)
 
-        module.record_rate_limit_usage("192.168.1.2")
+        result = module.check_and_record_rate_limit("192.168.1.2")
+        assert result is True
 
         # Verify count was incremented
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -485,7 +486,7 @@ class TestRequestPackageErrorPaths:
 
     @mock_aws
     def test_rate_limit_check_error_returns_false(self, mock_dynamodb):
-        """Should return False (not rate limited) when rate limit check fails (lines 216-217)."""
+        """Should return False (fail closed) when rate limit check fails."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import importlib
@@ -493,20 +494,20 @@ class TestRequestPackageErrorPaths:
 
         importlib.reload(module)
 
-        # Mock _get_dynamodb so the rate limit table raises an error
+        # Mock _get_dynamodb so the rate limit table raises an error on update_item
         mock_table = MagicMock()
-        mock_table.get_item.side_effect = Exception("DynamoDB timeout")
+        mock_table.update_item.side_effect = Exception("DynamoDB timeout")
 
         mock_db = MagicMock()
         mock_db.Table.return_value = mock_table
 
         with patch.object(module, "_get_dynamodb", return_value=mock_db):
-            result = module.rate_limit_exceeded("192.168.1.1")
+            result = module.check_and_record_rate_limit("192.168.1.1")
             assert result is False
 
     @mock_aws
-    def test_record_rate_limit_error_does_not_raise(self, mock_dynamodb):
-        """Should silently handle errors when recording rate limit usage (lines 245-246)."""
+    def test_check_and_record_rate_limit_error_does_not_raise(self, mock_dynamodb):
+        """Should silently handle errors and return False (fail closed)."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import importlib
@@ -521,8 +522,9 @@ class TestRequestPackageErrorPaths:
         mock_db.Table.return_value = mock_table
 
         with patch.object(module, "_get_dynamodb", return_value=mock_db):
-            # Should not raise
-            module.record_rate_limit_usage("192.168.1.1")
+            # Should not raise, and should return False (fail closed)
+            result = module.check_and_record_rate_limit("192.168.1.1")
+            assert result is False
 
     def test_validate_package_exists_returns_false_on_exception(self):
         """Should return False when deps.dev lookup raises an exception (lines 251-258)."""

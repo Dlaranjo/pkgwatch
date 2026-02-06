@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from moto import mock_aws
 
+import shared.billing_utils as billing_utils
+
 
 class TestCreateBillingPortalHandler:
     """Tests for the create billing portal Lambda handler."""
@@ -21,10 +23,10 @@ class TestCreateBillingPortalHandler:
         os.environ["STRIPE_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123456789:secret:test"
 
         import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
             from api.create_billing_portal import handler
 
             api_gateway_event["httpMethod"] = "POST"
@@ -41,10 +43,10 @@ class TestCreateBillingPortalHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token", return_value=None):
                 from api.create_billing_portal import handler
 
@@ -77,10 +79,10 @@ class TestCreateBillingPortalHandler:
         )
 
         import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_free", "email": "free@example.com"}
 
@@ -119,10 +121,10 @@ class TestCreateBillingPortalHandler:
         import importlib
         import api.create_billing_portal as portal_module
         importlib.reload(portal_module)
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_pro", "email": "pro@example.com"}
 
@@ -153,10 +155,10 @@ class TestCreateBillingPortalHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value=None):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value=None):
             from api.create_billing_portal import handler
 
             api_gateway_event["httpMethod"] = "POST"
@@ -188,10 +190,10 @@ class TestCreateBillingPortalHandler:
         )
 
         import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_pro", "email": "pro@example.com"}
 
@@ -243,10 +245,10 @@ class TestCreateBillingPortalHandler:
         )
 
         import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_test", "email": "test@example.com"}
 
@@ -287,10 +289,10 @@ class TestBillingPortalCorsHandling:
         )
 
         import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_cors", "email": "cors@example.com"}
 
@@ -314,10 +316,10 @@ class TestBillingPortalCorsHandling:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
             from api.create_billing_portal import handler
 
             api_gateway_event["httpMethod"] = "POST"
@@ -339,10 +341,10 @@ class TestBillingPortalCookieHandling:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token", return_value=None):
                 from api.create_billing_portal import handler
 
@@ -360,10 +362,10 @@ class TestBillingPortalCookieHandling:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token", return_value=None):
                 from api.create_billing_portal import handler
 
@@ -380,10 +382,10 @@ class TestBillingPortalCookieHandling:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = None  # Invalid token
 
@@ -407,10 +409,10 @@ class TestBillingPortalEdgeCases:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
             from api.create_billing_portal import handler
 
             api_gateway_event["httpMethod"] = "POST"
@@ -426,10 +428,10 @@ class TestBillingPortalEdgeCases:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
             from api.create_billing_portal import handler
 
             api_gateway_event["httpMethod"] = "POST"
@@ -461,10 +463,10 @@ class TestBillingPortalEdgeCases:
         )
 
         import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_unverified", "email": "unverified@example.com"}
 
@@ -491,42 +493,45 @@ class TestBillingPortalStripeApiKeyCache:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["STRIPE_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123:secret:test"
 
-        import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
         # First call should fetch from secrets manager
-        with patch.object(portal_module.secretsmanager, "get_secret_value") as mock_sm:
-            mock_sm.return_value = {"SecretString": '{"key": "sk_test_cached"}'}
+        mock_sm = MagicMock()
+        mock_sm.get_secret_value.return_value = {"SecretString": '{"key": "sk_test_cached"}'}
 
-            result1 = portal_module._get_stripe_api_key()
-            assert result1 == "sk_test_cached"
-            assert mock_sm.call_count == 1
+        with patch("shared.billing_utils._get_secretsmanager", return_value=mock_sm):
+            original_arn = billing_utils.STRIPE_SECRET_ARN
+            billing_utils.STRIPE_SECRET_ARN = "arn:aws:secretsmanager:us-east-1:123:secret:test"
+            try:
+                result1 = billing_utils.get_stripe_api_key()
+                assert result1 == "sk_test_cached"
+                assert mock_sm.get_secret_value.call_count == 1
 
-            # Second call should use cache
-            result2 = portal_module._get_stripe_api_key()
-            assert result2 == "sk_test_cached"
-            assert mock_sm.call_count == 1  # Still 1 - cache hit
+                # Second call should use cache
+                result2 = billing_utils.get_stripe_api_key()
+                assert result2 == "sk_test_cached"
+                assert mock_sm.get_secret_value.call_count == 1  # Still 1 - cache hit
+            finally:
+                billing_utils.STRIPE_SECRET_ARN = original_arn
 
     @mock_aws
     def test_returns_none_when_stripe_arn_not_configured(self, mock_dynamodb, api_gateway_event):
         """Should return None when STRIPE_SECRET_ARN is not set."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.create_billing_portal as portal_module
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
         # Remove or set empty ARN
-        original = os.environ.get("STRIPE_SECRET_ARN")
-        os.environ["STRIPE_SECRET_ARN"] = ""
+        original = billing_utils.STRIPE_SECRET_ARN
+        billing_utils.STRIPE_SECRET_ARN = ""
 
         try:
-            result = portal_module._get_stripe_api_key()
+            result = billing_utils.get_stripe_api_key()
             assert result is None
         finally:
-            if original:
-                os.environ["STRIPE_SECRET_ARN"] = original
+            billing_utils.STRIPE_SECRET_ARN = original
 
 
 class TestBillingPortalReturnUrl:
@@ -555,10 +560,10 @@ class TestBillingPortalReturnUrl:
         import importlib
         import api.create_billing_portal as portal_module
         importlib.reload(portal_module)
-        portal_module._stripe_api_key_cache = None
-        portal_module._stripe_api_key_cache_time = 0.0
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
 
-        with patch.object(portal_module, "_get_stripe_api_key", return_value="sk_test_123"):
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
             with patch("api.auth_callback.verify_session_token") as mock_verify:
                 mock_verify.return_value = {"user_id": "user_return", "email": "return@example.com"}
 

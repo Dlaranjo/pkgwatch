@@ -2,6 +2,7 @@
   "name": "@pkgwatch/action",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --minify --sourcemap --outfile=dist/index.js --define:__VERSION__=\\\"$(node -p \"require('./package.json').version\")\\\"",
     "test": "vitest run",

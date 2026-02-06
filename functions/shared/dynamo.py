@@ -13,6 +13,8 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
+from .constants import THROTTLING_ERRORS
+
 logger = logging.getLogger(__name__)
 
 # Lazy initialization to avoid boto3 resource creation at import time
@@ -49,14 +51,7 @@ def get_package(ecosystem: str, name: str, max_retries: int = 3) -> Optional[dic
             return response.get("Item")
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
-            # DynamoDB throttling/transient error codes (all retryable)
-            throttling_errors = (
-                "ProvisionedThroughputExceededException",
-                "RequestLimitExceeded",
-                "ThrottlingException",
-                "InternalServerError",
-            )
-            if error_code in throttling_errors:
+            if error_code in THROTTLING_ERRORS:
                 if attempt < max_retries - 1:
                     # Exponential backoff with jitter to prevent thundering herd
                     base_delay = min(0.1 * (2 ** attempt), 2.0)

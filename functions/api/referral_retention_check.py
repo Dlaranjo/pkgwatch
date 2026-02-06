@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 import boto3
 import stripe
 from boto3.dynamodb.conditions import Key
-from botocore.exceptions import ClientError
 
 from shared.referral_utils import (
     add_bonus_with_cap,
@@ -22,13 +21,13 @@ from shared.referral_utils import (
     mark_retention_checked,
     REFERRAL_REWARDS,
 )
+from shared.billing_utils import get_stripe_api_key
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # Lazy initialization
 _dynamodb = None
-_secretsmanager = None
 
 
 def _get_dynamodb():
@@ -39,36 +38,8 @@ def _get_dynamodb():
     return _dynamodb
 
 
-def _get_secretsmanager():
-    """Get Secrets Manager client."""
-    global _secretsmanager
-    if _secretsmanager is None:
-        _secretsmanager = boto3.client("secretsmanager")
-    return _secretsmanager
-
-
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 REFERRAL_EVENTS_TABLE = os.environ.get("REFERRAL_EVENTS_TABLE", "pkgwatch-referral-events")
-STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
-
-
-def _get_stripe_api_key() -> str | None:
-    """Retrieve Stripe API key from Secrets Manager."""
-    if not STRIPE_SECRET_ARN:
-        return None
-
-    try:
-        import json
-        response = _get_secretsmanager().get_secret_value(SecretId=STRIPE_SECRET_ARN)
-        secret_value = response.get("SecretString", "")
-        try:
-            secret_json = json.loads(secret_value)
-            return secret_json.get("key") or secret_value
-        except json.JSONDecodeError:
-            return secret_value
-    except ClientError as e:
-        logger.error(f"Failed to retrieve Stripe API key: {e}")
-        return None
 
 
 def handler(event, context):
@@ -85,7 +56,7 @@ def handler(event, context):
     3. Record "retained" event
     4. Clear needs_retention_check flag
     """
-    stripe_api_key = _get_stripe_api_key()
+    stripe_api_key = get_stripe_api_key()
     if not stripe_api_key:
         logger.error("Stripe API key not configured")
         return {"processed": 0, "credited": 0, "error": "Stripe not configured"}

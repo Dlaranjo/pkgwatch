@@ -19,26 +19,11 @@ logger.setLevel(logging.INFO)
 
 # Import from shared module (bundled with Lambda)
 from shared.auth import validate_api_key, check_and_increment_usage_with_bonus
-from shared.response_utils import decimal_default, error_response
+from shared.response_utils import decimal_default, error_response, get_cors_headers, ALLOWED_ORIGINS
 from shared.rate_limit_utils import check_usage_alerts, get_reset_timestamp
 from shared.data_quality import build_data_quality_full, is_queryable
 from shared.package_validation import normalize_npm_name
-
-# Demo mode settings
-DEMO_REQUESTS_PER_HOUR = 20
-# Production CORS origins - localhost only allowed if ALLOW_DEV_CORS is set
-_PROD_ORIGINS = [
-    "https://pkgwatch.dev",
-]
-_DEV_ORIGINS = [
-    "http://localhost:4321",  # Astro dev server
-    "http://localhost:3000",
-]
-DEMO_ALLOWED_ORIGINS = (
-    _PROD_ORIGINS + _DEV_ORIGINS
-    if os.environ.get("ALLOW_DEV_CORS") == "true"
-    else _PROD_ORIGINS
-)
+from shared.constants import DEMO_REQUESTS_PER_HOUR
 
 
 # Lazy initialization to reduce cold start overhead
@@ -56,17 +41,6 @@ def _get_dynamodb():
 
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 DEMO_RATE_LIMIT_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
-
-
-def _get_cors_headers(origin: str) -> dict:
-    """Get CORS headers for allowed origins."""
-    if origin in DEMO_ALLOWED_ORIGINS:
-        return {
-            "Access-Control-Allow-Origin": origin,
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, x-api-key",
-        }
-    return {}
 
 
 def _get_client_ip(event: dict) -> str:
@@ -200,7 +174,7 @@ def handler(event, context):
 
     headers = event.get("headers", {})
     origin = headers.get("origin") or headers.get("Origin") or ""
-    cors_headers = _get_cors_headers(origin)
+    cors_headers = get_cors_headers(origin)
 
     # Extract API key from headers
     api_key = headers.get("x-api-key") or headers.get("X-API-Key")

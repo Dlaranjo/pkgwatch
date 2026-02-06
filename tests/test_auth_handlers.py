@@ -8,6 +8,8 @@ import os
 import pytest
 from moto import mock_aws
 
+import shared.billing_utils as billing_utils
+
 
 class TestSignupHandler:
     """Tests for the signup endpoint."""
@@ -1268,7 +1270,7 @@ class TestAuthMeHandler:
         import api.auth_callback
         import api.auth_me
         api.auth_callback._session_secret_cache = None
-        api.auth_me._stripe_api_key_cache = None  # Clear Stripe cache
+        billing_utils._stripe_api_key_cache = None  # Clear Stripe cache
 
         data = {
             "user_id": "user_no_stripe_secret",

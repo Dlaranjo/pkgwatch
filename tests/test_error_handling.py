@@ -195,7 +195,9 @@ class TestDynamoDBFailures:
         api_gateway_event["headers"]["cookie"] = f"session={session_token}"
 
         with patch("api.auth_me.verify_session_token", return_value=session_data):
-            with patch("api.auth_me.dynamodb") as mock_dynamo:
+            with patch("api.auth_me._get_dynamodb") as mock_get_dynamo:
+                mock_dynamo = MagicMock()
+                mock_get_dynamo.return_value = mock_dynamo
                 mock_table = MagicMock()
                 mock_dynamo.Table.return_value = mock_table
                 mock_table.query.side_effect = ClientError(

@@ -1013,8 +1013,11 @@ class TestCorsHeaders:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["ALLOW_DEV_CORS"] = "true"
 
-        # Need to reload the module to pick up the env var change
+        # Need to reload shared.response_utils first (ALLOWED_ORIGINS now lives there)
+        # then reload api.get_package to pick up the env var change
         import importlib
+        import shared.response_utils
+        importlib.reload(shared.response_utils)
         import api.get_package
         importlib.reload(api.get_package)
         from api.get_package import handler

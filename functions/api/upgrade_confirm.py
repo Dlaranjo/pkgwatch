@@ -20,17 +20,14 @@ from botocore.exceptions import ClientError
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-dynamodb = boto3.resource("dynamodb")
-secretsmanager = boto3.client("secretsmanager")
-
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
-STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
 
 # Import shared utilities
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
 from response_utils import error_response, success_response
 from constants import TIER_ORDER, TIER_LIMITS
+from billing_utils import get_stripe_api_key
 
 # Price ID to tier mapping (configured via environment)
 TIER_TO_PRICE = {
@@ -39,40 +36,18 @@ TIER_TO_PRICE = {
     "business": os.environ.get("STRIPE_PRICE_BUSINESS") or None,
 }
 
-# Cached Stripe API key with TTL
-_stripe_api_key_cache: str | None = None
-_stripe_api_key_cache_time = 0.0
-STRIPE_CACHE_TTL = 300  # 5 minutes
-
 # Maximum age for proration_date (5 minutes)
 PRORATION_DATE_MAX_AGE = 300
 
+# Lazy initialization
+_dynamodb = None
 
-def _get_stripe_api_key() -> str | None:
-    """Retrieve Stripe API key from Secrets Manager (cached with TTL)."""
-    global _stripe_api_key_cache, _stripe_api_key_cache_time
 
-    if _stripe_api_key_cache and (time.time() - _stripe_api_key_cache_time) < STRIPE_CACHE_TTL:
-        return _stripe_api_key_cache
-
-    if not STRIPE_SECRET_ARN:
-        return None
-
-    try:
-        response = secretsmanager.get_secret_value(SecretId=STRIPE_SECRET_ARN)
-        secret_value = response.get("SecretString", "")
-        try:
-            secret_json = json.loads(secret_value)
-            api_key = secret_json.get("key") or secret_value
-        except json.JSONDecodeError:
-            api_key = secret_value
-
-        _stripe_api_key_cache = api_key
-        _stripe_api_key_cache_time = time.time()
-        return api_key
-    except ClientError as e:
-        logger.error(f"Failed to retrieve Stripe API key: {e}")
-        return None
+def _get_dynamodb():
+    global _dynamodb
+    if _dynamodb is None:
+        _dynamodb = boto3.resource("dynamodb")
+    return _dynamodb
 
 
 def _get_origin(event: dict) -> str | None:
@@ -103,7 +78,7 @@ def handler(event, context):
     headers = event.get("headers", {}) or {}
 
     # Get Stripe API key
-    stripe_api_key = _get_stripe_api_key()
+    stripe_api_key = get_stripe_api_key()
     if not stripe_api_key:
         logger.error("Stripe API key not configured")
         return error_response(
@@ -194,7 +169,7 @@ def handler(event, context):
         )
 
     # Get user's current subscription data from DynamoDB
-    table = dynamodb.Table(API_KEYS_TABLE)
+    table = _get_dynamodb().Table(API_KEYS_TABLE)
     response = table.query(
         IndexName="email-index",
         KeyConditionExpression=Key("email").eq(email),

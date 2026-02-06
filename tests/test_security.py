@@ -797,7 +797,7 @@ class TestStripeWebhookSecurity:
 
         assert result["statusCode"] == 400
         body = json.loads(result["body"])
-        assert "signature" in body["error"].lower()
+        assert "signature" in body["error"]["message"].lower()
 
     def test_rejects_invalid_stripe_signature(self, mock_dynamodb, api_gateway_event):
         """Should reject webhook with invalid signature."""
@@ -840,7 +840,7 @@ class TestStripeWebhookSecurity:
 
         assert result["statusCode"] == 400
         body = json.loads(result["body"])
-        assert "signature" in body["error"].lower() or "invalid" in body["error"].lower()
+        assert "signature" in body["error"]["message"].lower() or "invalid" in body["error"]["message"].lower()
 
     def test_rejects_replayed_webhook(self, mock_dynamodb, api_gateway_event):
         """Stripe's signature verification should reject old timestamps (replay attacks)."""

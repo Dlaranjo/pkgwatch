@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 
 import boto3
 from boto3.dynamodb.conditions import Attr, Key
+from shared.logging_utils import configure_structured_logging, request_id_var
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -31,6 +32,9 @@ MAX_DISPATCH_PER_RUN = int(os.environ.get("MAX_DISPATCH_PER_RUN", "300"))
 
 def handler(event, context):
     """Find incomplete packages due for retry and dispatch."""
+    configure_structured_logging()
+    request_id_var.set(getattr(context, 'aws_request_id', 'unknown'))
+
     if not PACKAGE_QUEUE_URL:
         logger.error("PACKAGE_QUEUE_URL not configured")
         return {"statusCode": 500, "error": "PACKAGE_QUEUE_URL not configured"}
@@ -93,6 +97,12 @@ def handler(event, context):
     for pkg in packages:
         if dispatched >= MAX_DISPATCH_PER_RUN:
             break
+
+        if context and hasattr(context, 'get_remaining_time_in_millis'):
+            remaining_ms = context.get_remaining_time_in_millis()
+            if remaining_ms < 15000:
+                logger.warning(f"Approaching timeout ({remaining_ms}ms remaining), stopping early")
+                break
 
         pk = pkg.get("pk", "")
         if "#" not in pk:

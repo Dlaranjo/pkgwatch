@@ -10,7 +10,6 @@ subscription data from Stripe and update DynamoDB cache.
 import json
 import logging
 import os
-import time
 from decimal import Decimal
 from http.cookies import SimpleCookie
 
@@ -21,6 +20,7 @@ from botocore.exceptions import ClientError
 from shared.response_utils import decimal_default, error_response, get_cors_headers
 from shared.constants import TIER_LIMITS
 from shared.referral_utils import BONUS_CAP, LATE_ENTRY_DAYS
+from shared.billing_utils import get_stripe_api_key
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -28,10 +28,7 @@ logger.setLevel(logging.INFO)
 # Import session verification
 from api.auth_callback import verify_session_token
 
-dynamodb = boto3.resource("dynamodb")
-secretsmanager = boto3.client("secretsmanager")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
-STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
 
 # Price ID to tier mapping (configured via environment)
 PRICE_TO_TIER = {
@@ -40,37 +37,15 @@ PRICE_TO_TIER = {
     (os.environ.get("STRIPE_PRICE_BUSINESS") or "price_business"): "business",
 }
 
-# Cached Stripe API key with TTL
-_stripe_api_key_cache: str | None = None
-_stripe_api_key_cache_time = 0.0
-STRIPE_CACHE_TTL = 300  # 5 minutes
+# Lazy initialization
+_dynamodb = None
 
 
-def _get_stripe_api_key() -> str | None:
-    """Retrieve Stripe API key from Secrets Manager (cached with TTL)."""
-    global _stripe_api_key_cache, _stripe_api_key_cache_time
-
-    if _stripe_api_key_cache and (time.time() - _stripe_api_key_cache_time) < STRIPE_CACHE_TTL:
-        return _stripe_api_key_cache
-
-    if not STRIPE_SECRET_ARN:
-        return None
-
-    try:
-        response = secretsmanager.get_secret_value(SecretId=STRIPE_SECRET_ARN)
-        secret_value = response.get("SecretString", "")
-        try:
-            secret_json = json.loads(secret_value)
-            api_key = secret_json.get("key") or secret_value
-        except json.JSONDecodeError:
-            api_key = secret_value
-
-        _stripe_api_key_cache = api_key
-        _stripe_api_key_cache_time = time.time()
-        return api_key
-    except ClientError as e:
-        logger.error(f"Failed to retrieve Stripe API key: {e}")
-        return None
+def _get_dynamodb():
+    global _dynamodb
+    if _dynamodb is None:
+        _dynamodb = boto3.resource("dynamodb")
+    return _dynamodb
 
 
 def handler(event, context):
@@ -114,7 +89,7 @@ def handler(event, context):
         should_refresh = query_params.get("refresh") == "stripe"
 
         # Get fresh user data from DynamoDB
-        table = dynamodb.Table(API_KEYS_TABLE)
+        table = _get_dynamodb().Table(API_KEYS_TABLE)
         response = table.query(
             KeyConditionExpression=Key("pk").eq(user_id),
         )
@@ -254,7 +229,7 @@ def _refresh_from_stripe(table, user_id: str, primary_key: dict, api_keys: list,
     """
     import stripe
 
-    stripe_api_key = _get_stripe_api_key()
+    stripe_api_key = get_stripe_api_key()
     if not stripe_api_key:
         logger.warning("Stripe API key not available for refresh")
         return None

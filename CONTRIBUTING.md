@@ -15,7 +15,7 @@ Thank you for your interest in contributing to PkgWatch!
 
 ```bash
 # Clone the repository
-git clone https://github.com/pkgwatch/pkgwatch.git
+git clone https://github.com/Dlaranjo/pkgwatch.git
 cd pkgwatch
 
 # Install Node.js dependencies
