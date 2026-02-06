@@ -1,5 +1,5 @@
 # API Lambda dependencies
 # Note: boto3 is pre-installed in Lambda runtime, no need to bundle
-stripe~=7.0.0
+stripe>=7.8,<8
 # Note: Recovery codes use hashlib.pbkdf2_hmac (built-in) instead of bcrypt
 # to avoid native compilation issues on Lambda ARM64

@@ -1,4 +1,4 @@
 # Common dependencies for all Lambda functions
 # Note: boto3 is pre-installed in Lambda runtime, no need to bundle
 httpx~=0.27.0
-stripe~=7.0.0
+stripe>=7.8,<8
