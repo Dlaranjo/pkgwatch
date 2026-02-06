@@ -234,6 +234,7 @@ export class ApiStack extends cdk.Stack {
           STRIPE_PRICE_BUSINESS: process.env.STRIPE_PRICE_BUSINESS || "",
           // SNS topic for dispute/chargeback admin notifications
           ...(alertTopic && { ALERT_TOPIC_ARN: alertTopic.topicArn }),
+          LOGIN_EMAIL_SENDER: "noreply@pkgwatch.dev",
         },
       }
     );
@@ -478,6 +479,7 @@ export class ApiStack extends cdk.Stack {
     });
 
     signupHandler.addToRolePolicy(sesPolicy);
+    stripeWebhookHandler.addToRolePolicy(sesPolicy);
 
     // GET /verify - Verify email and create API key
     const verifyHandler = new lambda.Function(this, "VerifyEmailHandler", {

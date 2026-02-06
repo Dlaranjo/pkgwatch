@@ -11,6 +11,7 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 
+import boto3
 import stripe
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
@@ -43,6 +44,10 @@ from shared.referral_utils import (
 
 # Payment failure grace period - days to wait before downgrading
 GRACE_PERIOD_DAYS = int(os.environ.get("PAYMENT_GRACE_PERIOD_DAYS", "7"))
+
+# SES email for payment failure notifications
+ses = boto3.client("ses")
+LOGIN_EMAIL_SENDER = os.environ.get("LOGIN_EMAIL_SENDER", "noreply@pkgwatch.dev")
 
 # Tier mapping from Stripe price IDs (configured via environment)
 # Use `or` to handle empty string env vars (CDK fallback sets "" when not configured)
@@ -715,6 +720,12 @@ def _handle_payment_failed(invoice: dict):
                         ":now": now.isoformat(),
                     },
                 )
+                # Send payment failure notification email (best-effort)
+                recipient_email = customer_email or item.get("email")
+                if recipient_email:
+                    _send_payment_failed_email(
+                        recipient_email, item.get("tier", "paid"), GRACE_PERIOD_DAYS
+                    )
                 logger.info(f"Payment failed for {item['pk']}, grace period started ({GRACE_PERIOD_DAYS} days)")
             except ClientError as e:
                 if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
@@ -775,6 +786,54 @@ def _handle_payment_failed(invoice: dict):
                 ExpressionAttributeValues={":fails": attempt_count},
             )
             logger.info(f"Recorded payment failure {attempt_count} for {item['pk']}")
+
+
+def _send_payment_failed_email(email: str, tier: str, grace_period_days: int):
+    """Send payment failure notification email via SES (best-effort)."""
+    try:
+        ses.send_email(
+            Source=LOGIN_EMAIL_SENDER,
+            Destination={"ToAddresses": [email]},
+            Message={
+                "Subject": {
+                    "Data": "PkgWatch: Payment failed — action required",
+                    "Charset": "UTF-8",
+                },
+                "Body": {
+                    "Html": {
+                        "Data": (
+                            '<html><body style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:20px;">'
+                            '<h1 style="color:#1e293b;">Payment Failed</h1>'
+                            f'<p style="color:#475569;font-size:16px;">We were unable to process your payment for your PkgWatch <strong>{tier}</strong> plan.</p>'
+                            f'<p style="color:#475569;font-size:16px;">Your subscription is still active for the next <strong>{grace_period_days} days</strong>. '
+                            "Please update your payment method to avoid losing access to your plan features.</p>"
+                            '<a href="https://pkgwatch.dev/dashboard" '
+                            'style="display:inline-block;background:#3b82f6;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;margin:20px 0;">'
+                            "Update Payment Method</a>"
+                            f'<p style="color:#dc2626;font-size:14px;"><strong>Important:</strong> If payment is not resolved within {grace_period_days} days, '
+                            "your account will be downgraded to the free tier.</p>"
+                            "</body></html>"
+                        ),
+                        "Charset": "UTF-8",
+                    },
+                    "Text": {
+                        "Data": (
+                            f"Payment Failed\n\n"
+                            f"We were unable to process your payment for your PkgWatch {tier} plan.\n\n"
+                            f"Your subscription is still active for the next {grace_period_days} days. "
+                            f"Please update your payment method to avoid losing access.\n\n"
+                            f"Update your payment method at: https://pkgwatch.dev/dashboard\n\n"
+                            f"If payment is not resolved within {grace_period_days} days, "
+                            f"your account will be downgraded to the free tier."
+                        ),
+                        "Charset": "UTF-8",
+                    },
+                },
+            },
+        )
+        logger.info(f"Payment failure notification sent to {email[:3]}***")
+    except Exception as e:
+        logger.error(f"Failed to send payment failure email: {e}")
 
 
 def _handle_invoice_paid(invoice: dict):

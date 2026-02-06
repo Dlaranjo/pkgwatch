@@ -8,6 +8,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from botocore.exceptions import ClientError
 from moto import mock_aws
 
 
@@ -372,6 +373,158 @@ class TestHandlePaymentFailed:
         item = response.get("Item")
         assert item["tier"] == "pro"  # Not downgraded
         assert item["payment_failures"] == 2
+
+    @mock_aws
+    def test_first_failure_sends_email_notification(self, mock_dynamodb):
+        """Should send payment failure email on first failure."""
+        from unittest.mock import MagicMock, patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_email_first").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_email_first",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "emailfirst@example.com",
+                "tier": "pro",
+                "stripe_customer_id": "cus_email_first",
+                "email_verified": True,
+            }
+        )
+
+        from api.stripe_webhook import _handle_payment_failed
+
+        invoice = {
+            "customer": "cus_email_first",
+            "customer_email": "emailfirst@example.com",
+            "attempt_count": 1,
+        }
+
+        with patch("api.stripe_webhook.ses") as mock_ses:
+            mock_ses.send_email = MagicMock()
+            _handle_payment_failed(invoice)
+
+        mock_ses.send_email.assert_called_once()
+        call_args = mock_ses.send_email.call_args
+        assert call_args[1]["Destination"]["ToAddresses"] == ["emailfirst@example.com"]
+        assert "Payment" in call_args[1]["Message"]["Subject"]["Data"]
+
+    @mock_aws
+    def test_subsequent_failure_does_not_send_email(self, mock_dynamodb):
+        """Should NOT send email on 2nd failure."""
+        from unittest.mock import MagicMock, patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_email_sub").hexdigest()
+        two_days_ago = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+        table.put_item(
+            Item={
+                "pk": "user_email_sub",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "emailsub@example.com",
+                "tier": "pro",
+                "stripe_customer_id": "cus_email_sub",
+                "email_verified": True,
+                "first_payment_failure_at": two_days_ago,
+                "payment_failures": 1,
+            }
+        )
+
+        from api.stripe_webhook import _handle_payment_failed
+
+        invoice = {
+            "customer": "cus_email_sub",
+            "customer_email": "emailsub@example.com",
+            "attempt_count": 2,
+        }
+
+        with patch("api.stripe_webhook.ses") as mock_ses:
+            mock_ses.send_email = MagicMock()
+            _handle_payment_failed(invoice)
+
+        mock_ses.send_email.assert_not_called()
+
+    @mock_aws
+    def test_email_failure_does_not_break_grace_period(self, mock_dynamodb):
+        """SES failure should not prevent grace period from starting."""
+        from unittest.mock import MagicMock, patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_email_fail").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_email_fail",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "emailfail@example.com",
+                "tier": "starter",
+                "stripe_customer_id": "cus_email_fail",
+                "email_verified": True,
+            }
+        )
+
+        from api.stripe_webhook import _handle_payment_failed
+
+        invoice = {
+            "customer": "cus_email_fail",
+            "customer_email": "emailfail@example.com",
+            "attempt_count": 1,
+        }
+
+        with patch("api.stripe_webhook.ses") as mock_ses:
+            mock_ses.send_email.side_effect = Exception("SES unavailable")
+            _handle_payment_failed(invoice)
+
+        # Grace period should still be started despite email failure
+        response = table.get_item(Key={"pk": "user_email_fail", "sk": key_hash})
+        item = response.get("Item")
+        assert item["tier"] == "starter"
+        assert item["payment_failures"] == 1
+        assert "first_payment_failure_at" in item
+
+    @mock_aws
+    def test_email_prefers_customer_email_from_invoice(self, mock_dynamodb):
+        """Should prefer customer_email from invoice over item email."""
+        from unittest.mock import MagicMock, patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_email_pref").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_email_pref",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "old@example.com",
+                "tier": "pro",
+                "stripe_customer_id": "cus_email_pref",
+                "email_verified": True,
+            }
+        )
+
+        from api.stripe_webhook import _handle_payment_failed
+
+        invoice = {
+            "customer": "cus_email_pref",
+            "customer_email": "current@example.com",
+            "attempt_count": 1,
+        }
+
+        with patch("api.stripe_webhook.ses") as mock_ses:
+            mock_ses.send_email = MagicMock()
+            _handle_payment_failed(invoice)
+
+        call_args = mock_ses.send_email.call_args
+        assert call_args[1]["Destination"]["ToAddresses"] == ["current@example.com"]
 
 
 class TestHandleSubscriptionDeleted:
@@ -4331,3 +4484,776 @@ class TestSubscriptionUpdatedTrialing:
         item = response.get("Item")
         assert item["tier"] == "pro"
         assert item["cancellation_pending"] is False
+
+
+class TestGetStripeSecretsErrors:
+    """Tests for get_stripe_secrets error handling (lines 82-83, 94-95)."""
+
+    @mock_aws
+    def test_stripe_api_key_client_error_returns_none(self, mock_dynamodb):
+        """ClientError fetching Stripe API key should log error and return None for api_key."""
+        from unittest.mock import MagicMock, patch
+
+        os.environ["STRIPE_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123:secret:stripe-key"
+        os.environ["STRIPE_WEBHOOK_SECRET_ARN"] = ""
+
+        import api.stripe_webhook as webhook_module
+
+        webhook_module._stripe_secrets_cache = (None, None)
+        webhook_module._stripe_secrets_cache_time = 0.0
+
+        mock_sm = MagicMock()
+        mock_sm.get_secret_value.side_effect = ClientError(
+            {"Error": {"Code": "ResourceNotFoundException", "Message": "Secret not found"}},
+            "GetSecretValue",
+        )
+
+        with patch("api.stripe_webhook.get_secretsmanager", return_value=mock_sm):
+            api_key, webhook_secret = webhook_module.get_stripe_secrets()
+
+        assert api_key is None
+        assert webhook_secret is None
+
+    @mock_aws
+    def test_webhook_secret_client_error_returns_none(self, mock_dynamodb):
+        """ClientError fetching webhook secret should log error and return None for webhook_secret."""
+        from unittest.mock import MagicMock, patch
+
+        os.environ["STRIPE_SECRET_ARN"] = ""
+        os.environ["STRIPE_WEBHOOK_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123:secret:webhook"
+
+        import api.stripe_webhook as webhook_module
+
+        webhook_module._stripe_secrets_cache = (None, None)
+        webhook_module._stripe_secrets_cache_time = 0.0
+
+        mock_sm = MagicMock()
+        mock_sm.get_secret_value.side_effect = ClientError(
+            {"Error": {"Code": "DecryptionFailure", "Message": "Cannot decrypt"}},
+            "GetSecretValue",
+        )
+
+        with patch("api.stripe_webhook.get_secretsmanager", return_value=mock_sm):
+            api_key, webhook_secret = webhook_module.get_stripe_secrets()
+
+        assert api_key is None
+        assert webhook_secret is None
+
+    @mock_aws
+    def test_api_key_fetched_but_webhook_secret_fails(self, mock_dynamodb):
+        """Should return api_key even if webhook secret fetch fails."""
+        from unittest.mock import MagicMock, patch
+
+        os.environ["STRIPE_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123:secret:stripe-key"
+        os.environ["STRIPE_WEBHOOK_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123:secret:webhook"
+
+        import api.stripe_webhook as webhook_module
+
+        webhook_module._stripe_secrets_cache = (None, None)
+        webhook_module._stripe_secrets_cache_time = 0.0
+
+        mock_sm = MagicMock()
+        call_count = [0]
+
+        def side_effect(**kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return {"SecretString": '{"key": "sk_test_good"}'}
+            raise ClientError(
+                {"Error": {"Code": "InternalServiceError", "Message": "Service error"}},
+                "GetSecretValue",
+            )
+
+        mock_sm.get_secret_value.side_effect = side_effect
+
+        with patch("api.stripe_webhook.get_secretsmanager", return_value=mock_sm):
+            api_key, webhook_secret = webhook_module.get_stripe_secrets()
+
+        assert api_key == "sk_test_good"
+        assert webhook_secret is None
+
+
+class TestHandlerEventRoutingNewEvents:
+    """Tests for handler routing to sub-handlers for newer event types (lines 256, 259, 262)."""
+
+    @mock_aws
+    def test_routes_subscription_created_event(self, mock_dynamodb, api_gateway_event):
+        """Should route customer.subscription.created to _handle_subscription_created."""
+        from unittest.mock import patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+
+        import api.stripe_webhook as webhook_module
+
+        webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
+        webhook_module._stripe_secrets_cache_time = 9999999999.0
+
+        stripe_event = {
+            "id": "evt_sub_created_route",
+            "type": "customer.subscription.created",
+            "data": {
+                "object": {
+                    "customer": "cus_route_test",
+                    "status": "active",
+                    "items": {"data": [{"price": {"id": "price_starter"}}]},
+                }
+            },
+        }
+
+        with patch("api.stripe_webhook.stripe.Webhook.construct_event", return_value=stripe_event):
+            with patch.object(webhook_module, "_handle_subscription_created") as mock_handler:
+                api_gateway_event["body"] = "{}"
+                api_gateway_event["headers"] = {"stripe-signature": "sig_test"}
+
+                result = webhook_module.handler(api_gateway_event, {})
+
+                assert result["statusCode"] == 200
+                mock_handler.assert_called_once_with(stripe_event["data"]["object"])
+
+    @mock_aws
+    def test_routes_payment_failed_event(self, mock_dynamodb, api_gateway_event):
+        """Should route invoice.payment_failed to _handle_payment_failed."""
+        from unittest.mock import patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+
+        import api.stripe_webhook as webhook_module
+
+        webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
+        webhook_module._stripe_secrets_cache_time = 9999999999.0
+
+        stripe_event = {
+            "id": "evt_pay_failed_route",
+            "type": "invoice.payment_failed",
+            "data": {
+                "object": {
+                    "customer": "cus_pay_failed",
+                    "attempt_count": 1,
+                }
+            },
+        }
+
+        with patch("api.stripe_webhook.stripe.Webhook.construct_event", return_value=stripe_event):
+            with patch.object(webhook_module, "_handle_payment_failed") as mock_handler:
+                api_gateway_event["body"] = "{}"
+                api_gateway_event["headers"] = {"stripe-signature": "sig_test"}
+
+                result = webhook_module.handler(api_gateway_event, {})
+
+                assert result["statusCode"] == 200
+                mock_handler.assert_called_once_with(stripe_event["data"]["object"])
+
+    @mock_aws
+    def test_routes_invoice_paid_event(self, mock_dynamodb, api_gateway_event):
+        """Should route invoice.paid to _handle_invoice_paid."""
+        from unittest.mock import patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+
+        import api.stripe_webhook as webhook_module
+
+        webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
+        webhook_module._stripe_secrets_cache_time = 9999999999.0
+
+        stripe_event = {
+            "id": "evt_invoice_paid_route",
+            "type": "invoice.paid",
+            "data": {
+                "object": {
+                    "customer": "cus_paid",
+                    "billing_reason": "subscription_cycle",
+                }
+            },
+        }
+
+        with patch("api.stripe_webhook.stripe.Webhook.construct_event", return_value=stripe_event):
+            with patch.object(webhook_module, "_handle_invoice_paid") as mock_handler:
+                api_gateway_event["body"] = "{}"
+                api_gateway_event["headers"] = {"stripe-signature": "sig_test"}
+
+                result = webhook_module.handler(api_gateway_event, {})
+
+                assert result["statusCode"] == 200
+                mock_handler.assert_called_once_with(stripe_event["data"]["object"])
+
+
+class TestPaidReferralRewardErrors:
+    """Tests for _process_paid_referral_reward error handling (lines 426-427)."""
+
+    @mock_aws
+    def test_referral_error_does_not_block_tier_upgrade(self, mock_dynamodb):
+        """Referral processing error should not prevent the tier upgrade from succeeding."""
+        from unittest.mock import patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_referral_err").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_referral_err",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "referral_err@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+
+        # Create USER_META with referred_by
+        table.put_item(
+            Item={
+                "pk": "user_referral_err",
+                "sk": "USER_META",
+                "referred_by": "referrer_user_123",
+            }
+        )
+
+        from api.stripe_webhook import _process_paid_referral_reward
+
+        # Patch add_bonus_with_cap to raise an error
+        with patch("api.stripe_webhook.add_bonus_with_cap", side_effect=Exception("DynamoDB timeout")):
+            # Should NOT raise - error is caught and logged
+            _process_paid_referral_reward("user_referral_err", "referral_err@example.com")
+
+
+class TestLookupErrorHandling:
+    """Tests for user lookup error handling (lines 521-522, 538-539)."""
+
+    @mock_aws
+    def test_get_user_id_by_email_handles_exception(self, mock_dynamodb):
+        """Should return None when email lookup raises an exception."""
+        from unittest.mock import MagicMock, patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.stripe_webhook import _get_user_id_by_email
+
+        mock_table = MagicMock()
+        mock_table.query.side_effect = Exception("DynamoDB timeout")
+
+        with patch("api.stripe_webhook.get_dynamodb") as mock_db:
+            mock_db.return_value.Table.return_value = mock_table
+            result = _get_user_id_by_email("error@example.com")
+
+        assert result is None
+
+    @mock_aws
+    def test_get_user_id_by_customer_id_handles_exception(self, mock_dynamodb):
+        """Should return None when customer_id lookup raises an exception."""
+        from unittest.mock import MagicMock, patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.stripe_webhook import _get_user_id_by_customer_id
+
+        mock_table = MagicMock()
+        mock_table.query.side_effect = Exception("DynamoDB timeout")
+
+        with patch("api.stripe_webhook.get_dynamodb") as mock_db:
+            mock_db.return_value.Table.return_value = mock_table
+            result = _get_user_id_by_customer_id("cus_error")
+
+        assert result is None
+
+
+class TestPaymentFailedReRaiseErrors:
+    """Tests for re-raise paths in _handle_payment_failed (lines 728, 755-760)."""
+
+    @mock_aws
+    def test_first_failure_non_conditional_error_re_raises(self, mock_dynamodb):
+        """Non-ConditionalCheckFailedException during first failure should re-raise (line 728)."""
+        from unittest.mock import MagicMock, patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_reraise_first").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_reraise_first",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "reraise@example.com",
+                "tier": "pro",
+                "stripe_customer_id": "cus_reraise_first",
+                "email_verified": True,
+            }
+        )
+
+        from api.stripe_webhook import _handle_payment_failed
+
+        # Mock update_item to raise a non-conditional DynamoDB error
+        mock_table = MagicMock()
+        mock_table.query.return_value = {
+            "Items": [
+                {
+                    "pk": "user_reraise_first",
+                    "sk": key_hash,
+                    "tier": "pro",
+                }
+            ]
+        }
+        mock_table.update_item.side_effect = ClientError(
+            {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Throughput exceeded"}},
+            "UpdateItem",
+        )
+
+        with patch("api.stripe_webhook.get_dynamodb") as mock_db:
+            mock_db.return_value.Table.return_value = mock_table
+            with pytest.raises(ClientError) as exc_info:
+                _handle_payment_failed({
+                    "customer": "cus_reraise_first",
+                    "attempt_count": 1,
+                })
+            assert exc_info.value.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
+
+    @mock_aws
+    def test_downgrade_non_conditional_error_re_raises(self, mock_dynamodb):
+        """Non-ConditionalCheckFailedException during downgrade should re-raise (lines 755-760)."""
+        from unittest.mock import MagicMock, patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.stripe_webhook import _handle_payment_failed
+
+        ten_days_ago = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+
+        mock_table = MagicMock()
+        mock_table.query.return_value = {
+            "Items": [
+                {
+                    "pk": "user_reraise_down",
+                    "sk": "somehash",
+                    "tier": "pro",
+                    "first_payment_failure_at": ten_days_ago,
+                    "payment_failures": 2,
+                }
+            ]
+        }
+        mock_table.update_item.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "DynamoDB internal error"}},
+            "UpdateItem",
+        )
+
+        with patch("api.stripe_webhook.get_dynamodb") as mock_db:
+            mock_db.return_value.Table.return_value = mock_table
+            with pytest.raises(ClientError) as exc_info:
+                _handle_payment_failed({
+                    "customer": "cus_reraise_down",
+                    "attempt_count": 3,
+                })
+            assert exc_info.value.response["Error"]["Code"] == "InternalServerError"
+
+
+class TestBillingCycleResetReRaise:
+    """Tests for re-raise paths in _reset_user_usage_for_billing_cycle (lines 972, 998)."""
+
+    @mock_aws
+    def test_non_conditional_error_in_key_reset_re_raises(self, mock_dynamodb):
+        """Non-ConditionalCheckFailedException during API key reset should re-raise (line 972)."""
+        from unittest.mock import MagicMock, patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.stripe_webhook import _reset_user_usage_for_billing_cycle
+
+        mock_table = MagicMock()
+        mock_table.query.return_value = {
+            "Items": [
+                {
+                    "pk": "user_key_reraise",
+                    "sk": "somekey",
+                    "tier": "pro",
+                    "stripe_customer_id": "cus_key_reraise",
+                }
+            ]
+        }
+        mock_table.update_item.side_effect = ClientError(
+            {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Throughput exceeded"}},
+            "UpdateItem",
+        )
+
+        with patch("api.stripe_webhook.get_dynamodb") as mock_db:
+            mock_db.return_value.Table.return_value = mock_table
+            with pytest.raises(ClientError) as exc_info:
+                _reset_user_usage_for_billing_cycle(
+                    customer_id="cus_key_reraise",
+                    period_start=1706745600,
+                    period_end=1709424000,
+                )
+            assert exc_info.value.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
+
+    @mock_aws
+    def test_non_conditional_error_in_user_meta_reset_re_raises(self, mock_dynamodb):
+        """Non-ConditionalCheckFailedException in USER_META reset should re-raise (line 998)."""
+        from unittest.mock import MagicMock, patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.stripe_webhook import _reset_user_usage_for_billing_cycle
+
+        # First update_item call (API key) succeeds, second (USER_META) fails
+        call_count = [0]
+
+        def update_side_effect(**kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return {}  # API key update succeeds
+            raise ClientError(
+                {"Error": {"Code": "ValidationException", "Message": "Validation error"}},
+                "UpdateItem",
+            )
+
+        mock_table = MagicMock()
+        mock_table.query.return_value = {
+            "Items": [
+                {
+                    "pk": "user_meta_reraise",
+                    "sk": "somekey",
+                    "tier": "pro",
+                    "stripe_customer_id": "cus_meta_reraise",
+                }
+            ]
+        }
+        mock_table.update_item.side_effect = update_side_effect
+
+        with patch("api.stripe_webhook.get_dynamodb") as mock_db:
+            mock_db.return_value.Table.return_value = mock_table
+            with pytest.raises(ClientError) as exc_info:
+                _reset_user_usage_for_billing_cycle(
+                    customer_id="cus_meta_reraise",
+                    period_start=1706745600,
+                    period_end=1709424000,
+                )
+            assert exc_info.value.response["Error"]["Code"] == "ValidationException"
+
+
+class TestUserMetaSyncNonConditionalError:
+    """Tests for USER_META update non-conditional error (line 1350)."""
+
+    @mock_aws
+    def test_user_meta_non_conditional_error_logged_not_raised(self, mock_dynamodb):
+        """Non-ConditionalCheckFailedException in USER_META sync should be logged but not raised."""
+        from unittest.mock import MagicMock, patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_meta_err").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_meta_err",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "metaerr@example.com",
+                "tier": "free",
+                "stripe_customer_id": "cus_meta_err",
+                "email_verified": True,
+            }
+        )
+
+        # Create USER_META so it exists
+        table.put_item(
+            Item={
+                "pk": "user_meta_err",
+                "sk": "USER_META",
+                "key_count": 1,
+            }
+        )
+
+        from api.stripe_webhook import _update_user_subscription_state
+
+        # Track update calls: first one (API key) uses real table, then mock USER_META
+        original_update = table.update_item
+        call_count = [0]
+
+        def update_side_effect(**kwargs):
+            call_count[0] += 1
+            if call_count[0] <= 1:
+                # First call is the API key update - let it work
+                return original_update(**kwargs)
+            # Second call is USER_META - simulate a non-conditional error
+            raise ClientError(
+                {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Throttled"}},
+                "UpdateItem",
+            )
+
+        with patch.object(table, "update_item", side_effect=update_side_effect):
+            # Should NOT raise - error is caught and logged
+            _update_user_subscription_state(
+                customer_id="cus_meta_err",
+                tier="pro",
+                cancellation_pending=False,
+            )
+
+        # API key should still have been updated (first call worked)
+        response = table.get_item(Key={"pk": "user_meta_err", "sk": key_hash})
+        item = response.get("Item")
+        assert item["tier"] == "pro"
+
+
+class TestDowngradeOverLimitWarning:
+    """Tests for downgrade over-limit warning in _update_user_subscription_state (line 1153)."""
+
+    @mock_aws
+    def test_warns_on_downgrade_over_limit_in_subscription_state(self, mock_dynamodb, caplog):
+        """Should log warning when downgrading user whose usage exceeds new tier limit."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_over_limit_sub").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_over_limit_sub",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "overlimit_sub@example.com",
+                "tier": "business",
+                "stripe_customer_id": "cus_over_limit_sub",
+                "email_verified": True,
+                "requests_this_month": 200000,  # Over pro limit of 100000
+            }
+        )
+
+        from api.stripe_webhook import _update_user_subscription_state
+
+        _update_user_subscription_state(
+            customer_id="cus_over_limit_sub",
+            tier="pro",  # Downgrade from business to pro
+            cancellation_pending=False,
+        )
+
+        response = table.get_item(Key={"pk": "user_over_limit_sub", "sk": key_hash})
+        item = response.get("Item")
+        assert item["tier"] == "pro"
+        # Usage should NOT be reset on downgrade
+        assert item["requests_this_month"] == 200000
+        # Warning should have been logged
+        assert "downgraded to pro" in caplog.text
+        assert "200000" in caplog.text
+
+
+class TestHandlerStripeTransientErrors:
+    """Tests for Stripe transient error handling in main handler."""
+
+    @mock_aws
+    def test_stripe_api_connection_error_releases_claim(self, mock_dynamodb, api_gateway_event):
+        """Stripe APIConnectionError should release claim and return 500."""
+        from unittest.mock import patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+
+        import stripe as real_stripe
+
+        import api.stripe_webhook as webhook_module
+
+        webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
+        webhook_module._stripe_secrets_cache_time = 9999999999.0
+
+        stripe_event = {
+            "id": "evt_stripe_conn_err",
+            "type": "checkout.session.completed",
+            "data": {"object": {"customer": "cus_test"}},
+        }
+
+        with patch("api.stripe_webhook.stripe.Webhook.construct_event", return_value=stripe_event):
+            with patch.object(
+                webhook_module,
+                "_handle_checkout_completed",
+                side_effect=real_stripe.error.APIConnectionError("Connection failed"),
+            ):
+                with patch.object(webhook_module, "_release_event_claim") as mock_release:
+                    api_gateway_event["body"] = "{}"
+                    api_gateway_event["headers"] = {"stripe-signature": "sig_test"}
+
+                    result = webhook_module.handler(api_gateway_event, {})
+
+                    assert result["statusCode"] == 500
+                    body = json.loads(result["body"])
+                    assert body["error"]["code"] == "stripe_error"
+                    mock_release.assert_called_once()
+
+    @mock_aws
+    def test_stripe_permanent_error_returns_200_with_error(self, mock_dynamodb, api_gateway_event):
+        """Stripe InvalidRequestError should return 200 with error but not release claim."""
+        from unittest.mock import patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+
+        import stripe as real_stripe
+
+        import api.stripe_webhook as webhook_module
+
+        webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
+        webhook_module._stripe_secrets_cache_time = 9999999999.0
+
+        stripe_event = {
+            "id": "evt_stripe_perm_err",
+            "type": "checkout.session.completed",
+            "data": {"object": {"customer": "cus_test"}},
+        }
+
+        with patch("api.stripe_webhook.stripe.Webhook.construct_event", return_value=stripe_event):
+            with patch.object(
+                webhook_module,
+                "_handle_checkout_completed",
+                side_effect=real_stripe.error.InvalidRequestError("Bad request", param="test"),
+            ):
+                with patch.object(webhook_module, "_release_event_claim") as mock_release:
+                    api_gateway_event["body"] = "{}"
+                    api_gateway_event["headers"] = {"stripe-signature": "sig_test"}
+
+                    result = webhook_module.handler(api_gateway_event, {})
+
+                    # Permanent Stripe errors return 200 (no retry)
+                    assert result["statusCode"] == 200
+                    body = json.loads(result["body"])
+                    assert body["error"]["code"] == "stripe_validation_error"
+                    # Should NOT release claim for permanent errors
+                    mock_release.assert_not_called()
+
+    @mock_aws
+    def test_value_error_returns_200_does_not_retry(self, mock_dynamodb, api_gateway_event):
+        """ValueError in handler should return 200 with error and not retry."""
+        from unittest.mock import patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+
+        import api.stripe_webhook as webhook_module
+
+        webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
+        webhook_module._stripe_secrets_cache_time = 9999999999.0
+
+        stripe_event = {
+            "id": "evt_value_err",
+            "type": "checkout.session.completed",
+            "data": {"object": {"customer": "cus_test"}},
+        }
+
+        with patch("api.stripe_webhook.stripe.Webhook.construct_event", return_value=stripe_event):
+            with patch.object(
+                webhook_module,
+                "_handle_checkout_completed",
+                side_effect=ValueError("Invalid data format"),
+            ):
+                api_gateway_event["body"] = "{}"
+                api_gateway_event["headers"] = {"stripe-signature": "sig_test"}
+
+                result = webhook_module.handler(api_gateway_event, {})
+
+                assert result["statusCode"] == 200
+                body = json.loads(result["body"])
+                assert body["error"]["code"] == "invalid_event_data"
+                # Internal error message should not leak
+                assert "Invalid data format" not in body["error"]["message"]
+
+    @mock_aws
+    def test_unknown_error_releases_claim_returns_500(self, mock_dynamodb, api_gateway_event):
+        """Unknown exception should release claim and return 500."""
+        from unittest.mock import patch
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+
+        import api.stripe_webhook as webhook_module
+
+        webhook_module._stripe_secrets_cache = ("sk_test_xxx", "whsec_xxx")
+        webhook_module._stripe_secrets_cache_time = 9999999999.0
+
+        stripe_event = {
+            "id": "evt_unknown_err",
+            "type": "checkout.session.completed",
+            "data": {"object": {"customer": "cus_test"}},
+        }
+
+        with patch("api.stripe_webhook.stripe.Webhook.construct_event", return_value=stripe_event):
+            with patch.object(
+                webhook_module,
+                "_handle_checkout_completed",
+                side_effect=RuntimeError("Completely unexpected"),
+            ):
+                with patch.object(webhook_module, "_release_event_claim") as mock_release:
+                    api_gateway_event["body"] = "{}"
+                    api_gateway_event["headers"] = {"stripe-signature": "sig_test"}
+
+                    result = webhook_module.handler(api_gateway_event, {})
+
+                    assert result["statusCode"] == 500
+                    body = json.loads(result["body"])
+                    assert body["error"]["code"] == "processing_failed"
+                    mock_release.assert_called_once()
+
+
+class TestCheckoutOneTimePaymentByCustomerIdOnly:
+    """Tests for checkout completed with customer_id but no email."""
+
+    @mock_aws
+    def test_one_time_payment_by_customer_id_without_email(self, mock_dynamodb):
+        """Should handle one-time payment with customer_id but no email."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_custonly_onetime").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_custonly",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "custonly@example.com",
+                "tier": "free",
+                "stripe_customer_id": "cus_custonly",
+                "email_verified": True,
+            }
+        )
+
+        from api.stripe_webhook import _handle_checkout_completed
+
+        session = {
+            "customer_email": None,
+            "customer": "cus_custonly",
+            "subscription": None,  # One-time payment, no subscription
+        }
+
+        _handle_checkout_completed(session)
+
+        response = table.get_item(Key={"pk": "user_custonly", "sk": key_hash})
+        item = response.get("Item")
+        assert item["tier"] == "starter"
+
+    @mock_aws
+    def test_checkout_completed_no_email_no_customer_logs_warning(self, mock_dynamodb, caplog):
+        """Should log warning when checkout has no email and no customer ID."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.stripe_webhook import _handle_checkout_completed
+
+        session = {
+            "customer_email": None,
+            "customer": None,
+            "subscription": None,
+        }
+
+        _handle_checkout_completed(session)
+
+        assert "No customer email or customer ID" in caplog.text

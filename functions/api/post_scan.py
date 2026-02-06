@@ -19,6 +19,7 @@ logger.setLevel(logging.INFO)
 
 PACKAGE_QUEUE_URL = os.environ.get("PACKAGE_QUEUE_URL")
 MAX_QUEUE_PER_SCAN = 50  # Prevent abuse - max packages to queue per scan
+MAX_DEPENDENCIES_PER_SCAN = 1000  # Prevent DoS via oversized scan payloads
 
 # NOTE: Package validation moved to shared/package_validation.py
 from shared.package_validation import (
@@ -162,6 +163,14 @@ def handler(event, context):
             400,
             "no_dependencies",
             "No dependencies found. Provide 'content' (package.json string) or 'dependencies' object.",
+            origin=origin,
+        )
+
+    if len(dependencies) > MAX_DEPENDENCIES_PER_SCAN:
+        return error_response(
+            400,
+            "too_many_dependencies",
+            f"Scan contains {len(dependencies)} dependencies, maximum is {MAX_DEPENDENCIES_PER_SCAN}.",
             origin=origin,
         )
 

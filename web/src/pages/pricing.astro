@@ -77,7 +77,7 @@ const faqSchema = {
       "name": "What counts as a request in PkgWatch?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Each API call counts as one request. A scan of 100 dependencies counts as one request, not 100."
+        "text": "Each package lookup counts as one request. When you scan a project, each dependency is checked individually, so you only pay for the packages you actually use. A typical project with 30 dependencies uses just 30 of your monthly requests."
       }
     },
     {
@@ -268,8 +268,10 @@ const faqSchema = {
             What counts as a request?
           </h3>
           <p class="text-zinc-400">
-            Each API call counts as one request. A scan of 100 dependencies
-            counts as one request, not 100.
+            Each package lookup counts as one request. When you scan a project,
+            each dependency is checked individually — so you only pay for
+            the packages you actually use. A typical project with 30
+            dependencies uses just 30 of your monthly requests.
           </p>
         </div>
         <div>
