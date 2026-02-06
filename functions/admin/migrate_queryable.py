@@ -1,10 +1,12 @@
 """
-Migrate Queryable - One-time Lambda to backfill queryable field for existing packages.
+Migrate Queryable - One-time Lambda to backfill queryable, downloads_status, and data_status.
 
-This migration scans all packages and computes the queryable field based on:
-- latest_version is not None
-- health_score is not None
-- weekly_downloads > 0 OR dependents_count > 0 OR data_status == "complete"
+Backfills:
+1. queryable - computed from is_queryable() logic
+2. downloads_status (PyPI only) - "collected" if downloads_fetched_at exists, else "never_fetched"
+3. data_status - "complete", "partial", or "minimal" based on available data
+
+Only sets fields that are currently missing/None. Never overwrites existing values.
 
 Event format:
 {
@@ -67,6 +69,8 @@ def handler(event, context):
         "missing_data_status": 0,
         "set_to_true": 0,
         "set_to_false": 0,
+        "downloads_status_set": 0,
+        "data_status_set": 0,
     }
 
     # Collect items to update
@@ -75,7 +79,8 @@ def handler(event, context):
     # Scan all packages using high-level resource API
     scan_kwargs = {
         "ProjectionExpression": "pk, sk, latest_version, health_score, "
-        "weekly_downloads, dependents_count, data_status, queryable",
+        "weekly_downloads, dependents_count, data_status, queryable, "
+        "downloads_fetched_at, downloads_status, ecosystem, missing_sources",
     }
 
     try:
@@ -113,21 +118,60 @@ def handler(event, context):
 
                 computed_queryable = _is_queryable(simple_item)
 
-                # Check if update needed
-                if current_queryable == computed_queryable:
-                    stats["already_correct"] += 1
-                else:
+                # Compute downloads_status backfill (PyPI only)
+                ecosystem = item.get("ecosystem", "")
+                if not ecosystem:
+                    # Infer from pk
+                    ecosystem = pk.split("#")[0] if "#" in pk else ""
+                computed_downloads_status = None
+                if ecosystem == "pypi" and not item.get("downloads_status"):
+                    if item.get("downloads_fetched_at"):
+                        computed_downloads_status = "collected"
+                    else:
+                        computed_downloads_status = "never_fetched"
+
+                # Compute data_status backfill
+                computed_data_status = None
+                if not data_status:
+                    has_version = item.get("latest_version") is not None
+                    has_score = item.get("health_score") is not None
+                    has_usage = (
+                        int(item.get("weekly_downloads", 0)) > 0
+                        or int(item.get("dependents_count", 0)) > 0
+                    )
+                    has_missing = bool(item.get("missing_sources"))
+
+                    if has_version and has_score and has_usage:
+                        computed_data_status = "complete"
+                    elif has_version and has_score and not has_usage and not has_missing:
+                        computed_data_status = "complete"
+                    elif has_version and has_score and has_missing:
+                        computed_data_status = "partial"
+                    else:
+                        computed_data_status = "minimal"
+
+                # Build update dict with only changed fields
+                update_fields = {}
+                if current_queryable != computed_queryable:
+                    update_fields["queryable"] = computed_queryable
                     if computed_queryable:
                         stats["set_to_true"] += 1
                     else:
                         stats["set_to_false"] += 1
+                else:
+                    stats["already_correct"] += 1
 
-                    updates_pending.append(
-                        {
-                            "pk": pk,
-                            "queryable": computed_queryable,
-                        }
-                    )
+                if computed_downloads_status:
+                    update_fields["downloads_status"] = computed_downloads_status
+                    stats["downloads_status_set"] += 1
+
+                if computed_data_status:
+                    update_fields["data_status"] = computed_data_status
+                    stats["data_status_set"] += 1
+
+                if update_fields:
+                    update_fields["pk"] = pk
+                    updates_pending.append(update_fields)
 
                     # Write in batches
                     if not dry_run and len(updates_pending) >= batch_size:
@@ -181,18 +225,28 @@ def handler(event, context):
 
 
 def _write_batch(table, updates: list, stats: dict):
-    """Write a batch of queryable updates to DynamoDB."""
+    """Write a batch of updates to DynamoDB with dynamic field sets."""
     now = datetime.now(timezone.utc).isoformat()
 
     for update in updates:
         try:
+            set_parts = ["migrated_at = :t"]
+            expr_values = {":t": now}
+
+            if "queryable" in update:
+                set_parts.append("queryable = :q")
+                expr_values[":q"] = update["queryable"]
+            if "downloads_status" in update:
+                set_parts.append("downloads_status = :ds")
+                expr_values[":ds"] = update["downloads_status"]
+            if "data_status" in update:
+                set_parts.append("data_status = :dst")
+                expr_values[":dst"] = update["data_status"]
+
             table.update_item(
                 Key={"pk": update["pk"], "sk": "LATEST"},
-                UpdateExpression="SET queryable = :q, queryable_migrated_at = :t",
-                ExpressionAttributeValues={
-                    ":q": update["queryable"],
-                    ":t": now,
-                },
+                UpdateExpression="SET " + ", ".join(set_parts),
+                ExpressionAttributeValues=expr_values,
             )
             stats["updated"] += 1
         except Exception as e:

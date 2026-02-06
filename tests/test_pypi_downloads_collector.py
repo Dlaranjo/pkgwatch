@@ -1,7 +1,8 @@
 """
 Tests for PyPI Downloads Collector.
 
-Tests the batch download fetching from pypistats.org with incremental DynamoDB writes.
+Tests the batch download fetching from pypistats.org with incremental DynamoDB writes
+and adaptive backoff on rate limiting.
 """
 
 import os
@@ -138,8 +139,8 @@ class TestHandler:
         assert "downloads_fetched_at" in item
 
     @mock_aws
-    def test_handler_429_stops_batch(self):
-        """Test that 429 rate limit stops batch processing."""
+    def test_handler_429_retries_then_continues(self):
+        """Test that a single 429 triggers retry and continues the batch."""
         # Setup DynamoDB
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         create_dynamodb_tables(dynamodb)
@@ -154,14 +155,19 @@ class TestHandler:
                 "name": f"pkg{i}",
             })
 
-        # Mock HTTP client - 2 successes then 429
+        # Mock HTTP client - 2 successes, then 429 (retry succeeds), then 2 more successes
         call_count = [0]
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
             call_count[0] += 1
             if call_count[0] <= 2:
                 return httpx.Response(200, json={"data": {"last_week": 1000}})
-            return httpx.Response(429)
+            elif call_count[0] == 3:
+                return httpx.Response(429)  # First 429
+            elif call_count[0] == 4:
+                return httpx.Response(200, json={"data": {"last_week": 2000}})  # Retry succeeds
+            else:
+                return httpx.Response(200, json={"data": {"last_week": 3000}})
 
         transport = httpx.MockTransport(mock_handler)
         original_init = httpx.Client.__init__
@@ -175,10 +181,92 @@ class TestHandler:
                 from collectors.pypi_downloads_collector import handler
                 result = handler({}, MockContext())
 
-        # Should have processed 2 before 429, then stopped
+        # All 5 packages should be processed (429 retried and succeeded)
+        assert result["total_processed"] == 5
+        assert result["packages_updated"] == 5
+        assert result["rate_limited_count"] == 1
+
+    @mock_aws
+    def test_handler_consecutive_429s_abort(self):
+        """Test that 3 consecutive 429s abort the batch."""
+        # Setup DynamoDB
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        create_dynamodb_tables(dynamodb)
+        table = dynamodb.Table("pkgwatch-packages")
+
+        # Add 10 packages
+        for i in range(10):
+            table.put_item(Item={
+                "pk": f"pypi#pkg{i}",
+                "sk": "LATEST",
+                "ecosystem": "pypi",
+                "name": f"pkg{i}",
+            })
+
+        # Mock HTTP client - 2 successes, then all 429s (retries also fail)
+        call_count = [0]
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            call_count[0] += 1
+            if call_count[0] <= 2:
+                return httpx.Response(200, json={"data": {"last_week": 1000}})
+            return httpx.Response(429)  # All subsequent requests fail
+
+        transport = httpx.MockTransport(mock_handler)
+        original_init = httpx.Client.__init__
+
+        def patched_init(self, **kwargs):
+            kwargs["transport"] = transport
+            original_init(self, **kwargs)
+
+        with patch.object(httpx.Client, "__init__", patched_init):
+            with patch("collectors.pypi_downloads_collector.time.sleep"):
+                from collectors.pypi_downloads_collector import handler
+                result = handler({}, MockContext())
+
+        # 2 successes + 3 rate-limited (abort on 3rd consecutive)
         assert result["packages_updated"] == 2
-        assert result["total_processed"] == 2
-        assert call_count[0] == 3  # 2 successes + 1 rate limit
+        assert result["total_processed"] == 5  # 2 success + 3 rate-limited
+        assert result["rate_limited_count"] >= 3
+
+    @mock_aws
+    def test_handler_timeout_guard(self):
+        """Test that handler breaks from loop when Lambda has low remaining time."""
+        # Setup DynamoDB
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        create_dynamodb_tables(dynamodb)
+        table = dynamodb.Table("pkgwatch-packages")
+
+        # Add many packages
+        for i in range(20):
+            table.put_item(Item={
+                "pk": f"pypi#pkg{i}",
+                "sk": "LATEST",
+                "ecosystem": "pypi",
+                "name": f"pkg{i}",
+            })
+
+        # Mock HTTP client
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"data": {"last_week": 1000}})
+
+        transport = httpx.MockTransport(mock_handler)
+        original_init = httpx.Client.__init__
+
+        def patched_init(self, **kwargs):
+            kwargs["transport"] = transport
+            original_init(self, **kwargs)
+
+        # Context with very low remaining time — should break immediately
+        context = MockContext(remaining_ms=30_000)  # 30s < 45s threshold
+
+        with patch.object(httpx.Client, "__init__", patched_init):
+            with patch("collectors.pypi_downloads_collector.time.sleep"):
+                from collectors.pypi_downloads_collector import handler
+                result = handler({}, context)
+
+        # Should have processed 0 because timeout guard fires at start of loop
+        assert result["total_processed"] == 0
 
     @mock_aws
     def test_handler_http_error_continues(self):

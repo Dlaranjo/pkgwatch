@@ -190,7 +190,7 @@ class TestDataStatusMetricsHandler:
         # Verify emit_batch_metrics was called
         mock_emit.assert_called_once()
         metrics_list = mock_emit.call_args[0][0]
-        assert len(metrics_list) == 6
+        assert len(metrics_list) == 9
 
         # Check that CompletePackages metric has value 1
         complete_metric = next(m for m in metrics_list if m["metric_name"] == "CompletePackages")

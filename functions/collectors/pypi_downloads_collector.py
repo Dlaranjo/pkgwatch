@@ -1,14 +1,17 @@
 """
 PyPI Downloads Collector - Batch fetch weekly downloads from pypistats.org.
 
-Runs every 6 hours via EventBridge, fetches packages per invocation.
+Runs every 3 hours via EventBridge, fetches packages per invocation.
 Stores results directly in DynamoDB packages table.
 
 Rate limit: pypistats.org allows ~30 req/min
-With 2.5s delay: 24 req/min (safe margin below 30)
-Batch: 150 packages × 2.5s = 6.25 min (fits in 10-min Lambda timeout)
-Rate: 150 packages/6hr = 600/day
+With 2.5s base delay: 24 req/min (safe margin below 30)
+Batch: 75 packages × ~3s avg = ~4 min (fits in 10-min Lambda timeout)
+Rate: 75 packages/3hr = 600/day
 Full refresh: 5,350 packages / 600 per day = ~9 days
+
+Adaptive backoff: On 429 rate limit, doubles delay and retries instead of
+aborting the batch. Only aborts after 3 consecutive 429s.
 
 This collector is separate from the main package_collector to:
 1. Avoid hitting pypistats.org rate limits during normal collection
@@ -31,9 +34,12 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 PYPISTATS_API = "https://pypistats.org/api"
-BATCH_SIZE = 150  # Packages per invocation
-REQUEST_DELAY = 2.5  # Seconds between requests (24 req/min, under pypistats 30 req/min limit)
+BATCH_SIZE = 75  # Packages per invocation (smaller batches hit rate limits less)
+REQUEST_DELAY = 2.5  # Base delay between requests (24 req/min, under pypistats 30 req/min limit)
+MAX_DELAY = 10.0  # Cap for adaptive delay increase
 WRITE_BATCH_SIZE = 10  # Write to DynamoDB every N packages
+CONSECUTIVE_429_ABORT = 3  # Abort batch after this many consecutive 429s
+MIN_REMAINING_MS = 45_000  # Break from loop when Lambda has < 45s left
 
 
 def handler(event, context):
@@ -55,13 +61,24 @@ def handler(event, context):
 
     logger.info(f"Fetching downloads for {len(packages_to_fetch)} packages")
 
-    # 2. Fetch downloads from pypistats.org with incremental writes
+    # 2. Fetch downloads from pypistats.org with adaptive backoff
     updated = 0
     processed = 0
+    rate_limited_count = 0
     pending_updates = []
+    current_delay = REQUEST_DELAY
+    consecutive_429s = 0
 
     with httpx.Client(timeout=30.0) as client:
         for pkg_name in packages_to_fetch:
+            # Lambda timeout guard — break before we run out of time
+            if context and context.get_remaining_time_in_millis() < MIN_REMAINING_MS:
+                logger.warning(
+                    f"Breaking from loop — {context.get_remaining_time_in_millis()}ms remaining "
+                    f"(processed {processed} packages)"
+                )
+                break
+
             try:
                 # pypistats.org accepts the original name and normalizes internally
                 url = f"{PYPISTATS_API}/packages/{pkg_name}/recent?period=week"
@@ -71,6 +88,7 @@ def handler(event, context):
                     # Package doesn't exist in pypistats - mark as unavailable
                     # 404 is not a failure of pypistats.org, record success
                     PYPISTATS_CIRCUIT.record_success()
+                    consecutive_429s = 0
                     pending_updates.append({
                         "name": pkg_name,
                         "weekly_downloads": 0,
@@ -78,20 +96,78 @@ def handler(event, context):
                         "downloads_status": "unavailable",
                     })
                     processed += 1
+                    # Reduce delay on success (fast recovery)
+                    current_delay = max(REQUEST_DELAY, current_delay * 0.5)
+
                 elif resp.status_code == 429:
-                    # Rate limited - record failure and stop the batch
-                    PYPISTATS_CIRCUIT.record_failure()
-                    logger.warning("pypistats.org rate limited (429), stopping batch")
-                    # Mark this package as rate_limited for tracking
-                    pending_updates.append({
-                        "name": pkg_name,
-                        "downloads_status": "rate_limited",
-                        "downloads_source": "pypistats_429",
-                    })
-                    break
+                    consecutive_429s += 1
+                    rate_limited_count += 1
+                    logger.warning(
+                        f"pypistats.org rate limited (429) for {pkg_name}, "
+                        f"consecutive: {consecutive_429s}/{CONSECUTIVE_429_ABORT}"
+                    )
+
+                    if consecutive_429s >= CONSECUTIVE_429_ABORT:
+                        # Too many consecutive 429s — abort batch
+                        PYPISTATS_CIRCUIT.record_failure()
+                        logger.warning(
+                            f"Aborting batch after {consecutive_429s} consecutive 429s "
+                            f"(processed {processed} packages)"
+                        )
+                        pending_updates.append({
+                            "name": pkg_name,
+                            "downloads_status": "rate_limited",
+                            "downloads_source": "pypistats_429",
+                        })
+                        processed += 1
+                        break
+
+                    # Adaptive backoff: double delay, respect Retry-After header
+                    retry_after = resp.headers.get("Retry-After")
+                    if retry_after:
+                        try:
+                            current_delay = min(float(retry_after), MAX_DELAY)
+                        except (ValueError, TypeError):
+                            current_delay = min(current_delay * 2, MAX_DELAY)
+                    else:
+                        current_delay = min(current_delay * 2, MAX_DELAY)
+
+                    logger.info(f"Backing off {current_delay:.1f}s, retrying {pkg_name}")
+                    time.sleep(current_delay)
+
+                    # Retry this specific package once
+                    retry_resp = client.get(url)
+                    if retry_resp.status_code == 200:
+                        # Retry succeeded
+                        consecutive_429s = 0
+                        PYPISTATS_CIRCUIT.record_success()
+                        data = retry_resp.json()
+                        downloads = data.get("data", {}).get("last_week", 0)
+                        pending_updates.append({
+                            "name": pkg_name,
+                            "weekly_downloads": downloads,
+                            "downloads_source": "pypistats",
+                            "downloads_status": "collected",
+                        })
+                        if downloads > 0:
+                            updated += 1
+                        processed += 1
+                    else:
+                        # Retry failed — skip this package, continue batch
+                        pending_updates.append({
+                            "name": pkg_name,
+                            "downloads_status": "rate_limited",
+                            "downloads_source": "pypistats_429",
+                        })
+                        processed += 1
+
+                    time.sleep(current_delay)
+                    continue
+
                 else:
                     resp.raise_for_status()
                     PYPISTATS_CIRCUIT.record_success()
+                    consecutive_429s = 0
                     data = resp.json()
                     downloads = data.get("data", {}).get("last_week", 0)
 
@@ -104,8 +180,10 @@ def handler(event, context):
                     if downloads > 0:
                         updated += 1
                     processed += 1
+                    # Reduce delay on success (fast recovery)
+                    current_delay = max(REQUEST_DELAY, current_delay * 0.5)
 
-                time.sleep(REQUEST_DELAY)
+                time.sleep(current_delay)
 
             except httpx.HTTPStatusError as e:
                 PYPISTATS_CIRCUIT.record_failure()
@@ -135,8 +213,26 @@ def handler(event, context):
     if pending_updates:
         _write_updates(packages_table, pending_updates)
 
-    logger.info(f"Updated {updated} package download stats (processed {processed})")
-    return {"packages_updated": updated, "total_processed": processed}
+    logger.info(
+        f"Updated {updated} package download stats "
+        f"(processed {processed}, rate_limited {rate_limited_count})"
+    )
+
+    # Emit CloudWatch metrics for monitoring
+    try:
+        from shared.metrics import emit_batch_metrics
+        emit_batch_metrics([
+            {"metric_name": "PyPIDownloadsProcessed", "value": processed},
+            {"metric_name": "PyPIDownloadsRateLimited", "value": rate_limited_count},
+        ])
+    except Exception as e:
+        logger.warning(f"Failed to emit metrics: {e}")
+
+    return {
+        "packages_updated": updated,
+        "total_processed": processed,
+        "rate_limited_count": rate_limited_count,
+    }
 
 
 def _get_packages_needing_refresh(table, limit: int, context=None) -> list:

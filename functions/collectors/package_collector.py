@@ -946,6 +946,13 @@ async def collect_package_data(
                         except (ValueError, TypeError):
                             pass
                     combined_data["weekly_downloads"] = pypi_downloads
+
+                    # Preserve batch collector tracking fields (PyPI only)
+                    if existing:
+                        for field in ("downloads_status", "downloads_source", "downloads_fetched_at"):
+                            if existing.get(field) and not combined_data.get(field):
+                                combined_data[field] = existing[field]
+
                     combined_data["maintainers"] = pypi_data.get("maintainers", [])
                     combined_data["maintainer_count"] = pypi_data.get("maintainer_count", 0)
                     combined_data["is_deprecated"] = pypi_data.get("is_deprecated", False)
@@ -1323,6 +1330,10 @@ def store_package_data_sync(ecosystem: str, name: str, data: dict, tier: int):
         "stale_reason": data.get("stale_reason"),
         # Collection timestamp (used by score_package.py for loop prevention)
         "collected_at": data.get("collected_at"),
+        # Downloads tracking (set by batch collectors, preserved from existing record)
+        "downloads_status": data.get("downloads_status"),
+        "downloads_source": data.get("downloads_source"),
+        "downloads_fetched_at": data.get("downloads_fetched_at"),
     }
 
     # Calculate data completeness status for retry tracking

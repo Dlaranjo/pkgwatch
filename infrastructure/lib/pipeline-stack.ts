@@ -422,12 +422,19 @@ export class PipelineStack extends cdk.Stack {
 
     // Permissions - read packages list, write download stats
     packagesTable.grantReadWriteData(pypiDownloadsCollector);
+    pypiDownloadsCollector.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudwatch:PutMetricData"],
+        resources: ["*"],
+        conditions: { StringEquals: { "cloudwatch:namespace": "PkgWatch" } },
+      })
+    );
 
-    // Schedule: Every 6 hours
+    // Schedule: Every 3 hours
     new events.Rule(this, "PyPIDownloadsSchedule", {
       ruleName: "pkgwatch-pypi-downloads",
-      schedule: events.Schedule.rate(cdk.Duration.hours(6)),
-      description: "Fetches PyPI download statistics every 6 hours",
+      schedule: events.Schedule.rate(cdk.Duration.hours(3)),
+      description: "Fetches PyPI download statistics every 3 hours",
       targets: [new targets.LambdaFunction(pypiDownloadsCollector)],
     });
 
@@ -530,12 +537,13 @@ export class PipelineStack extends cdk.Stack {
       })
     );
 
-    // Schedule: Daily at 1:00 AM UTC (before other refresh jobs)
+    // Schedule: Disabled — requires GCP credentials not yet provisioned
     new events.Rule(this, "PyPIBigQuerySchedule", {
       ruleName: "pkgwatch-pypi-bigquery-downloads",
       schedule: events.Schedule.cron({ hour: "1", minute: "0" }),
       description: "Fetches PyPI download statistics from BigQuery daily",
       targets: [new targets.LambdaFunction(pypiDownloadsBigQueryCollector)],
+      enabled: false,
     });
 
     // CloudWatch alarm for failures
@@ -853,6 +861,21 @@ export class PipelineStack extends cdk.Stack {
     });
 
     // ===========================================
+    // Lambda: Migrate Queryable (one-time, manual invocation)
+    // ===========================================
+    const migrateQueryable = new lambda.Function(this, "MigrateQueryable", {
+      ...commonLambdaProps,
+      functionName: "pkgwatch-migrate-queryable",
+      handler: "migrate_queryable.handler",
+      code: adminCode,
+      timeout: cdk.Duration.minutes(15),
+      memorySize: 512,
+      description:
+        "One-time migration: backfill queryable, downloads_status, data_status",
+    });
+    packagesTable.grantReadWriteData(migrateQueryable);
+
+    // ===========================================
     // CloudWatch Alarms & Monitoring
     // ===========================================
 
@@ -1128,6 +1151,33 @@ export class PipelineStack extends cdk.Stack {
     minimalPackagesAlarm.addAlarmAction(new cloudwatchActions.SnsAction(this.alertTopic));
     minimalPackagesAlarm.addOkAction(new cloudwatchActions.SnsAction(this.alertTopic));
 
+    // 8b. PyPI Download Coverage alarm
+    const pypiDownloadCoverageAlarm = new cloudwatch.Alarm(
+      this,
+      "PyPIDownloadCoverageAlarm",
+      {
+        alarmName: "pkgwatch-pypi-download-coverage-low",
+        alarmDescription: "PyPI download coverage dropped below 30%",
+        metric: new cloudwatch.Metric({
+          namespace: "PkgWatch",
+          metricName: "PypiDownloadCoverage",
+          statistic: "Maximum",
+          period: cdk.Duration.hours(24),
+        }),
+        threshold: 30,
+        evaluationPeriods: 1,
+        comparisonOperator:
+          cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }
+    );
+    pypiDownloadCoverageAlarm.addAlarmAction(
+      new cloudwatchActions.SnsAction(this.alertTopic)
+    );
+    pypiDownloadCoverageAlarm.addOkAction(
+      new cloudwatchActions.SnsAction(this.alertTopic)
+    );
+
     // 9. Operations Dashboard
     new cloudwatch.Dashboard(this, "OperationsDashboard", {
       dashboardName: "PkgWatch-Operations",
@@ -1195,6 +1245,41 @@ export class PipelineStack extends cdk.Stack {
                   dynamodb.Operation.GET_ITEM,
                   dynamodb.Operation.QUERY,
                 ],
+              }),
+            ],
+            width: 12,
+          }),
+        ],
+        // Row 4: Download coverage
+        [
+          new cloudwatch.GraphWidget({
+            title: "Download Coverage (%)",
+            left: [
+              new cloudwatch.Metric({
+                namespace: "PkgWatch",
+                metricName: "PypiDownloadCoverage",
+                statistic: "Maximum",
+                period: cdk.Duration.hours(24),
+                label: "PyPI",
+              }),
+              new cloudwatch.Metric({
+                namespace: "PkgWatch",
+                metricName: "NpmDownloadCoverage",
+                statistic: "Maximum",
+                period: cdk.Duration.hours(24),
+                label: "npm",
+              }),
+            ],
+            width: 12,
+          }),
+          new cloudwatch.GraphWidget({
+            title: "PyPI Downloads Never Fetched",
+            left: [
+              new cloudwatch.Metric({
+                namespace: "PkgWatch",
+                metricName: "PypiDownloadsNeverFetched",
+                statistic: "Maximum",
+                period: cdk.Duration.hours(24),
               }),
             ],
             width: 12,

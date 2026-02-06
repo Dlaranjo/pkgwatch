@@ -82,7 +82,7 @@ class TestMigrateQueryableHandler:
         # Verify DynamoDB was updated
         item = table.get_item(Key={"pk": "npm#express", "sk": "LATEST"})["Item"]
         assert item["queryable"] is True
-        assert "queryable_migrated_at" in item
+        assert "migrated_at" in item
 
     @mock_aws
     def test_sets_queryable_false_for_ineligible_packages(self, mock_dynamodb):
@@ -442,7 +442,7 @@ class TestWriteBatch:
 
         item = table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})["Item"]
         assert item["queryable"] is True
-        assert "queryable_migrated_at" in item
+        assert "migrated_at" in item
 
     @mock_aws
     def test_handles_update_error_gracefully(self, mock_dynamodb):
