@@ -16,12 +16,9 @@ import hashlib
 import json
 import os
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 
 import boto3
-import pytest
 from moto import mock_aws
-
 
 # ============================================================================
 # Contract Validation Helpers
@@ -45,8 +42,8 @@ def assert_error_response_format(response: dict) -> None:
     assert isinstance(body["error"], dict), f"'error' should be dict, got: {type(body['error'])}"
     assert "code" in body["error"], f"Error missing 'code': {body['error']}"
     assert "message" in body["error"], f"Error missing 'message': {body['error']}"
-    assert isinstance(body["error"]["code"], str), f"Error code should be string"
-    assert isinstance(body["error"]["message"], str), f"Error message should be string"
+    assert isinstance(body["error"]["code"], str), "Error code should be string"
+    assert isinstance(body["error"]["message"], str), "Error message should be string"
 
 
 def assert_rate_limit_headers(response: dict, check_remaining: bool = True) -> None:
@@ -568,8 +565,8 @@ class TestGetApiKeysContract:
             }
         )
 
-        from api.get_api_keys import handler
         import api.auth_callback
+        from api.get_api_keys import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_test", "test@example.com")
@@ -639,8 +636,8 @@ class TestCreateApiKeyContract:
             }
         )
 
-        from api.create_api_key import handler
         import api.auth_callback
+        from api.create_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_create", "create@example.com", "pro")
@@ -685,8 +682,8 @@ class TestCreateApiKeyContract:
                 }
             )
 
-        from api.create_api_key import handler
         import api.auth_callback
+        from api.create_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_maxkeys", "maxkeys@example.com")
@@ -735,8 +732,8 @@ class TestRevokeApiKeyContract:
                 }
             )
 
-        from api.revoke_api_key import handler
         import api.auth_callback
+        from api.revoke_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_revoke", "revoke@example.com")
@@ -775,8 +772,8 @@ class TestRevokeApiKeyContract:
             }
         )
 
-        from api.revoke_api_key import handler
         import api.auth_callback
+        from api.revoke_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_notfound", "notfound@example.com")
@@ -814,8 +811,8 @@ class TestRevokeApiKeyContract:
             }
         )
 
-        from api.revoke_api_key import handler
         import api.auth_callback
+        from api.revoke_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_onlykey", "onlykey@example.com")
@@ -866,8 +863,8 @@ class TestAuthMeContract:
             }
         )
 
-        from api.auth_me import handler
         import api.auth_callback
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_me", "me@example.com", "pro")
@@ -943,8 +940,8 @@ class TestAuthCallbackContract:
             }
         )
 
-        from api.auth_callback import handler
         import api.auth_callback
+        from api.auth_callback import handler
         api.auth_callback._session_secret_cache = None
 
         api_gateway_event["queryStringParameters"] = {"token": magic_token}
@@ -981,8 +978,8 @@ class TestAuthCallbackContract:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        from api.auth_callback import handler
         import api.auth_callback
+        from api.auth_callback import handler
         api.auth_callback._session_secret_cache = None
 
         api_gateway_event["queryStringParameters"] = {"token": "invalid"}
@@ -1016,6 +1013,7 @@ class TestCorsHeaders:
         # Need to reload shared.response_utils first (ALLOWED_ORIGINS now lives there)
         # then reload api.get_package to pick up the env var change
         import importlib
+
         import shared.response_utils
         importlib.reload(shared.response_utils)
         import api.get_package

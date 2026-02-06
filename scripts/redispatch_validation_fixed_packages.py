@@ -32,7 +32,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 sys.path.insert(0, "functions")
-from shared.package_validation import validate_npm_package_name
+from shared.package_validation import validate_npm_package_name  # noqa: E402
 
 MAX_DISPATCH_PER_RUN = 500
 SQS_BATCH_SIZE = 10

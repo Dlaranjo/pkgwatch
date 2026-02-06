@@ -24,6 +24,7 @@ class TestRequestPackageHandler:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -43,6 +44,7 @@ class TestRequestPackageHandler:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -62,6 +64,7 @@ class TestRequestPackageHandler:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -93,6 +96,7 @@ class TestRequestPackageHandler:
         )
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -113,6 +117,7 @@ class TestRequestPackageHandler:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -136,6 +141,7 @@ class TestRequestPackageHandler:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -175,6 +181,7 @@ class TestRequestPackageHandler:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -198,6 +205,7 @@ class TestRequestPackageHandler:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -232,6 +240,7 @@ class TestRateLimitHelpers:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -245,6 +254,7 @@ class TestRateLimitHelpers:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -269,6 +279,7 @@ class TestRateLimitHelpers:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -287,6 +298,7 @@ class TestRateLimitHelpers:
     def test_get_client_ip_uses_source_ip_not_forwarded_header(self, api_gateway_event):
         """Should use sourceIp and ignore X-Forwarded-For to prevent spoofing."""
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -305,6 +317,7 @@ class TestRateLimitHelpers:
     def test_get_client_ip_from_source_ip(self, api_gateway_event):
         """Should use sourceIp from API Gateway's verified identity."""
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -320,6 +333,7 @@ class TestRateLimitHelpers:
     def test_get_client_ip_returns_unknown_when_missing(self, api_gateway_event):
         """Should return 'unknown' when sourceIp is not available."""
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -344,6 +358,7 @@ class TestRequestPackageErrorPaths:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -384,8 +399,10 @@ class TestRequestPackageErrorPaths:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
-        import api.request_package as module
+
         from botocore.exceptions import ClientError
+
+        import api.request_package as module
 
         importlib.reload(module)
 
@@ -428,6 +445,7 @@ class TestRequestPackageErrorPaths:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -466,6 +484,7 @@ class TestRequestPackageErrorPaths:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -490,6 +509,7 @@ class TestRequestPackageErrorPaths:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -511,6 +531,7 @@ class TestRequestPackageErrorPaths:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -529,6 +550,7 @@ class TestRequestPackageErrorPaths:
     def test_validate_package_exists_returns_false_on_exception(self):
         """Should return False when httpx.get raises an exception."""
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -540,6 +562,7 @@ class TestRequestPackageErrorPaths:
     def test_validate_package_exists_returns_true_when_found(self):
         """Should return True when deps.dev returns 200."""
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -553,6 +576,7 @@ class TestRequestPackageErrorPaths:
     def test_validate_package_exists_returns_false_when_not_found(self):
         """Should return False when deps.dev returns 404."""
         import importlib
+
         import api.request_package as module
 
         importlib.reload(module)
@@ -571,8 +595,10 @@ class TestRequestPackageErrorPaths:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
-        import api.request_package as module
+
         from botocore.exceptions import ClientError
+
+        import api.request_package as module
 
         importlib.reload(module)
 

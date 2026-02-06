@@ -9,7 +9,6 @@ import time
 from unittest.mock import MagicMock, patch
 
 import boto3
-import pytest
 import stripe as stripe_module
 from botocore.exceptions import ClientError
 from moto import mock_aws
@@ -27,7 +26,6 @@ class TestUpgradeConfirmHandler:
         os.environ["STRIPE_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123456789:secret:test"
 
         # Clear cache
-        import api.upgrade_confirm as confirm_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -48,7 +46,6 @@ class TestUpgradeConfirmHandler:
         """Should return 401 when session is expired or invalid."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.upgrade_confirm as confirm_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -71,7 +68,6 @@ class TestUpgradeConfirmHandler:
         """Should return 400 for invalid tier."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.upgrade_confirm as confirm_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -96,7 +92,6 @@ class TestUpgradeConfirmHandler:
         """Should return 400 when proration_date is missing."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.upgrade_confirm as confirm_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -217,8 +212,9 @@ class TestUpgradeConfirmHandler:
             }
         )
 
-        import api.upgrade_confirm as confirm_module
         import stripe as stripe_module
+
+        import api.upgrade_confirm as confirm_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -277,8 +273,9 @@ class TestUpgradeConfirmHandler:
             }
         )
 
-        import api.upgrade_confirm as confirm_module
         import stripe as stripe_module
+
+        import api.upgrade_confirm as confirm_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -336,8 +333,9 @@ class TestUpgradeConfirmHandler:
             }
         )
 
-        import api.upgrade_confirm as confirm_module
         import stripe as stripe_module
+
+        import api.upgrade_confirm as confirm_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -436,8 +434,9 @@ class TestUpgradeConfirmHandler:
             }
         )
 
-        import api.upgrade_confirm as confirm_module
         import stripe as stripe_module
+
+        import api.upgrade_confirm as confirm_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -517,8 +516,9 @@ class TestUpgradeConfirmHandler:
             }
         )
 
-        import api.upgrade_confirm as confirm_module
         import stripe as stripe_module
+
+        import api.upgrade_confirm as confirm_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -562,7 +562,6 @@ class TestUpgradeConfirmHandler:
         """Should return 500 when Stripe API key is not configured (lines 108-109)."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.upgrade_confirm as confirm_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -584,7 +583,6 @@ class TestUpgradeConfirmHandler:
         """Should return 400 when request body is not valid JSON (lines 144-145)."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.upgrade_confirm as confirm_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -613,7 +611,6 @@ class TestUpgradeConfirmHandler:
         """
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.upgrade_confirm as confirm_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 

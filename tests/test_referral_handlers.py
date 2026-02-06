@@ -14,10 +14,10 @@ import hashlib
 import hmac
 import json
 import os
-import pytest
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 @pytest.fixture(autouse=True)
@@ -502,7 +502,6 @@ class TestReferralCleanupHandler:
 
     def test_handles_conditional_check_failed_in_cleanup(self, mock_dynamodb):
         """Should handle ConditionalCheckFailedException when pending flag already cleared (lines 101-104)."""
-        from botocore.exceptions import ClientError
 
         import api.referral_cleanup as cleanup_module
         cleanup_module._dynamodb = None

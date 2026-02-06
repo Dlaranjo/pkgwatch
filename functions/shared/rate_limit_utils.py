@@ -6,8 +6,14 @@ Used by API endpoints (get_package, post_scan) to provide consistent rate limit
 information to users.
 """
 
+import os
+import random
 from datetime import datetime, timezone
 from typing import Optional
+
+from botocore.exceptions import ClientError
+
+from shared.aws_clients import get_dynamodb
 
 
 def get_reset_timestamp() -> int:
@@ -57,7 +63,7 @@ def check_usage_alerts(user: dict, current_usage: int) -> Optional[dict]:
         return {
             "level": "exceeded",
             "percent": 100,
-            "message": f"Monthly limit exceeded. Upgrade at https://pkgwatch.dev/pricing",
+            "message": "Monthly limit exceeded. Upgrade at https://pkgwatch.dev/pricing",
         }
     elif usage_percent >= 95:
         return {
@@ -76,12 +82,6 @@ def check_usage_alerts(user: dict, current_usage: int) -> Optional[dict]:
 
 
 # External service rate limiting with sharded counters
-import os
-import random
-from botocore.exceptions import ClientError
-
-from shared.aws_clients import get_dynamodb
-
 RATE_LIMIT_SHARDS = 10
 
 

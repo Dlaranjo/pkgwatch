@@ -6,8 +6,7 @@ using moto to mock CloudWatch.
 """
 
 import os
-from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import boto3
 import pytest
@@ -16,13 +15,13 @@ from moto import mock_aws
 # Import after setting up environment to avoid issues
 import shared.metrics as metrics_module
 from shared.metrics import (
-    emit_metric,
-    emit_batch_metrics,
-    emit_error_metric,
-    emit_circuit_breaker_metric,
-    emit_dlq_metric,
     NAMESPACE,
     _get_cloudwatch,
+    emit_batch_metrics,
+    emit_circuit_breaker_metric,
+    emit_dlq_metric,
+    emit_error_metric,
+    emit_metric,
 )
 
 

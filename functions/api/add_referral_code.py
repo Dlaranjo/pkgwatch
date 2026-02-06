@@ -12,20 +12,18 @@ from datetime import datetime, timedelta, timezone
 from http.cookies import SimpleCookie
 
 import boto3
-from boto3.dynamodb.conditions import Key
 
-from shared.response_utils import error_response, success_response
 from shared.referral_utils import (
+    LATE_ENTRY_DAYS,
+    PENDING_TIMEOUT_DAYS,
+    REFERRED_USER_BONUS,
+    is_self_referral,
     is_valid_referral_code,
     lookup_referrer_by_code,
-    is_self_referral,
-    add_bonus_with_cap,
     record_referral_event,
     update_referrer_stats,
-    REFERRED_USER_BONUS,
-    PENDING_TIMEOUT_DAYS,
-    LATE_ENTRY_DAYS,
 )
+from shared.response_utils import error_response, success_response
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

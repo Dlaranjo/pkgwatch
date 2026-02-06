@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Migrate data from dephealth-* tables to pkgwatch-* tables."""
 
+
 import boto3
-from decimal import Decimal
-import json
-import sys
 
 dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 

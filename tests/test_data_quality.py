@@ -1,11 +1,10 @@
 """Tests for data quality utilities."""
-import pytest
 
 from shared.data_quality import (
+    build_data_quality_compact,
+    build_data_quality_full,
     get_assessment_category,
     get_quality_explanation,
-    build_data_quality_full,
-    build_data_quality_compact,
 )
 
 

@@ -6,12 +6,11 @@ and adaptive backoff on rate limiting.
 """
 
 import os
-from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import boto3
 import httpx
-import pytest
 from moto import mock_aws
 
 # Set environment before imports

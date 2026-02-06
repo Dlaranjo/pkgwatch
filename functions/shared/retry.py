@@ -31,8 +31,8 @@ import asyncio
 import logging
 import random
 from dataclasses import dataclass
-from typing import Callable, TypeVar, Tuple, Type, Optional, Any
 from functools import wraps
+from typing import Callable, Optional, Tuple, Type, TypeVar
 
 logger = logging.getLogger(__name__)
 

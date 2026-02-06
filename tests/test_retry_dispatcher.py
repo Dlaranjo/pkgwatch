@@ -11,7 +11,6 @@ import sys
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
 from moto import mock_aws
 
 
@@ -371,7 +370,7 @@ class TestRetryDispatcherHandler:
         mock_cb_module.GITHUB_CIRCUIT = mock_circuit
 
         with patch.dict(sys.modules, {"shared.circuit_breaker": mock_cb_module}):
-            with patch.object(module, "sqs") as mock_sqs:
+            with patch.object(module, "sqs"):
                 result = module.handler({}, None)
 
                 assert result["statusCode"] == 200
@@ -457,7 +456,7 @@ class TestRetryDispatcherHandler:
         mock_cb_module.GITHUB_CIRCUIT = mock_circuit
 
         with patch.dict(sys.modules, {"shared.circuit_breaker": mock_cb_module}):
-            with patch.object(module, "sqs") as mock_sqs:
+            with patch.object(module, "sqs"):
                 result = module.handler({}, None)
 
                 assert result["statusCode"] == 200

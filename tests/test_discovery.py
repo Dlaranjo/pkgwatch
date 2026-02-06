@@ -11,7 +11,7 @@ Tests cover:
 import json
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -29,6 +29,7 @@ class TestGraphExpanderDispatcher:
         os.environ["DISCOVERY_QUEUE_URL"] = ""
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -45,6 +46,7 @@ class TestGraphExpanderDispatcher:
         os.environ["DISCOVERY_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -68,6 +70,7 @@ class TestGraphExpanderDispatcher:
         os.environ["DISCOVERY_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -105,6 +108,7 @@ class TestGraphExpanderDispatcher:
             )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -150,6 +154,7 @@ class TestGraphExpanderDispatcher:
             )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -176,7 +181,7 @@ class TestGraphExpanderDispatcher:
 
         with patch.dict(sys.modules, {"shared.circuit_breaker": mock_cb_module}):
             with patch.object(module.dynamodb, "Table", return_value=mock_table):
-                with patch.object(module, "sqs") as mock_sqs:
+                with patch.object(module, "sqs"):
                     result = module.handler({}, None)
 
                     # Should still succeed with tier 2 packages
@@ -204,6 +209,7 @@ class TestGraphExpanderDispatcher:
         )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -244,6 +250,7 @@ class TestGraphExpanderDispatcher:
             )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -276,6 +283,7 @@ class TestGraphExpanderWorker:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_worker as module
 
         importlib.reload(module)
@@ -294,6 +302,7 @@ class TestGraphExpanderWorker:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_worker as module
 
         importlib.reload(module)
@@ -335,6 +344,7 @@ class TestGraphExpanderWorker:
         )
 
         import importlib
+
         import discovery.graph_expander_worker as module
 
         importlib.reload(module)
@@ -349,6 +359,7 @@ class TestGraphExpanderWorker:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_worker as module
 
         importlib.reload(module)
@@ -374,6 +385,7 @@ class TestPublishTopPackages:
         os.environ["PUBLIC_BUCKET"] = ""
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -390,6 +402,7 @@ class TestPublishTopPackages:
         os.environ["PUBLIC_BUCKET"] = "test-bucket"
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -433,6 +446,7 @@ class TestPublishTopPackages:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -480,11 +494,12 @@ class TestPublishTopPackages:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
 
-        with patch.object(module, "s3") as mock_s3:
+        with patch.object(module, "s3"):
             result = module.handler({}, None)
 
             assert result["statusCode"] == 200
@@ -499,6 +514,7 @@ class TestPublishTopPackages:
         os.environ["PUBLIC_BUCKET"] = "test-bucket"
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -530,6 +546,7 @@ class TestPublishTopPackages:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -561,6 +578,7 @@ class TestPublishTopPackages:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -603,6 +621,7 @@ class TestPublishTopPackages:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -624,6 +643,7 @@ class TestPublishTopPackages:
         os.environ["PUBLIC_BUCKET"] = "test-bucket"
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -655,7 +675,7 @@ class TestPublishTopPackages:
         mock_table.query.side_effect = [first_page, second_page]
 
         with patch.object(module.dynamodb, "Table", return_value=mock_table):
-            with patch.object(module, "s3") as mock_s3:
+            with patch.object(module, "s3"):
                 result = module.handler({}, None)
 
                 assert result["statusCode"] == 200
@@ -676,6 +696,7 @@ class TestNpmsioAudit:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -708,6 +729,7 @@ class TestNpmsioAudit:
         )
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -735,6 +757,7 @@ class TestNpmsioAudit:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -760,6 +783,7 @@ class TestNpmsioAudit:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -790,6 +814,7 @@ class TestNpmsioAudit:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -816,6 +841,7 @@ class TestNpmsioAudit:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -854,8 +880,10 @@ class TestNpmsioAudit:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
-        import discovery.npmsio_audit as module
+
         from botocore.exceptions import ClientError
+
+        import discovery.npmsio_audit as module
 
         importlib.reload(module)
 
@@ -963,7 +991,6 @@ class TestGetDependencies:
     @pytest.mark.asyncio
     async def test_returns_empty_for_nonexistent_package(self):
         """Should return empty list for package not found."""
-        import httpx
         from collectors.depsdev_collector import get_dependencies
 
         with patch("collectors.depsdev_collector.retry_with_backoff") as mock_retry:

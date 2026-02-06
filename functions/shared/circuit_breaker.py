@@ -14,13 +14,14 @@ with async/await and asyncio.gather() for concurrent operations.
 """
 
 import asyncio
-import time
 import logging
+import os
+import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
-from dataclasses import dataclass, field
-from typing import Optional, Callable, TypeVar, Any
-from datetime import datetime, timezone, timedelta
 from functools import wraps
+from typing import Callable, Optional, TypeVar
 
 import boto3
 from botocore.exceptions import ClientError
@@ -274,8 +275,6 @@ def circuit_breaker(breaker: InMemoryCircuitBreaker):
         return wrapper
     return decorator
 
-
-import os
 
 # DynamoDB table for distributed circuit breaker state
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")

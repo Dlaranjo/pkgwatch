@@ -4,7 +4,7 @@ Shared Type Definitions for Lambda Handlers.
 Provides TypedDict definitions for AWS Lambda events and responses.
 """
 
-from typing import TypedDict, Optional, Any
+from typing import Any, Optional, TypedDict
 
 
 class APIGatewayEventHeaders(TypedDict, total=False):

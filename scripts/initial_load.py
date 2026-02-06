@@ -18,10 +18,10 @@ import boto3
 sys.path.insert(0, str(Path(__file__).parent.parent / "functions"))
 
 from collectors.depsdev_collector import get_package_info
-from collectors.npm_collector import get_npm_metadata
 from collectors.github_collector import GitHubCollector, parse_github_url
-from scoring.health_score import calculate_health_score
+from collectors.npm_collector import get_npm_metadata
 from scoring.abandonment_risk import calculate_abandonment_risk
+from scoring.health_score import calculate_health_score
 
 dynamodb = boto3.resource("dynamodb")
 sqs = boto3.client("sqs")

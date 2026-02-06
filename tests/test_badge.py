@@ -2,11 +2,8 @@
 Tests for GET /badge/{ecosystem}/{name} endpoint.
 """
 
-import os
 from decimal import Decimal
-from unittest.mock import patch, MagicMock
-
-import pytest
+from unittest.mock import patch
 
 
 class TestBadgeHandler:

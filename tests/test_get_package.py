@@ -5,7 +5,6 @@ Tests for GET /packages/{ecosystem}/{name} endpoint.
 import json
 import os
 
-import pytest
 from moto import mock_aws
 
 
@@ -977,6 +976,7 @@ class TestCORSInRateLimitResponses:
 
         # Reload to pick up ALLOW_DEV_CORS
         import importlib
+
         import api.get_package as gp_module
         importlib.reload(gp_module)
 
@@ -1309,7 +1309,7 @@ class TestDynamoDBErrorInGetPackage:
         self, seeded_api_keys_table, api_gateway_event
     ):
         """Should return 500 when DynamoDB fetch fails."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"

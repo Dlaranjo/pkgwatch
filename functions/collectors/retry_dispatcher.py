@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 
 import boto3
 from boto3.dynamodb.conditions import Attr, Key
+
 from shared.logging_utils import configure_structured_logging, request_id_var
 
 logger = logging.getLogger(__name__)

@@ -5,7 +5,6 @@ Tests for auth-related Lambda handlers.
 import json
 import os
 
-import pytest
 from moto import mock_aws
 
 import shared.billing_utils as billing_utils
@@ -110,6 +109,7 @@ class TestAuthMeHandler:
         """Should aggregate requests_this_month across ALL API keys."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -153,9 +153,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         # Create valid session token
@@ -181,6 +181,7 @@ class TestAuthMeHandler:
         """Should not count USER_META as an API key."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -217,9 +218,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         data = {
@@ -243,6 +244,7 @@ class TestAuthMeHandler:
     def test_returns_404_when_no_api_keys(self, mock_dynamodb, api_gateway_event):
         """Should return 404 when user has no API keys (only PENDING or USER_META)."""
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -265,9 +267,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         data = {
@@ -291,6 +293,7 @@ class TestAuthMeHandler:
         """Should exclude PENDING records from request aggregation."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -327,9 +330,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         data = {
@@ -354,6 +357,7 @@ class TestAuthMeHandler:
         """Should return 401 when session token is expired."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -380,9 +384,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         # Create an EXPIRED session token (exp in the past)
@@ -416,8 +420,8 @@ class TestAuthMeHandler:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        from api.auth_me import handler
         import api.auth_callback
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         # Test with malformed token (no dot separator)
@@ -432,8 +436,9 @@ class TestAuthMeHandler:
     @mock_aws
     def test_returns_401_for_invalid_signature(self, mock_dynamodb, api_gateway_event):
         """Should return 401 when session token signature is invalid."""
-        import boto3
         import base64
+
+        import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["SESSION_SECRET_ARN"] = "test-secret"
@@ -444,8 +449,8 @@ class TestAuthMeHandler:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        from api.auth_me import handler
         import api.auth_callback
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         # Create token with valid format but wrong signature
@@ -465,6 +470,7 @@ class TestAuthMeHandler:
         """Should use USER_META.requests_this_month when available."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -503,9 +509,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         data = {
@@ -530,6 +536,7 @@ class TestAuthMeHandler:
         """Should not expose sensitive fields like key_hash or full API keys."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -559,9 +566,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         data = {
@@ -598,6 +605,7 @@ class TestAuthMeHandler:
         """Should return cancellation_pending and cancellation_date when present."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -628,9 +636,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         data = {
@@ -656,6 +664,7 @@ class TestAuthMeHandler:
         """Should return bonus_requests, referral_code, and effective_limit."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -696,9 +705,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         data = {
@@ -727,6 +736,7 @@ class TestAuthMeHandler:
         """Should return can_add_referral=True within 14-day window."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -768,9 +778,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         data = {
@@ -795,6 +805,7 @@ class TestAuthMeHandler:
         """Should return can_add_referral=False after 14-day window."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -835,9 +846,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         data = {
@@ -862,6 +873,7 @@ class TestAuthMeHandler:
         """Should return can_add_referral=False if already has referred_by."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -903,9 +915,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         data = {
@@ -930,6 +942,7 @@ class TestAuthMeHandler:
         """Should return data_source='cache' when not refreshing."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -957,9 +970,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         data = {
@@ -983,6 +996,7 @@ class TestAuthMeHandler:
         """Should return data_source='cache' when refresh=stripe but no subscription."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1011,9 +1025,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         data = {
@@ -1039,6 +1053,7 @@ class TestAuthMeHandler:
         """Should handle lowercase 'cookie' header."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1066,9 +1081,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         data = {
@@ -1109,6 +1124,7 @@ class TestAuthMeHandler:
         """Should use USER_META.created_at if primary_key.created_at is missing."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1146,9 +1162,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         data = {
@@ -1172,6 +1188,7 @@ class TestAuthMeHandler:
         """Should handle invalid created_at date format gracefully."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1209,9 +1226,9 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
 
         data = {
@@ -1236,6 +1253,7 @@ class TestAuthMeHandler:
         """Should fall back to cache when Stripe secret is not configured."""
         import hashlib
         from datetime import datetime, timedelta, timezone
+
         import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1265,10 +1283,10 @@ class TestAuthMeHandler:
             }
         )
 
-        from api.auth_me import handler
-        from api.auth_callback import _create_session_token
         import api.auth_callback
         import api.auth_me
+        from api.auth_callback import _create_session_token
+        from api.auth_me import handler
         api.auth_callback._session_secret_cache = None
         billing_utils._stripe_api_key_cache = None  # Clear Stripe cache
 
@@ -1377,7 +1395,7 @@ class TestGenerateApiKey:
 
         from shared.auth import generate_api_key
 
-        key = generate_api_key("user_new", tier="free", email="new@example.com")
+        _key = generate_api_key("user_new", tier="free", email="new@example.com")
 
         # Verify it was stored
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1633,7 +1651,6 @@ class TestAuthCallbackHandler:
 
         # Need to mock secrets manager for this test
         import boto3
-        from moto import mock_aws
         secretsmanager = boto3.client("secretsmanager", region_name="us-east-1")
         secretsmanager.create_secret(
             Name="test-session-secret",
@@ -1641,8 +1658,8 @@ class TestAuthCallbackHandler:
         )
         os.environ["SESSION_SECRET_ARN"] = "test-session-secret"
 
-        from api.auth_callback import handler, _session_secret_cache
         import api.auth_callback
+        from api.auth_callback import handler
         api.auth_callback._session_secret_cache = None  # Clear cache
 
         api_gateway_event["queryStringParameters"] = {"token": "invalid_token"}

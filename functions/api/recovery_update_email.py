@@ -133,7 +133,7 @@ def handler(event, context):
         )
 
     if not sessions:
-        logger.warning(f"Recovery token not found or not from code verification")
+        logger.warning("Recovery token not found or not from code verification")
         return _timed_response(
             start_time,
             error_response(400, "invalid_token", "Invalid or expired recovery token", origin=origin),

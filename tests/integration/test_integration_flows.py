@@ -12,7 +12,6 @@ import hashlib
 import hmac
 import json
 import os
-import secrets
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -29,7 +28,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "function
 # Import shared table creation helper from conftest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from conftest import create_dynamodb_tables
-
 
 # =============================================================================
 # Fixtures for Integration Tests
@@ -1447,7 +1445,7 @@ class TestEdgeCases:
         Note: True concurrency testing is limited by moto's thread-safety.
         This test validates atomic conditional check behavior instead.
         """
-        from shared.auth import generate_api_key, check_and_increment_usage
+        from shared.auth import check_and_increment_usage, generate_api_key
 
         table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
@@ -1731,7 +1729,7 @@ class TestReferralProgramFlow:
 
         referrer_id = "user_referrer_test"
         referrer_email = "referrer@example.com"
-        referrer_key = generate_api_key(
+        _referrer_key = generate_api_key(
             user_id=referrer_id,
             tier="free",
             email=referrer_email,
@@ -1758,13 +1756,13 @@ class TestReferralProgramFlow:
 
         # Simulate the verify_email flow which processes referral
         from shared.referral_utils import (
-            lookup_referrer_by_code,
-            is_self_referral,
+            PENDING_TIMEOUT_DAYS,
+            REFERRED_USER_BONUS,
             add_bonus_with_cap,
+            is_self_referral,
+            lookup_referrer_by_code,
             record_referral_event,
             update_referrer_stats,
-            REFERRED_USER_BONUS,
-            PENDING_TIMEOUT_DAYS,
         )
 
         # Look up referrer
@@ -1842,7 +1840,7 @@ class TestReferralProgramFlow:
 
         # --- Step 3: Referred user scans 100+ packages (triggers activity gate) ---
         from shared.auth import check_and_increment_usage_with_bonus
-        from shared.referral_utils import ACTIVITY_THRESHOLD, REFERRAL_REWARDS
+        from shared.referral_utils import REFERRAL_REWARDS
 
         key_hash = hashlib.sha256(referred_key.encode()).hexdigest()
 
@@ -1904,7 +1902,7 @@ class TestReferralProgramFlow:
         os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
         _reset_caches()
 
-        from shared.referral_utils import is_self_referral, canonicalize_email
+        from shared.referral_utils import is_self_referral
 
         # Same base email with Gmail aliases
         referrer_email = "john@gmail.com"
@@ -1932,7 +1930,7 @@ class TestReferralProgramFlow:
         table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
         from shared.auth import generate_api_key
-        from shared.referral_utils import add_bonus_with_cap, BONUS_CAP
+        from shared.referral_utils import BONUS_CAP, add_bonus_with_cap
 
         # Create user near the cap (490K)
         user_id = "user_near_cap"
@@ -1966,13 +1964,13 @@ class TestReferralProgramFlow:
 
         table = mock_aws_services["dynamodb"].Table("pkgwatch-api-keys")
 
+        from datetime import datetime, timedelta, timezone
+
         from shared.auth import generate_api_key
         from shared.referral_utils import (
-            generate_unique_referral_code,
             can_add_late_referral,
-            LATE_ENTRY_DAYS,
+            generate_unique_referral_code,
         )
-        from datetime import datetime, timedelta, timezone
 
         # Create referrer with code
         referrer_id = "user_referrer_late"

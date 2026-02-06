@@ -12,7 +12,6 @@ Run with: PYTHONPATH=functions:. pytest tests/test_pypi_collector.py -v
 """
 
 import asyncio
-import json
 import os
 import sys
 from unittest.mock import patch

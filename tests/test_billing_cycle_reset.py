@@ -7,10 +7,9 @@ monthly reset skip logic, and backup reset handler.
 
 import hashlib
 import os
-from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch
+from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
 
-import pytest
 from moto import mock_aws
 
 

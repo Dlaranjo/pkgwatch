@@ -3,9 +3,10 @@ Tests for DynamoDB helper functions.
 """
 
 import os
+
+import boto3
 import pytest
 from moto import mock_aws
-import boto3
 
 
 @pytest.fixture
@@ -52,6 +53,7 @@ def packages_table():
 
         # Reload module to pick up mocked boto3
         import importlib
+
         import shared.dynamo
         importlib.reload(shared.dynamo)
 
@@ -99,7 +101,7 @@ class TestPutPackage:
     @mock_aws
     def test_creates_new_package(self, packages_table):
         """put_package should create a new package."""
-        from shared.dynamo import put_package, get_package
+        from shared.dynamo import get_package, put_package
 
         put_package("npm", "new-package", {"health_score": 75})
 
@@ -110,7 +112,7 @@ class TestPutPackage:
     @mock_aws
     def test_updates_existing_package(self, packages_table):
         """put_package should update existing package."""
-        from shared.dynamo import put_package, get_package
+        from shared.dynamo import get_package, put_package
 
         put_package("npm", "test-pkg", {"health_score": 50})
         put_package("npm", "test-pkg", {"health_score": 80})
@@ -121,7 +123,7 @@ class TestPutPackage:
     @mock_aws
     def test_sets_default_tier(self, packages_table):
         """put_package should set default tier to 3."""
-        from shared.dynamo import put_package, get_package
+        from shared.dynamo import get_package, put_package
 
         put_package("npm", "tier-test", {"health_score": 50})
 
@@ -131,7 +133,7 @@ class TestPutPackage:
     @mock_aws
     def test_sets_custom_tier(self, packages_table):
         """put_package should accept custom tier."""
-        from shared.dynamo import put_package, get_package
+        from shared.dynamo import get_package, put_package
 
         put_package("npm", "custom-tier", {"health_score": 90}, tier=1)
 
@@ -141,7 +143,7 @@ class TestPutPackage:
     @mock_aws
     def test_sets_last_updated(self, packages_table):
         """put_package should set last_updated timestamp."""
-        from shared.dynamo import put_package, get_package
+        from shared.dynamo import get_package, put_package
 
         put_package("npm", "timestamp-test", {})
 
@@ -151,7 +153,7 @@ class TestPutPackage:
     @mock_aws
     def test_removes_none_values(self, packages_table):
         """put_package should remove None values."""
-        from shared.dynamo import put_package, get_package
+        from shared.dynamo import get_package, put_package
 
         put_package("npm", "none-test", {"health_score": 50, "optional": None})
 
@@ -165,7 +167,7 @@ class TestQueryPackagesByRisk:
     @mock_aws
     def test_returns_packages_by_risk_level(self, packages_table):
         """query_packages_by_risk should return packages with matching risk."""
-        from shared.dynamo import put_package, query_packages_by_risk
+        from shared.dynamo import query_packages_by_risk
 
         # Create packages with different risk levels
         packages_table.put_item(
@@ -272,7 +274,7 @@ class TestUpdatePackageTier:
     @mock_aws
     def test_updates_tier(self, packages_table):
         """update_package_tier should change package tier."""
-        from shared.dynamo import put_package, get_package, update_package_tier
+        from shared.dynamo import get_package, put_package, update_package_tier
 
         put_package("npm", "tier-update", {"health_score": 50}, tier=3)
 
@@ -289,7 +291,8 @@ class TestUpdatePackageScores:
     def test_updates_scores(self, packages_table):
         """update_package_scores should update all score fields."""
         from decimal import Decimal
-        from shared.dynamo import put_package, get_package, update_package_scores
+
+        from shared.dynamo import get_package, put_package, update_package_scores
 
         put_package("npm", "score-update", {})
 
@@ -318,7 +321,7 @@ class TestBatchGetPackages:
     @mock_aws
     def test_returns_multiple_packages(self, packages_table):
         """batch_get_packages should return multiple packages."""
-        from shared.dynamo import put_package, batch_get_packages
+        from shared.dynamo import batch_get_packages, put_package
 
         put_package("npm", "batch1", {"health_score": 80})
         put_package("npm", "batch2", {"health_score": 70})
@@ -343,7 +346,7 @@ class TestBatchGetPackages:
     @mock_aws
     def test_handles_missing_packages(self, packages_table):
         """batch_get_packages should handle missing packages."""
-        from shared.dynamo import put_package, batch_get_packages
+        from shared.dynamo import batch_get_packages, put_package
 
         put_package("npm", "exists", {"health_score": 80})
 
@@ -360,14 +363,17 @@ class TestGetPackageRetryBehavior:
     @mock_aws
     def test_retries_on_throttling_error(self, packages_table):
         """get_package should retry on ProvisionedThroughputExceededException."""
-        from unittest.mock import patch, MagicMock
-        from botocore.exceptions import ClientError
-        import shared.dynamo as dynamo_module
         import importlib
+        from unittest.mock import patch
+
+        from botocore.exceptions import ClientError
+
+        import shared.dynamo as dynamo_module
 
         # Reload to get fresh module state
         importlib.reload(dynamo_module)
-        import shared.aws_clients; shared.aws_clients._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
 
         # Insert test data first
         packages_table.put_item(
@@ -406,13 +412,16 @@ class TestGetPackageRetryBehavior:
     @mock_aws
     def test_returns_none_after_max_retries(self, packages_table):
         """get_package should return None after max retries exceeded."""
-        from unittest.mock import patch, MagicMock
-        from botocore.exceptions import ClientError
-        import shared.dynamo as dynamo_module
         import importlib
+        from unittest.mock import MagicMock, patch
+
+        from botocore.exceptions import ClientError
+
+        import shared.dynamo as dynamo_module
 
         importlib.reload(dynamo_module)
-        import shared.aws_clients; shared.aws_clients._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
 
         # Create mock that always fails with throttling
         def always_throttle(**kwargs):
@@ -434,13 +443,16 @@ class TestGetPackageRetryBehavior:
     @mock_aws
     def test_no_retry_on_access_denied(self, packages_table):
         """get_package should not retry on AccessDeniedException."""
-        from unittest.mock import patch, MagicMock
-        from botocore.exceptions import ClientError
-        import shared.dynamo as dynamo_module
         import importlib
+        from unittest.mock import MagicMock, patch
+
+        from botocore.exceptions import ClientError
+
+        import shared.dynamo as dynamo_module
 
         importlib.reload(dynamo_module)
-        import shared.aws_clients; shared.aws_clients._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
 
         call_count = [0]
 
@@ -464,12 +476,14 @@ class TestGetPackageRetryBehavior:
     @mock_aws
     def test_handles_generic_exception(self, packages_table):
         """get_package should handle non-ClientError exceptions."""
-        from unittest.mock import patch, MagicMock
-        import shared.dynamo as dynamo_module
         import importlib
+        from unittest.mock import MagicMock, patch
+
+        import shared.dynamo as dynamo_module
 
         importlib.reload(dynamo_module)
-        import shared.aws_clients; shared.aws_clients._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
 
         def raise_generic(**kwargs):
             raise RuntimeError("Something unexpected happened")
@@ -490,12 +504,14 @@ class TestQueryPackagesByTierPagination:
     @mock_aws
     def test_handles_paginated_results(self, packages_table):
         """query_packages_by_tier should handle paginated responses."""
-        from unittest.mock import patch, MagicMock
-        import shared.dynamo as dynamo_module
         import importlib
+        from unittest.mock import MagicMock, patch
+
+        import shared.dynamo as dynamo_module
 
         importlib.reload(dynamo_module)
-        import shared.aws_clients; shared.aws_clients._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
 
         # Simulate paginated response
         page1 = {
@@ -532,12 +548,14 @@ class TestBatchGetPackagesRetry:
     @mock_aws
     def test_handles_unprocessed_keys_with_retry(self, packages_table):
         """batch_get_packages should retry for UnprocessedKeys."""
-        from unittest.mock import patch, MagicMock
-        import shared.dynamo as dynamo_module
         import importlib
+        from unittest.mock import MagicMock, patch
+
+        import shared.dynamo as dynamo_module
 
         importlib.reload(dynamo_module)
-        import shared.aws_clients; shared.aws_clients._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
 
         # First call returns some unprocessed, second call completes
         call_count = [0]
@@ -584,12 +602,14 @@ class TestBatchGetPackagesRetry:
     @mock_aws
     def test_stops_after_max_retries_for_unprocessed(self, packages_table):
         """batch_get_packages should stop after max retries for persistent UnprocessedKeys."""
-        from unittest.mock import patch, MagicMock
-        import shared.dynamo as dynamo_module
         import importlib
+        from unittest.mock import MagicMock, patch
+
+        import shared.dynamo as dynamo_module
 
         importlib.reload(dynamo_module)
-        import shared.aws_clients; shared.aws_clients._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
 
         call_count = [0]
 

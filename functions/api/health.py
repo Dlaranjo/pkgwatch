@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timezone
 
 # Import structured logging utilities
-from shared.logging_utils import configure_structured_logging, set_request_id, log_api_request
+from shared.logging_utils import configure_structured_logging, log_api_request, set_request_id
 
 # Configure structured logging
 logger = configure_structured_logging()

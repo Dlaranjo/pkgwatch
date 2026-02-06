@@ -22,10 +22,12 @@ API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
 # Import shared utilities
 import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
-from response_utils import error_response, success_response
-from constants import TIER_ORDER
 from billing_utils import get_stripe_api_key
+from constants import TIER_ORDER
+from response_utils import error_response, success_response
+
 from shared.aws_clients import get_dynamodb
 
 # Price ID to tier mapping (configured via environment)

@@ -16,13 +16,13 @@ Event format:
 import json
 import logging
 import os
+import urllib.error
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any
 
 import boto3
-import urllib.request
-import urllib.error
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

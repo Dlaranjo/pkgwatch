@@ -12,20 +12,18 @@ Tests cover:
 import os
 import sys
 
-import pytest
-
 # Set environment for imports
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "functions"))
 
 from shared.recovery_utils import (
     generate_recovery_codes,
-    normalize_recovery_code,
-    verify_recovery_code,
     generate_recovery_session_id,
     generate_recovery_token,
     mask_email,
+    normalize_recovery_code,
     validate_recovery_code_format,
+    verify_recovery_code,
 )
 
 

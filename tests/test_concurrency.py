@@ -19,7 +19,6 @@ import os
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
 
 import boto3
 import pytest
@@ -245,8 +244,8 @@ class TestApiKeyCreationConcurrency:
                 }
             )
 
-        from api.create_api_key import handler
         import api.auth_callback
+        from api.create_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_race", "race@example.com")
@@ -354,8 +353,8 @@ class TestApiKeyRevocationConcurrency:
                 }
             )
 
-        from api.revoke_api_key import handler
         import api.auth_callback
+        from api.revoke_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_revoke_race", "revoke_race@example.com")
@@ -462,8 +461,8 @@ class TestMagicLinkTokenConcurrency:
             }
         )
 
-        from api.auth_callback import handler
         import api.auth_callback
+        from api.auth_callback import handler
         api.auth_callback._session_secret_cache = None
 
         results = []
@@ -795,6 +794,7 @@ class TestConditionExpressionUsage:
     def test_condition_expression_format(self, mock_dynamodb):
         """Verify the condition expression properly handles edge cases."""
         import boto3
+
         from shared.auth import (
             check_and_increment_usage,
             generate_api_key,
@@ -843,6 +843,7 @@ class TestCodePatternVerification:
     def test_increment_usage_uses_add_operation(self):
         """Verify increment_usage uses ADD, not SET."""
         import inspect
+
         from shared.auth import increment_usage
 
         source = inspect.getsource(increment_usage)
@@ -860,6 +861,7 @@ class TestCodePatternVerification:
     def test_check_and_increment_uses_condition_expression(self):
         """Verify check_and_increment uses ConditionExpression."""
         import inspect
+
         from shared.auth import check_and_increment_usage
 
         source = inspect.getsource(check_and_increment_usage)
@@ -881,6 +883,7 @@ class TestCodePatternVerification:
         with conditional expressions to prevent exceeding MAX_KEYS_PER_USER.
         """
         import inspect
+
         from api.create_api_key import handler
 
         source = inspect.getsource(handler)
@@ -902,6 +905,7 @@ class TestCodePatternVerification:
         to atomically check key count and delete, preventing deletion of last key.
         """
         import inspect
+
         from api.revoke_api_key import handler
 
         source = inspect.getsource(handler)
@@ -923,6 +927,7 @@ class TestCodePatternVerification:
         FIX REQUIRED: Use conditional update to atomically consume token.
         """
         import inspect
+
         from api.auth_callback import handler
 
         source = inspect.getsource(handler)
@@ -984,7 +989,7 @@ class TestRaceConditionFixes:
 
         # The FIX would use a transaction like this:
         # (Note: This is pseudocode - actual implementation would be more complex)
-        new_key_hash = hashlib.sha256(b"pw_new_key").hexdigest()
+        _new_key_hash = hashlib.sha256(b"pw_new_key").hexdigest()
 
         # Count current keys
         response = dynamodb_client.query(

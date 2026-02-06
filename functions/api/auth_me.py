@@ -10,17 +10,16 @@ subscription data from Stripe and update DynamoDB cache.
 import json
 import logging
 import os
-from decimal import Decimal
 from http.cookies import SimpleCookie
 
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
-from shared.response_utils import decimal_default, error_response, get_cors_headers
 from shared.aws_clients import get_dynamodb
+from shared.billing_utils import get_stripe_api_key
 from shared.constants import TIER_LIMITS
 from shared.referral_utils import BONUS_CAP, LATE_ENTRY_DAYS
-from shared.billing_utils import get_stripe_api_key
+from shared.response_utils import decimal_default, error_response, get_cors_headers
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

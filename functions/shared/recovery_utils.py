@@ -7,10 +7,7 @@ session IDs, and tokens for the account recovery flow.
 
 import hashlib
 import hmac
-import os
 import secrets
-from typing import Optional
-
 
 # Recovery code configuration
 RECOVERY_CODE_SEGMENT_LENGTH = 4  # 4 hex chars per segment

@@ -16,7 +16,6 @@ Coverage targets:
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
@@ -49,6 +48,7 @@ class TestHandlerBasicOperation:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -81,6 +81,7 @@ class TestHandlerBasicOperation:
         )
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -109,6 +110,7 @@ class TestHandlerBasicOperation:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -135,6 +137,7 @@ class TestMissingPackageDetection:
         )
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -159,6 +162,7 @@ class TestMissingPackageDetection:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -185,6 +189,7 @@ class TestMissingPackageDetection:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -227,6 +232,7 @@ class TestQualityThresholdFiltering:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -254,6 +260,7 @@ class TestQualityThresholdFiltering:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -277,6 +284,7 @@ class TestQualityThresholdFiltering:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -304,6 +312,7 @@ class TestDynamoDBOperations:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -340,6 +349,7 @@ class TestDynamoDBOperations:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -376,6 +386,7 @@ class TestDynamoDBOperations:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -421,6 +432,7 @@ class TestSQSQueuing:
         queue_url = setup_sqs_package_queue
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -455,6 +467,7 @@ class TestSQSQueuing:
         os.environ.pop("PACKAGE_QUEUE_URL", None)
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -478,6 +491,7 @@ class TestSQSQueuing:
         queue_url = setup_sqs_package_queue
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -710,6 +724,7 @@ class TestMetricsEmission:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -734,6 +749,7 @@ class TestMetricsEmission:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -782,7 +798,7 @@ class TestIntegration:
     def test_full_audit_flow(self, mock_dynamodb, setup_sqs_package_queue):
         """Should complete full audit flow successfully."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
-        queue_url = setup_sqs_package_queue
+        _queue_url = setup_sqs_package_queue
 
         # Add some existing packages
         table = mock_dynamodb.Table("pkgwatch-packages")
@@ -802,6 +818,7 @@ class TestIntegration:
         )
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -841,6 +858,7 @@ class TestIntegration:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)
@@ -878,6 +896,7 @@ class TestIntegration:
             )
 
         import importlib
+
         import discovery.npmsio_audit as module
 
         importlib.reload(module)

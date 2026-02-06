@@ -11,20 +11,15 @@ Returns the current user's referral program status including:
 import json
 import logging
 import os
-from decimal import Decimal
 from http.cookies import SimpleCookie
 
 import boto3
-from boto3.dynamodb.conditions import Key
 
-from shared.response_utils import decimal_default, error_response, get_cors_headers
 from shared.referral_utils import (
-    get_bonus_balance,
-    get_referrer_stats,
-    get_referral_events,
-    mask_email,
     BONUS_CAP,
+    get_referral_events,
 )
+from shared.response_utils import decimal_default, error_response, get_cors_headers
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

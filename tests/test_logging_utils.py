@@ -12,15 +12,13 @@ import uuid
 from io import StringIO
 from unittest.mock import patch
 
-import pytest
-
 from shared.logging_utils import (
     StructuredFormatter,
     configure_structured_logging,
-    set_request_id,
     log_api_request,
     log_external_call,
     request_id_var,
+    set_request_id,
 )
 
 

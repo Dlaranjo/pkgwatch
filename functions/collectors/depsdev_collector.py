@@ -12,19 +12,20 @@ deps.dev provides comprehensive package data with NO rate limits:
 
 import asyncio
 import logging
+import os
 import random
+import sys
 from typing import Optional
 from urllib.parse import quote
 
 import httpx
 
-import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))  # Add collectors directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))  # Add functions directory
-from shared.circuit_breaker import circuit_breaker, DEPSDEV_CIRCUIT
-from shared.constants import DEPSDEV_API, DEPSDEV_API_ALPHA, DEFAULT_TIMEOUT
 from http_client import get_http_client
+
+from shared.circuit_breaker import DEPSDEV_CIRCUIT, circuit_breaker
+from shared.constants import DEPSDEV_API, DEPSDEV_API_ALPHA
 
 # HTTP status codes that are safe to retry
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}

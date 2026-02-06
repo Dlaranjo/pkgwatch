@@ -12,11 +12,9 @@ import hashlib
 import hmac
 import json
 import os
-import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-import pytest
 from moto import mock_aws
 
 # Set environment variables before importing handlers

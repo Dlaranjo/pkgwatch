@@ -4,8 +4,6 @@ Tests for authentication and API key management.
 Security-critical code - high coverage required.
 """
 
-import hashlib
-import os
 
 import pytest
 from moto import mock_aws
@@ -221,6 +219,7 @@ class TestGenerateApiKey:
         """Key suffix should be stored for dashboard display and match actual key."""
         import boto3
         from boto3.dynamodb.conditions import Key
+
         from shared.auth import generate_api_key
 
         api_key = generate_api_key("user_suffix_test", tier="free")
@@ -253,6 +252,7 @@ class TestGenerateApiKey:
         """New keys should have payment_failures initialized to 0."""
         import boto3
         from boto3.dynamodb.conditions import Key
+
         from shared.auth import generate_api_key
 
         generate_api_key("user_payment_init", tier="free")
@@ -271,6 +271,7 @@ class TestGenerateApiKey:
         """New keys should have email_verified initialized to False."""
         import boto3
         from boto3.dynamodb.conditions import Key
+
         from shared.auth import generate_api_key
 
         generate_api_key("user_email_init", tier="free", email="test@example.com")
@@ -342,8 +343,8 @@ class TestTierLimits:
     @mock_aws
     def test_tier_limits_correct(self, aws_credentials, mock_dynamodb):
         """Each tier should have correct monthly limit."""
-        from shared.constants import TIER_LIMITS
         from shared.auth import generate_api_key, validate_api_key
+        from shared.constants import TIER_LIMITS
 
         expected_limits = {
             "free": 5000,
@@ -455,8 +456,9 @@ class TestUserLevelRateLimiting:
     @mock_aws
     def test_check_and_increment_uses_user_meta(self, aws_credentials, mock_dynamodb):
         """check_and_increment_usage should update USER_META, not per-key counter."""
-        from shared.auth import generate_api_key, check_and_increment_usage, validate_api_key
         import boto3
+
+        from shared.auth import check_and_increment_usage, generate_api_key, validate_api_key
 
         # Generate a key
         user_id = "user_meta_test"
@@ -477,7 +479,7 @@ class TestUserLevelRateLimiting:
     @mock_aws
     def test_rate_limit_shared_across_keys(self, aws_credentials, mock_dynamodb):
         """Rate limit should be enforced across all keys for a user."""
-        from shared.auth import generate_api_key, check_and_increment_usage, validate_api_key
+        from shared.auth import check_and_increment_usage, generate_api_key, validate_api_key
 
         user_id = "user_multikey"
 
@@ -519,8 +521,9 @@ class TestUserLevelRateLimiting:
     @mock_aws
     def test_batch_increment_uses_user_meta(self, aws_credentials, mock_dynamodb):
         """check_and_increment_usage_batch should also use USER_META."""
-        from shared.auth import generate_api_key, check_and_increment_usage_batch, validate_api_key
         import boto3
+
+        from shared.auth import check_and_increment_usage_batch, generate_api_key, validate_api_key
 
         user_id = "user_batch_test"
         api_key = generate_api_key(user_id, tier="free")
@@ -541,8 +544,14 @@ class TestUserLevelRateLimiting:
     @mock_aws
     def test_batch_limit_enforced_at_user_level(self, aws_credentials, mock_dynamodb):
         """Batch increment should be limited by user-level usage."""
-        from shared.auth import generate_api_key, check_and_increment_usage, check_and_increment_usage_batch, validate_api_key
         import boto3
+
+        from shared.auth import (
+            check_and_increment_usage,
+            check_and_increment_usage_batch,
+            generate_api_key,
+            validate_api_key,
+        )
 
         user_id = "user_batch_limit"
 
@@ -575,8 +584,9 @@ class TestUserLevelRateLimiting:
     @mock_aws
     def test_user_meta_auto_created_on_first_request(self, aws_credentials, mock_dynamodb):
         """USER_META should be auto-created with count=1 on first rate-limited request."""
-        from shared.auth import generate_api_key, check_and_increment_usage, validate_api_key
         import boto3
+
+        from shared.auth import check_and_increment_usage, generate_api_key, validate_api_key
 
         user_id = "user_auto_create"
         api_key = generate_api_key(user_id, tier="free")
@@ -600,8 +610,9 @@ class TestUserLevelRateLimiting:
     @mock_aws
     def test_revoke_key_preserves_user_usage(self, aws_credentials, mock_dynamodb):
         """Revoking a key should NOT reset USER_META.requests_this_month."""
-        from shared.auth import generate_api_key, check_and_increment_usage, validate_api_key, revoke_api_key
         import boto3
+
+        from shared.auth import check_and_increment_usage, generate_api_key, revoke_api_key, validate_api_key
 
         user_id = "user_revoke_test"
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
@@ -616,9 +627,9 @@ class TestUserLevelRateLimiting:
 
         # Create two keys
         key1 = generate_api_key(user_id, tier="free")
-        key2 = generate_api_key(user_id, tier="free")
+        _key2 = generate_api_key(user_id, tier="free")
         user1 = validate_api_key(key1)
-        user2 = validate_api_key(key2)
+        _user2 = validate_api_key(_key2)
 
         # Use some more quota
         for _ in range(50):
@@ -638,8 +649,9 @@ class TestUserLevelRateLimiting:
     @mock_aws
     def test_new_key_inherits_user_rate_limit(self, aws_credentials, mock_dynamodb):
         """A newly created key should be rate-limited if user is already at limit."""
-        from shared.auth import generate_api_key, check_and_increment_usage, validate_api_key
         import boto3
+
+        from shared.auth import check_and_increment_usage, generate_api_key, validate_api_key
 
         user_id = "user_inherit_limit"
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
@@ -712,7 +724,7 @@ class TestRevokeApiKeyEdgeCases:
     @mock_aws
     def test_revoke_makes_key_immediately_invalid(self, aws_credentials, mock_dynamodb):
         """Revoked key should be immediately invalid."""
-        from shared.auth import generate_api_key, validate_api_key, revoke_api_key
+        from shared.auth import generate_api_key, revoke_api_key, validate_api_key
 
         api_key = generate_api_key("user_revoke_imm", tier="free")
 
@@ -744,7 +756,7 @@ class TestGetUserKeysEdgeCases:
         from shared.auth import generate_api_key, get_user_keys
 
         user_id = "user_keys_secure"
-        api_key = generate_api_key(user_id, tier="free", email="secure@example.com")
+        _api_key = generate_api_key(user_id, tier="free", email="secure@example.com")
 
         keys = get_user_keys(user_id)
 
@@ -789,6 +801,7 @@ class TestResetMonthlyUsageEdgeCases:
     def test_reset_records_timestamp(self, aws_credentials, mock_dynamodb):
         """Reset should record the timestamp of the reset."""
         import boto3
+
         from shared.auth import generate_api_key, increment_usage, reset_monthly_usage, validate_api_key
 
         user_id = "user_reset_ts"
@@ -842,9 +855,10 @@ class TestValidateApiKeyCircuitBreaker:
     @mock_aws
     def test_generic_exception_returns_none_and_records_failure(self, aws_credentials, mock_dynamodb):
         """A generic exception during validation should return None and record circuit failure."""
+        from unittest.mock import patch
+
         from shared.auth import validate_api_key
         from shared.circuit_breaker import DYNAMODB_CIRCUIT, CircuitBreakerState
-        from unittest.mock import patch
 
         # Reset circuit state to track failure recording
         DYNAMODB_CIRCUIT._state = CircuitBreakerState()
@@ -865,9 +879,11 @@ class TestValidateApiKeyCircuitBreaker:
     @mock_aws
     def test_max_retries_exceeded_returns_none(self, aws_credentials, mock_dynamodb):
         """When all retries are exhausted due to throttling, should return None."""
-        from shared.auth import validate_api_key
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from botocore.exceptions import ClientError
+
+        from shared.auth import validate_api_key
 
         # Create a throttling error
         throttle_error = ClientError(
@@ -889,10 +905,12 @@ class TestValidateApiKeyCircuitBreaker:
     @mock_aws
     def test_throttling_records_circuit_failure_and_retries(self, aws_credentials, mock_dynamodb):
         """Throttling errors should record circuit failure and retry with backoff."""
+        from unittest.mock import MagicMock, patch
+
+        from botocore.exceptions import ClientError
+
         from shared.auth import validate_api_key
         from shared.circuit_breaker import DYNAMODB_CIRCUIT, CircuitBreakerState
-        from unittest.mock import patch, MagicMock, call
-        from botocore.exceptions import ClientError
 
         DYNAMODB_CIRCUIT._state = CircuitBreakerState()
 
@@ -942,8 +960,9 @@ class TestCheckAndIncrementUsageCircuitBreaker:
     @mock_aws
     def test_per_key_counter_failure_does_not_block_request(self, aws_credentials, mock_dynamodb):
         """Failure to increment per-key counter should not block the request."""
-        from shared.auth import generate_api_key, check_and_increment_usage, validate_api_key
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
+
+        from shared.auth import check_and_increment_usage, generate_api_key, validate_api_key
 
         user_id = "user_perkey_fail"
         api_key = generate_api_key(user_id, tier="free")
@@ -977,10 +996,12 @@ class TestCheckAndIncrementUsageCircuitBreaker:
     @mock_aws
     def test_rate_limit_exceeded_get_item_failure_returns_limit(self, aws_credentials, mock_dynamodb):
         """When rate limit is hit and get_item for current count fails, should return limit."""
-        from shared.auth import check_and_increment_usage
-        from unittest.mock import patch, MagicMock
-        from botocore.exceptions import ClientError
+        from unittest.mock import MagicMock, patch
+
         import boto3
+        from botocore.exceptions import ClientError
+
+        from shared.auth import check_and_increment_usage
 
         user_id = "user_limit_getfail"
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
@@ -1021,10 +1042,12 @@ class TestCheckAndIncrementUsageCircuitBreaker:
     @mock_aws
     def test_throttling_error_records_circuit_failure_and_raises(self, aws_credentials, mock_dynamodb):
         """Throttling error should record circuit failure and re-raise."""
+        from unittest.mock import MagicMock, patch
+
+        from botocore.exceptions import ClientError
+
         from shared.auth import check_and_increment_usage
         from shared.circuit_breaker import DYNAMODB_CIRCUIT, CircuitBreakerState
-        from unittest.mock import patch, MagicMock
-        from botocore.exceptions import ClientError
 
         DYNAMODB_CIRCUIT._state = CircuitBreakerState()
 
@@ -1064,8 +1087,9 @@ class TestCheckAndIncrementUsageBatchCircuitBreaker:
     @mock_aws
     def test_batch_per_key_failure_does_not_block(self, aws_credentials, mock_dynamodb):
         """Per-key counter failure in batch mode should not block."""
-        from shared.auth import generate_api_key, check_and_increment_usage_batch, validate_api_key
         from unittest.mock import patch
+
+        from shared.auth import check_and_increment_usage_batch, generate_api_key, validate_api_key
 
         user_id = "user_batch_perkey"
         api_key = generate_api_key(user_id, tier="free")
@@ -1095,9 +1119,11 @@ class TestCheckAndIncrementUsageBatchCircuitBreaker:
     @mock_aws
     def test_batch_rate_limit_get_item_failure(self, aws_credentials, mock_dynamodb):
         """When batch limit is hit and get_item fails, should return limit."""
-        from shared.auth import check_and_increment_usage_batch
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from botocore.exceptions import ClientError
+
+        from shared.auth import check_and_increment_usage_batch
 
         condition_error = ClientError(
             {"Error": {"Code": "ConditionalCheckFailedException", "Message": ""}},
@@ -1118,10 +1144,12 @@ class TestCheckAndIncrementUsageBatchCircuitBreaker:
     @mock_aws
     def test_batch_throttling_records_failure_and_raises(self, aws_credentials, mock_dynamodb):
         """Throttling in batch mode should record circuit failure and re-raise."""
+        from unittest.mock import MagicMock, patch
+
+        from botocore.exceptions import ClientError
+
         from shared.auth import check_and_increment_usage_batch
         from shared.circuit_breaker import DYNAMODB_CIRCUIT, CircuitBreakerState
-        from unittest.mock import patch, MagicMock
-        from botocore.exceptions import ClientError
 
         DYNAMODB_CIRCUIT._state = CircuitBreakerState()
 
@@ -1162,8 +1190,9 @@ class TestCheckAndIncrementUsageWithBonus:
     @mock_aws
     def test_within_monthly_limit_no_bonus_consumed(self, aws_credentials, mock_dynamodb):
         """When within monthly limit, should not consume bonus credits."""
-        from shared.auth import check_and_increment_usage_with_bonus
         import boto3
+
+        from shared.auth import check_and_increment_usage_with_bonus
 
         user_id = "user_within_limit"
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
@@ -1187,8 +1216,9 @@ class TestCheckAndIncrementUsageWithBonus:
     @mock_aws
     def test_exceeds_monthly_consumes_bonus(self, aws_credentials, mock_dynamodb):
         """When usage exceeds monthly limit, bonus credits should be consumed."""
-        from shared.auth import check_and_increment_usage_with_bonus
         import boto3
+
+        from shared.auth import check_and_increment_usage_with_bonus
 
         user_id = "user_bonus_consume"
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
@@ -1212,8 +1242,9 @@ class TestCheckAndIncrementUsageWithBonus:
     @mock_aws
     def test_exceeds_effective_limit_denied(self, aws_credentials, mock_dynamodb):
         """When usage exceeds both monthly and bonus, should be denied."""
-        from shared.auth import check_and_increment_usage_with_bonus
         import boto3
+
+        from shared.auth import check_and_increment_usage_with_bonus
 
         user_id = "user_full_deny"
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
@@ -1236,10 +1267,12 @@ class TestCheckAndIncrementUsageWithBonus:
     @mock_aws
     def test_bonus_race_condition_returns_false(self, aws_credentials, mock_dynamodb):
         """When bonus is consumed by concurrent request, should return False."""
-        from shared.auth import check_and_increment_usage_with_bonus
-        from unittest.mock import patch, MagicMock
-        from botocore.exceptions import ClientError
+        from unittest.mock import MagicMock, patch
+
         import boto3
+        from botocore.exceptions import ClientError
+
+        from shared.auth import check_and_increment_usage_with_bonus
 
         user_id = "user_bonus_race"
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
@@ -1282,10 +1315,12 @@ class TestCheckAndIncrementUsageWithBonus:
     @mock_aws
     def test_monthly_limit_race_condition_returns_false(self, aws_credentials, mock_dynamodb):
         """When concurrent request pushes usage over limit, should return False."""
-        from shared.auth import check_and_increment_usage_with_bonus
-        from unittest.mock import patch, MagicMock
-        from botocore.exceptions import ClientError
+        from unittest.mock import MagicMock, patch
+
         import boto3
+        from botocore.exceptions import ClientError
+
+        from shared.auth import check_and_increment_usage_with_bonus
 
         user_id = "user_monthly_race"
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
@@ -1303,7 +1338,6 @@ class TestCheckAndIncrementUsageWithBonus:
 
         def simulate_race(**kwargs):
             call_count[0] += 1
-            update_expr = kwargs.get("UpdateExpression", "")
             cond_expr = kwargs.get("ConditionExpression", "")
             # The monthly increment path uses ConditionExpression with max_allowed
             if "max_allowed" in str(kwargs.get("ExpressionAttributeValues", {})) or \
@@ -1330,9 +1364,11 @@ class TestCheckAndIncrementUsageWithBonus:
     @mock_aws
     def test_per_key_counter_failure_silently_ignored(self, aws_credentials, mock_dynamodb):
         """Per-key counter failure in bonus path should be silently ignored."""
-        from shared.auth import check_and_increment_usage_with_bonus
         from unittest.mock import patch
+
         import boto3
+
+        from shared.auth import check_and_increment_usage_with_bonus
 
         user_id = "user_perkey_bonus"
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
@@ -1350,7 +1386,6 @@ class TestCheckAndIncrementUsageWithBonus:
         def selective_fail(**kwargs):
             call_count[0] += 1
             # The per-key update is the one that uses ADD requests_this_month
-            update_expr = kwargs.get("UpdateExpression", "")
             key = kwargs.get("Key", {})
             if key.get("sk") == "some_hash":
                 raise RuntimeError("Per-key counter failed")
@@ -1371,10 +1406,12 @@ class TestCheckAndIncrementUsageWithBonus:
     @mock_aws
     def test_throttling_in_bonus_path_records_failure_and_raises(self, aws_credentials, mock_dynamodb):
         """Throttling in bonus path should record circuit failure and re-raise."""
+        from unittest.mock import MagicMock, patch
+
+        from botocore.exceptions import ClientError
+
         from shared.auth import check_and_increment_usage_with_bonus
         from shared.circuit_breaker import DYNAMODB_CIRCUIT, CircuitBreakerState
-        from unittest.mock import patch, MagicMock
-        from botocore.exceptions import ClientError
 
         DYNAMODB_CIRCUIT._state = CircuitBreakerState()
 
@@ -1396,9 +1433,11 @@ class TestCheckAndIncrementUsageWithBonus:
     @mock_aws
     def test_activity_gate_triggers_referral_credit(self, aws_credentials, mock_dynamodb):
         """Crossing activity threshold should trigger referral credit."""
-        from shared.auth import check_and_increment_usage_with_bonus
         from unittest.mock import patch
+
         import boto3
+
+        from shared.auth import check_and_increment_usage_with_bonus
 
         user_id = "user_activity_gate"
         referrer_id = "user_referrer_123"
@@ -1450,9 +1489,11 @@ class TestTriggerReferralActivityGate:
     @mock_aws
     def test_expired_referral_clears_pending(self, aws_credentials, mock_dynamodb):
         """Should clear pending flag and return if referral has expired."""
-        from shared.auth import _trigger_referral_activity_gate
         from datetime import datetime, timedelta, timezone
+
         import boto3
+
+        from shared.auth import _trigger_referral_activity_gate
 
         user_id = "user_expired_ref"
         table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
@@ -1481,9 +1522,10 @@ class TestTriggerReferralActivityGate:
     @mock_aws
     def test_concurrent_gate_only_one_succeeds(self, aws_credentials, mock_dynamodb):
         """If another request already processed the gate, should not double-credit."""
-        from shared.auth import _trigger_referral_activity_gate
-        from datetime import datetime, timedelta, timezone
+
         import boto3
+
+        from shared.auth import _trigger_referral_activity_gate
 
         user_id = "user_race_gate"
         referrer_id = "user_referrer_race"
@@ -1507,10 +1549,11 @@ class TestTriggerReferralActivityGate:
     @mock_aws
     def test_successful_gate_credits_referrer(self, aws_credentials, mock_dynamodb):
         """Successful gate trigger should credit referrer and update event."""
-        from shared.auth import _trigger_referral_activity_gate
         from unittest.mock import patch
-        from datetime import datetime, timedelta, timezone
+
         import boto3
+
+        from shared.auth import _trigger_referral_activity_gate
 
         user_id = "user_gate_success"
         referrer_id = "user_referrer_success"
@@ -1546,9 +1589,11 @@ class TestTriggerReferralActivityGate:
     @mock_aws
     def test_error_in_crediting_does_not_raise(self, aws_credentials, mock_dynamodb):
         """Error during crediting should be caught, not propagated."""
-        from shared.auth import _trigger_referral_activity_gate
         from unittest.mock import patch
+
         import boto3
+
+        from shared.auth import _trigger_referral_activity_gate
 
         user_id = "user_gate_error"
         referrer_id = "user_referrer_error"

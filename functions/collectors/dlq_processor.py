@@ -23,9 +23,9 @@ dynamodb = boto3.resource("dynamodb")
 
 # Import shared utilities
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
-from metrics import emit_metric, emit_batch_metrics, emit_dlq_metric
 from error_classification import classify_error
 from logging_utils import configure_structured_logging, request_id_var
+from metrics import emit_batch_metrics, emit_dlq_metric
 
 DLQ_URL = os.environ.get("DLQ_URL")
 MAIN_QUEUE_URL = os.environ.get("MAIN_QUEUE_URL")

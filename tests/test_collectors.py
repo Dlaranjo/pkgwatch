@@ -15,15 +15,14 @@ import asyncio
 import json
 import os
 import sys
-import time
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import boto3
-from botocore.exceptions import ClientError
 import httpx
 import pytest
+from botocore.exceptions import ClientError
 from moto import mock_aws
 
 # Add functions directories to path
@@ -2685,6 +2684,7 @@ class TestCollectPackageData:
             with patch.object(httpx.AsyncClient, "__init__", patched_init), \
                  patch("rate_limit_utils.check_and_increment_external_rate_limit", return_value=True):
                 from importlib import reload
+
                 import package_collector
                 reload(package_collector)
 
@@ -2751,6 +2751,7 @@ class TestCollectPackageData:
             },
         ):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -3284,7 +3285,6 @@ class TestDLQProcessor:
         monkeypatch.delenv("DLQ_URL", raising=False)
 
         # Force reimport to pick up new env
-        import importlib
         import sys
         if "dlq_processor" in sys.modules:
             del sys.modules["dlq_processor"]
@@ -3298,7 +3298,6 @@ class TestDLQProcessor:
         """Handler should return error if MAIN_QUEUE_URL not configured."""
         monkeypatch.delenv("MAIN_QUEUE_URL", raising=False)
 
-        import importlib
         import sys
         if "dlq_processor" in sys.modules:
             del sys.modules["dlq_processor"]
@@ -3674,6 +3673,7 @@ class TestRateLimitAtomicOperation:
             },
         ):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -3705,6 +3705,7 @@ class TestRateLimitAtomicOperation:
             },
         ):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4082,6 +4083,7 @@ class TestHelperFunctions:
 
         with patch.dict(os.environ, {"API_KEYS_TABLE": "pkgwatch-api-keys"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4113,6 +4115,7 @@ class TestHelperFunctions:
 
         with patch.dict(os.environ, {"API_KEYS_TABLE": "pkgwatch-api-keys"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4125,6 +4128,7 @@ class TestHelperFunctions:
         # Create table but don't configure it properly to trigger errors
         with patch.dict(os.environ, {"API_KEYS_TABLE": "nonexistent-table"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4140,6 +4144,7 @@ class TestConfigurableValues:
         """Test that stale data max age is configurable."""
         with patch.dict(os.environ, {"STALE_DATA_MAX_AGE_DAYS": "14"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4149,6 +4154,7 @@ class TestConfigurableValues:
         """Test that deduplication window is configurable."""
         with patch.dict(os.environ, {"DEDUP_WINDOW_MINUTES": "60"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4162,6 +4168,7 @@ class TestConfigurableValues:
             "TIER3_JITTER_MAX": "3600",
         }):
             from importlib import reload
+
             import refresh_dispatcher
             reload(refresh_dispatcher)
 
@@ -4183,6 +4190,7 @@ class TestErrorRecoveryFlows:
         """Test that _get_existing_package_data returns None on exception (lines 286-288)."""
         with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4225,6 +4233,7 @@ class TestErrorRecoveryFlows:
 
         with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4241,6 +4250,7 @@ class TestErrorRecoveryFlows:
         """Test _store_collection_error handles DynamoDB errors gracefully (line 321)."""
         with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4335,6 +4345,7 @@ class TestStaleThresholdHandling:
 
         with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4380,6 +4391,7 @@ class TestStaleThresholdHandling:
 
         with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4417,6 +4429,7 @@ class TestStaleThresholdHandling:
 
         with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4544,6 +4557,7 @@ class TestS3RawDataArchival:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4591,6 +4605,7 @@ class TestS3RawDataArchival:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4612,6 +4627,7 @@ class TestS3RawDataArchival:
         """Test store_raw_data handles S3 errors gracefully (lines 734-735)."""
         with patch.dict(os.environ, {"RAW_DATA_BUCKET": "pkgwatch-raw-data"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4650,6 +4666,7 @@ class TestCircuitBreakerAsyncContext:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4693,6 +4710,7 @@ class TestCircuitBreakerAsyncContext:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4744,6 +4762,7 @@ class TestCircuitBreakerAsyncContext:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4801,6 +4820,7 @@ class TestPartialCollectionFailures:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4852,6 +4872,7 @@ class TestPartialCollectionFailures:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4902,6 +4923,7 @@ class TestPartialCollectionFailures:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4943,6 +4965,7 @@ class TestPartialCollectionFailures:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -4981,6 +5004,7 @@ class TestPartialCollectionFailures:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5017,6 +5041,7 @@ class TestPartialCollectionFailures:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5057,6 +5082,7 @@ class TestPyPICollectionPath:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5105,6 +5131,7 @@ class TestPyPICollectionPath:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5144,6 +5171,7 @@ class TestPyPICollectionPath:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5179,6 +5207,7 @@ class TestPyPICollectionPath:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5216,6 +5245,7 @@ class TestPyPICollectionPath:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5252,6 +5282,7 @@ class TestDatabaseWriteErrors:
 
         with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5429,6 +5460,7 @@ class TestRetryTracking:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5449,7 +5481,7 @@ class TestRetryTracking:
                 assert success is True
 
                 # Check retry_count was incremented
-                response = table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})
+                _response = table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})
                 # Note: increment happens before collection, then store_package_data
                 # may update it again. The important thing is the flow was exercised.
 
@@ -5488,6 +5520,7 @@ class TestProcessSinglePackageErrors:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5522,6 +5555,7 @@ class TestProcessBatchExceptions:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5549,6 +5583,7 @@ class TestProcessBatchExceptions:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5577,6 +5612,7 @@ class TestProcessBatchExceptions:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5645,7 +5681,7 @@ class TestCalculateNextRetryAt:
 
     def test_calculate_next_retry_at_returns_none_after_max_retries(self):
         """Test returns None when retry_count >= MAX_RETRY_COUNT (line 784)."""
-        from package_collector import _calculate_next_retry_at, MAX_RETRY_COUNT
+        from package_collector import MAX_RETRY_COUNT, _calculate_next_retry_at
 
         result = _calculate_next_retry_at(MAX_RETRY_COUNT)
         assert result is None
@@ -5677,6 +5713,7 @@ class TestGetGitHubTokenErrors:
         """Test get_github_token returns None on ClientError (lines 194-196)."""
         with patch.dict(os.environ, {"GITHUB_TOKEN_SECRET_ARN": "nonexistent-secret"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5722,6 +5759,7 @@ class TestDeduplicationWindow:
             "DEDUP_WINDOW_MINUTES": "30",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5774,6 +5812,7 @@ class TestDeduplicationWindow:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5807,6 +5846,7 @@ class TestValidationError:
             "PACKAGES_TABLE": "pkgwatch-packages",
         }):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -5928,7 +5968,7 @@ class TestSelectiveRetry:
             "last_updated": datetime.now(timezone.utc).isoformat(),
         }
 
-        from package_collector import _should_run_collector, _extract_cached_npm_fields
+        from package_collector import _extract_cached_npm_fields, _should_run_collector
 
         # Verify skipping behavior
         assert _should_run_collector("npm", ["github"]) is False
@@ -5948,7 +5988,7 @@ class TestSelectiveRetry:
             "bundle_dependency_count": 3,
         }
 
-        from package_collector import _should_run_collector, _extract_cached_bundlephobia_fields
+        from package_collector import _extract_cached_bundlephobia_fields, _should_run_collector
 
         # Verify skipping behavior
         assert _should_run_collector("bundlephobia", ["npm"]) is False
@@ -5973,7 +6013,7 @@ class TestSelectiveRetry:
             "python_versions": ["3.8", "3.9", "3.10", "3.11", "3.12"],
         }
 
-        from package_collector import _should_run_collector, _extract_cached_pypi_fields
+        from package_collector import _extract_cached_pypi_fields, _should_run_collector
 
         # Verify skipping behavior
         assert _should_run_collector("pypi", ["github"]) is False
@@ -5999,7 +6039,7 @@ class TestSelectiveRetry:
             "archived": False,
         }
 
-        from package_collector import _should_run_collector, _extract_cached_github_fields
+        from package_collector import _extract_cached_github_fields, _should_run_collector
 
         # Verify skipping behavior
         assert _should_run_collector("github", ["npm"]) is False
@@ -6099,6 +6139,7 @@ class TestRateLimitFallback:
 
         with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -6121,6 +6162,7 @@ class TestRateLimitFallback:
         """Test _try_stale_fallback returns False when no cached data."""
         with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -6146,6 +6188,7 @@ class TestRateLimitFallback:
 
         with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
             from importlib import reload
+
             import package_collector
             reload(package_collector)
 
@@ -6306,7 +6349,7 @@ class TestEdgeCases:
 
     def test_calculate_next_retry_at_max_retries(self):
         """Test _calculate_next_retry_at returns None after max retries."""
-        from package_collector import _calculate_next_retry_at, MAX_RETRY_COUNT
+        from package_collector import MAX_RETRY_COUNT, _calculate_next_retry_at
 
         result = _calculate_next_retry_at(MAX_RETRY_COUNT)
         assert result is None
@@ -6428,6 +6471,7 @@ class TestConvertFloatsToDecimal:
     def test_converts_float_to_decimal(self):
         """Float values should become Decimal."""
         from decimal import Decimal
+
         from package_collector import _convert_floats_to_decimal
 
         result = _convert_floats_to_decimal(3.14)
@@ -6437,6 +6481,7 @@ class TestConvertFloatsToDecimal:
     def test_converts_floats_in_dict(self):
         """Floats nested in dicts should be converted."""
         from decimal import Decimal
+
         from package_collector import _convert_floats_to_decimal
 
         result = _convert_floats_to_decimal({"score": 7.5, "name": "test"})
@@ -6446,6 +6491,7 @@ class TestConvertFloatsToDecimal:
     def test_converts_floats_in_list(self):
         """Floats nested in lists should be converted."""
         from decimal import Decimal
+
         from package_collector import _convert_floats_to_decimal
 
         result = _convert_floats_to_decimal([1.1, 2.2, "three"])
@@ -6928,7 +6974,7 @@ class TestDataStatusAbandoned:
 
     def test_store_package_data_upgrades_partial_to_abandoned(self):
         """Partial data_status should upgrade to abandoned_partial when max retries reached."""
-        from package_collector import store_package_data_sync, MAX_RETRY_COUNT
+        from package_collector import MAX_RETRY_COUNT, store_package_data_sync
 
         with mock_aws():
             dynamodb = boto3.resource("dynamodb", region_name="us-east-1")

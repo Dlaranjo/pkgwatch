@@ -2,11 +2,10 @@
 Tests for SQS partial batch failure handling in package_collector.
 """
 
+import asyncio
 import json
 import os
-import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
-import asyncio
+from unittest.mock import MagicMock, patch
 
 # Set up environment before importing
 os.environ.setdefault("PACKAGES_TABLE", "pkgwatch-packages")
@@ -15,6 +14,7 @@ os.environ.setdefault("GITHUB_TOKEN_SECRET_ARN", "arn:aws:secretsmanager:us-east
 os.environ.setdefault("API_KEYS_TABLE", "pkgwatch-api-keys")
 
 import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../functions/collectors"))
 
 

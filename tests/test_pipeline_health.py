@@ -16,7 +16,7 @@ Run with: PYTHONPATH=functions:. pytest tests/test_pipeline_health.py -v
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import boto3
@@ -285,7 +285,7 @@ class TestDegradedStatus:
             pipeline_health = reload_pipeline_health()
 
             # Mock the SQS get_queue_attributes for DLQ
-            original_get_attrs = pipeline_health.sqs.get_queue_attributes
+            _original_get_attrs = pipeline_health.sqs.get_queue_attributes
 
             def mock_get_attrs(QueueUrl, AttributeNames):
                 if QueueUrl == dlq_url:
@@ -414,7 +414,7 @@ class TestUnhealthyStatus:
             pipeline_health = reload_pipeline_health()
 
             call_count = [0]
-            original_get_attrs = pipeline_health.sqs.get_queue_attributes
+            _original_get_attrs = pipeline_health.sqs.get_queue_attributes
 
             def mock_get_attrs(QueueUrl, AttributeNames):
                 call_count[0] += 1
@@ -569,7 +569,7 @@ class TestCloudWatchMetrics:
     def test_metrics_emitted_on_healthy_check(self, mock_dynamodb):
         """CloudWatch metrics are emitted during health check."""
         sqs = boto3.client("sqs", region_name="us-east-1")
-        cloudwatch = boto3.client("cloudwatch", region_name="us-east-1")
+        _cloudwatch = boto3.client("cloudwatch", region_name="us-east-1")
         main_queue_url = sqs.create_queue(QueueName="test-package-queue")["QueueUrl"]
         dlq_url = sqs.create_queue(QueueName="test-dlq")["QueueUrl"]
 
@@ -582,8 +582,8 @@ class TestCloudWatchMetrics:
             pipeline_health = reload_pipeline_health()
 
             # Track emit_metric calls
-            emit_calls = []
-            original_emit = None
+            _emit_calls = []
+            _original_emit = None
 
             # We need to patch the emit_metric in the metrics module
             with patch("shared.metrics.emit_metric") as mock_emit:
@@ -596,7 +596,7 @@ class TestCloudWatchMetrics:
                             GITHUB_HOURLY_LIMIT=4000,
                         )
                     }):
-                        response = pipeline_health.handler({}, {})
+                        _response = pipeline_health.handler({}, {})
 
                         # Verify emit_metric was called
                         assert mock_emit.call_count >= 3
@@ -667,7 +667,7 @@ class TestCloudWatchMetrics:
                         GITHUB_HOURLY_LIMIT=4000,
                     )
                 }):
-                    response = pipeline_health.handler({}, {})
+                    _response = pipeline_health.handler({}, {})
 
             # Find HealthStatus metric call
             health_calls = [(name, val) for name, val in emit_calls if name == "HealthStatus"]
@@ -997,7 +997,7 @@ class TestEdgeCases:
             "API_KEYS_TABLE": "pkgwatch-api-keys",
         }):
             pipeline_health = reload_pipeline_health()
-            captured_queue_url = pipeline_health.QUEUE_URL
+            _captured_queue_url = pipeline_health.QUEUE_URL
             captured_dlq_url = pipeline_health.DLQ_URL
 
             def mock_get_attrs(QueueUrl, AttributeNames):
@@ -1217,7 +1217,7 @@ class TestStatusPriority:
         }):
             pipeline_health = reload_pipeline_health()
             captured_queue_url = pipeline_health.QUEUE_URL
-            captured_dlq_url = pipeline_health.DLQ_URL
+            _captured_dlq_url = pipeline_health.DLQ_URL
 
             # Main queue is degraded (1500 depth)
             # DLQ is unhealthy (150 depth)

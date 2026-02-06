@@ -12,28 +12,28 @@ Tests cover:
 """
 
 import os
-import pytest
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Set environment variables before importing modules
 os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
 
 from shared.referral_utils import (
-    canonicalize_email,
-    is_disposable_email,
-    generate_referral_code,
-    is_valid_referral_code,
-    is_self_referral,
-    mask_email,
-    REFERRAL_REWARDS,
-    REFERRED_USER_BONUS,
     ACTIVITY_THRESHOLD,
     BONUS_CAP,
     LATE_ENTRY_DAYS,
     PENDING_TIMEOUT_DAYS,
+    REFERRAL_REWARDS,
+    REFERRED_USER_BONUS,
+    canonicalize_email,
+    generate_referral_code,
+    is_disposable_email,
+    is_self_referral,
+    is_valid_referral_code,
+    mask_email,
 )
 
 
@@ -737,6 +737,7 @@ class TestLookupReferrerByCodeClientError:
     def test_returns_none_on_client_error(self, mock_get_dynamodb):
         """Should return None when DynamoDB query raises ClientError."""
         from botocore.exceptions import ClientError
+
         from shared.referral_utils import lookup_referrer_by_code
 
         mock_table = MagicMock()
@@ -792,6 +793,7 @@ class TestAddBonusWithCapEdgeCases:
     def test_non_conditional_client_error_is_reraised(self, mock_get_dynamodb):
         """Non-ConditionalCheckFailedException should be re-raised (lines 300-301)."""
         from botocore.exceptions import ClientError
+
         from shared.referral_utils import add_bonus_with_cap
 
         mock_table = MagicMock()
@@ -812,6 +814,7 @@ class TestAddBonusWithCapEdgeCases:
     def test_concurrent_cap_fill_returns_zero(self, mock_get_dynamodb):
         """Should return 0 when a concurrent request fills the cap (lines 347-352)."""
         from botocore.exceptions import ClientError
+
         from shared.referral_utils import add_bonus_with_cap
 
         mock_table = MagicMock()
@@ -839,7 +842,8 @@ class TestAddBonusWithCapEdgeCases:
     def test_partial_amount_zero_returns_zero(self, mock_get_dynamodb):
         """Should return 0 when remaining cap is exactly zero (line 324)."""
         from botocore.exceptions import ClientError
-        from shared.referral_utils import add_bonus_with_cap, BONUS_CAP
+
+        from shared.referral_utils import BONUS_CAP, add_bonus_with_cap
 
         mock_table = MagicMock()
 
@@ -865,6 +869,7 @@ class TestAddBonusWithCapEdgeCases:
     def test_retry_non_conditional_error_is_reraised(self, mock_get_dynamodb):
         """Non-ConditionalCheckFailed on retry should be re-raised (line 352)."""
         from botocore.exceptions import ClientError
+
         from shared.referral_utils import add_bonus_with_cap
 
         mock_table = MagicMock()
@@ -972,6 +977,7 @@ class TestConsumeBonusCredits:
     def test_non_conditional_error_is_reraised(self, mock_get_dynamodb):
         """Non-ConditionalCheckFailed errors should be re-raised (line 385)."""
         from botocore.exceptions import ClientError
+
         from shared.referral_utils import consume_bonus_credits
 
         mock_table = MagicMock()
@@ -996,6 +1002,7 @@ class TestRecordReferralEventClientError:
     def test_returns_false_on_client_error(self, mock_get_dynamodb):
         """Should return False when DynamoDB put_item raises ClientError."""
         from botocore.exceptions import ClientError
+
         from shared.referral_utils import record_referral_event
 
         mock_table = MagicMock()
@@ -1023,6 +1030,7 @@ class TestUpdateReferralEventToCreditedClientError:
     def test_returns_false_on_client_error(self, mock_get_dynamodb):
         """Should return False when DynamoDB operations raise ClientError."""
         from botocore.exceptions import ClientError
+
         from shared.referral_utils import update_referral_event_to_credited
 
         mock_table = MagicMock()
@@ -1050,6 +1058,7 @@ class TestMarkRetentionCheckedClientError:
     def test_returns_false_on_client_error(self, mock_get_dynamodb):
         """Should return False when DynamoDB update_item raises ClientError."""
         from botocore.exceptions import ClientError
+
         from shared.referral_utils import mark_retention_checked
 
         mock_table = MagicMock()
@@ -1149,6 +1158,7 @@ class TestUpdateReferrerStatsEdgeCases:
     def test_returns_false_on_client_error(self, mock_get_dynamodb):
         """Should return False when DynamoDB update_item raises ClientError (lines 615-617)."""
         from botocore.exceptions import ClientError
+
         from shared.referral_utils import update_referrer_stats
 
         mock_table = MagicMock()
@@ -1223,6 +1233,7 @@ class TestGetReferralEventsClientError:
     def test_returns_empty_list_on_client_error(self, mock_get_dynamodb):
         """Should return empty list when DynamoDB query raises ClientError."""
         from botocore.exceptions import ClientError
+
         from shared.referral_utils import get_referral_events
 
         mock_table = MagicMock()

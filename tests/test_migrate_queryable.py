@@ -4,11 +4,9 @@ Tests for admin/migrate_queryable.py - Backfill migration for the queryable fiel
 
 import json
 import os
+from unittest.mock import patch
 
-import boto3
-import pytest
 from moto import mock_aws
-from unittest.mock import patch, MagicMock
 
 
 class TestMigrateQueryableHandler:

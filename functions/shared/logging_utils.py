@@ -5,9 +5,9 @@ Structured logging utilities for CloudWatch Logs Insights.
 import json
 import logging
 import os
-from contextvars import ContextVar
-from typing import Optional, Any, Dict
 import uuid
+from contextvars import ContextVar
+from typing import Optional
 
 # Context variable for request correlation
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")

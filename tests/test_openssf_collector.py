@@ -1,14 +1,15 @@
 """Tests for OpenSSF Scorecard collector."""
 
-import pytest
+import os
+import sys
+
 import httpx
+import pytest
 import respx
 
-import sys
-import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../functions/collectors"))
 
-from openssf_collector import get_openssf_scorecard, OPENSSF_API
+from openssf_collector import OPENSSF_API, get_openssf_scorecard
 
 
 @pytest.fixture

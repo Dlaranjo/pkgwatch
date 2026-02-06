@@ -7,7 +7,6 @@ import json
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
 from moto import mock_aws
 
 import shared.billing_utils as billing_utils
@@ -22,7 +21,6 @@ class TestCreateBillingPortalHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["STRIPE_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123456789:secret:test"
 
-        import api.create_billing_portal as portal_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -42,7 +40,6 @@ class TestCreateBillingPortalHandler:
         """Should return 401 when session is expired or invalid."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.create_billing_portal as portal_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -78,7 +75,6 @@ class TestCreateBillingPortalHandler:
             }
         )
 
-        import api.create_billing_portal as portal_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -119,6 +115,7 @@ class TestCreateBillingPortalHandler:
 
         # Reload module to pick up BASE_URL env var
         import importlib
+
         import api.create_billing_portal as portal_module
         importlib.reload(portal_module)
         billing_utils._stripe_api_key_cache = None
@@ -154,7 +151,6 @@ class TestCreateBillingPortalHandler:
         """Should return 500 when Stripe API key is not configured."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.create_billing_portal as portal_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -244,7 +240,6 @@ class TestCreateBillingPortalHandler:
             }
         )
 
-        import api.create_billing_portal as portal_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -315,7 +310,6 @@ class TestBillingPortalCorsHandling:
         """Should include CORS headers on error response."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.create_billing_portal as portal_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -340,7 +334,6 @@ class TestBillingPortalCookieHandling:
         """Should accept lowercase 'cookie' header."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.create_billing_portal as portal_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -361,7 +354,6 @@ class TestBillingPortalCookieHandling:
         """Should accept uppercase 'Cookie' header."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.create_billing_portal as portal_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -381,7 +373,6 @@ class TestBillingPortalCookieHandling:
         """Should extract session cookie when multiple cookies present."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.create_billing_portal as portal_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -394,7 +385,7 @@ class TestBillingPortalCookieHandling:
                 api_gateway_event["httpMethod"] = "POST"
                 api_gateway_event["headers"]["cookie"] = "other=value; session=expected_token; tracking=xyz"
 
-                result = handler(api_gateway_event, {})
+                _result = handler(api_gateway_event, {})
 
                 # verify_session_token should have been called with the session value
                 mock_verify.assert_called_once_with("expected_token")
@@ -408,7 +399,6 @@ class TestBillingPortalEdgeCases:
         """Should handle None headers gracefully."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.create_billing_portal as portal_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -427,7 +417,6 @@ class TestBillingPortalEdgeCases:
         """Should handle empty cookie header."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.create_billing_portal as portal_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -462,7 +451,6 @@ class TestBillingPortalEdgeCases:
             }
         )
 
-        import api.create_billing_portal as portal_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -489,7 +477,6 @@ class TestBillingPortalStripeApiKeyCache:
     @mock_aws
     def test_caches_stripe_api_key(self, mock_dynamodb, api_gateway_event):
         """Should cache Stripe API key to avoid repeated Secrets Manager calls."""
-        import time
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["STRIPE_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123:secret:test"
 
@@ -558,6 +545,7 @@ class TestBillingPortalReturnUrl:
         )
 
         import importlib
+
         import api.create_billing_portal as portal_module
         importlib.reload(portal_module)
         billing_utils._stripe_api_key_cache = None

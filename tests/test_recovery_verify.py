@@ -18,7 +18,6 @@ import os
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
 
@@ -140,7 +139,7 @@ class TestRecoveryVerifyApiKeyValidFlow:
 
         with patch("time.sleep"), patch("api.recovery_verify_api_key.ses") as mock_ses:
             mock_ses.send_email = MagicMock()
-            response = handler(event, None)
+            _response = handler(event, None)
 
         # Verify magic token was stored
         key_record = table.get_item(Key={"pk": "user_test123", "sk": key_hash})["Item"]

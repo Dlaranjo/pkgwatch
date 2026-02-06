@@ -15,12 +15,10 @@ import hashlib
 import hmac
 import json
 import os
-import pytest
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from moto import mock_aws
+import pytest
 
 
 @pytest.fixture(autouse=True)
@@ -1287,7 +1285,7 @@ class TestAddReferralCodeCORSHeaders:
         event = {
             "httpMethod": "POST",
             "headers": {
-                "Cookie": f"session=invalid",
+                "Cookie": "session=invalid",
                 "Origin": "https://pkgwatch.dev"
             },
             "pathParameters": {},

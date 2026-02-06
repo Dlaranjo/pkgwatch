@@ -11,11 +11,12 @@ Supports resumption via DynamoDB state storage if the Lambda times out.
 Uses per-page checkpointing for reliability.
 """
 
-import boto3
 import json
 import logging
 import os
 from datetime import datetime, timezone
+
+import boto3
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

@@ -8,9 +8,10 @@ Scans all packages, identifies incomplete data, and sets:
 - next_retry_at: staggered over 6 hours to prevent thundering herd
 """
 
-import boto3
-from datetime import datetime, timezone, timedelta
 import random
+from datetime import datetime, timedelta, timezone
+
+import boto3
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table("pkgwatch-packages")
@@ -156,7 +157,7 @@ def main():
             errors += 1
 
     print(f"\nDone! Updated {updated} packages ({errors} errors)")
-    print(f"Incomplete packages will be retried over the next 6 hours.")
+    print("Incomplete packages will be retried over the next 6 hours.")
 
 
 if __name__ == "__main__":

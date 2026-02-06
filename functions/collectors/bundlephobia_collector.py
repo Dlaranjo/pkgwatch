@@ -12,18 +12,19 @@ Rate limit: Unofficial API, be conservative (~100 requests/hour)
 
 import asyncio
 import logging
+import os
 import random
+import sys
 from typing import Optional
 from urllib.parse import quote
 
 import httpx
 
-import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))  # Add collectors directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))  # Add functions directory
-from shared.circuit_breaker import circuit_breaker, BUNDLEPHOBIA_CIRCUIT
 from http_client import get_http_client
+
+from shared.circuit_breaker import BUNDLEPHOBIA_CIRCUIT, circuit_breaker
 
 # HTTP status codes that are safe to retry
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}

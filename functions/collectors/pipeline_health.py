@@ -84,7 +84,7 @@ def handler(event, context):
     # Check GitHub rate limit
     try:
         # Get current hour's usage across all shards
-        from package_collector import _get_rate_limit_window_key, _get_total_github_calls, GITHUB_HOURLY_LIMIT
+        from package_collector import GITHUB_HOURLY_LIMIT, _get_rate_limit_window_key, _get_total_github_calls
 
         window_key = _get_rate_limit_window_key()
         total_calls = _get_total_github_calls(window_key)

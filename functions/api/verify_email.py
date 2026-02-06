@@ -19,22 +19,19 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # Import API key generation from shared module
+# Import session creation from auth_callback
+from api.auth_callback import SESSION_TTL_DAYS, _create_session_token, _get_session_secret
 from shared.auth import generate_api_key
 from shared.recovery_utils import generate_recovery_codes
 from shared.referral_utils import (
+    PENDING_TIMEOUT_DAYS,
+    REFERRED_USER_BONUS,
     generate_unique_referral_code,
-    lookup_referrer_by_code,
     is_self_referral,
-    canonicalize_email,
-    add_bonus_with_cap,
+    lookup_referrer_by_code,
     record_referral_event,
     update_referrer_stats,
-    REFERRED_USER_BONUS,
-    PENDING_TIMEOUT_DAYS,
 )
-
-# Import session creation from auth_callback
-from api.auth_callback import _create_session_token, _get_session_secret, SESSION_TTL_DAYS
 
 dynamodb = boto3.resource("dynamodb")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")

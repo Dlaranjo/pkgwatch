@@ -9,9 +9,9 @@ Tests cover:
 
 import hashlib
 import os
-import pytest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+
+import pytest
 
 # Set environment variables before importing modules
 os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"

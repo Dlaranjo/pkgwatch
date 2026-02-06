@@ -15,20 +15,21 @@ Note: pypistats.org is a separate third-party service with its own rate limits.
 import asyncio
 import json
 import logging
+import os
 import random
 import re
+import sys
 from typing import Optional
 
 import httpx
 
-import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))  # Add collectors directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))  # Add functions directory
-from shared.circuit_breaker import circuit_breaker, PYPI_CIRCUIT, PYPISTATS_CIRCUIT
-from shared.constants import PYPI_API, PYPISTATS_API, DEFAULT_TIMEOUT
-from shared.rate_limit_utils import check_and_increment_external_rate_limit
 from http_client import get_http_client
+
+from shared.circuit_breaker import PYPI_CIRCUIT, PYPISTATS_CIRCUIT, circuit_breaker
+from shared.constants import PYPI_API, PYPISTATS_API
+from shared.rate_limit_utils import check_and_increment_external_rate_limit
 
 # HTTP status codes that are safe to retry
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}

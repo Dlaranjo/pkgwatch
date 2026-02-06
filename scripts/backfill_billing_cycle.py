@@ -17,13 +17,12 @@ Usage:
 """
 
 import argparse
-import boto3
 import json
 import os
 import sys
 import time
-from datetime import datetime, timezone
 
+import boto3
 import stripe
 
 # Add functions directory to path for imports
@@ -121,7 +120,7 @@ def fetch_subscription_from_stripe(subscription_id):
     """Fetch subscription details from Stripe API."""
     try:
         return stripe.Subscription.retrieve(subscription_id)
-    except stripe.error.InvalidRequestError as e:
+    except stripe.error.InvalidRequestError:
         # Subscription doesn't exist (cancelled and deleted)
         return None
     except stripe.error.StripeError as e:

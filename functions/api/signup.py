@@ -20,12 +20,12 @@ from boto3.dynamodb.conditions import Key
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-from shared.response_utils import error_response, success_response
 from shared.referral_utils import (
     is_disposable_email,
     is_valid_referral_code,
     lookup_referrer_by_code,
 )
+from shared.response_utils import error_response, success_response
 
 # Minimum response time to normalize timing and prevent enumeration
 # Set to 1.5s to fully absorb worst-case SES latency variance (~200-500ms)
@@ -131,7 +131,7 @@ def handler(event, context):
         # Check for verified users - send magic link instead of just returning
         for item in existing_items:
             if item.get("email_verified", False):
-                logger.info(f"Signup attempted for existing verified email - sending magic link")
+                logger.info("Signup attempted for existing verified email - sending magic link")
                 # Send magic link to help user log in (same UX as login flow)
                 try:
                     _send_magic_link_for_existing_user(table, item, email)
@@ -210,7 +210,7 @@ def handler(event, context):
         )
     except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
         # Race condition - same response to prevent enumeration
-        logger.info(f"Signup race condition for email (not revealing)")
+        logger.info("Signup race condition for email (not revealing)")
         return _timed_response(start_time, success_response({"message": success_message}, origin=origin))
     except Exception as e:
         logger.error(f"Error creating pending user: {e}")

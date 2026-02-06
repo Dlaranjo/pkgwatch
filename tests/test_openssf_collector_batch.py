@@ -5,13 +5,12 @@ Tests the batch OpenSSF scorecard fetching with tier prioritization.
 """
 
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import patch
 
 import boto3
 import httpx
-import pytest
 from moto import mock_aws
 
 # Set environment before imports

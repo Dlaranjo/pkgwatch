@@ -22,7 +22,6 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from moto import mock_aws
 
-
 # =============================================================================
 # Session Security Tests
 # =============================================================================
@@ -49,7 +48,7 @@ class TestSessionTokenSecurity:
         # Clear cache and import
         import api.auth_callback as auth_callback
         auth_callback._session_secret_cache = None
-        from api.auth_callback import verify_session_token, _create_session_token
+        from api.auth_callback import _create_session_token, verify_session_token
 
         # Create legitimate session
         session_data = {
@@ -94,7 +93,7 @@ class TestSessionTokenSecurity:
 
         import api.auth_callback as auth_callback
         auth_callback._session_secret_cache = None
-        from api.auth_callback import verify_session_token, _create_session_token
+        from api.auth_callback import _create_session_token, verify_session_token
 
         # Create expired session
         expired_data = {
@@ -188,6 +187,7 @@ class TestSessionTokenSecurity:
     def test_hmac_uses_constant_time_comparison(self):
         """Verify HMAC comparison uses constant-time function to prevent timing attacks."""
         import inspect
+
         from api.auth_callback import verify_session_token
 
         source = inspect.getsource(verify_session_token)
@@ -570,7 +570,7 @@ class TestInputInjection:
 
             # Should handle gracefully (400 or 429 for rate limit)
             assert result["statusCode"] in [200, 400, 429], \
-                f"Malicious body should not crash server"
+                "Malicious body should not crash server"
 
 
 # =============================================================================
@@ -717,7 +717,7 @@ class TestRateLimitingSecurity:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
-        from api.get_package import handler, _get_client_ip
+        from api.get_package import _get_client_ip, handler
 
         # Test that _get_client_ip uses sourceIp, not X-Forwarded-For
         spoofed_event = {
@@ -763,8 +763,9 @@ class TestStripeWebhookSecurity:
         """Should reject webhook without Stripe-Signature header."""
         pytest.importorskip("stripe")
 
-        import boto3
         import importlib
+
+        import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
@@ -803,8 +804,9 @@ class TestStripeWebhookSecurity:
         """Should reject webhook with invalid signature."""
         pytest.importorskip("stripe")
 
-        import boto3
         import importlib
+
+        import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
@@ -846,8 +848,9 @@ class TestStripeWebhookSecurity:
         """Stripe's signature verification should reject old timestamps (replay attacks)."""
         pytest.importorskip("stripe")
 
-        import boto3
         import importlib
+
+        import boto3
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 

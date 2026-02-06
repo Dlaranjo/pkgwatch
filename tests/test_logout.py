@@ -4,7 +4,6 @@ import json
 import os
 import sys
 
-import pytest
 from moto import mock_aws
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "functions"))
@@ -326,6 +325,7 @@ class TestLogoutDevCors:
         try:
             # Reload module to pick up env var change
             import importlib
+
             import shared.response_utils
             importlib.reload(shared.response_utils)
 
@@ -345,5 +345,6 @@ class TestLogoutDevCors:
                 os.environ.pop("ALLOW_DEV_CORS", None)
             # Reload again to restore
             import importlib
+
             import shared.response_utils
             importlib.reload(shared.response_utils)

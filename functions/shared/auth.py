@@ -17,19 +17,17 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-logger = logging.getLogger(__name__)
-
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
 from .aws_clients import get_dynamodb
 from .circuit_breaker import DYNAMODB_CIRCUIT
+from .constants import THROTTLING_ERRORS, TIER_LIMITS
 from .types import UserInfo
 
-API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
+logger = logging.getLogger(__name__)
 
-# Import tier limits from constants (single source of truth)
-from .constants import THROTTLING_ERRORS, TIER_LIMITS
+API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
 
 def generate_api_key(user_id: str, tier: str = "free", email: Optional[str] = None) -> str:
@@ -520,11 +518,12 @@ def _trigger_referral_activity_gate(user_id: str, user_meta: dict):
         user_meta: USER_META record for the referred user
     """
     from datetime import datetime, timezone
+
     from shared.referral_utils import (
-        add_bonus_with_cap,
-        update_referrer_stats,
-        update_referral_event_to_credited,
         REFERRAL_REWARDS,
+        add_bonus_with_cap,
+        update_referral_event_to_credited,
+        update_referrer_stats,
     )
 
     referrer_id = user_meta.get("referred_by")

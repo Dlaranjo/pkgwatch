@@ -9,15 +9,15 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timedelta, timezone
 
 import stripe
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
-from datetime import datetime, timezone, timedelta
 
+from shared.aws_clients import get_dynamodb, get_secretsmanager, get_sns
 from shared.logging_utils import configure_structured_logging, set_request_id
 from shared.response_utils import error_response
-from shared.aws_clients import get_dynamodb, get_secretsmanager, get_sns
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -29,14 +29,16 @@ STRIPE_WEBHOOK_SECRET_ARN = os.environ.get("STRIPE_WEBHOOK_SECRET_ARN")
 
 # Import shared utilities
 import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
 from constants import TIER_LIMITS, TIER_ORDER
+
 from shared.referral_utils import (
+    REFERRAL_REWARDS,
+    RETENTION_MONTHS,
     add_bonus_with_cap,
     record_referral_event,
     update_referrer_stats,
-    REFERRAL_REWARDS,
-    RETENTION_MONTHS,
 )
 
 # Payment failure grace period - days to wait before downgrading

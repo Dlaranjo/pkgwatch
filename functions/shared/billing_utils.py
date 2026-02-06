@@ -5,11 +5,11 @@ import logging
 import os
 import time
 
+from shared.aws_clients import get_secretsmanager
+
 logger = logging.getLogger(__name__)
 
 STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
-
-from shared.aws_clients import get_secretsmanager
 
 # Cached Stripe API key with TTL
 _stripe_api_key_cache = None
@@ -28,7 +28,6 @@ def get_stripe_api_key():
         return None
 
     try:
-        from botocore.exceptions import ClientError
         response = get_secretsmanager().get_secret_value(SecretId=STRIPE_SECRET_ARN)
         secret_value = response.get("SecretString", "")
         try:

@@ -16,7 +16,6 @@ import os
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
 
@@ -82,7 +81,7 @@ class TestRecoveryInitiateValidUser:
         body = json.loads(response["body"])
         assert "recovery_session_id" in body
         # Session should be stored in DynamoDB
-        items = table.query(
+        _items = table.query(
             KeyConditionExpression="pk = :pk",
             ExpressionAttributeValues={":pk": {"S": "user_unverified"}},
         )
@@ -161,7 +160,7 @@ class TestRecoveryInitiateEnumerationPrevention:
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep") as mock_sleep:
+        with patch("time.sleep"):
             response = handler(event, None)
 
         # Should still return 200 to prevent enumeration
@@ -176,7 +175,7 @@ class TestRecoveryInitiateEnumerationPrevention:
     @mock_aws
     def test_timing_normalization_applied(self, mock_dynamodb, seeded_api_keys_table):
         """Should apply timing normalization to prevent timing attacks."""
-        from api.recovery_initiate import handler, MIN_RESPONSE_TIME_SECONDS
+        from api.recovery_initiate import handler
 
         event = {
             "body": json.dumps({"email": "test@example.com"}),
@@ -184,7 +183,7 @@ class TestRecoveryInitiateEnumerationPrevention:
         }
 
         with patch("time.sleep") as mock_sleep:
-            response = handler(event, None)
+            handler(event, None)
 
         # time.sleep should be called to normalize response time
         mock_sleep.assert_called()

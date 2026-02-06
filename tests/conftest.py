@@ -73,8 +73,13 @@ def _reset_circuits():
     """Helper to reset all circuit breaker states."""
     try:
         from shared.circuit_breaker import (
-            GITHUB_CIRCUIT, NPM_CIRCUIT, DEPSDEV_CIRCUIT, BUNDLEPHOBIA_CIRCUIT,
-            PYPI_CIRCUIT, DYNAMODB_CIRCUIT, CircuitBreakerState
+            BUNDLEPHOBIA_CIRCUIT,
+            DEPSDEV_CIRCUIT,
+            DYNAMODB_CIRCUIT,
+            GITHUB_CIRCUIT,
+            NPM_CIRCUIT,
+            PYPI_CIRCUIT,
+            CircuitBreakerState,
         )
         GITHUB_CIRCUIT._state = CircuitBreakerState()
         NPM_CIRCUIT._state = CircuitBreakerState()

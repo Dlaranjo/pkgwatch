@@ -12,15 +12,15 @@ This collector is separate from the main package_collector to:
 
 import logging
 import os
+import sys
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import boto3
 import httpx
 from botocore.exceptions import ClientError
 
-import sys
 sys.path.insert(0, os.path.dirname(__file__))  # Add collectors directory
 from github_collector import parse_github_url
 

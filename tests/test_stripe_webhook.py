@@ -5,7 +5,7 @@ Tests for Stripe webhook handler.
 import hashlib
 import json
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from moto import mock_aws
@@ -51,6 +51,7 @@ class TestStripeWebhookHandler:
 
         # Re-import to get fresh PRICE_TO_TIER
         import importlib
+
         import api.stripe_webhook as webhook_module
         importlib.reload(webhook_module)
 
@@ -439,7 +440,7 @@ class TestHandleSubscriptionDeleted:
         response = table.get_item(Key={"pk": "user_cancelled_pending", "sk": key_hash})
         item = response.get("Item")
         assert item["tier"] == "free"
-        assert item["cancellation_pending"] == False
+        assert not item["cancellation_pending"]
         assert item.get("cancellation_date") is None
 
     @mock_aws
@@ -540,6 +541,7 @@ class TestHandleSubscriptionUpdatedCancellation:
 
         # Re-import to pick up STRIPE_PRICE_PRO env var
         import importlib
+
         import api.stripe_webhook as webhook_module
         importlib.reload(webhook_module)
 
@@ -561,7 +563,7 @@ class TestHandleSubscriptionUpdatedCancellation:
 
         response = table.get_item(Key={"pk": "user_cancelling", "sk": key_hash})
         item = response.get("Item")
-        assert item["cancellation_pending"] == True
+        assert item["cancellation_pending"]
         assert item["cancellation_date"] == 1707955200
 
         # Clean up
@@ -591,6 +593,7 @@ class TestHandleSubscriptionUpdatedCancellation:
         )
 
         import importlib
+
         import api.stripe_webhook as webhook_module
         importlib.reload(webhook_module)
 
@@ -612,7 +615,7 @@ class TestHandleSubscriptionUpdatedCancellation:
 
         response = table.get_item(Key={"pk": "user_resubscribing", "sk": key_hash})
         item = response.get("Item")
-        assert item["cancellation_pending"] == False
+        assert not item["cancellation_pending"]
         assert item.get("cancellation_date") is None
 
         # Clean up
@@ -690,7 +693,7 @@ class TestUpdateUserSubscriptionState:
         response = table.get_item(Key={"pk": "user_combined", "sk": key_hash})
         item = response.get("Item")
         assert item["tier"] == "pro"
-        assert item["cancellation_pending"] == True
+        assert item["cancellation_pending"]
         assert item["cancellation_date"] == 1707955200
 
     @mock_aws
@@ -727,7 +730,7 @@ class TestUpdateUserSubscriptionState:
         # Tier should be unchanged
         assert item["tier"] == "business"
         # Cancellation state should be updated
-        assert item["cancellation_pending"] == True
+        assert item["cancellation_pending"]
         assert item["cancellation_date"] == 1707955200
 
 
@@ -849,8 +852,9 @@ class TestSubscriptionCreated:
             }
         )
 
-        from api.stripe_webhook import _handle_subscription_created, PRICE_TO_TIER
         from unittest.mock import patch
+
+        from api.stripe_webhook import PRICE_TO_TIER, _handle_subscription_created
 
         # Patch PRICE_TO_TIER since it reads env vars at module load time
         with patch.dict(PRICE_TO_TIER, {"price_pro_trial": "pro"}):
@@ -1000,8 +1004,8 @@ class TestUpdateUserTierByCustomerId:
         assert item["requests_this_month"] == 15000
 
 
-class TestUpdateUserSubscriptionState:
-    """Tests for _update_user_subscription_state function."""
+class TestUpdateUserSubscriptionStateEdgeCases:
+    """Tests for _update_user_subscription_state function edge cases."""
 
     @mock_aws
     def test_updates_cancellation_pending(self, mock_dynamodb):
@@ -1980,6 +1984,7 @@ class TestDisputeCreated:
     def test_sends_sns_notification_when_alert_topic_configured(self, mock_dynamodb, caplog):
         """Should publish SNS notification when ALERT_TOPIC_ARN is set."""
         import logging
+
         import boto3
         caplog.set_level(logging.INFO)
 
@@ -2034,7 +2039,7 @@ class TestDisputeCreated:
     def test_sns_failure_does_not_break_dispute_handling(self, mock_dynamodb, caplog):
         """Should handle SNS publish errors gracefully without breaking dispute handling."""
         import logging
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
         caplog.set_level(logging.WARNING)
 
         os.environ["ALERT_TOPIC_ARN"] = "arn:aws:sns:us-east-1:123456789:fake-topic"
@@ -2332,7 +2337,6 @@ class TestHandlerSignatureValidation:
     def test_missing_stripe_signature_returns_400(self, mock_dynamodb, api_gateway_event):
         """Should return 400 when Stripe-Signature header is missing."""
         pytest.importorskip("stripe")
-        from unittest.mock import patch
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
@@ -2653,6 +2657,7 @@ class TestSubscriptionUpdatedEdgeCases:
         )
 
         import importlib
+
         import api.stripe_webhook as webhook_module
         importlib.reload(webhook_module)
 
@@ -2858,10 +2863,9 @@ class TestWebhookSignatureTampering:
     def test_tampered_payload_rejected(self, mock_dynamodb, api_gateway_event):
         """Should reject webhook with tampered payload that doesn't match signature."""
         pytest.importorskip("stripe")
-        import stripe
-        import time
-        import hmac
         import hashlib as stdlib_hashlib
+        import hmac
+        import time
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
@@ -2905,9 +2909,9 @@ class TestWebhookSignatureTampering:
     def test_expired_signature_rejected(self, mock_dynamodb, api_gateway_event):
         """Should reject webhook with expired timestamp in signature."""
         pytest.importorskip("stripe")
-        import time
-        import hmac
         import hashlib as stdlib_hashlib
+        import hmac
+        import time
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
@@ -2993,9 +2997,9 @@ class TestWebhookSignatureTampering:
     def test_wrong_webhook_secret_rejected(self, mock_dynamodb, api_gateway_event):
         """Should reject webhook signed with wrong secret."""
         pytest.importorskip("stripe")
-        import time
-        import hmac
         import hashlib as stdlib_hashlib
+        import hmac
+        import time
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
@@ -3099,6 +3103,7 @@ class TestGetStripeSecretsPlainTextFallback:
     def test_plain_text_stripe_api_key(self):
         """Should fall back to raw secret string when it is not valid JSON."""
         from unittest.mock import patch
+
         import boto3
         sm = boto3.client("secretsmanager", region_name="us-east-1")
         resp1 = sm.create_secret(
@@ -3129,6 +3134,7 @@ class TestGetStripeSecretsPlainTextFallback:
     def test_plain_text_webhook_secret(self):
         """Should fall back to raw secret string for webhook secret when not JSON."""
         from unittest.mock import patch
+
         import boto3
         sm = boto3.client("secretsmanager", region_name="us-east-1")
         resp1 = sm.create_secret(
@@ -3270,6 +3276,7 @@ class TestHandlerFullEventFlow:
         """ClientError during event handling should release claim and return 500."""
         pytest.importorskip("stripe")
         from unittest.mock import patch
+
         from botocore.exceptions import ClientError
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -3381,8 +3388,9 @@ class TestHandlerFullEventFlow:
     def test_stripe_api_connection_error_releases_claim_returns_500(self, mock_dynamodb, api_gateway_event):
         """Stripe APIConnectionError should release claim and return 500."""
         pytest.importorskip("stripe")
-        import stripe
         from unittest.mock import patch
+
+        import stripe
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
@@ -3417,8 +3425,9 @@ class TestHandlerFullEventFlow:
     def test_permanent_stripe_error_returns_200_processed_false(self, mock_dynamodb, api_gateway_event):
         """Permanent Stripe error (e.g., InvalidRequestError) should return 200 with processed=False."""
         pytest.importorskip("stripe")
-        import stripe
         from unittest.mock import patch
+
+        import stripe
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
@@ -3459,7 +3468,7 @@ class TestHandlerEventRouting:
     def test_routes_subscription_updated(self, mock_dynamodb, api_gateway_event):
         """Should route customer.subscription.updated to _handle_subscription_updated."""
         pytest.importorskip("stripe")
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
@@ -3490,7 +3499,7 @@ class TestHandlerEventRouting:
     def test_routes_subscription_deleted(self, mock_dynamodb, api_gateway_event):
         """Should route customer.subscription.deleted to _handle_subscription_deleted."""
         pytest.importorskip("stripe")
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
@@ -3521,7 +3530,7 @@ class TestHandlerEventRouting:
     def test_routes_charge_refunded(self, mock_dynamodb, api_gateway_event):
         """Should route charge.refunded to _handle_charge_refunded."""
         pytest.importorskip("stripe")
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
@@ -3552,7 +3561,7 @@ class TestHandlerEventRouting:
     def test_routes_dispute_created(self, mock_dynamodb, api_gateway_event):
         """Should route charge.dispute.created to _handle_dispute_created."""
         pytest.importorskip("stripe")
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
@@ -3587,7 +3596,7 @@ class TestCheckoutCompletedWithSubscription:
     def test_checkout_with_subscription_upgrades_user(self, mock_dynamodb):
         """Should retrieve subscription from Stripe and upgrade user to correct tier."""
         pytest.importorskip("stripe")
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
@@ -4037,7 +4046,7 @@ class TestRecordBillingEventErrorHandling:
     def test_does_not_raise_on_dynamodb_failure(self, mock_dynamodb, caplog):
         """Should swallow DynamoDB errors and log them."""
         import logging
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
         caplog.set_level(logging.ERROR)
 
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
@@ -4069,7 +4078,7 @@ class TestReleaseEventClaimErrorHandling:
     def test_does_not_raise_on_delete_failure(self, mock_dynamodb, caplog):
         """Should swallow errors when releasing claim fails."""
         import logging
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
         caplog.set_level(logging.ERROR)
 
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
@@ -4094,7 +4103,7 @@ class TestCustomerExistsErrorHandling:
     def test_returns_false_on_query_error(self, mock_dynamodb, caplog):
         """Should return False when query raises an exception."""
         import logging
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
         caplog.set_level(logging.ERROR)
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -4118,7 +4127,8 @@ class TestCheckAndClaimEventReraise:
     @mock_aws
     def test_reraises_non_conditional_check_error(self, mock_dynamodb):
         """Should re-raise ClientError if it is not ConditionalCheckFailedException."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from botocore.exceptions import ClientError
 
         os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
@@ -4243,8 +4253,9 @@ class TestSubscriptionUpdatedTrialing:
             }
         )
 
-        from api.stripe_webhook import _handle_subscription_updated, PRICE_TO_TIER
         from unittest.mock import patch
+
+        from api.stripe_webhook import PRICE_TO_TIER, _handle_subscription_updated
 
         with patch.dict(PRICE_TO_TIER, {"price_trial_pro": "pro"}):
             subscription = {

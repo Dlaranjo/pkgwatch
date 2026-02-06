@@ -9,19 +9,16 @@ This module ensures all error paths are tested and handle failures gracefully:
 5. Error response consistency
 """
 
+import hashlib
 import json
 import os
-import hashlib
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import boto3
+import httpx
 import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
-import httpx
-
 
 # ==============================================================================
 # DYNAMODB FAILURE TESTS
@@ -255,6 +252,7 @@ class TestDepsDevFailures:
     def test_depsdev_timeout_raises_after_retries(self):
         """Should raise after max retries on timeout."""
         import asyncio
+
         from collectors.depsdev_collector import get_package_info
 
         def create_timeout_transport():
@@ -279,6 +277,7 @@ class TestDepsDevFailures:
     def test_depsdev_404_returns_none(self):
         """Should return None for 404 (package not found)."""
         import asyncio
+
         from collectors.depsdev_collector import get_package_info
 
         def create_404_transport():
@@ -304,6 +303,7 @@ class TestDepsDevFailures:
     def test_depsdev_500_retries_with_backoff(self):
         """Should retry on 500 errors with exponential backoff."""
         import asyncio
+
         from collectors.depsdev_collector import retry_with_backoff
 
         call_count = 0
@@ -334,6 +334,7 @@ class TestNpmCollectorFailures:
     def test_npm_404_returns_error_dict(self):
         """Should return error dict for 404."""
         import asyncio
+
         from collectors.npm_collector import get_npm_metadata
 
         def create_404_transport():
@@ -358,6 +359,7 @@ class TestNpmCollectorFailures:
     def test_npm_downloads_failure_continues(self):
         """Should continue with 0 downloads when download stats fail."""
         import asyncio
+
         from collectors.npm_collector import get_npm_metadata
 
         call_count = 0
@@ -403,6 +405,7 @@ class TestGitHubCollectorFailures:
     def test_github_rate_limit_returns_none_after_wait(self):
         """Should handle rate limiting gracefully."""
         import asyncio
+
         from collectors.github_collector import GitHubCollector
 
         reset_time = str(int(datetime.now(timezone.utc).timestamp()) + 10)
@@ -438,6 +441,7 @@ class TestGitHubCollectorFailures:
     def test_github_404_returns_error_dict(self):
         """Should return error dict for non-existent repo."""
         import asyncio
+
         from collectors.github_collector import GitHubCollector
 
         def create_404_transport():
@@ -463,6 +467,7 @@ class TestGitHubCollectorFailures:
     def test_github_403_non_rate_limit_returns_none(self):
         """Should return None for 403 that's not rate limiting."""
         import asyncio
+
         from collectors.github_collector import GitHubCollector
 
         def create_403_transport():

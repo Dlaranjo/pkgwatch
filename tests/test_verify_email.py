@@ -15,10 +15,8 @@ edge cases robustly to prevent account enumeration, replay attacks, and
 data inconsistencies.
 """
 
-import json
 import os
 import secrets
-import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
@@ -26,7 +24,6 @@ import boto3
 import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
-
 
 # ============================================================================
 # Test Fixtures
@@ -831,8 +828,8 @@ class TestSessionCreation:
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
 
-        from api.verify_email import handler
         from api.auth_callback import verify_session_token
+        from api.verify_email import handler
 
         api_gateway_event["queryStringParameters"] = {"token": pending_user["token"]}
 

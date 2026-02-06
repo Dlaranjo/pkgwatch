@@ -9,7 +9,6 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from decimal import Decimal
 
 import boto3
 
@@ -17,7 +16,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # Import from shared module (bundled with Lambda)
-from shared.auth import validate_api_key, TIER_LIMITS
+from shared.auth import TIER_LIMITS, validate_api_key
 from shared.response_utils import decimal_default, error_response, get_cors_headers
 
 dynamodb = boto3.resource("dynamodb")

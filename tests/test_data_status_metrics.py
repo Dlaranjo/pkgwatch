@@ -2,13 +2,10 @@
 Tests for admin/data_status_metrics.py - CloudWatch metrics for data status distribution.
 """
 
-import json
 import os
+from unittest.mock import MagicMock, patch
 
-import boto3
-import pytest
 from moto import mock_aws
-from unittest.mock import patch, MagicMock
 
 
 class TestCountByStatus:
@@ -104,10 +101,9 @@ class TestDataStatusMetricsHandler:
                 )
                 counter += 1
 
-        from admin.data_status_metrics import handler
-
         # Reset the module-level dynamodb resource to use mock
         import admin.data_status_metrics as metrics_module
+        from admin.data_status_metrics import handler
         metrics_module.dynamodb = mock_dynamodb
 
         result = handler({}, {})
@@ -126,9 +122,8 @@ class TestDataStatusMetricsHandler:
         """Should return zero counts when table has no packages."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
-        from admin.data_status_metrics import handler
-
         import admin.data_status_metrics as metrics_module
+        from admin.data_status_metrics import handler
         metrics_module.dynamodb = mock_dynamodb
 
         result = handler({}, {})
@@ -143,9 +138,8 @@ class TestDataStatusMetricsHandler:
         """Should set count to 0 and log error when query fails."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
-        from admin.data_status_metrics import handler
-
         import admin.data_status_metrics as metrics_module
+        from admin.data_status_metrics import handler
         metrics_module.dynamodb = mock_dynamodb
 
         # Patch count_by_status to raise an exception for a specific status

@@ -32,8 +32,8 @@ RATE_LIMIT_PER_DAY = 10
 
 def handler(event, context):
     """Handle package request from user."""
-    from shared.response_utils import error_response, success_response
     from shared.package_validation import normalize_npm_name
+    from shared.response_utils import error_response, success_response
 
     # Extract origin for CORS headers
     headers = event.get("headers", {})
@@ -202,8 +202,9 @@ def check_and_record_rate_limit(client_ip: str) -> bool:
 
 def validate_package_exists(name: str, ecosystem: str) -> bool:
     """Validate package exists in registry via deps.dev API (synchronous)."""
-    import httpx
     from urllib.parse import quote
+
+    import httpx
 
     DEPSDEV_API = "https://api.deps.dev/v3"
     system = "npm" if ecosystem == "npm" else "pypi"

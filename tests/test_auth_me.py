@@ -16,7 +16,6 @@ import hmac
 import json
 import os
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import boto3
@@ -110,6 +109,7 @@ class TestAuthMeSessionValidation:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -131,6 +131,7 @@ class TestAuthMeSessionValidation:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -152,6 +153,7 @@ class TestAuthMeSessionValidation:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -174,6 +176,7 @@ class TestAuthMeSessionValidation:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -206,6 +209,7 @@ class TestAuthMeSessionValidation:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -239,6 +243,7 @@ class TestAuthMeUserRetrieval:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -277,6 +282,7 @@ class TestAuthMeUserRetrieval:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -308,6 +314,7 @@ class TestAuthMeUserRetrieval:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -350,6 +357,7 @@ class TestAuthMeUserRetrieval:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -384,6 +392,7 @@ class TestAuthMeUserRetrieval:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -440,6 +449,7 @@ class TestAuthMeStripeRefresh:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
 
         # Clear price env vars so module uses defaults (price_pro -> pro mapping)
@@ -505,6 +515,7 @@ class TestAuthMeStripeRefresh:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -542,6 +553,7 @@ class TestAuthMeStripeRefresh:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
         billing_utils._stripe_api_key_cache = None
@@ -587,6 +599,7 @@ class TestAuthMeStripeRefresh:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
         billing_utils._stripe_api_key_cache = None
@@ -644,6 +657,7 @@ class TestAuthMeStripeRefresh:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
         billing_utils._stripe_api_key_cache = None
@@ -698,6 +712,7 @@ class TestAuthMeReferralAndBonus:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -732,6 +747,7 @@ class TestAuthMeReferralAndBonus:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -772,6 +788,7 @@ class TestAuthMeReferralAndBonus:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -810,6 +827,7 @@ class TestAuthMeReferralAndBonus:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -846,6 +864,7 @@ class TestAuthMeReferralAndBonus:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -886,6 +905,7 @@ class TestAuthMeCORS:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -922,6 +942,7 @@ class TestAuthMeCORS:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -949,6 +970,7 @@ class TestAuthMeErrorHandling:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -983,6 +1005,7 @@ class TestAuthMeErrorHandling:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -1007,6 +1030,7 @@ class TestStripeKeyCache:
         auth_callback._session_secret_cache = None
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -1030,6 +1054,7 @@ class TestStripeKeyCache:
         os.environ.pop("STRIPE_SECRET_ARN", None)
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 
@@ -1055,6 +1080,7 @@ class TestStripeKeyCache:
         os.environ["STRIPE_SECRET_ARN"] = "pkgwatch/stripe-plain"
 
         import importlib
+
         import api.auth_me as module
         importlib.reload(module)
 

@@ -2,7 +2,13 @@
 Tests for rate limiting utilities.
 """
 
+import os
 from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
+
+import pytest
+from botocore.exceptions import ClientError
+from moto import mock_aws
 
 
 class TestGetResetTimestamp:
@@ -40,6 +46,7 @@ class TestGetResetTimestamp:
     def test_december_wraps_to_january(self):
         """Should correctly handle December -> January transition."""
         from unittest.mock import patch
+
         from shared.rate_limit_utils import get_reset_timestamp
 
         # Mock December 15th
@@ -131,14 +138,6 @@ class TestCheckUsageAlerts:
 
         assert result is not None
         assert result["level"] == "exceeded"
-
-
-import os
-from unittest.mock import MagicMock, patch
-
-import pytest
-from botocore.exceptions import ClientError
-from moto import mock_aws
 
 
 class TestExternalRateLimiting:
@@ -283,8 +282,8 @@ class TestExternalRateLimiting:
         """Should propagate non-ConditionalCheckFailedException errors."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import shared.rate_limit_utils as module
         import shared.aws_clients as aws_clients_module
+        import shared.rate_limit_utils as module
 
         aws_clients_module._dynamodb = None
 

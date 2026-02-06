@@ -23,10 +23,12 @@ API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
 # Import shared utilities
 import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
-from response_utils import error_response, success_response
-from constants import TIER_ORDER, TIER_LIMITS
 from billing_utils import get_stripe_api_key
+from constants import TIER_LIMITS, TIER_ORDER
+from response_utils import error_response, success_response
+
 from shared.aws_clients import get_dynamodb
 
 # Price ID to tier mapping (configured via environment)
@@ -166,7 +168,6 @@ def handler(event, context):
     )
     items = response.get("Items", [])
 
-    stripe_customer_id = None
     stripe_subscription_id = None
     current_tier = "free"
     user_items = []
@@ -176,7 +177,6 @@ def handler(event, context):
         if item.get("sk") == "PENDING":
             continue
         if item.get("email_verified"):
-            stripe_customer_id = item.get("stripe_customer_id")
             stripe_subscription_id = item.get("stripe_subscription_id")
             current_tier = item.get("tier", "free")
             user_items.append(item)

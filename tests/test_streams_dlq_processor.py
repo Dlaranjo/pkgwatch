@@ -4,21 +4,20 @@ Tests for streams_dlq_processor.py - Handles failed score calculations.
 
 import json
 import os
-import pytest
 from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone
 
 # Set up environment before importing
 os.environ.setdefault("PACKAGES_TABLE", "pkgwatch-packages")
 
 # Import module under test
 import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../functions/scoring"))
 from streams_dlq_processor import (
-    handler,
     _extract_package_key,
-    _trigger_rescore,
     _parse_dynamodb_value,
+    _trigger_rescore,
+    handler,
 )
 
 

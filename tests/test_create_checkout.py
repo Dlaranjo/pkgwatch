@@ -7,7 +7,6 @@ import json
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
 from moto import mock_aws
 
 import shared.billing_utils as billing_utils
@@ -23,7 +22,6 @@ class TestCreateCheckoutHandler:
         os.environ["STRIPE_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123456789:secret:test"
 
         # Clear the API key cache
-        import api.create_checkout as checkout_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -44,7 +42,6 @@ class TestCreateCheckoutHandler:
         """Should return 401 when session is expired or invalid."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.create_checkout as checkout_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -67,7 +64,6 @@ class TestCreateCheckoutHandler:
         """Should return 400 for invalid tier."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.create_checkout as checkout_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -92,7 +88,6 @@ class TestCreateCheckoutHandler:
         """Should return 400 for invalid JSON body."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.create_checkout as checkout_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -299,7 +294,6 @@ class TestCreateCheckoutHandler:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         os.environ["STRIPE_SECRET_ARN"] = ""
 
-        import api.create_checkout as checkout_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 

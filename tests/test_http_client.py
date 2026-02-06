@@ -14,7 +14,7 @@ Run with: PYTHONPATH=functions:. pytest tests/test_http_client.py -v
 import asyncio
 import os
 import sys
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -99,7 +99,7 @@ class TestGetHttpClientPoolingDisabled:
 
     def test_client_has_correct_timeout(self):
         """Client has correct timeout configuration."""
-        from http_client import get_http_client, DEFAULT_TIMEOUT
+        from http_client import DEFAULT_TIMEOUT, get_http_client
 
         with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "false"}):
             client = get_http_client()
@@ -158,7 +158,7 @@ class TestGetHttpClientPoolingEnabled:
             async def first_loop():
                 return http_client.get_http_client()
 
-            client1 = run_async(first_loop())
+            _client1 = run_async(first_loop())
             first_client_id = id(http_client._client)
 
             # Simulate event loop change by manually setting a different loop ID
@@ -169,7 +169,7 @@ class TestGetHttpClientPoolingEnabled:
             async def second_loop():
                 return http_client.get_http_client()
 
-            client2 = run_async(second_loop())
+            _client2 = run_async(second_loop())
             second_client_id = id(http_client._client)
 
             # Client should be recreated due to loop ID mismatch
@@ -235,7 +235,7 @@ class TestCloseHttpClient:
         async def test_coro():
             with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "true"}):
                 # Create client
-                client = http_client.get_http_client()
+                _client = http_client.get_http_client()
                 assert http_client._client is not None
 
                 # Close it
@@ -269,7 +269,7 @@ class TestCloseHttpClient:
         async def test_coro():
             with patch.dict(os.environ, {"USE_CONNECTION_POOLING": "true"}):
                 # Create, close, recreate
-                client1 = http_client.get_http_client()
+                _client1 = http_client.get_http_client()
                 await http_client.close_http_client()
                 client2 = http_client.get_http_client()
 
@@ -315,7 +315,7 @@ class TestGetHttpClientWithHeaders:
 
     def test_has_correct_timeout(self):
         """Client has correct timeout configuration."""
-        from http_client import get_http_client_with_headers, DEFAULT_TIMEOUT
+        from http_client import DEFAULT_TIMEOUT, get_http_client_with_headers
 
         client = get_http_client_with_headers({})
         assert client.timeout.read == DEFAULT_TIMEOUT.read
@@ -646,7 +646,7 @@ class TestEventLoopEdgeCases:
             async def first_invocation():
                 return http_client.get_http_client()
 
-            client1 = run_async(first_invocation())
+            _client1 = run_async(first_invocation())
             first_client = http_client._client
 
             # Simulate Lambda reuse - new invocation with new loop
@@ -657,7 +657,7 @@ class TestEventLoopEdgeCases:
             async def second_invocation():
                 return http_client.get_http_client()
 
-            client2 = run_async(second_invocation())
+            _client2 = run_async(second_invocation())
             second_client = http_client._client
 
             # Client should be different since loop ID changed
@@ -672,7 +672,7 @@ class TestEventLoopEdgeCases:
             async def create_client():
                 return http_client.get_http_client()
 
-            client1 = run_async(create_client())
+            _client1 = run_async(create_client())
 
             # Now simulate getting client when loop doesn't exist
             # (RuntimeError when getting running loop)

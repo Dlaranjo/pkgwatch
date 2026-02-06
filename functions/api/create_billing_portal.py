@@ -5,7 +5,6 @@ Creates a Stripe Billing Portal session for subscription management.
 Requires session authentication (logged-in user with active subscription).
 """
 
-import json
 import logging
 import os
 from http.cookies import SimpleCookie
@@ -21,9 +20,11 @@ BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.dev")
 
 # Import shared utilities
 import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
-from response_utils import error_response, success_response
 from billing_utils import get_stripe_api_key
+from response_utils import error_response, success_response
+
 from shared.aws_clients import get_dynamodb
 
 

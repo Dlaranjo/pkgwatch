@@ -6,30 +6,30 @@ retry logic, and error handling using moto for AWS mocking.
 """
 
 import os
-import time
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import boto3
 import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
 
+import shared.aws_clients as aws_clients_module
+
 # Import after environment setup
 import shared.dynamo as dynamo_module
-import shared.aws_clients as aws_clients_module
+from shared.aws_clients import get_dynamodb
 from shared.dynamo import (
+    PACKAGES_TABLE,
+    batch_get_packages,
     get_package,
     put_package,
     query_packages_by_risk,
     query_packages_by_tier,
-    update_package_tier,
     update_package_scores,
-    batch_get_packages,
-    PACKAGES_TABLE,
+    update_package_tier,
 )
-from shared.aws_clients import get_dynamodb
 
 
 @pytest.fixture

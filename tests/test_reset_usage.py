@@ -3,7 +3,6 @@ Tests for monthly usage reset Lambda.
 """
 
 import hashlib
-import json
 import os
 from unittest.mock import MagicMock, patch
 
@@ -278,7 +277,7 @@ class TestResetUsageHandler:
             }
         )
 
-        from api.reset_usage import handler, RESET_STATE_PK, RESET_STATE_SK
+        from api.reset_usage import RESET_STATE_PK, RESET_STATE_SK, handler
 
         context = MagicMock()
         context.get_remaining_time_in_millis.return_value = 300000

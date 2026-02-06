@@ -14,7 +14,6 @@ Coverage targets:
 import json
 import os
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import boto3
@@ -56,6 +55,7 @@ class TestGraphExpanderWorkerHandler:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -72,6 +72,7 @@ class TestGraphExpanderWorkerHandler:
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -89,6 +90,7 @@ class TestGraphExpanderWorkerHandler:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -121,6 +123,7 @@ class TestGraphExpanderWorkerHandler:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -153,6 +156,7 @@ class TestGraphExpanderWorkerHandler:
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -179,6 +183,7 @@ class TestGraphExpanderWorkerHandler:
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -209,6 +214,7 @@ class TestGraphExpanderWorkerHandler:
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -231,6 +237,7 @@ class TestGraphExpanderWorkerHandler:
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -263,6 +270,7 @@ class TestGraphExpanderWorkerHandler:
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -281,6 +289,7 @@ class TestGraphExpanderWorkerHandler:
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -298,7 +307,7 @@ class TestGraphExpanderWorkerHandler:
         with patch.object(module, "process_package", new_callable=AsyncMock) as mock_process:
             mock_process.return_value = 0
 
-            result = module.handler(event, None)
+            _result = module.handler(event, None)
 
         # Should use npm as default
         call_args = mock_process.call_args_list[0]
@@ -322,6 +331,7 @@ class TestPackageExists:
         })
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -337,6 +347,7 @@ class TestPackageExists:
         table = mock_dynamodb.Table("pkgwatch-packages")
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -350,6 +361,7 @@ class TestPackageExists:
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -368,6 +380,7 @@ class TestPackageExists:
         table = mock_dynamodb.Table("pkgwatch-packages")
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -393,6 +406,7 @@ class TestQueueForCollection:
         queue_url = setup_sqs_queue
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -417,6 +431,7 @@ class TestQueueForCollection:
         os.environ.pop("PACKAGE_QUEUE_URL", None)
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -429,6 +444,7 @@ class TestQueueForCollection:
         setup_sqs_queue
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -444,6 +460,7 @@ class TestQueueForCollection:
         queue_url = setup_sqs_queue
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -478,6 +495,7 @@ class TestGetCachedDependencies:
         )
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -503,6 +521,7 @@ class TestGetCachedDependencies:
         )
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -516,6 +535,7 @@ class TestGetCachedDependencies:
         setup_s3_bucket
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -529,6 +549,7 @@ class TestGetCachedDependencies:
         os.environ.pop("RAW_DATA_BUCKET", None)
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -550,6 +571,7 @@ class TestGetCachedDependencies:
         )
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -574,6 +596,7 @@ class TestGetCachedDependencies:
         )
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -591,6 +614,7 @@ class TestCacheDependencies:
         bucket = setup_s3_bucket
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -613,6 +637,7 @@ class TestCacheDependencies:
         os.environ.pop("RAW_DATA_BUCKET", None)
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -625,6 +650,7 @@ class TestCacheDependencies:
         setup_s3_bucket
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -640,6 +666,7 @@ class TestCacheDependencies:
         bucket = setup_s3_bucket
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -660,6 +687,7 @@ class TestCacheDependencies:
         bucket = setup_s3_bucket
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -686,6 +714,7 @@ class TestProcessPackageIntegration:
         setup_sqs_queue
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -726,6 +755,7 @@ class TestProcessPackageIntegration:
         setup_s3_bucket
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -755,6 +785,7 @@ class TestProcessPackageIntegration:
         setup_s3_bucket
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -790,6 +821,7 @@ class TestProcessPackageIntegration:
         bucket = setup_s3_bucket
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -838,6 +870,7 @@ class TestProcessPackageIntegration:
         setup_s3_bucket
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -869,6 +902,7 @@ class TestProcessPackageIntegration:
         setup_sqs_queue
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -912,6 +946,7 @@ class TestProcessPackageIntegration:
         setup_sqs_queue
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -959,6 +994,7 @@ class TestProcessPackageIntegration:
         queue_url = setup_sqs_queue
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -997,6 +1033,7 @@ class TestProcessPackageIntegration:
         setup_sqs_queue
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -1031,6 +1068,7 @@ class TestProcessPackageIntegration:
         bucket = setup_s3_bucket
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -1075,6 +1113,7 @@ class TestProcessPackageIntegration:
         setup_s3_bucket
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 
@@ -1104,6 +1143,7 @@ class TestProcessPackageIntegration:
         setup_s3_bucket
 
         import importlib
+
         import discovery.graph_expander_worker as module
         importlib.reload(module)
 

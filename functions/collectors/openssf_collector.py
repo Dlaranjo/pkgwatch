@@ -12,7 +12,6 @@ from typing import Optional
 from urllib.parse import quote
 
 import httpx
-
 from http_client import get_http_client
 
 logger = logging.getLogger(__name__)

@@ -4,11 +4,15 @@ Tests for scoring algorithms: health_score.py and abandonment_risk.py
 These are the core business logic - pure functions that must be reliable.
 """
 
-import math
 
 import pytest
 from freezegun import freeze_time
 
+from scoring.abandonment_risk import (
+    _calculate_time_adjusted_risk,
+    calculate_abandonment_risk,
+    get_risk_trend,
+)
 from scoring.health_score import (
     _calculate_confidence,
     _calculate_maturity_factor,
@@ -22,12 +26,6 @@ from scoring.health_score import (
     _user_centric_health,
     calculate_health_score,
 )
-from scoring.abandonment_risk import (
-    _calculate_time_adjusted_risk,
-    calculate_abandonment_risk,
-    get_risk_trend,
-)
-
 
 # =============================================================================
 # Health Score Tests
@@ -1449,6 +1447,7 @@ class TestScorePackageHandler:
     def test_handler_requires_package_name(self, mock_dynamodb):
         """Handler should return 400 if package name missing."""
         import json
+
         from scoring.score_package import handler
 
         result = handler({"ecosystem": "npm"}, {})
@@ -1461,6 +1460,7 @@ class TestScorePackageHandler:
     def test_handler_returns_404_for_unknown_package(self, mock_dynamodb):
         """Handler should return 404 for non-existent package."""
         import json
+
         from scoring.score_package import handler
 
         result = handler({"ecosystem": "npm", "name": "nonexistent-package"}, {})
@@ -1472,6 +1472,7 @@ class TestScorePackageHandler:
     def test_handler_scores_and_updates_package(self, seeded_packages_table):
         """Handler should calculate and persist scores."""
         import json
+
         from scoring.score_package import handler
 
         result = handler({"ecosystem": "npm", "name": "lodash"}, {})
@@ -1502,6 +1503,7 @@ class TestScorePackageHandler:
     def test_handler_recalculate_all_disabled(self, mock_dynamodb):
         """Handler should return 501 for recalculate_all action."""
         import json
+
         from scoring.score_package import handler
 
         result = handler({"action": "recalculate_all"}, {})
@@ -1514,6 +1516,7 @@ class TestScorePackageHandler:
     def test_handler_stream_batch_processes_records(self, seeded_packages_table):
         """Handler should process DynamoDB Stream batch events."""
         import json
+
         from scoring.score_package import handler
 
         # Simulate a DynamoDB Stream event
@@ -1549,6 +1552,7 @@ class TestScorePackageHandler:
     def test_handler_stream_skips_remove_events(self, seeded_packages_table):
         """Handler should skip REMOVE events in stream batch."""
         import json
+
         from scoring.score_package import handler
 
         event = {
@@ -1575,6 +1579,7 @@ class TestScorePackageHandler:
     def test_handler_stream_handles_invalid_pk(self, mock_dynamodb):
         """Handler should handle invalid pk format gracefully."""
         import json
+
         from scoring.score_package import handler
 
         event = {
@@ -1604,6 +1609,7 @@ class TestScorePackageHandler:
     def test_handler_stream_skips_unchanged_collected_at(self, seeded_packages_table):
         """Handler should skip records where collected_at hasn't changed."""
         import json
+
         from scoring.score_package import handler
 
         # Simulate a score update (collected_at unchanged)

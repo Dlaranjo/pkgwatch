@@ -7,7 +7,7 @@ Provides consistent response formatting for success and error responses.
 import json
 import os
 from decimal import Decimal
-from typing import Optional, Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from shared.logging_utils import request_id_var
 

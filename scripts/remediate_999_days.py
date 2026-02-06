@@ -15,7 +15,6 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
 
 import boto3
 from boto3.dynamodb.conditions import Attr
@@ -132,7 +131,7 @@ def main():
     )
     args = parser.parse_args()
 
-    print(f"Searching for packages with days_since_last_commit = 999...")
+    print("Searching for packages with days_since_last_commit = 999...")
     if args.ecosystem:
         print(f"Filtering by ecosystem: {args.ecosystem}")
 

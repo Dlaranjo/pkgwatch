@@ -10,10 +10,8 @@ Security:
 - Creates session so user is logged in to new email
 """
 
-import json
 import logging
 import os
-import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode

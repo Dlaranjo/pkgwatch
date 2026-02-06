@@ -126,7 +126,7 @@ def handler(event, context):
         )
 
     if not key_items:
-        logger.warning(f"Invalid API key used in recovery attempt")
+        logger.warning("Invalid API key used in recovery attempt")
         return _timed_response(
             start_time,
             error_response(400, "invalid_credentials", generic_error, origin=origin),

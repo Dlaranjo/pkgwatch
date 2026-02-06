@@ -7,7 +7,6 @@ Authenticated endpoints for managing recovery codes:
 - GET /account/recovery-codes/status - Check if codes exist
 """
 
-import json
 import logging
 import os
 from datetime import datetime, timezone

@@ -16,7 +16,6 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -127,7 +126,7 @@ def handler(event, context):
     if not user_item:
         # Generate a fake session ID but don't store it
         fake_session_id = generate_recovery_session_id()
-        logger.info(f"Recovery initiated for non-existent email (not revealing)")
+        logger.info("Recovery initiated for non-existent email (not revealing)")
         return _timed_response(
             start_time,
             success_response(

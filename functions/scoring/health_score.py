@@ -15,7 +15,6 @@ Components (v2 - revised weights):
 import logging
 import math
 from datetime import datetime, timezone
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 

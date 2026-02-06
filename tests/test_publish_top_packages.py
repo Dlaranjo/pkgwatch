@@ -15,7 +15,6 @@ Coverage targets:
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
@@ -45,6 +44,7 @@ class TestHandlerConfiguration:
         os.environ.pop("PUBLIC_BUCKET", None)
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -61,6 +61,7 @@ class TestHandlerConfiguration:
         os.environ["PUBLIC_BUCKET"] = ""
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -77,6 +78,7 @@ class TestHandlerConfiguration:
         os.environ["PUBLIC_BUCKET"] = "test-bucket"
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -94,6 +96,7 @@ class TestDynamoDBQueries:
         os.environ["PUBLIC_BUCKET"] = "test-bucket"
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -123,11 +126,12 @@ class TestDynamoDBQueries:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
 
-        with patch.object(module, "s3") as mock_s3:
+        with patch.object(module, "s3"):
             result = module.handler({}, None)
 
             assert result["statusCode"] == 200
@@ -141,6 +145,7 @@ class TestDynamoDBQueries:
         os.environ["PUBLIC_BUCKET"] = "test-bucket"
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -186,11 +191,12 @@ class TestDynamoDBQueries:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
 
-        with patch.object(module, "s3") as mock_s3:
+        with patch.object(module, "s3"):
             result = module.handler({}, None)
 
             assert result["statusCode"] == 200
@@ -204,6 +210,7 @@ class TestDynamoDBQueries:
         os.environ["PUBLIC_BUCKET"] = "test-bucket"
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -227,7 +234,7 @@ class TestDynamoDBQueries:
         }
 
         with patch.object(module.dynamodb, "Table", return_value=mock_table):
-            with patch.object(module, "s3") as mock_s3:
+            with patch.object(module, "s3"):
                 result = module.handler({}, None)
 
                 assert result["statusCode"] == 200
@@ -245,6 +252,7 @@ class TestPagination:
         os.environ["PUBLIC_BUCKET"] = "test-bucket"
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -276,7 +284,7 @@ class TestPagination:
         mock_table.query.side_effect = [first_page, second_page]
 
         with patch.object(module.dynamodb, "Table", return_value=mock_table):
-            with patch.object(module, "s3") as mock_s3:
+            with patch.object(module, "s3"):
                 result = module.handler({}, None)
 
                 assert result["statusCode"] == 200
@@ -293,6 +301,7 @@ class TestPagination:
         os.environ["PUBLIC_BUCKET"] = "test-bucket"
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -324,6 +333,7 @@ class TestPagination:
         os.environ["PUBLIC_BUCKET"] = "test-bucket"
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -373,6 +383,7 @@ class TestS3Uploads:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -410,6 +421,7 @@ class TestS3Uploads:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -443,6 +455,7 @@ class TestS3Uploads:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -474,6 +487,7 @@ class TestS3Uploads:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -513,6 +527,7 @@ class TestS3Uploads:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -544,6 +559,7 @@ class TestS3Uploads:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -581,6 +597,7 @@ class TestJSONOutputFormat:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -629,6 +646,7 @@ class TestJSONOutputFormat:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -663,6 +681,7 @@ class TestJSONOutputFormat:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -699,6 +718,7 @@ class TestJSONOutputFormat:
             )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -742,6 +762,7 @@ class TestDecimalConversion:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -776,6 +797,7 @@ class TestDecimalConversion:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -814,6 +836,7 @@ class TestMetricsEmission:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -833,6 +856,7 @@ class TestMetricsEmission:
         os.environ["PUBLIC_BUCKET"] = "test-bucket"
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -875,6 +899,7 @@ class TestReturnValue:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -907,6 +932,7 @@ class TestReturnValue:
             )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -964,6 +990,7 @@ class TestIntegration:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -996,6 +1023,7 @@ class TestIntegration:
         setup_s3_public_bucket
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)
@@ -1036,6 +1064,7 @@ class TestIntegration:
         )
 
         import importlib
+
         import discovery.publish_top_packages as module
 
         importlib.reload(module)

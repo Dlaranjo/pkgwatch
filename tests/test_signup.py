@@ -19,12 +19,11 @@ import os
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import boto3
 import pytest
 from moto import mock_aws
-
 
 # Set environment variables before importing modules
 os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -324,7 +323,7 @@ class TestDuplicateEmailHandling:
 
         base_event["body"] = json.dumps({"email": "existing2@example.com"})
 
-        result = handler(base_event, {})
+        handler(base_event, {})
 
         # Verify magic token was created on the user record
         from boto3.dynamodb.conditions import Key
@@ -549,7 +548,7 @@ class TestResendCooldown:
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("cooldown@example.com"),
         )
-        pending_item = response["Items"][0]
+        _pending_item = response["Items"][0]
         # last_verification_sent should be very close to the original (not updated)
 
     @mock_aws
@@ -668,8 +667,9 @@ class TestDatabaseErrorHandling:
         self, mock_dynamodb, base_event, ses_client
     ):
         """Should return 500 on DynamoDB put_item error."""
-        from api.signup import handler
         from botocore.exceptions import ClientError
+
+        from api.signup import handler
 
         # Patch put_item to raise a ClientError (not ConditionalCheckFailed)
         with patch("api.signup.dynamodb") as mock_db:
@@ -708,8 +708,8 @@ class TestConcurrentSignupAttempts:
         self, mock_dynamodb, base_event, ses_client
     ):
         """Should return 200 on conditional write conflict (enumeration prevention)."""
+
         from api.signup import handler
-        from botocore.exceptions import ClientError
 
         # Patch put_item to raise ConditionalCheckFailedException
         with patch("api.signup.dynamodb") as mock_db:
@@ -913,7 +913,7 @@ class TestTimingNormalization:
         self, mock_dynamodb, base_event, ses_client
     ):
         """Response should take at least MIN_RESPONSE_TIME_SECONDS."""
-        from api.signup import handler, MIN_RESPONSE_TIME_SECONDS
+        from api.signup import MIN_RESPONSE_TIME_SECONDS, handler
 
         base_event["body"] = json.dumps({"email": "timing@example.com"})
 

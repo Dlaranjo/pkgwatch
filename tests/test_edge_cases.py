@@ -16,10 +16,8 @@ import json
 import math
 import os
 import sys
-from datetime import datetime, timezone, timedelta
-from decimal import Decimal
+from datetime import datetime
 
-import pytest
 from freezegun import freeze_time
 from moto import mock_aws
 
@@ -40,7 +38,7 @@ class TestScoringBoundaryConditions:
         from scoring.health_score import _maintainer_health
 
         data = {"days_since_last_commit": 90, "active_contributors_90d": 1}
-        score = _maintainer_health(data)
+        _score = _maintainer_health(data)
 
         # Recency at 90 days = exp(-0.693 * 90 / 90) = exp(-0.693) = 0.5
         # Bus factor for 1 contributor = 1 / (1 + exp(1)) ~= 0.27
@@ -420,7 +418,7 @@ class TestAuthEdgeCases:
     @mock_aws
     def test_api_key_exactly_at_limit(self, aws_credentials, mock_dynamodb):
         """Request at exact limit should be denied (not allowed)."""
-        from shared.auth import check_and_increment_usage, generate_api_key, validate_api_key, TIER_LIMITS
+        from shared.auth import TIER_LIMITS, check_and_increment_usage, generate_api_key, validate_api_key
 
         api_key = generate_api_key("user_at_limit", tier="free")
         user = validate_api_key(api_key)
@@ -447,7 +445,7 @@ class TestAuthEdgeCases:
     @mock_aws
     def test_api_key_one_under_limit(self, aws_credentials, mock_dynamodb):
         """Request one under limit should be allowed."""
-        from shared.auth import check_and_increment_usage, generate_api_key, validate_api_key, TIER_LIMITS
+        from shared.auth import TIER_LIMITS, check_and_increment_usage, generate_api_key, validate_api_key
 
         api_key = generate_api_key("user_under_limit", tier="free")
         user = validate_api_key(api_key)

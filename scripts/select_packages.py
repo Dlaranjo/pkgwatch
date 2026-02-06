@@ -13,7 +13,6 @@ Outputs a JSON file with package list and tiers.
 
 import asyncio
 import json
-import sys
 from pathlib import Path
 
 import httpx

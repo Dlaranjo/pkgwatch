@@ -22,8 +22,8 @@ from botocore.exceptions import ClientError
 
 from shared.recovery_utils import (
     generate_recovery_token,
-    verify_recovery_code,
     validate_recovery_code_format,
+    verify_recovery_code,
 )
 from shared.response_utils import error_response, success_response
 

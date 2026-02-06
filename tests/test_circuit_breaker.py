@@ -4,13 +4,14 @@ Tests for circuit breaker implementation.
 
 import asyncio
 import time
+
 import pytest
 
 from functions.shared.circuit_breaker import (
-    InMemoryCircuitBreaker,
     CircuitBreakerConfig,
-    CircuitState,
     CircuitOpenError,
+    CircuitState,
+    InMemoryCircuitBreaker,
     circuit_breaker,
 )
 

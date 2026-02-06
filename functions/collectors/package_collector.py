@@ -26,24 +26,25 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # Import collectors (these will be bundled with the Lambda)
-from depsdev_collector import get_package_info as get_depsdev_info
-from npm_collector import get_npm_metadata, get_bulk_download_stats
-from pypi_collector import get_pypi_metadata, PYPI_PACKAGE_PATTERN as PYPI_NAME_PATTERN
-from github_collector import GitHubCollector, parse_github_url
-from bundlephobia_collector import get_bundle_size
-from openssf_collector import get_openssf_scorecard
-
 # Import shared utilities
 import sys
+
+from bundlephobia_collector import get_bundle_size
+from depsdev_collector import get_package_info as get_depsdev_info
+from github_collector import GitHubCollector, parse_github_url
+from npm_collector import get_bulk_download_stats, get_npm_metadata
+from openssf_collector import get_openssf_scorecard
+from pypi_collector import get_pypi_metadata
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
-from metrics import emit_metric, emit_batch_metrics
-from circuit_breaker import CircuitOpenError, GITHUB_CIRCUIT, OPENSSF_CIRCUIT
-from rate_limit_utils import check_and_increment_external_rate_limit
-from package_validation import validate_npm_package_name, validate_pypi_package_name
-from error_classification import classify_error as _classify_error
-from data_quality import is_queryable
-from logging_utils import configure_structured_logging, request_id_var
 from aws_clients import get_dynamodb, get_s3, get_secretsmanager
+from circuit_breaker import GITHUB_CIRCUIT, OPENSSF_CIRCUIT, CircuitOpenError
+from data_quality import is_queryable
+from error_classification import classify_error as _classify_error
+from logging_utils import configure_structured_logging, request_id_var
+from metrics import emit_batch_metrics, emit_metric
+from package_validation import validate_npm_package_name, validate_pypi_package_name
+from rate_limit_utils import check_and_increment_external_rate_limit
 
 # Backward compatibility alias for tests
 _is_queryable = is_queryable
@@ -287,7 +288,7 @@ def _check_and_increment_github_rate_limit_sync() -> bool:
         if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
             # Rate limit exceeded for this shard
             logger.warning(
-                f"GitHub rate limit exceeded",
+                "GitHub rate limit exceeded",
                 extra={
                     "shard_id": shard_id,
                     "window_key": window_key,
@@ -1528,7 +1529,7 @@ async def process_batch(records: list) -> tuple[int, list[str]]:
                 }
             )
         elif isinstance(result, tuple) and len(result) >= 3:
-            success, pkg_name, error_reason = result[0], result[1], result[2]
+            success, _pkg_name, error_reason = result[0], result[1], result[2]
             if success:
                 successes += 1
                 emit_metric(

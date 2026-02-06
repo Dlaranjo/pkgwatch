@@ -20,12 +20,11 @@ import os
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import boto3
 import pytest
 from moto import mock_aws
-
 
 # Set environment variables before importing modules
 os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -282,7 +281,7 @@ class TestTimingNormalization:
         self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user
     ):
         """Response should take at least MIN_RESPONSE_TIME_SECONDS for existing user."""
-        from api.magic_link import handler, MIN_RESPONSE_TIME_SECONDS
+        from api.magic_link import MIN_RESPONSE_TIME_SECONDS, handler
 
         base_event["body"] = json.dumps({"email": "verified@example.com"})
 
@@ -299,7 +298,7 @@ class TestTimingNormalization:
         self, mock_dynamodb, base_event, ses_client
     ):
         """Response should take at least MIN_RESPONSE_TIME_SECONDS for non-existent user."""
-        from api.magic_link import handler, MIN_RESPONSE_TIME_SECONDS
+        from api.magic_link import MIN_RESPONSE_TIME_SECONDS, handler
 
         base_event["body"] = json.dumps({"email": "nonexistent@example.com"})
 

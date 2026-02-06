@@ -14,14 +14,14 @@ import stripe
 from boto3.dynamodb.conditions import Key
 
 from shared.aws_clients import get_dynamodb
+from shared.billing_utils import get_stripe_api_key
 from shared.referral_utils import (
+    REFERRAL_REWARDS,
     add_bonus_with_cap,
+    mark_retention_checked,
     record_referral_event,
     update_referrer_stats,
-    mark_retention_checked,
-    REFERRAL_REWARDS,
 )
-from shared.billing_utils import get_stripe_api_key
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

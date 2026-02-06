@@ -10,12 +10,9 @@ import logging
 import os
 import random
 import time
-from datetime import datetime, timezone
-from decimal import Decimal
-from typing import Optional
 
-from shared.logging_utils import configure_structured_logging, set_request_id
 from shared.aws_clients import get_dynamodb, get_sqs
+from shared.logging_utils import configure_structured_logging, set_request_id
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -25,9 +22,9 @@ MAX_QUEUE_PER_SCAN = 50  # Prevent abuse - max packages to queue per scan
 
 # NOTE: Package validation moved to shared/package_validation.py
 from shared.package_validation import (
+    normalize_npm_name,
     validate_npm_package_name,
     validate_pypi_package_name,
-    normalize_npm_name,
 )
 
 
@@ -101,11 +98,10 @@ def _queue_packages_for_collection(packages: list[str], ecosystem: str) -> int:
     return queued
 
 # Import from shared module (bundled with Lambda)
-from shared.auth import validate_api_key, check_and_increment_usage_with_bonus
-from shared.response_utils import error_response, decimal_default, get_cors_headers
-from shared.rate_limit_utils import get_reset_timestamp, check_usage_alerts
+from shared.auth import check_and_increment_usage_with_bonus, validate_api_key
 from shared.data_quality import build_data_quality_compact
-
+from shared.rate_limit_utils import check_usage_alerts, get_reset_timestamp
+from shared.response_utils import decimal_default, error_response, get_cors_headers
 
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 

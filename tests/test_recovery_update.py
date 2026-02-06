@@ -18,7 +18,6 @@ import os
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
 
@@ -606,7 +605,7 @@ class TestRecoveryConfirmEmailValidFlow:
             mock_ses.send_email = MagicMock()
 
             event = {"queryStringParameters": {"token": change_token}}
-            response = handler(event, None)
+            handler(event, None)
 
         # Should send notification to old email
         mock_ses.send_email.assert_called_once()

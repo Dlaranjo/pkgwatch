@@ -15,10 +15,8 @@ collection messages, implementing retry logic to recover from transient failures
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-import boto3
 import pytest
 from moto import mock_aws
 
@@ -42,6 +40,7 @@ def dlq_environment(monkeypatch):
 
     # Reload module to pick up new env vars
     import importlib
+
     import collectors.dlq_processor as dlq_module
     importlib.reload(dlq_module)
 
@@ -110,6 +109,7 @@ class TestDLQHandler:
 
         # Reload module to pick up new env vars
         import importlib
+
         import collectors.dlq_processor as dlq_module
         importlib.reload(dlq_module)
 
@@ -680,7 +680,7 @@ class TestEdgeCasesAndErrorHandling:
             from collectors.dlq_processor import _process_dlq_message
 
             # Should not crash
-            result = _process_dlq_message(invalid_message)
+            _result = _process_dlq_message(invalid_message)
 
             # Should still attempt to requeue
             assert mock_sqs.send_message.called
@@ -744,7 +744,7 @@ class TestEdgeCasesAndErrorHandling:
         self, mock_dynamodb, dlq_environment, sample_sqs_message
     ):
         """Should log useful information for debugging."""
-        with patch("collectors.dlq_processor.sqs") as mock_sqs, \
+        with patch("collectors.dlq_processor.sqs"), \
              patch("collectors.dlq_processor.logger") as mock_logger:
 
             from collectors.dlq_processor import _process_dlq_message

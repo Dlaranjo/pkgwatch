@@ -28,7 +28,7 @@ dynamodb = boto3.resource("dynamodb")
 # Import shared utilities
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
 try:
-    from metrics import emit_metric, emit_batch_metrics
+    from metrics import emit_batch_metrics, emit_metric
 except ImportError:
     # Fallback for testing
     def emit_metric(*args, **kwargs):
@@ -160,7 +160,7 @@ def handler(event, context):
                 # Extract package key from stream record
                 result = _extract_package_key(stream_record)
                 if not result:
-                    logger.warning(f"Could not extract package key from stream record")
+                    logger.warning("Could not extract package key from stream record")
                     skipped += 1
                     continue
 

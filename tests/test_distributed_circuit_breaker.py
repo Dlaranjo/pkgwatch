@@ -3,9 +3,9 @@ Tests for DynamoDB-backed distributed circuit breaker.
 """
 
 import os
-import pytest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone, timedelta
+
 from botocore.exceptions import ClientError
 
 # Set up environment before importing
@@ -13,12 +13,13 @@ os.environ.setdefault("API_KEYS_TABLE", "pkgwatch-api-keys")
 os.environ.setdefault("USE_DISTRIBUTED_CIRCUIT_BREAKER", "false")
 
 import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../functions/shared"))
 
 from circuit_breaker import (
-    DynamoDBCircuitBreaker,
     CircuitBreakerConfig,
     CircuitState,
+    DynamoDBCircuitBreaker,
 )
 
 
@@ -289,10 +290,11 @@ class TestCircuitBreakerFactory:
     def test_factory_returns_in_memory_by_default(self):
         # Re-import to pick up environment change
         import importlib
+
         import circuit_breaker
         importlib.reload(circuit_breaker)
 
-        from circuit_breaker import _create_circuit_breaker, InMemoryCircuitBreaker
+        from circuit_breaker import InMemoryCircuitBreaker, _create_circuit_breaker
 
         cb = _create_circuit_breaker("test", CircuitBreakerConfig())
         assert isinstance(cb, InMemoryCircuitBreaker)
@@ -301,10 +303,11 @@ class TestCircuitBreakerFactory:
     def test_factory_returns_dynamodb_when_enabled(self):
         # Re-import to pick up environment change
         import importlib
+
         import circuit_breaker
         importlib.reload(circuit_breaker)
 
-        from circuit_breaker import _create_circuit_breaker, DynamoDBCircuitBreaker
+        from circuit_breaker import DynamoDBCircuitBreaker, _create_circuit_breaker
 
         cb = _create_circuit_breaker("test", CircuitBreakerConfig())
         assert isinstance(cb, DynamoDBCircuitBreaker)
@@ -435,7 +438,7 @@ class TestDynamoDBCircuitBreakerAdvanced:
 
         # Patch can_execute to avoid infinite recursion
         with patch.object(self.circuit, "can_execute", return_value=True) as mock_can_execute:
-            result = self.circuit._transition_to_half_open(state)
+            _result = self.circuit._transition_to_half_open(state)
 
         assert self.circuit._local_cache is None  # Cache invalidated
         mock_can_execute.assert_called_once()

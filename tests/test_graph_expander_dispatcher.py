@@ -15,7 +15,6 @@ import json
 import os
 import sys
 from datetime import datetime, timezone
-from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import boto3
@@ -45,6 +44,7 @@ class TestHandlerConfiguration:
         os.environ.pop("DISCOVERY_QUEUE_URL", None)
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -61,6 +61,7 @@ class TestHandlerConfiguration:
         os.environ["DISCOVERY_QUEUE_URL"] = ""
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -77,6 +78,7 @@ class TestHandlerConfiguration:
         os.environ["DISCOVERY_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -95,6 +97,7 @@ class TestCircuitBreakerIntegration:
         os.environ["DISCOVERY_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -118,6 +121,7 @@ class TestCircuitBreakerIntegration:
         os.environ["DISCOVERY_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -142,6 +146,7 @@ class TestCircuitBreakerIntegration:
         os.environ["DISCOVERY_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -164,6 +169,7 @@ class TestDynamoDBTierQueries:
         os.environ["DISCOVERY_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -197,6 +203,7 @@ class TestDynamoDBTierQueries:
             )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -230,11 +237,12 @@ class TestDynamoDBTierQueries:
             )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
 
-        with patch.object(module, "sqs") as mock_sqs:
+        with patch.object(module, "sqs"):
             result = module.handler({}, None)
 
             assert result["statusCode"] == 200
@@ -273,11 +281,12 @@ class TestDynamoDBTierQueries:
             )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
 
-        with patch.object(module, "sqs") as mock_sqs:
+        with patch.object(module, "sqs"):
             result = module.handler({}, None)
 
             assert result["statusCode"] == 200
@@ -314,11 +323,12 @@ class TestDynamoDBTierQueries:
         )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
 
-        with patch.object(module, "sqs") as mock_sqs:
+        with patch.object(module, "sqs"):
             result = module.handler({}, None)
 
             assert result["statusCode"] == 200
@@ -346,6 +356,7 @@ class TestDynamoDBTierQueries:
             )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -394,6 +405,7 @@ class TestSQSMessageDispatching:
         )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -434,6 +446,7 @@ class TestSQSMessageDispatching:
             )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -468,6 +481,7 @@ class TestSQSMessageDispatching:
         )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -509,6 +523,7 @@ class TestSQSMessageDispatching:
         )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -533,6 +548,7 @@ class TestSQSMessageDispatching:
         os.environ["DISCOVERY_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -578,6 +594,7 @@ class TestErrorHandling:
             )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -614,6 +631,7 @@ class TestErrorHandling:
             )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -643,6 +661,7 @@ class TestErrorHandling:
         os.environ["DISCOVERY_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -682,6 +701,7 @@ class TestMetricsEmission:
         )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -702,6 +722,7 @@ class TestMetricsEmission:
         os.environ["DISCOVERY_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -763,6 +784,7 @@ class TestIntegration:
             )
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)
@@ -810,6 +832,7 @@ class TestIntegration:
         os.environ["DISCOVERY_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
         import importlib
+
         import discovery.graph_expander_dispatcher as module
 
         importlib.reload(module)

@@ -8,7 +8,6 @@ the collector functions and that failures are handled gracefully.
 import asyncio
 import os
 import sys
-from unittest.mock import patch, AsyncMock
 
 import pytest
 
@@ -31,8 +30,11 @@ def run_async(coro):
 def reset_circuit_breakers():
     """Reset all circuit breaker states between tests."""
     from shared.circuit_breaker import (
-        GITHUB_CIRCUIT, NPM_CIRCUIT, DEPSDEV_CIRCUIT, BUNDLEPHOBIA_CIRCUIT,
-        CircuitBreakerState
+        BUNDLEPHOBIA_CIRCUIT,
+        DEPSDEV_CIRCUIT,
+        GITHUB_CIRCUIT,
+        NPM_CIRCUIT,
+        CircuitBreakerState,
     )
 
     # Reset each circuit breaker to initial state
@@ -78,8 +80,9 @@ class TestCircuitOpenBehavior:
 
     def test_npm_circuit_open_raises_error(self):
         """When npm circuit is open, get_npm_metadata should raise CircuitOpenError."""
-        from shared.circuit_breaker import NPM_CIRCUIT, CircuitState, CircuitOpenError
         from npm_collector import get_npm_metadata
+
+        from shared.circuit_breaker import NPM_CIRCUIT, CircuitOpenError, CircuitState
 
         # Open the circuit
         for _ in range(10):  # failure_threshold=10
@@ -93,8 +96,9 @@ class TestCircuitOpenBehavior:
 
     def test_bundlephobia_circuit_open_raises_error(self):
         """When bundlephobia circuit is open, get_bundle_size should raise CircuitOpenError."""
-        from shared.circuit_breaker import BUNDLEPHOBIA_CIRCUIT, CircuitState, CircuitOpenError
         from bundlephobia_collector import get_bundle_size
+
+        from shared.circuit_breaker import BUNDLEPHOBIA_CIRCUIT, CircuitOpenError, CircuitState
 
         # Open the circuit
         for _ in range(5):  # failure_threshold=5
@@ -108,8 +112,9 @@ class TestCircuitOpenBehavior:
 
     def test_depsdev_circuit_open_raises_error(self):
         """When depsdev circuit is open, get_package_info should raise CircuitOpenError."""
-        from shared.circuit_breaker import DEPSDEV_CIRCUIT, CircuitState, CircuitOpenError
         from depsdev_collector import get_package_info
+
+        from shared.circuit_breaker import DEPSDEV_CIRCUIT, CircuitOpenError, CircuitState
 
         # Open the circuit
         for _ in range(10):  # failure_threshold=10

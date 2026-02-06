@@ -5,7 +5,6 @@ Tests for POST /scan endpoint.
 import json
 import os
 
-import pytest
 from moto import mock_aws
 
 
@@ -1209,6 +1208,7 @@ class TestPackageQueueing:
     ):
         """Should queue not-found packages for collection when SQS is configured."""
         import hashlib
+
         import boto3
 
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
@@ -1286,6 +1286,7 @@ class TestPackageQueueing:
     ):
         """Should limit queued packages to MAX_QUEUE_PER_SCAN."""
         import hashlib
+
         import boto3
 
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
@@ -1532,6 +1533,7 @@ class TestGetResetTimestamp:
     def test_timestamp_is_in_future(self):
         """Should return a timestamp in the future."""
         import time
+
         from shared.rate_limit_utils import get_reset_timestamp
 
         timestamp = get_reset_timestamp()
@@ -1748,6 +1750,7 @@ class TestQueueingEdgeCases:
     ):
         """Should return 0 queued when all packages are invalid."""
         import hashlib
+
         import boto3
 
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
@@ -1811,8 +1814,9 @@ class TestDecemberMonthHandling:
 
     def test_december_to_january_transition(self):
         """Should handle year boundary when current month is December."""
-        from unittest.mock import patch
         from datetime import datetime, timezone
+        from unittest.mock import patch
+
         from shared.rate_limit_utils import get_reset_timestamp
 
         # Mock datetime to December 15
@@ -1837,8 +1841,8 @@ class TestSQSErrorHandling:
     ):
         """Should handle SQS errors gracefully without failing the request."""
         import hashlib
-        import boto3
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock
+
 
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -1901,8 +1905,8 @@ class TestDynamoDBErrorHandling:
     ):
         """Should handle DynamoDB errors gracefully by marking packages as not found."""
         import hashlib
-        from unittest.mock import patch, MagicMock
-        from botocore.exceptions import ClientError
+        from unittest.mock import MagicMock, patch
+
 
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -2403,7 +2407,7 @@ class TestUnprocessedKeysRetry:
     ):
         """Should retry when DynamoDB returns UnprocessedKeys (lines 298-304)."""
         import hashlib
-        from unittest.mock import patch, MagicMock, call
+        from unittest.mock import MagicMock, patch
 
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -2489,7 +2493,7 @@ class TestUnprocessedKeysRetry:
     ):
         """Should log error and continue when max retries exceeded (lines 305-307)."""
         import hashlib
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
 
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -2549,7 +2553,7 @@ class TestUnprocessedKeysRetry:
     ):
         """Should use exponential backoff between retries."""
         import hashlib
-        from unittest.mock import patch, MagicMock, call
+        from unittest.mock import MagicMock, patch
 
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"

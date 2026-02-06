@@ -8,7 +8,6 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import boto3
-import pytest
 from moto import mock_aws
 
 
@@ -73,8 +72,8 @@ class TestGetApiKeysHandler:
             }
         )
 
-        from api.get_api_keys import handler
         import api.auth_callback
+        from api.get_api_keys import handler
         api.auth_callback._session_secret_cache = None
 
         # Create valid session token
@@ -136,8 +135,8 @@ class TestCreateApiKeyHandler:
             }
         )
 
-        from api.create_api_key import handler
         import api.auth_callback
+        from api.create_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_create123", "create@example.com", "pro")
@@ -179,8 +178,8 @@ class TestCreateApiKeyHandler:
             }
         )
 
-        from api.create_api_key import handler
         import api.auth_callback
+        from api.create_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_no_meta", "nometa@example.com")
@@ -225,8 +224,8 @@ class TestCreateApiKeyHandler:
             }
         )
 
-        from api.create_api_key import handler
         import api.auth_callback
+        from api.create_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_has_usage", "hasusage@example.com")
@@ -279,8 +278,8 @@ class TestCreateApiKeyHandler:
             }
         )
 
-        from api.create_api_key import handler
         import api.auth_callback
+        from api.create_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_with_meta", "withmeta@example.com")
@@ -324,8 +323,8 @@ class TestCreateApiKeyHandler:
                 }
             )
 
-        from api.create_api_key import handler
         import api.auth_callback
+        from api.create_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_maxkeys", "maxkeys@example.com")
@@ -388,8 +387,8 @@ class TestRevokeApiKeyHandler:
                 }
             )
 
-        from api.revoke_api_key import handler
         import api.auth_callback
+        from api.revoke_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_revoke123", "revoke@example.com")
@@ -434,8 +433,8 @@ class TestRevokeApiKeyHandler:
             }
         )
 
-        from api.revoke_api_key import handler
         import api.auth_callback
+        from api.revoke_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_onlykey", "onlykey@example.com")
@@ -477,8 +476,8 @@ class TestRevokeApiKeyHandler:
             }
         )
 
-        from api.revoke_api_key import handler
         import api.auth_callback
+        from api.revoke_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_notfound", "notfound@example.com")
@@ -503,9 +502,9 @@ class TestRevokeApiKeyHandler:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
+        import api.auth_callback
         from api.create_api_key import handler as create_handler
         from api.get_api_keys import handler as get_handler
-        import api.auth_callback
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_suffix_test", "suffix@example.com", "pro")
@@ -576,8 +575,8 @@ class TestGetApiKeysFiltering:
             }
         )
 
-        from api.get_api_keys import handler
         import api.auth_callback
+        from api.get_api_keys import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_filter_test", "filter@example.com")
@@ -626,8 +625,8 @@ class TestGetApiKeysFiltering:
             }
         )
 
-        from api.get_api_keys import handler
         import api.auth_callback
+        from api.get_api_keys import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_meta_filter", "meta_filter@example.com")
@@ -675,8 +674,8 @@ class TestGetApiKeysFiltering:
             }
         )
 
-        from api.get_api_keys import handler
         import api.auth_callback
+        from api.get_api_keys import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_recovery_filter", "recovery@example.com")
@@ -719,8 +718,8 @@ class TestCreateApiKeyWithName:
             }
         )
 
-        from api.create_api_key import handler
         import api.auth_callback
+        from api.create_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_named_key", "named@example.com", "pro")
@@ -773,8 +772,8 @@ class TestCreateApiKeyWithName:
             }
         )
 
-        from api.create_api_key import handler
         import api.auth_callback
+        from api.create_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_default_name", "default@example.com")
@@ -802,8 +801,8 @@ class TestRevokeApiKeyEdgeCases:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        from api.revoke_api_key import handler
         import api.auth_callback
+        from api.revoke_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_missing_id", "missing@example.com")
@@ -829,8 +828,8 @@ class TestRevokeApiKeyEdgeCases:
             SecretString='{"secret": "test-secret-key-for-signing-sessions"}'
         )
 
-        from api.revoke_api_key import handler
         import api.auth_callback
+        from api.revoke_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         # Create expired session token
@@ -890,8 +889,8 @@ class TestRevokeApiKeyEdgeCases:
             }
         )
 
-        from api.revoke_api_key import handler
         import api.auth_callback
+        from api.revoke_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_count_test", "count@example.com")
@@ -936,8 +935,8 @@ class TestApiKeysCorsHandling:
             }
         )
 
-        from api.get_api_keys import handler
         import api.auth_callback
+        from api.get_api_keys import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_cors", "cors@example.com")
@@ -974,8 +973,8 @@ class TestApiKeysCorsHandling:
             }
         )
 
-        from api.create_api_key import handler
         import api.auth_callback
+        from api.create_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_cors_create", "cors_create@example.com")
@@ -1017,8 +1016,8 @@ class TestApiKeysResponseFormat:
             }
         )
 
-        from api.get_api_keys import handler
         import api.auth_callback
+        from api.get_api_keys import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_cache", "cache@example.com")
@@ -1055,8 +1054,8 @@ class TestApiKeysResponseFormat:
             }
         )
 
-        from api.create_api_key import handler
         import api.auth_callback
+        from api.create_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_message", "message@example.com")
@@ -1095,8 +1094,8 @@ class TestApiKeysResponseFormat:
             }
         )
 
-        from api.create_api_key import handler
         import api.auth_callback
+        from api.create_api_key import handler
         api.auth_callback._session_secret_cache = None
 
         session_token = _create_test_session_token("user_keyid", "keyid@example.com")

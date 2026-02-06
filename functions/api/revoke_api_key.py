@@ -4,7 +4,6 @@ Revoke API Key Endpoint - DELETE /api-keys/{key_id}
 Revokes (deletes) an API key for the authenticated user.
 """
 
-import json
 import logging
 import os
 from http.cookies import SimpleCookie

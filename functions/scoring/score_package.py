@@ -10,30 +10,30 @@ Can be triggered:
 import json
 import logging
 import os
+import random
 import threading
 import time
-import random
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional, Callable, TypeVar
+from typing import Callable, Optional, TypeVar
 
 import boto3
-from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
 # Support both Lambda (direct imports) and pytest (package-qualified imports)
 try:
     # Lambda environment - all files deployed to same directory
-    from health_score import calculate_health_score
     from abandonment_risk import calculate_abandonment_risk
-    from shared.logging_utils import configure_structured_logging, set_request_id
+    from health_score import calculate_health_score
+
     from shared.data_quality import is_queryable
+    from shared.logging_utils import configure_structured_logging, set_request_id
 except ImportError:
     # pytest environment - functions dir added to sys.path
-    from scoring.health_score import calculate_health_score
     from scoring.abandonment_risk import calculate_abandonment_risk
-    from shared.logging_utils import configure_structured_logging, set_request_id
+    from scoring.health_score import calculate_health_score
     from shared.data_quality import is_queryable
+    from shared.logging_utils import configure_structured_logging, set_request_id
 
 # Backward compatibility alias for tests
 _is_queryable = is_queryable

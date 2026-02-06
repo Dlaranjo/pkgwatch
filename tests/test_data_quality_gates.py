@@ -1,12 +1,10 @@
 """Tests for data quality gates (queryable field, downloads_status, etc.)."""
 import os
 import sys
-import pytest
-from decimal import Decimal
 
 import boto3
+import pytest
 from moto import mock_aws
-
 
 # Set up test environment before imports
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")

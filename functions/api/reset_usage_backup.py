@@ -8,10 +8,11 @@ has passed but haven't been reset yet.
 This is a BACKUP mechanism - primary reset is via invoice.paid webhook.
 """
 
-import boto3
 import logging
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
+import boto3
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

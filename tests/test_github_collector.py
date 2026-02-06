@@ -18,7 +18,7 @@ import asyncio
 import os
 import sys
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest

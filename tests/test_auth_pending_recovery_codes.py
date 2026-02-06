@@ -19,7 +19,6 @@ import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
 
-
 # ============================================================================
 # Test Fixtures
 # ============================================================================
@@ -614,7 +613,6 @@ class TestPendingRecoveryCodesEdgeCases:
         self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event
     ):
         """Should handle edge case of empty codes array."""
-        import hashlib
         import api.auth_callback
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0

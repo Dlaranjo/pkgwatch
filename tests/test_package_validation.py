@@ -1,10 +1,9 @@
 """Tests for shared package validation module."""
 
-import pytest
 from shared.package_validation import (
+    normalize_npm_name,
     validate_npm_package_name,
     validate_pypi_package_name,
-    normalize_npm_name,
 )
 
 

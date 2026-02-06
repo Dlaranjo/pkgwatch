@@ -2,14 +2,13 @@
 Tests for centralized retry logic.
 """
 
-import asyncio
 import pytest
 
 from functions.shared.retry import (
     RetryConfig,
     calculate_delay,
-    retry_async,
     retry,
+    retry_async,
 )
 
 

@@ -11,11 +11,9 @@ Tests cover:
 import hashlib
 import json
 import os
-import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
 
@@ -938,7 +936,6 @@ class TestRecoveryUpdateEmailErrors:
         table, test_key = seeded_api_keys_table
 
         # Create another user with the target email
-        import hashlib
         other_key = "pw_other_user_key_1234"
         other_key_hash = hashlib.sha256(other_key.encode()).hexdigest()
         table.put_item(
@@ -1142,7 +1139,6 @@ class TestRecoveryVerifyApiKeyErrors:
         table, test_key = seeded_api_keys_table
 
         from api.recovery_verify_api_key import handler
-        import hashlib
 
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
@@ -1154,7 +1150,7 @@ class TestRecoveryVerifyApiKeyErrors:
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        now = datetime.now(timezone.utc)
+        _now = datetime.now(timezone.utc)
         with patch("time.sleep"), \
              patch("api.recovery_verify_api_key.dynamodb") as mock_ddb:
             mock_table = MagicMock()
@@ -1235,7 +1231,6 @@ class TestRecoveryVerifyApiKeyErrors:
         )
 
         from api.recovery_verify_api_key import handler
-        import hashlib
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
         event = {
@@ -1354,7 +1349,6 @@ class TestRecoveryConfirmEmailErrors:
     def test_confirm_email_token_consumed_race(self, mock_dynamodb, seeded_api_keys_table):
         """Should handle race condition when token is consumed concurrently."""
         table, test_key = seeded_api_keys_table
-        import hashlib
 
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
@@ -1459,7 +1453,6 @@ class TestRecoveryInitiateErrors:
         table, test_key = seeded_api_keys_table
 
         from api.recovery_initiate import handler
-        import hashlib
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
         event = {

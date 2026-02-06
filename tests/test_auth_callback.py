@@ -22,17 +22,15 @@ import hashlib
 import hmac
 import json
 import os
-import secrets
 import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import boto3
 import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
-
 
 # Set environment variables before importing modules
 os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -479,7 +477,7 @@ class TestSessionTokenCreation:
     ):
         """Should set session expiry to 7 days."""
         with mock_session_secret():
-            from api.auth_callback import handler, SESSION_TTL_DAYS
+            from api.auth_callback import SESSION_TTL_DAYS, handler
 
             now = datetime.now(timezone.utc)
             base_event["queryStringParameters"] = {
@@ -510,7 +508,7 @@ class TestSessionTokenVerification:
     def test_verify_valid_session_token(self, mock_dynamodb):
         """Should verify valid session token."""
         with mock_session_secret():
-            from api.auth_callback import _create_session_token, verify_session_token, _get_session_secret
+            from api.auth_callback import _create_session_token, _get_session_secret, verify_session_token
 
             session_secret = _get_session_secret()
             session_data = {
@@ -532,7 +530,7 @@ class TestSessionTokenVerification:
     def test_verify_expired_session_token_returns_none(self, mock_dynamodb):
         """Should return None for expired session token."""
         with mock_session_secret():
-            from api.auth_callback import _create_session_token, verify_session_token, _get_session_secret
+            from api.auth_callback import _create_session_token, _get_session_secret, verify_session_token
 
             session_secret = _get_session_secret()
             session_data = {
@@ -551,7 +549,7 @@ class TestSessionTokenVerification:
     def test_verify_tampered_session_token_returns_none(self, mock_dynamodb):
         """Should return None for tampered session token."""
         with mock_session_secret():
-            from api.auth_callback import _create_session_token, verify_session_token, _get_session_secret
+            from api.auth_callback import _create_session_token, _get_session_secret, verify_session_token
 
             session_secret = _get_session_secret()
             session_data = {

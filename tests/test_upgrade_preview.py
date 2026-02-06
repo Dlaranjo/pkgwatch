@@ -6,10 +6,9 @@ import hashlib
 import json
 import os
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import boto3
-import pytest
 import stripe as stripe_module
 from moto import mock_aws
 
@@ -26,7 +25,6 @@ class TestUpgradePreviewHandler:
         os.environ["STRIPE_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:123456789:secret:test"
 
         # Clear cache
-        import api.upgrade_preview as preview_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -47,7 +45,6 @@ class TestUpgradePreviewHandler:
         """Should return 401 when session is expired or invalid."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.upgrade_preview as preview_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -70,7 +67,6 @@ class TestUpgradePreviewHandler:
         """Should return 400 for invalid tier."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.upgrade_preview as preview_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -95,7 +91,6 @@ class TestUpgradePreviewHandler:
         """Should return 400 when trying to preview upgrade to starter (not allowed)."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.upgrade_preview as preview_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -536,8 +531,9 @@ class TestUpgradePreviewHandler:
             }
         )
 
-        import api.upgrade_preview as preview_module
         import stripe as stripe_module
+
+        import api.upgrade_preview as preview_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
         preview_module.TIER_TO_PRICE["pro"] = "price_pro_123"
@@ -567,7 +563,6 @@ class TestUpgradePreviewHandler:
         """Should return 500 when Stripe API key is not configured (lines 112-113)."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.upgrade_preview as preview_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
@@ -589,7 +584,6 @@ class TestUpgradePreviewHandler:
         """Should return 400 when request body is not valid JSON (lines 148-149)."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import api.upgrade_preview as preview_module
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 

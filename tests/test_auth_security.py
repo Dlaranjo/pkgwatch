@@ -14,13 +14,12 @@ import os
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import boto3
 import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
-
 
 # ============================================================================
 # Test Fixtures
@@ -227,7 +226,7 @@ class TestVerifyEmailTimingNormalization:
     @mock_aws
     def test_minimum_response_time_enforced(self, mock_dynamodb, setup_env, api_gateway_event):
         """Response should take at least MIN_RESPONSE_TIME_SECONDS."""
-        from api.verify_email import handler, MIN_RESPONSE_TIME_SECONDS
+        from api.verify_email import MIN_RESPONSE_TIME_SECONDS, handler
 
         api_gateway_event["queryStringParameters"] = {"token": "nonexistent_token"}
 
@@ -344,6 +343,7 @@ class TestAuthCallbackTOCTOU:
     def test_expired_token_returns_token_expired(self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event):
         """Expired magic token should return token_expired error."""
         import hashlib
+
         import api.auth_callback
         api.auth_callback._session_secret_cache = None
         api.auth_callback._session_secret_cache_time = 0.0
@@ -536,7 +536,7 @@ class TestMagicLinkTimingNormalization:
     @mock_aws
     def test_minimum_response_time(self, mock_dynamodb, setup_env, api_gateway_event):
         """Response should take minimum time regardless of email existence."""
-        from api.magic_link import handler, MIN_RESPONSE_TIME_SECONDS
+        from api.magic_link import MIN_RESPONSE_TIME_SECONDS, handler
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["body"] = json.dumps({"email": "any@example.com"})
@@ -551,7 +551,7 @@ class TestMagicLinkTimingNormalization:
     @mock_aws
     def test_timing_constant_for_existing_vs_nonexistent(self, mock_dynamodb, mock_ses, seeded_api_keys_table, setup_env, api_gateway_event):
         """Timing should be similar for existing vs non-existent emails."""
-        from api.magic_link import handler, MIN_RESPONSE_TIME_SECONDS
+        from api.magic_link import MIN_RESPONSE_TIME_SECONDS, handler
 
         api_gateway_event["httpMethod"] = "POST"
 
@@ -623,7 +623,7 @@ class TestResendVerification:
     @mock_aws
     def test_cooldown_enforced(self, mock_dynamodb, mock_ses, pending_user, setup_env, api_gateway_event):
         """Should enforce cooldown between resend requests."""
-        from api.resend_verification import handler, RESEND_COOLDOWN_SECONDS
+        from api.resend_verification import handler
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["body"] = json.dumps({"email": pending_user["email"]})
@@ -654,7 +654,7 @@ class TestResendVerification:
     @mock_aws
     def test_timing_normalization(self, mock_dynamodb, setup_env, api_gateway_event):
         """Response should take minimum time."""
-        from api.resend_verification import handler, MIN_RESPONSE_TIME_SECONDS
+        from api.resend_verification import MIN_RESPONSE_TIME_SECONDS, handler
 
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["body"] = json.dumps({"email": "any@example.com"})

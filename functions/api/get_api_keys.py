@@ -7,7 +7,6 @@ Lists all API keys for the authenticated user.
 import json
 import logging
 import os
-from decimal import Decimal
 from http.cookies import SimpleCookie
 
 import boto3

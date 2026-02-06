@@ -7,7 +7,6 @@ Uses continuous risk factors with adjustable time horizons.
 import logging
 import math
 import re
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
