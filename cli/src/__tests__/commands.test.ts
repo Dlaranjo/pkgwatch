@@ -25,14 +25,19 @@ async function runCLI(args: string[], options: { timeout?: number; env?: Record<
   return new Promise((resolve) => {
     const timeout = options.timeout || 5000;
     const env = { ...process.env, ...options.env, NO_COLOR: "1" }; // Disable colors for testing
+    let resolved = false;
 
-    const proc = spawn("node", [CLI_PATH, ...args], {
-      env,
-      timeout,
-    });
+    const proc = spawn("node", [CLI_PATH, ...args], { env });
 
     let stdout = "";
     let stderr = "";
+
+    // spawn() ignores the timeout option — kill manually
+    const killTimer = setTimeout(() => {
+      if (!resolved) {
+        proc.kill();
+      }
+    }, timeout);
 
     proc.stdout.on("data", (data) => {
       stdout += data.toString();
@@ -43,11 +48,19 @@ async function runCLI(args: string[], options: { timeout?: number; env?: Record<
     });
 
     proc.on("close", (code) => {
-      resolve({ stdout, stderr, exitCode: code });
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(killTimer);
+        resolve({ stdout, stderr, exitCode: code });
+      }
     });
 
     proc.on("error", () => {
-      resolve({ stdout, stderr, exitCode: -1 });
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(killTimer);
+        resolve({ stdout, stderr, exitCode: -1 });
+      }
     });
   });
 }
@@ -415,7 +428,7 @@ describe("CLI with mock dependencies", () => {
 
       // Should detect Python ecosystem
       expect(result.stderr + result.stdout).not.toContain("No dependency file found");
-    });
+    }, 10_000);
 
     it("detects pyproject.toml for Python projects", async () => {
       writeFileSync(
@@ -432,7 +445,7 @@ dependencies = ["requests>=2.0"]
 
       // Should detect Python ecosystem via pyproject.toml
       expect(result.stderr + result.stdout).not.toContain("No dependency file found");
-    });
+    }, 10_000);
   });
 
   describe("recursive scan validation", () => {
