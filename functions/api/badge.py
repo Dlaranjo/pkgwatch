@@ -160,7 +160,7 @@ def handler(event, context):
     """
     # Extract path parameters
     path_params = event.get("pathParameters") or {}
-    ecosystem = path_params.get("ecosystem", "npm")
+    ecosystem = path_params.get("ecosystem", "npm").lower()
     name = path_params.get("name")
 
     # Extract query parameters

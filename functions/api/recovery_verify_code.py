@@ -107,7 +107,7 @@ def handler(event, context):
 
     # We need to find the recovery session first to get the user_id
     # Since we don't know the user_id yet, we need to scan for the session
-    # This is acceptable because recovery sessions have a 1-hour TTL
+    # This is acceptable because recovery sessions have a 4-hour TTL
     # and the recovery flow is not high-frequency
 
     # First, let's try to find any session with this ID by scanning

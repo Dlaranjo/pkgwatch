@@ -152,10 +152,12 @@ def handler(event, context):
 
     # Extract API key from headers
     api_key = headers.get("x-api-key") or headers.get("X-API-Key")
+    key_was_provided = bool(api_key)
 
     # Try API key authentication first
     user = validate_api_key(api_key)
     is_demo_mode = False
+    demo_warning = False
     demo_remaining = 0
     authenticated_usage_count = 0
 
@@ -170,18 +172,22 @@ def handler(event, context):
             return _rate_limit_response(user, cors_headers)
     else:
         # No valid API key - try demo mode
+        demo_warning = key_was_provided
         client_ip = _get_client_ip(event)
         allowed, demo_remaining = _check_demo_rate_limit(client_ip)
 
         if not allowed:
-            return _demo_rate_limit_response(cors_headers)
+            response = _demo_rate_limit_response(cors_headers)
+            if demo_warning:
+                response["headers"]["X-Auth-Warning"] = "api_key_not_recognized"
+            return response
 
         is_demo_mode = True
         logger.info(f"Demo request from IP: {client_ip}, remaining: {demo_remaining}")
 
     # Extract path parameters (use `or {}` to handle explicit None)
     path_params = event.get("pathParameters") or {}
-    ecosystem = path_params.get("ecosystem", "npm")
+    ecosystem = path_params.get("ecosystem", "npm").lower()
     name = path_params.get("name")
 
     if not name:
@@ -221,6 +227,7 @@ def handler(event, context):
             "package_not_found",
             f"Package '{name}' not found in {ecosystem}",
             headers=cors_headers,
+            details={"request_url": "/packages/request"},
         )
 
     # Data quality gate - return 202 for packages still being collected
@@ -237,13 +244,17 @@ def handler(event, context):
         # Other statuses = longer retry (may need manual intervention)
         retry_after = 60 if data_status == "pending" else 300
 
+        response_202_headers = {
+            "Content-Type": "application/json",
+            "Retry-After": str(retry_after),
+            **cors_headers,
+        }
+        if demo_warning:
+            response_202_headers["X-Auth-Warning"] = "api_key_not_recognized"
+
         return {
             "statusCode": 202,
-            "headers": {
-                "Content-Type": "application/json",
-                "Retry-After": str(retry_after),
-                **cors_headers,
-            },
+            "headers": response_202_headers,
             "body": json.dumps(
                 {
                     "status": "collecting",
@@ -313,6 +324,8 @@ def handler(event, context):
         response_headers["X-RateLimit-Limit"] = str(DEMO_REQUESTS_PER_HOUR)
         response_headers["X-RateLimit-Remaining"] = str(demo_remaining)
         response_headers["X-RateLimit-Reset"] = str(reset_timestamp)
+        if demo_warning:
+            response_headers["X-Auth-Warning"] = "api_key_not_recognized"
     else:
         # Authenticated mode: monthly reset (end of month)
         now = datetime.now(timezone.utc)

@@ -372,8 +372,8 @@ class TestPostScanEcosystem:
         assert body["error"]["code"] == "invalid_ecosystem"
 
     @mock_aws
-    def test_ecosystem_case_sensitive(self, seeded_api_keys_table, api_gateway_event):
-        """Should reject uppercase ecosystem values (case-sensitive)."""
+    def test_ecosystem_case_insensitive(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
+        """Should accept ecosystem values in any case (case-insensitive)."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
@@ -381,20 +381,45 @@ class TestPostScanEcosystem:
 
         table, test_key = seeded_api_keys_table
 
-        api_gateway_event["httpMethod"] = "POST"
-        api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps(
-            {
-                "ecosystem": "NPM",
-                "dependencies": {"lodash": "^4.17.21"},
-            }
-        )
+        for ecosystem in ["NPM", "Npm", "nPm", "PYPI", "PyPI", "PyPi"]:
+            api_gateway_event["httpMethod"] = "POST"
+            api_gateway_event["headers"]["x-api-key"] = test_key
+            api_gateway_event["body"] = json.dumps(
+                {
+                    "ecosystem": ecosystem,
+                    "dependencies": {"lodash": "^4.17.21"},
+                }
+            )
 
-        result = handler(api_gateway_event, {})
+            result = handler(api_gateway_event, {})
 
-        assert result["statusCode"] == 400
-        body = json.loads(result["body"])
-        assert body["error"]["code"] == "invalid_ecosystem"
+            assert result["statusCode"] != 400, f"Ecosystem '{ecosystem}' should be accepted"
+
+    @mock_aws
+    def test_ecosystem_non_string_still_rejected(self, seeded_api_keys_table, api_gateway_event):
+        """Should reject non-string ecosystem values."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        for ecosystem in [123, ["npm"], None, {"type": "npm"}]:
+            api_gateway_event["httpMethod"] = "POST"
+            api_gateway_event["headers"]["x-api-key"] = test_key
+            api_gateway_event["body"] = json.dumps(
+                {
+                    "ecosystem": ecosystem,
+                    "dependencies": {"lodash": "^4.17.21"},
+                }
+            )
+
+            result = handler(api_gateway_event, {})
+
+            assert result["statusCode"] == 400, f"Non-string ecosystem {type(ecosystem)} should be rejected"
+            body = json.loads(result["body"])
+            assert body["error"]["code"] == "invalid_ecosystem"
 
     @mock_aws
     def test_ecosystem_non_string_returns_400(self, seeded_api_keys_table, api_gateway_event):

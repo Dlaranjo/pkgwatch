@@ -33,8 +33,8 @@ API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 # Minimum response time to prevent timing-based enumeration (1.5s)
 MIN_RESPONSE_TIME_SECONDS = 1.5
 
-# Recovery session TTL (1 hour)
-RECOVERY_SESSION_TTL_SECONDS = 3600
+# Recovery session TTL (4 hours)
+RECOVERY_SESSION_TTL_SECONDS = 14400
 
 # Rate limiting: max attempts per user per 24 hours
 MAX_RECOVERY_ATTEMPTS_PER_DAY = 10

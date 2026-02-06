@@ -147,6 +147,8 @@ def handler(event, context):
 
     # Extract ecosystem (default to npm for backwards compatibility)
     ecosystem = body.get("ecosystem", "npm")
+    if isinstance(ecosystem, str):
+        ecosystem = ecosystem.lower()
     if not isinstance(ecosystem, str) or ecosystem not in ("npm", "pypi"):
         return error_response(
             400,

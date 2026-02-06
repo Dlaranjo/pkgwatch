@@ -1915,3 +1915,203 @@ class TestGetPackageRateLimitReset:
         assert reset_ts > int(time.time())
         # Should be no more than 31 days from now
         assert reset_ts < int(time.time()) + 31 * 86400 + 86400
+
+
+class TestEcosystemCaseInsensitive:
+    """Tests for case-insensitive ecosystem parameter handling."""
+
+    @mock_aws
+    def test_get_package_accepts_uppercase_ecosystem(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """GET /packages should accept ecosystem in any case."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+
+        for ecosystem in ["NPM", "Npm", "nPm"]:
+            api_gateway_event["pathParameters"] = {"ecosystem": ecosystem, "name": "lodash"}
+            api_gateway_event["headers"]["x-api-key"] = test_key
+
+            result = handler(api_gateway_event, {})
+
+            assert result["statusCode"] == 200, f"Ecosystem '{ecosystem}' should be accepted"
+            body = json.loads(result["body"])
+            assert body["ecosystem"] == "npm"
+
+    @mock_aws
+    def test_badge_accepts_uppercase_ecosystem(self, mock_dynamodb, api_gateway_event):
+        """GET /badge should accept ecosystem in any case."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
+        packages_table.put_item(
+            Item={
+                "pk": "npm#lodash",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "lodash",
+                "health_score": 85,
+                "queryable": True,
+                "data_status": "complete",
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        from api.badge import handler
+
+        for ecosystem in ["NPM", "Npm", "PYPI", "PyPI"]:
+            api_gateway_event["pathParameters"] = {"ecosystem": ecosystem, "name": "lodash"}
+
+            result = handler(api_gateway_event, {})
+
+            # NPM variants should find lodash; PyPI variants won't find it but shouldn't return 400
+            assert result["statusCode"] == 200, f"Ecosystem '{ecosystem}' should not return error"
+
+
+class TestNotFoundRequestUrlHint:
+    """Tests for 404 response including request_url hint."""
+
+    @mock_aws
+    def test_404_includes_request_url_hint(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
+        """404 response should include request_url pointing to POST /packages/request."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "nonexistent-pkg-xyz"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 404
+        body = json.loads(result["body"])
+        assert body["error"]["details"]["request_url"] == "/packages/request"
+
+
+class TestAuthWarningHeader:
+    """Tests for X-Auth-Warning header when invalid API key is provided."""
+
+    @mock_aws
+    def test_invalid_key_returns_auth_warning_header(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """Bad key + queryable package should return 200 with X-Auth-Warning."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["headers"]["x-api-key"] = "invalid-key-12345"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        assert result["headers"].get("X-Auth-Warning") == "api_key_not_recognized"
+
+    @mock_aws
+    def test_no_key_no_warning_header(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
+        """No key should use demo mode without X-Auth-Warning."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        # No x-api-key header
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        assert "X-Auth-Warning" not in result["headers"]
+
+    @mock_aws
+    def test_valid_key_no_warning_header(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
+        """Valid key should not include X-Auth-Warning."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        assert "X-Auth-Warning" not in result["headers"]
+
+    @mock_aws
+    def test_invalid_key_warning_on_202(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
+        """Bad key + non-queryable package should return 202 with X-Auth-Warning."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
+        packages_table.put_item(
+            Item={
+                "pk": "npm#incomplete-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "incomplete-pkg",
+                "health_score": 50,
+                "data_status": "pending",
+                "queryable": False,
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        from api.get_package import handler
+
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "incomplete-pkg"}
+        api_gateway_event["headers"]["x-api-key"] = "invalid-key-12345"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 202
+        assert result["headers"].get("X-Auth-Warning") == "api_key_not_recognized"
+
+    @mock_aws
+    def test_invalid_key_warning_on_429_demo(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
+        """Bad key + demo limit hit should return 429 with X-Auth-Warning."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        # Exhaust demo rate limit (20 requests per hour)
+        for _ in range(20):
+            api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+            api_gateway_event["headers"]["x-api-key"] = "invalid-key-12345"
+            handler(api_gateway_event, {})
+
+        # 21st request should be rate limited
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["headers"]["x-api-key"] = "invalid-key-12345"
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 429
+        assert result["headers"].get("X-Auth-Warning") == "api_key_not_recognized"
+
+    @mock_aws
+    def test_empty_string_key_no_warning(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
+        """Empty string key is falsy = no key = no warning."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["headers"]["x-api-key"] = ""
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        assert "X-Auth-Warning" not in result["headers"]

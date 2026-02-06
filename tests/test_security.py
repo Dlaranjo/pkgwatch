@@ -520,7 +520,6 @@ class TestInputInjection:
         malicious_ecosystems = [
             "../npm",
             "npm/../pypi",
-            "NPM",  # Case sensitivity
             '{"$ne": ""}',
             "",
             "a" * 1000,
