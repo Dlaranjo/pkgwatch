@@ -10,10 +10,10 @@ import logging
 import os
 from datetime import datetime, timezone
 
-import boto3
 import stripe
 from boto3.dynamodb.conditions import Key
 
+from shared.aws_clients import get_dynamodb
 from shared.referral_utils import (
     add_bonus_with_cap,
     record_referral_event,
@@ -25,17 +25,6 @@ from shared.billing_utils import get_stripe_api_key
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-# Lazy initialization
-_dynamodb = None
-
-
-def _get_dynamodb():
-    """Get DynamoDB resource."""
-    global _dynamodb
-    if _dynamodb is None:
-        _dynamodb = boto3.resource("dynamodb")
-    return _dynamodb
 
 
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
@@ -63,8 +52,8 @@ def handler(event, context):
 
     stripe.api_key = stripe_api_key
 
-    events_table = _get_dynamodb().Table(REFERRAL_EVENTS_TABLE)
-    api_keys_table = _get_dynamodb().Table(API_KEYS_TABLE)
+    events_table = get_dynamodb().Table(REFERRAL_EVENTS_TABLE)
+    api_keys_table = get_dynamodb().Table(API_KEYS_TABLE)
 
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat()

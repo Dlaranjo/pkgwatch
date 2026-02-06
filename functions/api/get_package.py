@@ -24,40 +24,14 @@ from shared.rate_limit_utils import check_usage_alerts, get_reset_timestamp
 from shared.data_quality import build_data_quality_full, is_queryable
 from shared.package_validation import normalize_npm_name
 from shared.constants import DEMO_REQUESTS_PER_HOUR
-
-
-# Lazy initialization to reduce cold start overhead
-_dynamodb = None
-
-
-def _get_dynamodb():
-    """Get DynamoDB resource, creating it lazily on first use."""
-    global _dynamodb
-    if _dynamodb is None:
-        import boto3
-        _dynamodb = boto3.resource("dynamodb")
-    return _dynamodb
+from shared.aws_clients import get_dynamodb
 
 
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 DEMO_RATE_LIMIT_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
 
-def _get_client_ip(event: dict) -> str:
-    """Extract client IP from API Gateway's verified source.
-
-    SECURITY: Always use requestContext.identity.sourceIp which is set by
-    API Gateway and cannot be spoofed by clients. Never trust X-Forwarded-For
-    header for rate limiting as it can be forged.
-    """
-    # Use API Gateway's verified source IP (cannot be spoofed)
-    source_ip = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
-    if source_ip:
-        return source_ip
-
-    # Log warning if missing (shouldn't happen with proper API Gateway config)
-    logger.warning("Missing sourceIp in requestContext - possible misconfiguration")
-    return "unknown"
+from shared.request_utils import get_client_ip as _get_client_ip
 
 
 def _format_openssf_checks(checks: list) -> dict:
@@ -119,7 +93,7 @@ def _check_demo_rate_limit(client_ip: str) -> tuple[bool, int]:
     """
     from botocore.exceptions import ClientError
 
-    table = _get_dynamodb().Table(DEMO_RATE_LIMIT_TABLE)
+    table = get_dynamodb().Table(DEMO_RATE_LIMIT_TABLE)
     now = datetime.now(timezone.utc)
     current_hour = now.strftime("%Y-%m-%d-%H")
     pk = f"demo#{client_ip}"
@@ -231,7 +205,7 @@ def handler(event, context):
         )
 
     # Fetch package from DynamoDB
-    table = _get_dynamodb().Table(PACKAGES_TABLE)
+    table = get_dynamodb().Table(PACKAGES_TABLE)
 
     try:
         response = table.get_item(Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"})
@@ -315,6 +289,8 @@ def handler(event, context):
         "last_updated": item.get("last_updated"),
         # Data completeness transparency
         "data_quality": build_data_quality_full(item),
+        # Feedback link for score disputes
+        "feedback_url": f"https://github.com/Dlaranjo/pkgwatch/issues/new?title=Score+feedback:+{ecosystem}/{name}&labels=score-feedback",
     }
 
     # Build response headers

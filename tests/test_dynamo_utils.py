@@ -18,6 +18,7 @@ from moto import mock_aws
 
 # Import after environment setup
 import shared.dynamo as dynamo_module
+import shared.aws_clients as aws_clients_module
 from shared.dynamo import (
     get_package,
     put_package,
@@ -27,16 +28,16 @@ from shared.dynamo import (
     update_package_scores,
     batch_get_packages,
     PACKAGES_TABLE,
-    _get_dynamodb,
 )
+from shared.aws_clients import get_dynamodb
 
 
 @pytest.fixture
 def reset_dynamodb():
     """Reset the global DynamoDB resource between tests."""
-    dynamo_module._dynamodb = None
+    aws_clients_module._dynamodb = None
     yield
-    dynamo_module._dynamodb = None
+    aws_clients_module._dynamodb = None
 
 
 @pytest.fixture
@@ -98,16 +99,16 @@ class TestGetDynamodb:
     def test_creates_resource_on_first_call(self, reset_dynamodb):
         """Should create DynamoDB resource on first access."""
         with mock_aws():
-            assert dynamo_module._dynamodb is None
-            resource = _get_dynamodb()
+            assert aws_clients_module._dynamodb is None
+            resource = get_dynamodb()
             assert resource is not None
-            assert dynamo_module._dynamodb is resource
+            assert aws_clients_module._dynamodb is resource
 
     def test_returns_same_resource_on_subsequent_calls(self, reset_dynamodb):
         """Should return the same resource on subsequent calls."""
         with mock_aws():
-            resource1 = _get_dynamodb()
-            resource2 = _get_dynamodb()
+            resource1 = get_dynamodb()
+            resource2 = get_dynamodb()
             assert resource1 is resource2
 
 
@@ -194,7 +195,7 @@ class TestGetPackage:
 
         with patch.object(mock_packages_table, "get_item", side_effect=throttle_then_succeed):
             # Patch sleep to speed up test and patch the table lookup
-            with patch("shared.dynamo._get_dynamodb") as mock_dynamo:
+            with patch("shared.dynamo.get_dynamodb") as mock_dynamo:
                 mock_dynamo.return_value.Table.return_value = mock_packages_table
                 with patch("time.sleep"):
                     result = get_package("npm", "test")
@@ -217,7 +218,7 @@ class TestGetPackage:
             )
 
         with patch.object(mock_packages_table, "get_item", side_effect=always_throttle):
-            with patch("shared.dynamo._get_dynamodb") as mock_dynamo:
+            with patch("shared.dynamo.get_dynamodb") as mock_dynamo:
                 mock_dynamo.return_value.Table.return_value = mock_packages_table
                 with patch("time.sleep"):
                     with caplog.at_level(logging.WARNING):
@@ -240,7 +241,7 @@ class TestGetPackage:
             )
 
         with patch.object(mock_packages_table, "get_item", side_effect=access_denied):
-            with patch("shared.dynamo._get_dynamodb") as mock_dynamo:
+            with patch("shared.dynamo.get_dynamodb") as mock_dynamo:
                 mock_dynamo.return_value.Table.return_value = mock_packages_table
                 with caplog.at_level(logging.ERROR):
                     result = get_package("npm", "test")
@@ -268,7 +269,7 @@ class TestGetPackage:
             return {"Item": {"pk": "npm#test", "sk": "LATEST", "name": "test"}}
 
         with patch.object(mock_packages_table, "get_item", side_effect=internal_error_then_succeed):
-            with patch("shared.dynamo._get_dynamodb") as mock_dynamo:
+            with patch("shared.dynamo.get_dynamodb") as mock_dynamo:
                 mock_dynamo.return_value.Table.return_value = mock_packages_table
                 with patch("time.sleep"):
                     result = get_package("npm", "test")

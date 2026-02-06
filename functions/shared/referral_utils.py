@@ -16,22 +16,12 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
+from .aws_clients import get_dynamodb
+
 logger = logging.getLogger(__name__)
-
-# Lazy initialization
-_dynamodb = None
-
-
-def _get_dynamodb():
-    """Get DynamoDB resource, creating it lazily on first use."""
-    global _dynamodb
-    if _dynamodb is None:
-        _dynamodb = boto3.resource("dynamodb")
-    return _dynamodb
 
 
 # Table names from environment
@@ -192,7 +182,7 @@ def lookup_referrer_by_code(code: str) -> Optional[dict]:
     if not is_valid_referral_code(code):
         return None
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     try:
         response = table.query(
@@ -272,7 +262,7 @@ def add_bonus_with_cap(user_id: str, amount: int) -> int:
     if amount <= 0:
         return 0
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     try:
         # First attempt: try to add full amount with cap condition
@@ -369,7 +359,7 @@ def consume_bonus_credits(user_id: str, amount: int) -> bool:
     if amount <= 0:
         return True
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     try:
         table.update_item(
@@ -395,7 +385,7 @@ def get_bonus_balance(user_id: str) -> dict:
     Returns:
         Dict with bonus_requests, bonus_requests_lifetime, at_cap
     """
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     response = table.get_item(
         Key={"pk": user_id, "sk": "USER_META"},
@@ -444,7 +434,7 @@ def record_referral_event(
     Returns:
         True if recorded successfully
     """
-    table = _get_dynamodb().Table(REFERRAL_EVENTS_TABLE)
+    table = get_dynamodb().Table(REFERRAL_EVENTS_TABLE)
     now = datetime.now(timezone.utc)
 
     item = {
@@ -496,7 +486,7 @@ def update_referral_event_to_credited(
     Returns:
         True if updated successfully
     """
-    table = _get_dynamodb().Table(REFERRAL_EVENTS_TABLE)
+    table = get_dynamodb().Table(REFERRAL_EVENTS_TABLE)
     now = datetime.now(timezone.utc)
 
     try:
@@ -534,7 +524,7 @@ def mark_retention_checked(referrer_id: str, referred_id: str) -> bool:
     Returns:
         True if updated successfully
     """
-    table = _get_dynamodb().Table(REFERRAL_EVENTS_TABLE)
+    table = get_dynamodb().Table(REFERRAL_EVENTS_TABLE)
 
     try:
         table.update_item(
@@ -575,7 +565,7 @@ def update_referrer_stats(
     Returns:
         True if updated successfully
     """
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     update_parts = []
     expr_values = {}
@@ -627,7 +617,7 @@ def get_referrer_stats(user_id: str) -> dict:
     Returns:
         Dict with referral stats
     """
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     response = table.get_item(
         Key={"pk": user_id, "sk": "USER_META"},
@@ -710,7 +700,7 @@ def can_add_late_referral(user_id: str) -> tuple[bool, Optional[str]]:
     Returns:
         Tuple of (can_add, deadline_iso) - deadline is None if can't add
     """
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     response = table.get_item(
         Key={"pk": user_id, "sk": "USER_META"},
@@ -753,7 +743,7 @@ def get_referral_events(referrer_id: str, limit: int = 50) -> list[dict]:
     Returns:
         List of referral event records
     """
-    table = _get_dynamodb().Table(REFERRAL_EVENTS_TABLE)
+    table = get_dynamodb().Table(REFERRAL_EVENTS_TABLE)
 
     try:
         response = table.query(

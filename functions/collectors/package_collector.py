@@ -20,7 +20,6 @@ from decimal import Decimal
 from enum import Enum
 from typing import Callable, Optional, Tuple
 
-import boto3
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
@@ -44,38 +43,11 @@ from package_validation import validate_npm_package_name, validate_pypi_package_
 from error_classification import classify_error as _classify_error
 from data_quality import is_queryable
 from logging_utils import configure_structured_logging, request_id_var
+from aws_clients import get_dynamodb, get_s3, get_secretsmanager
 
 # Backward compatibility alias for tests
 _is_queryable = is_queryable
 
-# Lazy initialization for boto3 clients (reduces cold start time)
-_dynamodb = None
-_s3 = None
-_secretsmanager = None
-
-
-def _get_dynamodb():
-    """Get DynamoDB resource with lazy initialization."""
-    global _dynamodb
-    if _dynamodb is None:
-        _dynamodb = boto3.resource("dynamodb")
-    return _dynamodb
-
-
-def _get_s3():
-    """Get S3 client with lazy initialization."""
-    global _s3
-    if _s3 is None:
-        _s3 = boto3.client("s3")
-    return _s3
-
-
-def _get_secretsmanager():
-    """Get Secrets Manager client with lazy initialization."""
-    global _secretsmanager
-    if _secretsmanager is None:
-        _secretsmanager = boto3.client("secretsmanager")
-    return _secretsmanager
 
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 RAW_DATA_BUCKET = os.environ.get("RAW_DATA_BUCKET", "pkgwatch-raw-data")
@@ -226,7 +198,7 @@ def get_github_token() -> Optional[str]:
         return None
 
     try:
-        response = _get_secretsmanager().get_secret_value(SecretId=GITHUB_TOKEN_SECRET_ARN)
+        response = get_secretsmanager().get_secret_value(SecretId=GITHUB_TOKEN_SECRET_ARN)
         secret_string = response["SecretString"]
 
         # Try to parse as JSON (e.g., {"token": "ghp_..."})
@@ -253,7 +225,7 @@ def _get_total_github_calls(window_key: str) -> int:
 
     Used by pipeline_health.py to report GitHub API usage status.
     """
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
     total = 0
 
     for shard_id in range(RATE_LIMIT_SHARDS):
@@ -280,7 +252,7 @@ def _check_and_increment_github_rate_limit_sync() -> bool:
     Returns:
         True if request is allowed, False if rate limit exceeded.
     """
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
     now = datetime.now(timezone.utc)
     window_key = _get_rate_limit_window_key()
     shard_id = random.randint(0, RATE_LIMIT_SHARDS - 1)
@@ -336,7 +308,7 @@ async def _check_and_increment_github_rate_limit() -> bool:
 
 def _get_existing_package_data_sync(ecosystem: str, name: str) -> Optional[dict]:
     """Get existing package data from DynamoDB (synchronous)."""
-    table = _get_dynamodb().Table(PACKAGES_TABLE)
+    table = get_dynamodb().Table(PACKAGES_TABLE)
     try:
         response = table.get_item(Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"})
         return response.get("Item")
@@ -358,7 +330,7 @@ def _store_collection_error_sync(ecosystem: str, name: str, error_msg: str) -> N
     retry decisions. The error is stored with a timestamp so we can track
     when failures occurred.
     """
-    table = _get_dynamodb().Table(PACKAGES_TABLE)
+    table = get_dynamodb().Table(PACKAGES_TABLE)
     now = datetime.now(timezone.utc).isoformat()
 
     error_class = _classify_error(error_msg)
@@ -390,7 +362,7 @@ async def _store_collection_error(ecosystem: str, name: str, error_msg: str) -> 
 
 def _increment_retry_count_sync(ecosystem: str, name: str) -> None:
     """Increment retry_count for a package (synchronous)."""
-    table = _get_dynamodb().Table(PACKAGES_TABLE)
+    table = get_dynamodb().Table(PACKAGES_TABLE)
     try:
         table.update_item(
             Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"},
@@ -1187,7 +1159,7 @@ def store_raw_data(ecosystem: str, name: str, data: dict):
     """Store raw collected data in S3 for debugging."""
     try:
         key = f"{ecosystem}/{name}/{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.json"
-        _get_s3().put_object(
+        get_s3().put_object(
             Bucket=RAW_DATA_BUCKET,
             Key=key,
             Body=json.dumps(data, indent=2, default=str),
@@ -1258,7 +1230,7 @@ def _calculate_next_retry_at(retry_count: int) -> str | None:
 
 def store_package_data_sync(ecosystem: str, name: str, data: dict, tier: int):
     """Store processed package data in DynamoDB (synchronous)."""
-    table = _get_dynamodb().Table(PACKAGES_TABLE)
+    table = get_dynamodb().Table(PACKAGES_TABLE)
 
     now = datetime.now(timezone.utc).isoformat()
 

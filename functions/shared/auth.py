@@ -19,30 +19,20 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
+from .aws_clients import get_dynamodb
 from .circuit_breaker import DYNAMODB_CIRCUIT
+from .types import UserInfo
 
-# Lazy initialization to avoid boto3 resource creation at import time
-# This prevents "NoRegionError" during test collection when AWS isn't configured
-_dynamodb = None
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
-
-
-def _get_dynamodb():
-    """Get DynamoDB resource, creating it lazily on first use."""
-    global _dynamodb
-    if _dynamodb is None:
-        _dynamodb = boto3.resource("dynamodb")
-    return _dynamodb
 
 # Import tier limits from constants (single source of truth)
 from .constants import THROTTLING_ERRORS, TIER_LIMITS
 
 
-def generate_api_key(user_id: str, tier: str = "free", email: str = None) -> str:
+def generate_api_key(user_id: str, tier: str = "free", email: Optional[str] = None) -> str:
     """
     Generate a new API key for a user.
 
@@ -60,7 +50,7 @@ def generate_api_key(user_id: str, tier: str = "free", email: str = None) -> str
     # Store last 8 chars of actual key for display (hash suffix is different)
     key_suffix = api_key[-8:]
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     # Build item - only include GSI key attributes if they have values
     # DynamoDB GSIs require non-null values for key attributes
@@ -85,7 +75,7 @@ def generate_api_key(user_id: str, tier: str = "free", email: str = None) -> str
     return api_key
 
 
-def validate_api_key(api_key: str, max_retries: int = 3) -> Optional[dict]:
+def validate_api_key(api_key: str, max_retries: int = 3) -> Optional[UserInfo]:
     """
     Validate API key and return user info.
 
@@ -115,7 +105,7 @@ def validate_api_key(api_key: str, max_retries: int = 3) -> Optional[dict]:
     # Hash the key for lookup
     key_hash = hashlib.sha256(api_key.encode()).hexdigest()
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     for attempt in range(max_retries):
         try:
@@ -189,7 +179,7 @@ def increment_usage(user_id: str, key_hash: str, count: int = 1) -> int:
     Returns:
         New usage count
     """
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     response = table.update_item(
         Key={"pk": user_id, "sk": key_hash},
@@ -229,7 +219,7 @@ def check_and_increment_usage(user_id: str, key_hash: str, limit: int) -> tuple[
         logger.warning("DynamoDB circuit open, allowing request (degraded mode)")
         return True, -1  # -1 signals degraded mode to caller
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     try:
         # Atomically check and increment USER_META.requests_this_month
@@ -309,7 +299,7 @@ def check_and_increment_usage_batch(
         logger.warning("DynamoDB circuit open, allowing batch request (degraded mode)")
         return True, -1  # -1 signals degraded mode to caller
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     # Calculate threshold: if current count is at or above this, we'd exceed limit
     # This avoids arithmetic in condition expression (Moto compatibility)
@@ -394,7 +384,7 @@ def check_and_increment_usage_with_bonus(
         logger.warning("DynamoDB circuit open, allowing request (degraded mode)")
         return True, -1, -1
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     try:
         # Get current USER_META state
@@ -550,7 +540,7 @@ def _trigger_referral_activity_gate(user_id: str, user_meta: dict):
             if datetime.now(timezone.utc) > expires_dt:
                 logger.info(f"Referral pending expired for {user_id}, not crediting referrer")
                 # Clear the pending flag
-                table = _get_dynamodb().Table(API_KEYS_TABLE)
+                table = get_dynamodb().Table(API_KEYS_TABLE)
                 table.update_item(
                     Key={"pk": user_id, "sk": "USER_META"},
                     UpdateExpression="REMOVE referral_pending, referral_pending_expires",
@@ -559,7 +549,7 @@ def _trigger_referral_activity_gate(user_id: str, user_meta: dict):
         except (ValueError, TypeError):
             pass
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     try:
         # IDEMPOTENCY: Atomically clear pending flag and set credited marker.
@@ -621,7 +611,7 @@ def reset_monthly_usage(user_id: str, key_hash: str) -> None:
         user_id: User's partition key
         key_hash: Key hash (sort key)
     """
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     table.update_item(
         Key={"pk": user_id, "sk": key_hash},
@@ -645,7 +635,7 @@ def update_tier(user_id: str, key_hash: str, new_tier: str) -> None:
     if new_tier not in TIER_LIMITS:
         raise ValueError(f"Invalid tier: {new_tier}")
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     table.update_item(
         Key={"pk": user_id, "sk": key_hash},
@@ -665,7 +655,7 @@ def revoke_api_key(user_id: str, key_hash: str) -> None:
         user_id: User's partition key
         key_hash: Key hash (sort key)
     """
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
     table.delete_item(Key={"pk": user_id, "sk": key_hash})
 
 
@@ -679,7 +669,7 @@ def get_user_keys(user_id: str) -> list[dict]:
     Returns:
         List of key metadata (not the actual keys!)
     """
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     response = table.query(
         KeyConditionExpression=Key("pk").eq(user_id),

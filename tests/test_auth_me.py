@@ -963,7 +963,7 @@ class TestAuthMeErrorHandling:
         # Mock DynamoDB to raise an error
         mock_ddb = MagicMock()
         mock_ddb.Table.side_effect = Exception("DynamoDB error")
-        with patch.object(module, "_get_dynamodb", return_value=mock_ddb):
+        with patch.object(module, "get_dynamodb", return_value=mock_ddb):
             event = {
                 "headers": {"cookie": f"session={token}"},
                 "queryStringParameters": None,

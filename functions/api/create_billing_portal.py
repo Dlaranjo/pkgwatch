@@ -10,7 +10,6 @@ import logging
 import os
 from http.cookies import SimpleCookie
 
-import boto3
 import stripe
 from boto3.dynamodb.conditions import Key
 
@@ -25,16 +24,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
 from response_utils import error_response, success_response
 from billing_utils import get_stripe_api_key
-
-# Lazy initialization
-_dynamodb = None
-
-
-def _get_dynamodb():
-    global _dynamodb
-    if _dynamodb is None:
-        _dynamodb = boto3.resource("dynamodb")
-    return _dynamodb
+from shared.aws_clients import get_dynamodb
 
 
 def _get_origin(event: dict) -> str | None:
@@ -94,7 +84,7 @@ def handler(event, context):
     email = session_data.get("email")
 
     # Get user's Stripe customer ID from DynamoDB
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
     response = table.query(
         IndexName="email-index",
         KeyConditionExpression=Key("email").eq(email),

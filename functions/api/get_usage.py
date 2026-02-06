@@ -18,7 +18,7 @@ logger.setLevel(logging.INFO)
 
 # Import from shared module (bundled with Lambda)
 from shared.auth import validate_api_key, TIER_LIMITS
-from shared.response_utils import decimal_default, error_response
+from shared.response_utils import decimal_default, error_response, get_cors_headers
 
 dynamodb = boto3.resource("dynamodb")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
@@ -30,16 +30,18 @@ def handler(event, context):
 
     Returns current usage statistics and limits.
     """
+    origin = None
     try:
-        # Extract API key
-        headers = event.get("headers", {})
+        # Extract headers for auth and CORS
+        headers = event.get("headers") or {}
         api_key = headers.get("x-api-key") or headers.get("X-API-Key")
+        origin = headers.get("origin") or headers.get("Origin")
 
         # Validate API key
         user = validate_api_key(api_key)
 
         if not user:
-            return error_response(401, "invalid_api_key", "Invalid or missing API key")
+            return error_response(401, "invalid_api_key", "Invalid or missing API key", origin=origin)
 
         # Get authoritative usage and billing cycle from USER_META
         table = dynamodb.Table(API_KEYS_TABLE)
@@ -81,16 +83,19 @@ def handler(event, context):
             else 0
         )
 
+        response_headers = {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "X-RateLimit-Limit": str(user["monthly_limit"]),
+            "X-RateLimit-Remaining": str(
+                max(0, user["monthly_limit"] - requests_this_month)
+            ),
+        }
+        response_headers.update(get_cors_headers(origin))
+
         return {
             "statusCode": 200,
-            "headers": {
-                "Content-Type": "application/json",
-                "Cache-Control": "no-store, no-cache, must-revalidate",
-                "X-RateLimit-Limit": str(user["monthly_limit"]),
-                "X-RateLimit-Remaining": str(
-                    max(0, user["monthly_limit"] - requests_this_month)
-                ),
-            },
+            "headers": response_headers,
             "body": json.dumps({
                 "tier": user["tier"],
                 "usage": {
@@ -110,4 +115,4 @@ def handler(event, context):
         }
     except Exception as e:
         logger.error(f"Error in get_usage handler: {e}")
-        return error_response(500, "internal_error", "An error occurred processing your request")
+        return error_response(500, "internal_error", "An error occurred processing your request", origin=origin)

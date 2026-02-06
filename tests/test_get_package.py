@@ -800,8 +800,8 @@ class TestDemoRateLimitGenericException:
 
         from api.get_package import _check_demo_rate_limit
 
-        # Patch _get_dynamodb to raise a non-ClientError exception
-        with patch("api.get_package._get_dynamodb") as mock_ddb:
+        # Patch get_dynamodb to raise a non-ClientError exception
+        with patch("api.get_package.get_dynamodb") as mock_ddb:
             mock_ddb.return_value.Table.return_value.update_item.side_effect = RuntimeError(
                 "Unexpected connection error"
             )
@@ -1320,8 +1320,8 @@ class TestDynamoDBErrorInGetPackage:
         api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
         api_gateway_event["headers"]["x-api-key"] = test_key
 
-        # Patch _get_dynamodb to return a table that raises on get_item
-        with patch("api.get_package._get_dynamodb") as mock_ddb:
+        # Patch get_dynamodb to return a table that raises on get_item
+        with patch("api.get_package.get_dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_table.get_item.side_effect = Exception("DynamoDB connection timeout")
             mock_ddb.return_value.Table.return_value = mock_table

@@ -193,7 +193,7 @@ const pypiPackages = ['requests', 'django', 'flask', 'numpy', 'pandas', 'bottle'
 </section>
 
 <script>
-  const API_BASE = 'https://api.pkgwatch.dev';
+  import { API_BASE } from '../config';
 
   const input = document.getElementById('package-input') as HTMLInputElement;
   const checkBtn = document.getElementById('check-btn');

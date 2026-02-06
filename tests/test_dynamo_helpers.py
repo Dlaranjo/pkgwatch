@@ -367,7 +367,7 @@ class TestGetPackageRetryBehavior:
 
         # Reload to get fresh module state
         importlib.reload(dynamo_module)
-        dynamo_module._dynamodb = None
+        import shared.aws_clients; shared.aws_clients._dynamodb = None
 
         # Insert test data first
         packages_table.put_item(
@@ -394,7 +394,7 @@ class TestGetPackageRetryBehavior:
             return original_get_item(**kwargs)
 
         with patch.object(packages_table, "get_item", side_effect=mock_get_item):
-            with patch("shared.dynamo._get_dynamodb") as mock_dynamo:
+            with patch("shared.dynamo.get_dynamodb") as mock_dynamo:
                 mock_dynamo.return_value.Table.return_value = packages_table
                 with patch("time.sleep"):  # Don't actually sleep in tests
                     result = dynamo_module.get_package("npm", "retry-test")
@@ -412,7 +412,7 @@ class TestGetPackageRetryBehavior:
         import importlib
 
         importlib.reload(dynamo_module)
-        dynamo_module._dynamodb = None
+        import shared.aws_clients; shared.aws_clients._dynamodb = None
 
         # Create mock that always fails with throttling
         def always_throttle(**kwargs):
@@ -424,7 +424,7 @@ class TestGetPackageRetryBehavior:
         mock_table = MagicMock()
         mock_table.get_item = always_throttle
 
-        with patch("shared.dynamo._get_dynamodb") as mock_dynamo:
+        with patch("shared.dynamo.get_dynamodb") as mock_dynamo:
             mock_dynamo.return_value.Table.return_value = mock_table
             with patch("time.sleep"):  # Don't actually sleep
                 result = dynamo_module.get_package("npm", "always-throttled", max_retries=3)
@@ -440,7 +440,7 @@ class TestGetPackageRetryBehavior:
         import importlib
 
         importlib.reload(dynamo_module)
-        dynamo_module._dynamodb = None
+        import shared.aws_clients; shared.aws_clients._dynamodb = None
 
         call_count = [0]
 
@@ -454,7 +454,7 @@ class TestGetPackageRetryBehavior:
         mock_table = MagicMock()
         mock_table.get_item = access_denied
 
-        with patch("shared.dynamo._get_dynamodb") as mock_dynamo:
+        with patch("shared.dynamo.get_dynamodb") as mock_dynamo:
             mock_dynamo.return_value.Table.return_value = mock_table
             result = dynamo_module.get_package("npm", "access-denied")
 
@@ -469,7 +469,7 @@ class TestGetPackageRetryBehavior:
         import importlib
 
         importlib.reload(dynamo_module)
-        dynamo_module._dynamodb = None
+        import shared.aws_clients; shared.aws_clients._dynamodb = None
 
         def raise_generic(**kwargs):
             raise RuntimeError("Something unexpected happened")
@@ -477,7 +477,7 @@ class TestGetPackageRetryBehavior:
         mock_table = MagicMock()
         mock_table.get_item = raise_generic
 
-        with patch("shared.dynamo._get_dynamodb") as mock_dynamo:
+        with patch("shared.dynamo.get_dynamodb") as mock_dynamo:
             mock_dynamo.return_value.Table.return_value = mock_table
             result = dynamo_module.get_package("npm", "generic-error")
 
@@ -495,7 +495,7 @@ class TestQueryPackagesByTierPagination:
         import importlib
 
         importlib.reload(dynamo_module)
-        dynamo_module._dynamodb = None
+        import shared.aws_clients; shared.aws_clients._dynamodb = None
 
         # Simulate paginated response
         page1 = {
@@ -518,7 +518,7 @@ class TestQueryPackagesByTierPagination:
         mock_table = MagicMock()
         mock_table.query = mock_query
 
-        with patch("shared.dynamo._get_dynamodb") as mock_dynamo:
+        with patch("shared.dynamo.get_dynamodb") as mock_dynamo:
             mock_dynamo.return_value.Table.return_value = mock_table
             result = dynamo_module.query_packages_by_tier(1)
 
@@ -537,7 +537,7 @@ class TestBatchGetPackagesRetry:
         import importlib
 
         importlib.reload(dynamo_module)
-        dynamo_module._dynamodb = None
+        import shared.aws_clients; shared.aws_clients._dynamodb = None
 
         # First call returns some unprocessed, second call completes
         call_count = [0]
@@ -571,7 +571,7 @@ class TestBatchGetPackagesRetry:
         mock_dynamodb.batch_get_item = mock_batch_get
         mock_dynamodb.Table.return_value = packages_table
 
-        with patch("shared.dynamo._get_dynamodb", return_value=mock_dynamodb):
+        with patch("shared.dynamo.get_dynamodb", return_value=mock_dynamodb):
             with patch("time.sleep"):  # Don't actually sleep
                 result = dynamo_module.batch_get_packages("npm", ["pkg1", "pkg2", "pkg3"])
 
@@ -589,7 +589,7 @@ class TestBatchGetPackagesRetry:
         import importlib
 
         importlib.reload(dynamo_module)
-        dynamo_module._dynamodb = None
+        import shared.aws_clients; shared.aws_clients._dynamodb = None
 
         call_count = [0]
 
@@ -610,7 +610,7 @@ class TestBatchGetPackagesRetry:
         mock_dynamodb = MagicMock()
         mock_dynamodb.batch_get_item = always_unprocessed
 
-        with patch("shared.dynamo._get_dynamodb", return_value=mock_dynamodb):
+        with patch("shared.dynamo.get_dynamodb", return_value=mock_dynamodb):
             with patch("time.sleep"):  # Don't actually sleep
                 result = dynamo_module.batch_get_packages("npm", ["pkg1", "pkg2"])
 

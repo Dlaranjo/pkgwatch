@@ -11,7 +11,6 @@ Self-healing mechanism: users surface blind spots in our coverage.
 Rate limited: 10 requests per IP per day.
 """
 
-import asyncio
 import hashlib
 import json
 import logging
@@ -20,30 +19,10 @@ from datetime import datetime, timezone
 
 from botocore.exceptions import ClientError
 
+from shared.aws_clients import get_dynamodb, get_sqs
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-# Lazy initialization to reduce cold start overhead
-_dynamodb = None
-_sqs = None
-
-
-def _get_dynamodb():
-    """Get DynamoDB resource, creating it lazily on first use."""
-    global _dynamodb
-    if _dynamodb is None:
-        import boto3
-        _dynamodb = boto3.resource("dynamodb")
-    return _dynamodb
-
-
-def _get_sqs():
-    """Get SQS client, creating it lazily on first use."""
-    global _sqs
-    if _sqs is None:
-        import boto3
-        _sqs = boto3.client("sqs")
-    return _sqs
 
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
@@ -56,21 +35,25 @@ def handler(event, context):
     from shared.response_utils import error_response, success_response
     from shared.package_validation import normalize_npm_name
 
+    # Extract origin for CORS headers
+    headers = event.get("headers", {})
+    origin = headers.get("origin") or headers.get("Origin")
+
     # Parse request body (use `or "{}"` to handle explicit None)
     try:
         body = json.loads(event.get("body") or "{}")
     except json.JSONDecodeError:
-        return error_response(400, "invalid_json", "Invalid JSON body")
+        return error_response(400, "invalid_json", "Invalid JSON body", origin=origin)
 
     name = body.get("name", "").strip()
     ecosystem = body.get("ecosystem", "npm").lower()
 
     # Validate required fields
     if not name:
-        return error_response(400, "missing_name", "Package name is required")
+        return error_response(400, "missing_name", "Package name is required", origin=origin)
 
     if ecosystem not in ["npm", "pypi"]:
-        return error_response(400, "invalid_ecosystem", "Ecosystem must be 'npm' or 'pypi'")
+        return error_response(400, "invalid_ecosystem", "Ecosystem must be 'npm' or 'pypi'", origin=origin)
 
     # Normalize npm package names to lowercase (npm is case-insensitive)
     if ecosystem == "npm":
@@ -83,9 +66,10 @@ def handler(event, context):
             429,
             "rate_limit_exceeded",
             f"Rate limit exceeded. Maximum {RATE_LIMIT_PER_DAY} requests per day.",
+            origin=origin,
         )
 
-    table = _get_dynamodb().Table(PACKAGES_TABLE)
+    table = get_dynamodb().Table(PACKAGES_TABLE)
 
     # Check if package already exists
     try:
@@ -100,18 +84,20 @@ def handler(event, context):
                     "package": name,
                     "ecosystem": ecosystem,
                     "message": "Package is already tracked",
-                }
+                },
+                origin=origin,
             )
     except Exception as e:
         logger.error(f"Failed to check if package exists: {e}")
 
     # Validate package exists in registry
-    exists = asyncio.run(validate_package_exists(name, ecosystem))
+    exists = validate_package_exists(name, ecosystem)
     if not exists:
         return error_response(
             404,
             "package_not_found",
             f"Package '{name}' not found in {ecosystem} registry",
+            origin=origin,
         )
 
     # Add to database
@@ -143,17 +129,18 @@ def handler(event, context):
                     "package": name,
                     "ecosystem": ecosystem,
                     "message": "Package was just added by another request",
-                }
+                },
+                origin=origin,
             )
         raise  # Re-raise other ClientErrors
     except Exception as e:
         logger.error(f"Failed to add package: {e}")
-        return error_response(500, "db_error", "Failed to add package")
+        return error_response(500, "db_error", "Failed to add package", origin=origin)
 
     # Queue for immediate collection
     if PACKAGE_QUEUE_URL:
         try:
-            _get_sqs().send_message(
+            get_sqs().send_message(
                 QueueUrl=PACKAGE_QUEUE_URL,
                 MessageBody=json.dumps(
                     {
@@ -178,32 +165,19 @@ def handler(event, context):
             "ecosystem": ecosystem,
             "message": "Package queued for collection. Data will be available within 5 minutes.",
             "eta_minutes": 5,
-        }
+        },
+        origin=origin,
     )
 
 
-def get_client_ip(event: dict) -> str:
-    """Extract client IP from API Gateway's verified source.
-
-    SECURITY: Always use requestContext.identity.sourceIp which is set by
-    API Gateway and cannot be spoofed by clients. Never trust X-Forwarded-For
-    header for rate limiting as it can be forged.
-    """
-    # Use API Gateway's verified source IP (cannot be spoofed)
-    source_ip = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
-    if source_ip:
-        return source_ip
-
-    # Log warning if missing (shouldn't happen with proper API Gateway config)
-    logger.warning("Missing sourceIp in requestContext - possible misconfiguration")
-    return "unknown"
+from shared.request_utils import get_client_ip
 
 
 def check_and_record_rate_limit(client_ip: str) -> bool:
     """Atomically check and increment rate limit. Returns True if allowed."""
     from botocore.exceptions import ClientError
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     rate_limit_key = f"RATE_LIMIT#{client_ip}#{today}"
     ttl = int(datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()) + 86400
@@ -226,13 +200,19 @@ def check_and_record_rate_limit(client_ip: str) -> bool:
         return False  # Fail closed
 
 
-async def validate_package_exists(name: str, ecosystem: str) -> bool:
-    """Validate package exists in registry."""
-    try:
-        from collectors.depsdev_collector import get_package_info
+def validate_package_exists(name: str, ecosystem: str) -> bool:
+    """Validate package exists in registry via deps.dev API (synchronous)."""
+    import httpx
+    from urllib.parse import quote
 
-        info = await get_package_info(name, ecosystem)
-        return info is not None
+    DEPSDEV_API = "https://api.deps.dev/v3"
+    system = "npm" if ecosystem == "npm" else "pypi"
+    encoded_name = quote(name, safe="")
+    url = f"{DEPSDEV_API}/systems/{system}/packages/{encoded_name}"
+
+    try:
+        response = httpx.get(url, timeout=10.0, follow_redirects=True)
+        return response.status_code == 200
     except Exception as e:
         logger.error(f"Failed to validate package {name}: {e}")
         return False

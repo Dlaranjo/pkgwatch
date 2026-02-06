@@ -43,6 +43,17 @@ def aws_credentials():
 
 
 @pytest.fixture(autouse=True)
+def reset_aws_clients():
+    """Reset shared AWS client singletons between tests."""
+    yield
+    try:
+        from shared.aws_clients import reset_clients
+        reset_clients()
+    except ImportError:
+        pass
+
+
+@pytest.fixture(autouse=True)
 def reset_circuit_breakers():
     """Reset all circuit breaker states between tests to prevent pollution.
 

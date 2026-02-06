@@ -33,7 +33,15 @@ jobs:
       - name: Lint with ruff
         run: |
           pip install ruff
-          ruff check functions/ --output-format github
+          ruff check functions/ tests/ --output-format github
+
+      - name: Format check with ruff
+        run: ruff format --check functions/ tests/
+
+      - name: Audit Python dependencies
+        run: |
+          pip install pip-audit
+          pip-audit -r functions/requirements.txt
         continue-on-error: true
 
       - name: Run tests with coverage
@@ -53,6 +61,11 @@ jobs:
           cache: 'npm'
           cache-dependency-path: infrastructure/package-lock.json
 
+      - name: Audit infrastructure dependencies
+        working-directory: infrastructure
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
       - name: CDK Synth (validation only)
         working-directory: infrastructure
         run: |
@@ -71,6 +84,10 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high
+        continue-on-error: true
 
       - name: Build and verify api-client
         run: |
@@ -104,6 +121,11 @@ jobs:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
+
+      - name: Audit web dependencies
+        working-directory: web
+        run: npm audit --audit-level=high
+        continue-on-error: true
 
       - name: Build web
         working-directory: web

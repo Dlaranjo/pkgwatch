@@ -23,6 +23,8 @@ export {
   type RiskLevel,
   type ErrorCode,
   type ClientOptions,
+  type CollectingResponse,
+  isCollectingResponse,
   // Utilities
   getRiskColor,
   formatBytes,

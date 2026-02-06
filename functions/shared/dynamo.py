@@ -9,29 +9,19 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
+from .aws_clients import get_dynamodb
 from .constants import THROTTLING_ERRORS
+from .types import PackageData
 
 logger = logging.getLogger(__name__)
 
-# Lazy initialization to avoid boto3 resource creation at import time
-# This prevents "NoRegionError" during test collection when AWS isn't configured
-_dynamodb = None
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 
 
-def _get_dynamodb():
-    """Get DynamoDB resource, creating it lazily on first use."""
-    global _dynamodb
-    if _dynamodb is None:
-        _dynamodb = boto3.resource("dynamodb")
-    return _dynamodb
-
-
-def get_package(ecosystem: str, name: str, max_retries: int = 3) -> Optional[dict]:
+def get_package(ecosystem: str, name: str, max_retries: int = 3) -> Optional[PackageData]:
     """
     Get package data from DynamoDB with retry for throttling.
 
@@ -43,7 +33,7 @@ def get_package(ecosystem: str, name: str, max_retries: int = 3) -> Optional[dic
     Returns:
         Package data dict or None if not found
     """
-    table = _get_dynamodb().Table(PACKAGES_TABLE)
+    table = get_dynamodb().Table(PACKAGES_TABLE)
 
     for attempt in range(max_retries):
         try:
@@ -85,7 +75,7 @@ def put_package(ecosystem: str, name: str, data: dict, tier: int = 3) -> None:
         data: Package data to store
         tier: Refresh tier (1=daily, 2=3-day, 3=weekly)
     """
-    table = _get_dynamodb().Table(PACKAGES_TABLE)
+    table = get_dynamodb().Table(PACKAGES_TABLE)
 
     item = {
         "pk": f"{ecosystem}#{name}",
@@ -114,7 +104,7 @@ def query_packages_by_risk(risk_level: str, limit: int = 100) -> list[dict]:
     Returns:
         List of packages sorted by last_updated (newest first)
     """
-    table = _get_dynamodb().Table(PACKAGES_TABLE)
+    table = get_dynamodb().Table(PACKAGES_TABLE)
 
     response = table.query(
         IndexName="risk-level-index",
@@ -136,7 +126,7 @@ def query_packages_by_tier(tier: int) -> list[dict]:
     Returns:
         List of package keys for refresh
     """
-    table = _get_dynamodb().Table(PACKAGES_TABLE)
+    table = get_dynamodb().Table(PACKAGES_TABLE)
 
     packages = []
     response = table.query(
@@ -168,7 +158,7 @@ def update_package_tier(ecosystem: str, name: str, new_tier: int) -> None:
         name: Package name
         new_tier: New tier (1, 2, or 3)
     """
-    table = _get_dynamodb().Table(PACKAGES_TABLE)
+    table = get_dynamodb().Table(PACKAGES_TABLE)
 
     table.update_item(
         Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"},
@@ -198,7 +188,7 @@ def update_package_scores(
         confidence: Confidence information
         abandonment_risk: Abandonment risk calculation
     """
-    table = _get_dynamodb().Table(PACKAGES_TABLE)
+    table = get_dynamodb().Table(PACKAGES_TABLE)
 
     table.update_item(
         Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"},
@@ -236,7 +226,7 @@ def batch_get_packages(ecosystem: str, names: list[str]) -> dict[str, dict]:
         return {}
 
     results = {}
-    batch_size = 25  # DynamoDB BatchGetItem limit (was incorrectly 100)
+    batch_size = 25  # DynamoDB BatchGetItem limit
     max_retries = 5
 
     for i in range(0, len(names), batch_size):
@@ -247,7 +237,7 @@ def batch_get_packages(ecosystem: str, names: list[str]) -> dict[str, dict]:
         retry_count = 0
 
         while request_items and retry_count < max_retries:
-            response = _get_dynamodb().batch_get_item(RequestItems=request_items)
+            response = get_dynamodb().batch_get_item(RequestItems=request_items)
 
             # Process returned items
             for item in response.get("Responses", {}).get(PACKAGES_TABLE, []):

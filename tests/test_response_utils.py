@@ -163,6 +163,34 @@ class TestErrorResponse:
             == "https://pkgwatch.dev"
         )
 
+    def test_includes_request_id_when_set(self):
+        """Should include request_id in error body when context var is set."""
+        from shared.logging_utils import request_id_var
+        from shared.response_utils import error_response
+
+        token = request_id_var.set("req-abc-123")
+        try:
+            result = error_response(500, "internal_error", "Something went wrong")
+
+            body = json.loads(result["body"])
+            assert body["error"]["request_id"] == "req-abc-123"
+        finally:
+            request_id_var.reset(token)
+
+    def test_omits_request_id_when_not_set(self):
+        """Should not include request_id when context var has no value."""
+        from shared.logging_utils import request_id_var
+        from shared.response_utils import error_response
+
+        token = request_id_var.set("")
+        try:
+            result = error_response(400, "bad_request", "Invalid input")
+
+            body = json.loads(result["body"])
+            assert "request_id" not in body["error"]
+        finally:
+            request_id_var.reset(token)
+
 
 class TestSuccessResponse:
     """Tests for success_response function."""

@@ -733,7 +733,7 @@ class TestLateEntry:
 class TestLookupReferrerByCodeClientError:
     """Test lookup_referrer_by_code ClientError handling (lines 214-216)."""
 
-    @patch("shared.referral_utils._get_dynamodb")
+    @patch("shared.referral_utils.get_dynamodb")
     def test_returns_none_on_client_error(self, mock_get_dynamodb):
         """Should return None when DynamoDB query raises ClientError."""
         from botocore.exceptions import ClientError
@@ -788,7 +788,7 @@ class TestAddBonusWithCapEdgeCases:
         result = add_bonus_with_cap("user_test", -100)
         assert result == 0
 
-    @patch("shared.referral_utils._get_dynamodb")
+    @patch("shared.referral_utils.get_dynamodb")
     def test_non_conditional_client_error_is_reraised(self, mock_get_dynamodb):
         """Non-ConditionalCheckFailedException should be re-raised (lines 300-301)."""
         from botocore.exceptions import ClientError
@@ -808,7 +808,7 @@ class TestAddBonusWithCapEdgeCases:
 
         assert exc_info.value.response["Error"]["Code"] == "InternalServerError"
 
-    @patch("shared.referral_utils._get_dynamodb")
+    @patch("shared.referral_utils.get_dynamodb")
     def test_concurrent_cap_fill_returns_zero(self, mock_get_dynamodb):
         """Should return 0 when a concurrent request fills the cap (lines 347-352)."""
         from botocore.exceptions import ClientError
@@ -835,7 +835,7 @@ class TestAddBonusWithCapEdgeCases:
         result = add_bonus_with_cap("user_test", 25000)
         assert result == 0
 
-    @patch("shared.referral_utils._get_dynamodb")
+    @patch("shared.referral_utils.get_dynamodb")
     def test_partial_amount_zero_returns_zero(self, mock_get_dynamodb):
         """Should return 0 when remaining cap is exactly zero (line 324)."""
         from botocore.exceptions import ClientError
@@ -861,7 +861,7 @@ class TestAddBonusWithCapEdgeCases:
         result = add_bonus_with_cap("user_test", 5000)
         assert result == 0
 
-    @patch("shared.referral_utils._get_dynamodb")
+    @patch("shared.referral_utils.get_dynamodb")
     def test_retry_non_conditional_error_is_reraised(self, mock_get_dynamodb):
         """Non-ConditionalCheckFailed on retry should be re-raised (line 352)."""
         from botocore.exceptions import ClientError
@@ -899,8 +899,8 @@ class TestConsumeBonusCredits:
     @pytest.fixture
     def user_with_bonus(self, mock_dynamodb):
         """Create a user with bonus credits."""
-        import shared.referral_utils as referral_utils_module
-        referral_utils_module._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
         table.put_item(
@@ -915,8 +915,8 @@ class TestConsumeBonusCredits:
 
     def test_zero_amount_returns_true(self, mock_dynamodb):
         """Consuming 0 credits should return True (line 369-370)."""
-        import shared.referral_utils as referral_utils_module
-        referral_utils_module._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
         from shared.referral_utils import consume_bonus_credits
 
         result = consume_bonus_credits("user_any", 0)
@@ -924,8 +924,8 @@ class TestConsumeBonusCredits:
 
     def test_negative_amount_returns_true(self, mock_dynamodb):
         """Consuming negative credits should return True (line 369-370)."""
-        import shared.referral_utils as referral_utils_module
-        referral_utils_module._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
         from shared.referral_utils import consume_bonus_credits
 
         result = consume_bonus_credits("user_any", -5)
@@ -958,8 +958,8 @@ class TestConsumeBonusCredits:
 
     def test_no_bonus_attribute_returns_false(self, mock_dynamodb):
         """Should return False when user has no bonus_requests attribute."""
-        import shared.referral_utils as referral_utils_module
-        referral_utils_module._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
         from shared.referral_utils import consume_bonus_credits
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -968,7 +968,7 @@ class TestConsumeBonusCredits:
         result = consume_bonus_credits("user_no_bonus", 1000)
         assert result is False
 
-    @patch("shared.referral_utils._get_dynamodb")
+    @patch("shared.referral_utils.get_dynamodb")
     def test_non_conditional_error_is_reraised(self, mock_get_dynamodb):
         """Non-ConditionalCheckFailed errors should be re-raised (line 385)."""
         from botocore.exceptions import ClientError
@@ -992,7 +992,7 @@ class TestConsumeBonusCredits:
 class TestRecordReferralEventClientError:
     """Test record_referral_event ClientError handling (lines 476-478)."""
 
-    @patch("shared.referral_utils._get_dynamodb")
+    @patch("shared.referral_utils.get_dynamodb")
     def test_returns_false_on_client_error(self, mock_get_dynamodb):
         """Should return False when DynamoDB put_item raises ClientError."""
         from botocore.exceptions import ClientError
@@ -1019,7 +1019,7 @@ class TestRecordReferralEventClientError:
 class TestUpdateReferralEventToCreditedClientError:
     """Test update_referral_event_to_credited ClientError handling (lines 521-523)."""
 
-    @patch("shared.referral_utils._get_dynamodb")
+    @patch("shared.referral_utils.get_dynamodb")
     def test_returns_false_on_client_error(self, mock_get_dynamodb):
         """Should return False when DynamoDB operations raise ClientError."""
         from botocore.exceptions import ClientError
@@ -1046,7 +1046,7 @@ class TestUpdateReferralEventToCreditedClientError:
 class TestMarkRetentionCheckedClientError:
     """Test mark_retention_checked ClientError handling (lines 545-547)."""
 
-    @patch("shared.referral_utils._get_dynamodb")
+    @patch("shared.referral_utils.get_dynamodb")
     def test_returns_false_on_client_error(self, mock_get_dynamodb):
         """Should return False when DynamoDB update_item raises ClientError."""
         from botocore.exceptions import ClientError
@@ -1071,8 +1071,8 @@ class TestUpdateReferrerStatsEdgeCases:
 
     def test_no_deltas_returns_true(self, mock_dynamodb):
         """Calling with no deltas should return True early (line 604)."""
-        import shared.referral_utils as referral_utils_module
-        referral_utils_module._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
         from shared.referral_utils import update_referrer_stats
 
         # All deltas default to 0, so no update should happen
@@ -1081,8 +1081,8 @@ class TestUpdateReferrerStatsEdgeCases:
 
     def test_paid_delta_increments(self, mock_dynamodb):
         """Should update paid count when paid_delta is non-zero (lines 591-593)."""
-        import shared.referral_utils as referral_utils_module
-        referral_utils_module._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
         from shared.referral_utils import update_referrer_stats
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1103,8 +1103,8 @@ class TestUpdateReferrerStatsEdgeCases:
 
     def test_retained_delta_increments(self, mock_dynamodb):
         """Should update retained count when retained_delta is non-zero (lines 595-596)."""
-        import shared.referral_utils as referral_utils_module
-        referral_utils_module._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
         from shared.referral_utils import update_referrer_stats
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1125,8 +1125,8 @@ class TestUpdateReferrerStatsEdgeCases:
 
     def test_rewards_delta_increments(self, mock_dynamodb):
         """Should update rewards earned when rewards_delta is non-zero (lines 599-601)."""
-        import shared.referral_utils as referral_utils_module
-        referral_utils_module._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
         from shared.referral_utils import update_referrer_stats
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1145,7 +1145,7 @@ class TestUpdateReferrerStatsEdgeCases:
         item = response["Item"]
         assert item["referral_rewards_earned"] == 30000
 
-    @patch("shared.referral_utils._get_dynamodb")
+    @patch("shared.referral_utils.get_dynamodb")
     def test_returns_false_on_client_error(self, mock_get_dynamodb):
         """Should return False when DynamoDB update_item raises ClientError (lines 615-617)."""
         from botocore.exceptions import ClientError
@@ -1169,8 +1169,8 @@ class TestCanAddLateReferralEdgeCases:
 
     def test_missing_created_at_returns_false(self, mock_dynamodb):
         """Should return (False, None) when created_at is missing (line 729)."""
-        import shared.referral_utils as referral_utils_module
-        referral_utils_module._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
         from shared.referral_utils import can_add_late_referral
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1188,8 +1188,8 @@ class TestCanAddLateReferralEdgeCases:
 
     def test_invalid_date_format_returns_false(self, mock_dynamodb):
         """Should return (False, None) when created_at has invalid format (lines 741-742)."""
-        import shared.referral_utils as referral_utils_module
-        referral_utils_module._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
         from shared.referral_utils import can_add_late_referral
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1207,8 +1207,8 @@ class TestCanAddLateReferralEdgeCases:
 
     def test_nonexistent_user_returns_false(self, mock_dynamodb):
         """Should return (False, None) for user that doesn't exist."""
-        import shared.referral_utils as referral_utils_module
-        referral_utils_module._dynamodb = None
+        import shared.aws_clients
+        shared.aws_clients._dynamodb = None
         from shared.referral_utils import can_add_late_referral
 
         can_add, deadline = can_add_late_referral("user_nonexistent")
@@ -1219,7 +1219,7 @@ class TestCanAddLateReferralEdgeCases:
 class TestGetReferralEventsClientError:
     """Test get_referral_events ClientError handling (lines 767-769)."""
 
-    @patch("shared.referral_utils._get_dynamodb")
+    @patch("shared.referral_utils.get_dynamodb")
     def test_returns_empty_list_on_client_error(self, mock_get_dynamodb):
         """Should return empty list when DynamoDB query raises ClientError."""
         from botocore.exceptions import ClientError

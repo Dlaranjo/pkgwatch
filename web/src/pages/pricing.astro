@@ -319,7 +319,7 @@ const faqSchema = {
 </Layout>
 
 <script>
-  const API_BASE = 'https://api.pkgwatch.dev';
+  import { API_BASE } from '../config';
 
   const TIER_ORDER: Record<string, number> = { free: 0, starter: 1, pro: 2, business: 3 };
 

@@ -545,8 +545,6 @@ class TestReferralCleanupHandler:
 
     def test_handles_generic_exception_in_cleanup_loop(self, mock_dynamodb):
         """Should count errors when unexpected exceptions occur during cleanup (lines 109-111)."""
-        import api.referral_cleanup as cleanup_module
-
         table = mock_dynamodb.Table("pkgwatch-api-keys")
 
         # Create expired pending referral
@@ -568,40 +566,32 @@ class TestReferralCleanupHandler:
 
         mock_db = MagicMock()
         mock_db.Table.return_value = mock_table
-        cleanup_module._dynamodb = mock_db
 
         from api.referral_cleanup import handler
 
-        result = handler({}, {})
+        with patch("api.referral_cleanup.get_dynamodb", return_value=mock_db):
+            result = handler({}, {})
 
         assert result["errors"] >= 1
 
-        # Reset
-        cleanup_module._dynamodb = None
-
     def test_handles_scan_level_exception(self, mock_dynamodb):
         """Should return error result when the scan itself fails (lines 119-121)."""
-        import api.referral_cleanup as cleanup_module
-
         # Use a mock that raises on scan
         mock_table = MagicMock()
         mock_table.scan.side_effect = Exception("DynamoDB scan failure")
 
         mock_db = MagicMock()
         mock_db.Table.return_value = mock_table
-        cleanup_module._dynamodb = mock_db
 
         from api.referral_cleanup import handler
 
-        result = handler({}, {})
+        with patch("api.referral_cleanup.get_dynamodb", return_value=mock_db):
+            result = handler({}, {})
 
         assert result["processed"] == 0
         assert result["cleaned"] == 0
         assert "error" in result
         assert "DynamoDB scan failure" in result["error"]
-
-        # Reset
-        cleanup_module._dynamodb = None
 
     def test_pagination_processes_multiple_pages(self, mock_dynamodb):
         """Should paginate through multiple scan pages (lines 114-117)."""
@@ -1574,7 +1564,7 @@ class TestReferralRetentionCheckHandler:
         assert item["referral_retained"] == 1  # Was 0, now 1
 
     @patch("api.referral_retention_check.get_stripe_api_key")
-    @patch("api.referral_retention_check._get_dynamodb")
+    @patch("api.referral_retention_check.get_dynamodb")
     def test_handles_dynamodb_query_error(self, mock_get_dynamodb, mock_stripe_key, mock_dynamodb):
         """Should handle DynamoDB errors during index query."""
         mock_stripe_key.return_value = "sk_test_fake"
@@ -1817,7 +1807,7 @@ class TestGetStripeApiKey:
         billing_utils._stripe_api_key_cache = None
         billing_utils._stripe_api_key_cache_time = 0.0
 
-    @patch("shared.billing_utils._get_secretsmanager")
+    @patch("shared.billing_utils.get_secretsmanager")
     def test_retrieves_key_from_json_secret(self, mock_get_sm):
         """Should retrieve Stripe key from JSON secret."""
         import shared.billing_utils as billing_utils
@@ -1834,7 +1824,7 @@ class TestGetStripeApiKey:
 
         assert result == "sk_test_json_key"
 
-    @patch("shared.billing_utils._get_secretsmanager")
+    @patch("shared.billing_utils.get_secretsmanager")
     def test_retrieves_key_from_plain_string_secret(self, mock_get_sm):
         """Should retrieve Stripe key from plain string secret."""
         import shared.billing_utils as billing_utils
@@ -1851,7 +1841,7 @@ class TestGetStripeApiKey:
 
         assert result == "sk_test_plain_key"
 
-    @patch("shared.billing_utils._get_secretsmanager")
+    @patch("shared.billing_utils.get_secretsmanager")
     def test_handles_secrets_manager_error(self, mock_get_sm):
         """Should return None when Secrets Manager fails."""
         import shared.billing_utils as billing_utils
@@ -1871,7 +1861,7 @@ class TestGetStripeApiKey:
 
         assert result is None
 
-    @patch("shared.billing_utils._get_secretsmanager")
+    @patch("shared.billing_utils.get_secretsmanager")
     def test_uses_json_key_field_when_present(self, mock_get_sm):
         """Should prefer 'key' field from JSON over entire string."""
         import shared.billing_utils as billing_utils
@@ -1888,7 +1878,7 @@ class TestGetStripeApiKey:
 
         assert result == "sk_test_from_key_field"
 
-    @patch("shared.billing_utils._get_secretsmanager")
+    @patch("shared.billing_utils.get_secretsmanager")
     def test_falls_back_to_secret_string_when_key_empty(self, mock_get_sm):
         """Should fall back to full secret string when 'key' field is empty."""
         import shared.billing_utils as billing_utils

@@ -1976,6 +1976,93 @@ class TestDisputeCreated:
 
         assert "None" in caplog.text or "dispute" in caplog.text.lower()
 
+    @mock_aws
+    def test_sends_sns_notification_when_alert_topic_configured(self, mock_dynamodb, caplog):
+        """Should publish SNS notification when ALERT_TOPIC_ARN is set."""
+        import logging
+        import boto3
+        caplog.set_level(logging.INFO)
+
+        # Create a real SNS topic via moto
+        sns_client = boto3.client("sns", region_name="us-east-1")
+        topic = sns_client.create_topic(Name="pkgwatch-alerts")
+        topic_arn = topic["TopicArn"]
+
+        os.environ["ALERT_TOPIC_ARN"] = topic_arn
+
+        # Reset SNS client so it picks up moto mock
+        from shared.aws_clients import reset_clients
+        reset_clients()
+
+        try:
+            from api.stripe_webhook import _handle_dispute_created
+
+            dispute = {
+                "customer": "cus_sns_test",
+                "reason": "fraudulent",
+                "amount": 4900,
+            }
+
+            _handle_dispute_created(dispute)
+
+            assert "Dispute notification sent for customer cus_sns_test" in caplog.text
+        finally:
+            os.environ.pop("ALERT_TOPIC_ARN", None)
+            reset_clients()
+
+    def test_skips_sns_when_alert_topic_not_configured(self, caplog):
+        """Should skip SNS notification when ALERT_TOPIC_ARN is not set."""
+        import logging
+        caplog.set_level(logging.DEBUG, logger="api.stripe_webhook")
+
+        os.environ.pop("ALERT_TOPIC_ARN", None)
+
+        from api.stripe_webhook import _handle_dispute_created
+
+        dispute = {
+            "customer": "cus_no_sns",
+            "reason": "duplicate",
+            "amount": 2900,
+        }
+
+        _handle_dispute_created(dispute)
+
+        assert "ALERT_TOPIC_ARN not configured" in caplog.text
+        assert "Dispute notification sent" not in caplog.text
+
+    @mock_aws
+    def test_sns_failure_does_not_break_dispute_handling(self, mock_dynamodb, caplog):
+        """Should handle SNS publish errors gracefully without breaking dispute handling."""
+        import logging
+        from unittest.mock import patch, MagicMock
+        caplog.set_level(logging.WARNING)
+
+        os.environ["ALERT_TOPIC_ARN"] = "arn:aws:sns:us-east-1:123456789:fake-topic"
+
+        # Mock get_sns to return a client that raises on publish
+        mock_sns = MagicMock()
+        mock_sns.publish.side_effect = Exception("SNS publish failed")
+
+        try:
+            with patch("api.stripe_webhook.get_sns", return_value=mock_sns):
+                from api.stripe_webhook import _handle_dispute_created
+
+                dispute = {
+                    "customer": "cus_sns_fail",
+                    "reason": "product_not_received",
+                    "amount": 3900,
+                }
+
+                # Should not raise - SNS failure is handled gracefully
+                _handle_dispute_created(dispute)
+
+            # Dispute was still logged
+            assert "Dispute created for customer cus_sns_fail" in caplog.text
+            # SNS error was logged
+            assert "Failed to send dispute notification" in caplog.text
+        finally:
+            os.environ.pop("ALERT_TOPIC_ARN", None)
+
 
 class TestWebhookHandlerTransientErrors:
     """Tests for transient error handling and claim release."""
@@ -3967,7 +4054,7 @@ class TestRecordBillingEventErrorHandling:
         mock_table = MagicMock()
         mock_table.put_item.side_effect = Exception("DynamoDB down")
 
-        with patch.object(webhook_module, "_get_dynamodb") as mock_ddb:
+        with patch.object(webhook_module, "get_dynamodb") as mock_ddb:
             mock_ddb.return_value.Table.return_value = mock_table
             # Should NOT raise
             webhook_module._record_billing_event(event, "success")
@@ -3992,7 +4079,7 @@ class TestReleaseEventClaimErrorHandling:
         mock_table = MagicMock()
         mock_table.delete_item.side_effect = Exception("DynamoDB down")
 
-        with patch.object(webhook_module, "_get_dynamodb") as mock_ddb:
+        with patch.object(webhook_module, "get_dynamodb") as mock_ddb:
             mock_ddb.return_value.Table.return_value = mock_table
             # Should NOT raise
             webhook_module._release_event_claim("evt_fail_release", "invoice.paid")
@@ -4017,7 +4104,7 @@ class TestCustomerExistsErrorHandling:
         mock_table = MagicMock()
         mock_table.query.side_effect = Exception("GSI not ready")
 
-        with patch.object(webhook_module, "_get_dynamodb") as mock_ddb:
+        with patch.object(webhook_module, "get_dynamodb") as mock_ddb:
             mock_ddb.return_value.Table.return_value = mock_table
             result = webhook_module._customer_exists("cus_error")
 
@@ -4044,7 +4131,7 @@ class TestCheckAndClaimEventReraise:
             "PutItem",
         )
 
-        with patch.object(webhook_module, "_get_dynamodb") as mock_ddb:
+        with patch.object(webhook_module, "get_dynamodb") as mock_ddb:
             mock_ddb.return_value.Table.return_value = mock_table
             with pytest.raises(ClientError) as exc_info:
                 webhook_module._check_and_claim_event("evt_reraised", "invoice.paid")

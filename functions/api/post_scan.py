@@ -13,15 +13,13 @@ import time
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
-import boto3
 
 from shared.logging_utils import configure_structured_logging, set_request_id
+from shared.aws_clients import get_dynamodb, get_sqs
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# SQS client (lazy initialization)
-_sqs = None
 PACKAGE_QUEUE_URL = os.environ.get("PACKAGE_QUEUE_URL")
 MAX_QUEUE_PER_SCAN = 50  # Prevent abuse - max packages to queue per scan
 
@@ -31,14 +29,6 @@ from shared.package_validation import (
     validate_pypi_package_name,
     normalize_npm_name,
 )
-
-
-def _get_sqs():
-    """Lazy initialization of SQS client."""
-    global _sqs
-    if _sqs is None:
-        _sqs = boto3.client("sqs")
-    return _sqs
 
 
 def _is_valid_package_name(name: str, ecosystem: str) -> tuple[bool, str]:
@@ -81,7 +71,7 @@ def _queue_packages_for_collection(packages: list[str], ecosystem: str) -> int:
     if not to_queue:
         return 0
 
-    sqs = _get_sqs()
+    sqs = get_sqs()
     queued = 0
 
     # Send in batches of 10 (SQS limit)
@@ -117,16 +107,6 @@ from shared.rate_limit_utils import get_reset_timestamp, check_usage_alerts
 from shared.data_quality import build_data_quality_compact
 
 
-# Lazy initialization for DynamoDB
-_dynamodb = None
-
-
-def _get_dynamodb():
-    """Get DynamoDB resource, creating it lazily on first use."""
-    global _dynamodb
-    if _dynamodb is None:
-        _dynamodb = boto3.resource("dynamodb")
-    return _dynamodb
 PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 
 
@@ -236,7 +216,7 @@ def handler(event, context):
             retry_delay = 0.1  # 100ms initial delay
 
             for attempt in range(max_retries + 1):
-                response = _get_dynamodb().batch_get_item(RequestItems=request_items)
+                response = get_dynamodb().batch_get_item(RequestItems=request_items)
 
                 # Process found items
                 for item in response.get("Responses", {}).get(PACKAGES_TABLE, []):

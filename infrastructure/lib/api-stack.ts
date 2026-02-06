@@ -147,6 +147,17 @@ export class ApiStack extends cdk.Stack {
       description: "API health check endpoint",
     });
 
+    // Badge handler (no auth required - public endpoint for README embedding)
+    const badgeHandler = new lambda.Function(this, "BadgeHandler", {
+      ...commonLambdaProps,
+      functionName: "pkgwatch-api-badge",
+      handler: "api.badge.handler",
+      code: apiCodeWithShared,
+      description: "SVG badge endpoint for package health scores",
+    });
+
+    packagesTable.grantReadData(badgeHandler);
+
     // Get package handler
     const getPackageHandler = new lambda.Function(this, "GetPackageHandler", {
       ...commonLambdaProps,
@@ -221,6 +232,8 @@ export class ApiStack extends cdk.Stack {
           STRIPE_PRICE_STARTER: process.env.STRIPE_PRICE_STARTER || "",
           STRIPE_PRICE_PRO: process.env.STRIPE_PRICE_PRO || "",
           STRIPE_PRICE_BUSINESS: process.env.STRIPE_PRICE_BUSINESS || "",
+          // SNS topic for dispute/chargeback admin notifications
+          ...(alertTopic && { ALERT_TOPIC_ARN: alertTopic.topicArn }),
         },
       }
     );
@@ -229,6 +242,9 @@ export class ApiStack extends cdk.Stack {
     billingEventsTable.grantReadWriteData(stripeWebhookHandler);
     stripeSecret.grantRead(stripeWebhookHandler);
     stripeWebhookSecret.grantRead(stripeWebhookHandler);
+    if (alertTopic) {
+      alertTopic.grantPublish(stripeWebhookHandler);
+    }
 
     // Create alias for safe deployments with automatic rollback
     const stripeWebhookAlias = new lambda.Alias(this, "StripeWebhookAlias", {
@@ -1042,6 +1058,15 @@ export class ApiStack extends cdk.Stack {
       new apigateway.LambdaIntegration(healthHandler)
     );
 
+    // GET /badge/{ecosystem}/{name} (no auth - public SVG badge)
+    const badgeResource = this.api.root.addResource("badge");
+    const badgeEcosystemResource = badgeResource.addResource("{ecosystem}");
+    const badgeNameResource = badgeEcosystemResource.addResource("{name}");
+    badgeNameResource.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(badgeHandler)
+    );
+
     // GET /packages/{ecosystem}/{name}
     const packagesResource = this.api.root.addResource("packages");
     const ecosystemResource = packagesResource.addResource("{ecosystem}");
@@ -1728,6 +1753,7 @@ export class ApiStack extends cdk.Stack {
     // Create alarms for all API endpoints
     // Store error alarms from critical handlers for CodeDeploy rollback
     createLambdaAlarms(healthHandler, "Health");
+    createLambdaAlarms(badgeHandler, "Badge");
     const getPackageAlarms = createLambdaAlarms(getPackageHandler, "GetPackage");
     const scanAlarms = createLambdaAlarms(scanHandler, "Scan");
     createLambdaAlarms(getUsageHandler, "GetUsage");

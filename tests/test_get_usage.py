@@ -584,7 +584,7 @@ class TestGetUsageErrorHandling:
 
     @mock_aws
     def test_handles_null_headers(self, mock_dynamodb, api_gateway_event):
-        """Should return 500 when headers are None (defensive error handling)."""
+        """Should return 401 when headers are None (no API key present)."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         from api.get_usage import handler
@@ -593,8 +593,7 @@ class TestGetUsageErrorHandling:
 
         result = handler(api_gateway_event, {})
 
-        # Handler catches the exception and returns 500
-        # This is defensive - AWS API Gateway would never send null headers
-        assert result["statusCode"] == 500
+        # With null headers, api_key is None so validate_api_key returns None → 401
+        assert result["statusCode"] == 401
         body = json.loads(result["body"])
-        assert body["error"]["code"] == "internal_error"
+        assert body["error"]["code"] == "invalid_api_key"

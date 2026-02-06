@@ -4187,7 +4187,7 @@ class TestErrorRecoveryFlows:
             reload(package_collector)
 
             # Patch DynamoDB to raise an exception
-            with patch.object(package_collector, "_get_dynamodb") as mock_get_ddb:
+            with patch("aws_clients.get_dynamodb") as mock_get_ddb:
                 mock_table = MagicMock()
                 mock_table.get_item.side_effect = Exception("DynamoDB error")
                 mock_resource = MagicMock()
@@ -4245,7 +4245,7 @@ class TestErrorRecoveryFlows:
             reload(package_collector)
 
             # Patch DynamoDB to raise an exception
-            with patch.object(package_collector, "_get_dynamodb") as mock_get_ddb:
+            with patch("aws_clients.get_dynamodb") as mock_get_ddb:
                 mock_table = MagicMock()
                 mock_table.update_item.side_effect = Exception("DynamoDB error")
                 mock_resource = MagicMock()
@@ -4616,7 +4616,7 @@ class TestS3RawDataArchival:
             reload(package_collector)
 
             # Mock S3 to fail
-            with patch.object(package_collector, "_get_s3") as mock_get_s3:
+            with patch("package_collector.get_s3") as mock_get_s3:
                 mock_s3 = MagicMock()
                 mock_s3.put_object.side_effect = Exception("S3 error")
                 mock_get_s3.return_value = mock_s3
@@ -5256,7 +5256,7 @@ class TestDatabaseWriteErrors:
             reload(package_collector)
 
             # Mock DynamoDB to raise error
-            with patch.object(package_collector, "_get_dynamodb") as mock_get_ddb:
+            with patch("package_collector.get_dynamodb") as mock_get_ddb:
                 mock_table = MagicMock()
                 mock_table.put_item.side_effect = Exception("DynamoDB write failed")
                 mock_resource = MagicMock()
@@ -6950,7 +6950,7 @@ class TestDataStatusAbandoned:
                 "_existing_retry_count": MAX_RETRY_COUNT,
             }
 
-            with patch("package_collector._get_dynamodb", return_value=dynamodb):
+            with patch("aws_clients.get_dynamodb", return_value=dynamodb):
                 store_package_data_sync("npm", "flaky-pkg", data, tier=2)
 
             item = table.get_item(Key={"pk": "npm#flaky-pkg", "sk": "LATEST"})["Item"]
@@ -7141,7 +7141,7 @@ class TestIncrementRetryCountError:
         mock_dynamodb = MagicMock()
         mock_dynamodb.Table.return_value = mock_table
 
-        with patch("package_collector._get_dynamodb", return_value=mock_dynamodb):
+        with patch("aws_clients.get_dynamodb", return_value=mock_dynamodb):
             # Should not raise
             _increment_retry_count_sync("npm", "test-pkg")
 
@@ -7180,7 +7180,7 @@ class TestGetTotalGitHubCallsError:
         mock_dynamodb = MagicMock()
         mock_dynamodb.Table.return_value = mock_table
 
-        with patch("package_collector._get_dynamodb", return_value=mock_dynamodb):
+        with patch("package_collector.get_dynamodb", return_value=mock_dynamodb):
             total = _get_total_github_calls("2024-01-01-12")
             # Should return 10 from shard 0, skip errored shard 3
             assert total == 10

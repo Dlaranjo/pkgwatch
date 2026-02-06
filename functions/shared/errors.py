@@ -5,6 +5,8 @@ Standardized error responses for the API.
 import json
 from typing import Optional
 
+from shared.logging_utils import request_id_var
+
 
 class APIError(Exception):
     """Base class for API errors."""
@@ -32,6 +34,10 @@ class APIError(Exception):
         }
         if self.details:
             body["error"]["details"] = self.details
+
+        request_id = request_id_var.get(None)
+        if request_id:
+            body["error"]["request_id"] = request_id
 
         return {
             "statusCode": self.status_code,

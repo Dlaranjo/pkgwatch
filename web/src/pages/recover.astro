@@ -289,7 +289,7 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-  const API_BASE = 'https://api.pkgwatch.dev';
+  import { API_BASE } from '../config';
 
   // State
   let recoverySessionId: string | null = null;

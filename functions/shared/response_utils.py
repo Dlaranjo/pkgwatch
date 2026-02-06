@@ -9,6 +9,8 @@ import os
 from decimal import Decimal
 from typing import Optional, Any, Dict, List
 
+from shared.logging_utils import request_id_var
+
 # CORS configuration
 _PROD_ORIGINS = [
     "https://pkgwatch.dev",
@@ -117,6 +119,10 @@ def error_response(
     }
     if details:
         body["error"]["details"] = details
+
+    request_id = request_id_var.get(None)
+    if request_id:
+        body["error"]["request_id"] = request_id
 
     return {
         "statusCode": status_code,

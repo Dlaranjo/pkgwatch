@@ -7,7 +7,7 @@ POST /packages/request allows users to request packages not yet tracked.
 import json
 import os
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from moto import mock_aws
@@ -118,7 +118,7 @@ class TestRequestPackageHandler:
         importlib.reload(module)
 
         # Mock validate_package_exists to return False
-        with patch.object(module, "validate_package_exists", new_callable=AsyncMock) as mock_validate:
+        with patch.object(module, "validate_package_exists") as mock_validate:
             mock_validate.return_value = False
 
             event = {**api_gateway_event, "body": json.dumps({"name": "nonexistent-pkg"})}
@@ -141,14 +141,14 @@ class TestRequestPackageHandler:
         importlib.reload(module)
 
         # Mock validate_package_exists to return True
-        with patch.object(module, "validate_package_exists", new_callable=AsyncMock) as mock_validate:
+        with patch.object(module, "validate_package_exists") as mock_validate:
             mock_validate.return_value = True
 
             # Create a mock SQS client
             mock_sqs = MagicMock()
 
             # Patch the lazy getter to return our mock
-            with patch.object(module, "_get_sqs", return_value=mock_sqs):
+            with patch.object(module, "get_sqs", return_value=mock_sqs):
                 event = {**api_gateway_event, "body": json.dumps({"name": "new-pkg"})}
                 result = module.handler(event, None)
 
@@ -202,11 +202,11 @@ class TestRequestPackageHandler:
 
         importlib.reload(module)
 
-        with patch.object(module, "validate_package_exists", new_callable=AsyncMock) as mock_validate:
+        with patch.object(module, "validate_package_exists") as mock_validate:
             mock_validate.return_value = True
 
             # Patch the lazy SQS getter
-            with patch.object(module, "_get_sqs", return_value=MagicMock()):
+            with patch.object(module, "get_sqs", return_value=MagicMock()):
                 event = {
                     **api_gateway_event,
                     "body": json.dumps({"name": "requests", "ecosystem": "pypi"}),
@@ -348,7 +348,7 @@ class TestRequestPackageErrorPaths:
 
         importlib.reload(module)
 
-        # Mock _get_dynamodb to return a resource where the packages table raises on get_item
+        # Mock get_dynamodb to return a resource where the packages table raises on get_item
         mock_packages_table = MagicMock()
         mock_packages_table.get_item.side_effect = Exception("DynamoDB unavailable")
         mock_packages_table.put_item.return_value = {}
@@ -364,10 +364,10 @@ class TestRequestPackageErrorPaths:
         mock_db = MagicMock()
         mock_db.Table.side_effect = mock_table_factory
 
-        with patch.object(module, "_get_dynamodb", return_value=mock_db):
-            with patch.object(module, "validate_package_exists", new_callable=AsyncMock) as mock_validate:
+        with patch.object(module, "get_dynamodb", return_value=mock_db):
+            with patch.object(module, "validate_package_exists") as mock_validate:
                 mock_validate.return_value = True
-                with patch.object(module, "_get_sqs", return_value=MagicMock()):
+                with patch.object(module, "get_sqs", return_value=MagicMock()):
                     event = {**api_gateway_event, "body": json.dumps({"name": "test-pkg"})}
                     result = module.handler(event, None)
 
@@ -389,7 +389,7 @@ class TestRequestPackageErrorPaths:
 
         importlib.reload(module)
 
-        # Mock _get_dynamodb so put_item raises ConditionalCheckFailedException
+        # Mock get_dynamodb so put_item raises ConditionalCheckFailedException
         mock_packages_table = MagicMock()
         mock_packages_table.get_item.return_value = {}  # Package not found initially
         mock_packages_table.put_item.side_effect = ClientError(
@@ -408,8 +408,8 @@ class TestRequestPackageErrorPaths:
         mock_db = MagicMock()
         mock_db.Table.side_effect = mock_table_factory
 
-        with patch.object(module, "_get_dynamodb", return_value=mock_db):
-            with patch.object(module, "validate_package_exists", new_callable=AsyncMock) as mock_validate:
+        with patch.object(module, "get_dynamodb", return_value=mock_db):
+            with patch.object(module, "validate_package_exists") as mock_validate:
                 mock_validate.return_value = True
 
                 event = {**api_gateway_event, "body": json.dumps({"name": "race-pkg"})}
@@ -447,8 +447,8 @@ class TestRequestPackageErrorPaths:
         mock_db = MagicMock()
         mock_db.Table.side_effect = mock_table_factory
 
-        with patch.object(module, "_get_dynamodb", return_value=mock_db):
-            with patch.object(module, "validate_package_exists", new_callable=AsyncMock) as mock_validate:
+        with patch.object(module, "get_dynamodb", return_value=mock_db):
+            with patch.object(module, "validate_package_exists") as mock_validate:
                 mock_validate.return_value = True
 
                 event = {**api_gateway_event, "body": json.dumps({"name": "fail-pkg"})}
@@ -473,9 +473,9 @@ class TestRequestPackageErrorPaths:
         mock_sqs = MagicMock()
         mock_sqs.send_message.side_effect = Exception("SQS unavailable")
 
-        with patch.object(module, "validate_package_exists", new_callable=AsyncMock) as mock_validate:
+        with patch.object(module, "validate_package_exists") as mock_validate:
             mock_validate.return_value = True
-            with patch.object(module, "_get_sqs", return_value=mock_sqs):
+            with patch.object(module, "get_sqs", return_value=mock_sqs):
                 event = {**api_gateway_event, "body": json.dumps({"name": "sqs-fail-pkg"})}
                 result = module.handler(event, None)
 
@@ -494,14 +494,14 @@ class TestRequestPackageErrorPaths:
 
         importlib.reload(module)
 
-        # Mock _get_dynamodb so the rate limit table raises an error on update_item
+        # Mock get_dynamodb so the rate limit table raises an error on update_item
         mock_table = MagicMock()
         mock_table.update_item.side_effect = Exception("DynamoDB timeout")
 
         mock_db = MagicMock()
         mock_db.Table.return_value = mock_table
 
-        with patch.object(module, "_get_dynamodb", return_value=mock_db):
+        with patch.object(module, "get_dynamodb", return_value=mock_db):
             result = module.check_and_record_rate_limit("192.168.1.1")
             assert result is False
 
@@ -521,51 +521,46 @@ class TestRequestPackageErrorPaths:
         mock_db = MagicMock()
         mock_db.Table.return_value = mock_table
 
-        with patch.object(module, "_get_dynamodb", return_value=mock_db):
+        with patch.object(module, "get_dynamodb", return_value=mock_db):
             # Should not raise, and should return False (fail closed)
             result = module.check_and_record_rate_limit("192.168.1.1")
             assert result is False
 
     def test_validate_package_exists_returns_false_on_exception(self):
-        """Should return False when deps.dev lookup raises an exception (lines 251-258)."""
+        """Should return False when httpx.get raises an exception."""
         import importlib
         import api.request_package as module
-        import asyncio
 
         importlib.reload(module)
 
-        with patch("collectors.depsdev_collector.get_package_info", new_callable=AsyncMock) as mock_get:
-            mock_get.side_effect = Exception("Network error")
-
-            result = asyncio.run(module.validate_package_exists("some-pkg", "npm"))
+        with patch("httpx.get", side_effect=Exception("Network error")):
+            result = module.validate_package_exists("some-pkg", "npm")
             assert result is False
 
     def test_validate_package_exists_returns_true_when_found(self):
-        """Should return True when deps.dev lookup returns package info."""
+        """Should return True when deps.dev returns 200."""
         import importlib
         import api.request_package as module
-        import asyncio
 
         importlib.reload(module)
 
-        with patch("collectors.depsdev_collector.get_package_info", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = {"name": "lodash", "version": "4.17.21"}
-
-            result = asyncio.run(module.validate_package_exists("lodash", "npm"))
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        with patch("httpx.get", return_value=mock_response):
+            result = module.validate_package_exists("lodash", "npm")
             assert result is True
 
     def test_validate_package_exists_returns_false_when_not_found(self):
-        """Should return False when deps.dev lookup returns None."""
+        """Should return False when deps.dev returns 404."""
         import importlib
         import api.request_package as module
-        import asyncio
 
         importlib.reload(module)
 
-        with patch("collectors.depsdev_collector.get_package_info", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = None
-
-            result = asyncio.run(module.validate_package_exists("nonexistent", "npm"))
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        with patch("httpx.get", return_value=mock_response):
+            result = module.validate_package_exists("nonexistent", "npm")
             assert result is False
 
     @mock_aws
@@ -599,8 +594,8 @@ class TestRequestPackageErrorPaths:
         mock_db = MagicMock()
         mock_db.Table.side_effect = mock_table_factory
 
-        with patch.object(module, "_get_dynamodb", return_value=mock_db):
-            with patch.object(module, "validate_package_exists", new_callable=AsyncMock) as mock_validate:
+        with patch.object(module, "get_dynamodb", return_value=mock_db):
+            with patch.object(module, "validate_package_exists") as mock_validate:
                 mock_validate.return_value = True
 
                 event = {**api_gateway_event, "body": json.dumps({"name": "throttled-pkg"})}

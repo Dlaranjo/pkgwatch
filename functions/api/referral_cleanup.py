@@ -9,25 +9,14 @@ import logging
 import os
 from datetime import datetime, timezone
 
-import boto3
 from boto3.dynamodb.conditions import Attr
 from botocore.exceptions import ClientError
 
+from shared.aws_clients import get_dynamodb
 from shared.referral_utils import update_referrer_stats
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-# Lazy initialization
-_dynamodb = None
-
-
-def _get_dynamodb():
-    """Get DynamoDB resource."""
-    global _dynamodb
-    if _dynamodb is None:
-        _dynamodb = boto3.resource("dynamodb")
-    return _dynamodb
 
 
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
@@ -45,7 +34,7 @@ def handler(event, context):
     1. Clear the referral_pending flag
     2. Decrement referrer's pending_count
     """
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat()
 

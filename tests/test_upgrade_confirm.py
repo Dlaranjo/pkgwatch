@@ -1077,7 +1077,7 @@ class TestUpgradeConfirmHandler:
                     mock_dynamodb_resource = MagicMock()
                     mock_dynamodb_resource.Table.return_value = mock_table
 
-                    with patch.object(confirm_module, "_get_dynamodb", return_value=mock_dynamodb_resource):
+                    with patch("api.upgrade_confirm.get_dynamodb", return_value=mock_dynamodb_resource):
                         api_gateway_event["httpMethod"] = "POST"
                         api_gateway_event["headers"]["cookie"] = "session=valid"
                         api_gateway_event["body"] = json.dumps({"tier": "pro", "proration_date": int(time.time())})
@@ -1161,7 +1161,7 @@ class TestUpgradeConfirmHandler:
                     mock_dynamodb_resource = MagicMock()
                     mock_dynamodb_resource.Table.return_value = mock_table
 
-                    with patch.object(confirm_module, "_get_dynamodb", return_value=mock_dynamodb_resource):
+                    with patch("api.upgrade_confirm.get_dynamodb", return_value=mock_dynamodb_resource):
                         api_gateway_event["httpMethod"] = "POST"
                         api_gateway_event["headers"]["cookie"] = "session=valid"
                         api_gateway_event["body"] = json.dumps({"tier": "pro", "proration_date": int(time.time())})

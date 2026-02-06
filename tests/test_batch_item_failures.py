@@ -248,7 +248,7 @@ class TestErrorClassification:
 class TestStoreCollectionError:
     """Tests for storing collection errors in DynamoDB."""
 
-    @patch("package_collector._get_dynamodb")
+    @patch("package_collector.get_dynamodb")
     def test_store_collection_error_success(self, mock_get_db):
         """Test successful storage of collection error."""
         from package_collector import _store_collection_error_sync
@@ -266,7 +266,7 @@ class TestStoreCollectionError:
         assert ":error" in call_args.kwargs["ExpressionAttributeValues"]
         assert ":error_class" in call_args.kwargs["ExpressionAttributeValues"]
 
-    @patch("package_collector._get_dynamodb")
+    @patch("package_collector.get_dynamodb")
     def test_store_collection_error_handles_failure(self, mock_get_db):
         """Test that storage failures don't raise exceptions."""
         from package_collector import _store_collection_error_sync

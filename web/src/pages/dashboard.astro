@@ -614,7 +614,7 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-  const API_BASE = 'https://api.pkgwatch.dev';
+  import { API_BASE } from '../config';
 
   // DOM Elements
   const skeleton = document.getElementById('dashboard-skeleton');

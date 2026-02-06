@@ -43,7 +43,7 @@ class TestDynamoDBFailures:
         api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
         api_gateway_event["headers"]["x-api-key"] = test_key
 
-        # Patch _get_dynamodb to return mock that raises ClientError on get_item
+        # Patch get_dynamodb to return mock that raises ClientError on get_item
         mock_dynamo = MagicMock()
         mock_table = MagicMock()
         mock_dynamo.Table.return_value = mock_table
@@ -52,7 +52,7 @@ class TestDynamoDBFailures:
             "GetItem"
         )
 
-        with patch("api.get_package._get_dynamodb", return_value=mock_dynamo):
+        with patch("api.get_package.get_dynamodb", return_value=mock_dynamo):
             from api.get_package import handler
             result = handler(api_gateway_event, {})
 
@@ -66,7 +66,7 @@ class TestDynamoDBFailures:
         """Should return None when DynamoDB query fails during API key validation."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        with patch("shared.auth._get_dynamodb") as mock_get_dynamo:
+        with patch("shared.auth.get_dynamodb") as mock_get_dynamo:
             mock_dynamo = MagicMock()
             mock_get_dynamo.return_value = mock_dynamo
             mock_table = MagicMock()
@@ -91,7 +91,7 @@ class TestDynamoDBFailures:
         table, test_key = seeded_api_keys_table
         key_hash = hashlib.sha256(test_key.encode()).hexdigest()
 
-        with patch("shared.auth._get_dynamodb") as mock_get_dynamo:
+        with patch("shared.auth.get_dynamodb") as mock_get_dynamo:
             mock_dynamo = MagicMock()
             mock_get_dynamo.return_value = mock_dynamo
             mock_table = MagicMock()
@@ -195,7 +195,7 @@ class TestDynamoDBFailures:
         api_gateway_event["headers"]["cookie"] = f"session={session_token}"
 
         with patch("api.auth_me.verify_session_token", return_value=session_data):
-            with patch("api.auth_me._get_dynamodb") as mock_get_dynamo:
+            with patch("api.auth_me.get_dynamodb") as mock_get_dynamo:
                 mock_dynamo = MagicMock()
                 mock_get_dynamo.return_value = mock_dynamo
                 mock_table = MagicMock()
@@ -236,7 +236,7 @@ class TestDynamoDemoRateLimitFailures:
             "UpdateItem"
         )
 
-        with patch("api.get_package._get_dynamodb", return_value=mock_dynamo):
+        with patch("api.get_package.get_dynamodb", return_value=mock_dynamo):
             from api.get_package import handler
             result = handler(api_gateway_event, {})
 
@@ -1081,7 +1081,7 @@ class TestErrorResponseConsistency:
         mock_dynamo.Table.return_value = mock_table
         mock_table.get_item.side_effect = Exception("Unexpected error")
 
-        with patch("api.get_package._get_dynamodb", return_value=mock_dynamo):
+        with patch("api.get_package.get_dynamodb", return_value=mock_dynamo):
             from api.get_package import handler
             result = handler(api_gateway_event, {})
 
@@ -1200,6 +1200,36 @@ class TestErrorClasses:
         body = json.loads(response["body"])
         assert body["error"]["code"] == "validation_error"
         assert body["error"]["details"]["field"] == "name"
+
+    def test_api_error_to_response_includes_request_id(self):
+        """APIError.to_response() should include request_id when set."""
+        from shared.errors import APIError
+        from shared.logging_utils import request_id_var
+
+        token = request_id_var.set("req-test-456")
+        try:
+            error = APIError(code="test_error", message="Test", status_code=400)
+            response = error.to_response()
+
+            body = json.loads(response["body"])
+            assert body["error"]["request_id"] == "req-test-456"
+        finally:
+            request_id_var.reset(token)
+
+    def test_api_error_to_response_omits_request_id_when_not_set(self):
+        """APIError.to_response() should omit request_id when not set."""
+        from shared.errors import APIError
+        from shared.logging_utils import request_id_var
+
+        token = request_id_var.set("")
+        try:
+            error = APIError(code="test_error", message="Test", status_code=400)
+            response = error.to_response()
+
+            body = json.loads(response["body"])
+            assert "request_id" not in body["error"]
+        finally:
+            request_id_var.reset(token)
 
 
 # ==============================================================================
@@ -1327,7 +1357,7 @@ class TestSecurityErrors:
             "GetItem"
         )
 
-        with patch("api.get_package._get_dynamodb", return_value=mock_dynamo):
+        with patch("api.get_package.get_dynamodb", return_value=mock_dynamo):
             from api.get_package import handler
             result = handler(api_gateway_event, {})
 

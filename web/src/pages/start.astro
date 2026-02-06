@@ -79,7 +79,7 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-  const API_BASE = 'https://api.pkgwatch.dev';
+  import { API_BASE } from '../config';
   const AUTH_CACHE_KEY = 'pkgwatch_auth_cache';
   const REFERRAL_CODE_KEY = 'pkgwatch_referral_code';
 

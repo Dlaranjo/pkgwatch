@@ -1927,7 +1927,7 @@ class TestDynamoDBErrorHandling:
         from api.post_scan import handler
 
         # Mock the dynamodb resource to raise an error during batch_get_item
-        with patch("api.post_scan._get_dynamodb") as mock_get_ddb:
+        with patch("api.post_scan.get_dynamodb") as mock_get_ddb:
             mock_ddb = MagicMock()
             mock_get_ddb.return_value = mock_ddb
             mock_ddb.batch_get_item.side_effect = Exception("DynamoDB error")
@@ -2461,7 +2461,7 @@ class TestUnprocessedKeysRetry:
             "UnprocessedKeys": {},
         }
 
-        with patch("api.post_scan._get_dynamodb") as mock_get_ddb, \
+        with patch("api.post_scan.get_dynamodb") as mock_get_ddb, \
              patch("api.post_scan.time.sleep"):  # Speed up test
             mock_ddb = MagicMock()
             mock_get_ddb.return_value = mock_ddb
@@ -2522,7 +2522,7 @@ class TestUnprocessedKeysRetry:
             },
         }
 
-        with patch("api.post_scan._get_dynamodb") as mock_get_ddb, \
+        with patch("api.post_scan.get_dynamodb") as mock_get_ddb, \
              patch("api.post_scan.time.sleep"):
             mock_ddb = MagicMock()
             mock_get_ddb.return_value = mock_ddb
@@ -2596,7 +2596,7 @@ class TestUnprocessedKeysRetry:
             "UnprocessedKeys": {},
         }
 
-        with patch("api.post_scan._get_dynamodb") as mock_get_ddb, \
+        with patch("api.post_scan.get_dynamodb") as mock_get_ddb, \
              patch("api.post_scan.time.sleep") as mock_sleep, \
              patch("api.post_scan.random.uniform", return_value=0.005):  # Fixed jitter
             mock_ddb = MagicMock()

@@ -126,6 +126,8 @@ import {
   type Ecosystem,
   type RepoScanResult,
   type ManifestScanResult,
+  type CollectingResponse,
+  isCollectingResponse,
 } from "./api.js";
 import {
   getApiKey,
@@ -277,6 +279,10 @@ function printPackageDetails(pkg: PackageHealthFull): void {
     console.log(`    Security:    ${pkg.components.security_health.toFixed(0)}/100`);
   }
   console.log("");
+
+  // Feedback link for score disputes
+  console.log(pc.dim(`  Wrong score? ${pc.underline(`https://github.com/Dlaranjo/pkgwatch/issues/new?title=Score+feedback:+${pkg.ecosystem}/${pkg.package}&labels=score-feedback`)}`));
+  console.log("");
 }
 
 
@@ -323,13 +329,6 @@ program
 // ------------------------------------------------------------
 // check <package>
 // ------------------------------------------------------------
-
-/**
- * Check if response is a 202 "collecting" status.
- */
-function isCollectingResponse(data: unknown): data is { status: "collecting"; message: string; retry_after_seconds: number; data_status: string } {
-  return typeof data === "object" && data !== null && (data as Record<string, unknown>).status === "collecting";
-}
 
 program
   .command("check <package>")
@@ -379,8 +378,7 @@ program
         const maxWait = parseInt(options.maxWait || "600", 10);
         let retryCount = 0;
         let totalWaited = 0;
-        // Result can be either a collecting response or package data
-        let result: typeof pkg | { status: "collecting"; message: string; retry_after_seconds: number; data_status: string } = pkg;
+        let result: PackageHealthFull | CollectingResponse = pkg;
 
         while (isCollectingResponse(result) && retryCount < maxRetries && totalWaited < maxWait) {
           const waitTime = Math.min(result.retry_after_seconds, maxWait - totalWaited);
@@ -395,12 +393,11 @@ program
           spinner?.stop();
 
           try {
-            // getPackage returns PackageHealthFull but can also return 202 collecting response
             result = await client.getPackage(
               packageName,
               options.ecosystem,
               { includeIncomplete: options.includeIncomplete }
-            ) as typeof result;
+            );
           } catch (retryError) {
             // Handle errors during retry (404, rate limit, etc.)
             if (retryError instanceof ApiClientError) {

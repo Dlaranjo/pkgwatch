@@ -10,7 +10,6 @@ import logging
 import os
 import time
 
-import boto3
 import stripe
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
@@ -18,30 +17,10 @@ from datetime import datetime, timezone, timedelta
 
 from shared.logging_utils import configure_structured_logging, set_request_id
 from shared.response_utils import error_response
+from shared.aws_clients import get_dynamodb, get_secretsmanager, get_sns
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-# Lazy initialization to reduce cold start overhead
-_dynamodb = None
-_secretsmanager = None
-
-
-def _get_dynamodb():
-    """Get DynamoDB resource, creating it lazily on first use."""
-    global _dynamodb
-    if _dynamodb is None:
-        _dynamodb = boto3.resource("dynamodb")
-    return _dynamodb
-
-
-def _get_secretsmanager():
-    """Get Secrets Manager client, creating it lazily on first use."""
-    global _secretsmanager
-    if _secretsmanager is None:
-        _secretsmanager = boto3.client("secretsmanager")
-    return _secretsmanager
-
 
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 BILLING_EVENTS_TABLE = os.environ.get("BILLING_EVENTS_TABLE", "pkgwatch-billing-events")
@@ -87,7 +66,7 @@ def get_stripe_secrets() -> tuple[str | None, str | None]:
 
     api_key = None
     webhook_secret = None
-    sm = _get_secretsmanager()
+    sm = get_secretsmanager()
 
     if STRIPE_SECRET_ARN:
         try:
@@ -134,7 +113,7 @@ def _check_and_claim_event(event_id: str, event_type: str) -> bool:
         True if successfully claimed (should process)
         False if already exists (duplicate - skip processing)
     """
-    table = _get_dynamodb().Table(BILLING_EVENTS_TABLE)
+    table = get_dynamodb().Table(BILLING_EVENTS_TABLE)
     try:
         table.put_item(
             Item={
@@ -164,7 +143,7 @@ def _release_event_claim(event_id: str, event_type: str):
         event_type: Stripe event type
     """
     try:
-        table = _get_dynamodb().Table(BILLING_EVENTS_TABLE)
+        table = get_dynamodb().Table(BILLING_EVENTS_TABLE)
         table.delete_item(Key={"pk": event_id, "sk": event_type})
         logger.info(f"Released event claim for {event_id} to allow retry")
     except Exception as e:
@@ -184,7 +163,7 @@ def _record_billing_event(event: dict, status: str, error: str = None):
         error: Error message if status is "failed"
     """
     try:
-        table = _get_dynamodb().Table(BILLING_EVENTS_TABLE)
+        table = get_dynamodb().Table(BILLING_EVENTS_TABLE)
         ttl = int((datetime.now(timezone.utc) + timedelta(days=90)).timestamp())
         customer_id = event.get("data", {}).get("object", {}).get("customer") or "unknown"
 
@@ -350,7 +329,7 @@ def _customer_exists(customer_id: str) -> bool:
     if not customer_id:
         return False
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
     try:
         response = table.query(
             IndexName="stripe-customer-index",
@@ -373,7 +352,7 @@ def _process_paid_referral_reward(user_id: str, referred_email: str):
         user_id: The referred user's ID
         referred_email: Email for logging (masked)
     """
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     try:
         # Get user's referral info
@@ -391,7 +370,7 @@ def _process_paid_referral_reward(user_id: str, referred_email: str):
 
         # Check if we already processed a "paid" event for this user
         # (idempotency - in case webhook fires multiple times)
-        events_table = _get_dynamodb().Table(BILLING_EVENTS_TABLE)
+        events_table = get_dynamodb().Table(BILLING_EVENTS_TABLE)
         existing = events_table.get_item(
             Key={"pk": f"referral_paid:{referrer_id}:{user_id}", "sk": "paid"},
         )
@@ -523,7 +502,7 @@ def _handle_checkout_completed(session: dict):
 
 def _get_user_id_by_email(email: str) -> str | None:
     """Look up user_id by email using GSI."""
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
     try:
         response = table.query(
             IndexName="email-index",
@@ -541,7 +520,7 @@ def _get_user_id_by_email(email: str) -> str | None:
 
 def _get_user_id_by_customer_id(customer_id: str) -> str | None:
     """Look up user_id by Stripe customer ID using GSI."""
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
     try:
         response = table.query(
             IndexName="stripe-customer-index",
@@ -700,7 +679,7 @@ def _handle_payment_failed(invoice: dict):
         logger.warning("No customer ID in failed payment invoice")
         return
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     # Query by stripe_customer_id using GSI
     response = table.query(
@@ -860,10 +839,11 @@ def _handle_charge_refunded(charge: dict):
 
 
 def _handle_dispute_created(dispute: dict):
-    """Handle dispute event - log and flag for review.
+    """Handle dispute event - log, notify admins via SNS, and flag for review.
 
     Disputes are recorded in billing_events for investigation.
     The main handler already records the event, so we just log details here.
+    If ALERT_TOPIC_ARN is configured, publishes an SNS notification for admin awareness.
 
     Args:
         dispute: Stripe dispute object
@@ -877,7 +857,30 @@ def _handle_dispute_created(dispute: dict):
         f"Dispute created for customer {customer_id}: "
         f"${amount/100:.2f} (reason: {reason})"
     )
-    # TODO: Could add admin notification or account flagging here
+
+    # Notify admins via SNS if configured
+    alert_topic_arn = os.environ.get("ALERT_TOPIC_ARN")
+    if not alert_topic_arn:
+        logger.debug("ALERT_TOPIC_ARN not configured, skipping dispute notification")
+        return
+
+    try:
+        sns = get_sns()
+        sns.publish(
+            TopicArn=alert_topic_arn,
+            Subject="PkgWatch: Dispute Created",
+            Message=(
+                f"A payment dispute has been created.\n\n"
+                f"Customer ID: {customer_id}\n"
+                f"Amount: ${amount/100:.2f}\n"
+                f"Reason: {reason}\n\n"
+                f"Please investigate in the Stripe dashboard."
+            ),
+        )
+        logger.info(f"Dispute notification sent for customer {customer_id}")
+    except Exception as e:
+        # Don't let SNS failures break dispute handling
+        logger.error(f"Failed to send dispute notification: {e}")
 
 
 def _extract_period_from_invoice(invoice: dict) -> tuple[int | None, int | None]:
@@ -921,7 +924,7 @@ def _reset_user_usage_for_billing_cycle(
         period_start: Unix timestamp of new billing period start
         period_end: Unix timestamp of new billing period end
     """
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
     reset_time = datetime.now(timezone.utc).isoformat()
 
     # Query all records for this Stripe customer
@@ -1039,7 +1042,7 @@ def _update_user_tier(
         logger.error("Cannot update tier: no email provided")
         return
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     # Query by email using GSI
     response = table.query(
@@ -1134,7 +1137,7 @@ def _update_user_tier_by_customer_id(
         logger.error("Cannot update tier: no customer_id provided")
         return
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     # Query GSI by stripe_customer_id
     response = table.query(
@@ -1224,7 +1227,7 @@ def _update_user_subscription_state(
         logger.error("Cannot update subscription state: no customer_id provided")
         return
 
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
 
     # Query GSI by stripe_customer_id
     response = table.query(

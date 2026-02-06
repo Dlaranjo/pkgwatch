@@ -93,6 +93,25 @@ export interface UsageAlert {
   message: string;
 }
 
+/**
+ * Response returned when a package is still being collected (HTTP 202).
+ */
+export interface CollectingResponse {
+  status: "collecting";
+  package: string;
+  ecosystem: string;
+  data_status: string;
+  message: string;
+  retry_after_seconds: number;
+}
+
+/**
+ * Type guard to check if a response is a 202 collecting status.
+ */
+export function isCollectingResponse(data: unknown): data is CollectingResponse {
+  return typeof data === "object" && data !== null && (data as Record<string, unknown>).status === "collecting";
+}
+
 // Data quality types for completeness transparency
 export type AssessmentCategory = "VERIFIED" | "PARTIAL" | "UNVERIFIED" | "UNAVAILABLE";
 
@@ -418,11 +437,12 @@ export class PkgWatchClient {
     name: string,
     ecosystem = "npm",
     options: { includeIncomplete?: boolean } = {}
-  ): Promise<PackageHealthFull> {
+  ): Promise<PackageHealthFull | CollectingResponse> {
     const encodedEcosystem = encodeURIComponent(ecosystem);
     const encodedName = encodeURIComponent(name);
     const queryParams = options.includeIncomplete ? "?include_incomplete=true" : "";
-    return this.request<PackageHealthFull>(`/packages/${encodedEcosystem}/${encodedName}${queryParams}`);
+    const data = await this.request<PackageHealthFull | CollectingResponse>(`/packages/${encodedEcosystem}/${encodedName}${queryParams}`);
+    return data;
   }
 
   /**

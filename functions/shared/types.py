@@ -105,3 +105,36 @@ class DynamoDBStreamEvent(TypedDict):
     """DynamoDB Streams event structure."""
 
     Records: list[DynamoDBStreamRecord]
+
+
+class UserInfo(TypedDict, total=False):
+    """User information returned from validate_api_key."""
+
+    user_id: str
+    key_hash: str
+    tier: str
+    monthly_limit: int
+    requests_this_month: int
+    created_at: str
+    email: str
+
+
+class PackageData(TypedDict, total=False):
+    """Package data returned from get_package."""
+
+    pk: str
+    sk: str
+    ecosystem: str
+    name: str
+    tier: int
+    last_updated: str
+    health_score: float
+    risk_level: str
+    score_components: dict[str, Any]
+    confidence: dict[str, Any]
+    abandonment_risk: dict[str, Any]
+    latest_version: str
+    weekly_downloads: int
+    dependents_count: int
+    data_status: str
+    queryable: bool

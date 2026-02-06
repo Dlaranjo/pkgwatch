@@ -500,7 +500,7 @@ class TestBillingPortalStripeApiKeyCache:
         mock_sm = MagicMock()
         mock_sm.get_secret_value.return_value = {"SecretString": '{"key": "sk_test_cached"}'}
 
-        with patch("shared.billing_utils._get_secretsmanager", return_value=mock_sm):
+        with patch("shared.billing_utils.get_secretsmanager", return_value=mock_sm):
             original_arn = billing_utils.STRIPE_SECRET_ARN
             billing_utils.STRIPE_SECRET_ARN = "arn:aws:secretsmanager:us-east-1:123:secret:test"
             try:

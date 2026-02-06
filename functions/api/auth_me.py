@@ -13,11 +13,11 @@ import os
 from decimal import Decimal
 from http.cookies import SimpleCookie
 
-import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
 from shared.response_utils import decimal_default, error_response, get_cors_headers
+from shared.aws_clients import get_dynamodb
 from shared.constants import TIER_LIMITS
 from shared.referral_utils import BONUS_CAP, LATE_ENTRY_DAYS
 from shared.billing_utils import get_stripe_api_key
@@ -36,16 +36,6 @@ PRICE_TO_TIER = {
     (os.environ.get("STRIPE_PRICE_PRO") or "price_pro"): "pro",
     (os.environ.get("STRIPE_PRICE_BUSINESS") or "price_business"): "business",
 }
-
-# Lazy initialization
-_dynamodb = None
-
-
-def _get_dynamodb():
-    global _dynamodb
-    if _dynamodb is None:
-        _dynamodb = boto3.resource("dynamodb")
-    return _dynamodb
 
 
 def handler(event, context):
@@ -89,7 +79,7 @@ def handler(event, context):
         should_refresh = query_params.get("refresh") == "stripe"
 
         # Get fresh user data from DynamoDB
-        table = _get_dynamodb().Table(API_KEYS_TABLE)
+        table = get_dynamodb().Table(API_KEYS_TABLE)
         response = table.query(
             KeyConditionExpression=Key("pk").eq(user_id),
         )

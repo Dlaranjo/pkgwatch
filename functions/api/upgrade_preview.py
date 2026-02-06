@@ -12,7 +12,6 @@ import time
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 
-import boto3
 import stripe
 from boto3.dynamodb.conditions import Key
 
@@ -27,6 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
 from response_utils import error_response, success_response
 from constants import TIER_ORDER
 from billing_utils import get_stripe_api_key
+from shared.aws_clients import get_dynamodb
 
 # Price ID to tier mapping (configured via environment)
 TIER_TO_PRICE = {
@@ -34,16 +34,6 @@ TIER_TO_PRICE = {
     "pro": os.environ.get("STRIPE_PRICE_PRO") or None,
     "business": os.environ.get("STRIPE_PRICE_BUSINESS") or None,
 }
-
-# Lazy initialization
-_dynamodb = None
-
-
-def _get_dynamodb():
-    global _dynamodb
-    if _dynamodb is None:
-        _dynamodb = boto3.resource("dynamodb")
-    return _dynamodb
 
 
 def _get_origin(event: dict) -> str | None:
@@ -143,7 +133,7 @@ def handler(event, context):
         )
 
     # Get user's current subscription data from DynamoDB
-    table = _get_dynamodb().Table(API_KEYS_TABLE)
+    table = get_dynamodb().Table(API_KEYS_TABLE)
     response = table.query(
         IndexName="email-index",
         KeyConditionExpression=Key("email").eq(email),

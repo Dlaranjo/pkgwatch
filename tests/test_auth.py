@@ -851,7 +851,7 @@ class TestValidateApiKeyCircuitBreaker:
         assert DYNAMODB_CIRCUIT._state.failure_count == 0
 
         # Patch the table query to raise a non-ClientError exception
-        with patch("shared.auth._get_dynamodb") as mock_ddb:
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
             mock_table = __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock()
             mock_table.query.side_effect = RuntimeError("Connection lost")
             mock_ddb.return_value.Table.return_value = mock_table
@@ -875,7 +875,7 @@ class TestValidateApiKeyCircuitBreaker:
             "Query"
         )
 
-        with patch("shared.auth._get_dynamodb") as mock_ddb:
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_table.query.side_effect = throttle_error
             mock_ddb.return_value.Table.return_value = mock_table
@@ -901,7 +901,7 @@ class TestValidateApiKeyCircuitBreaker:
             "Query"
         )
 
-        with patch("shared.auth._get_dynamodb") as mock_ddb:
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
             mock_table = MagicMock()
             # Fail twice then succeed with empty result
             mock_table.query.side_effect = [
@@ -966,7 +966,7 @@ class TestCheckAndIncrementUsageCircuitBreaker:
 
         with patch.object(table, "update_item", side_effect=selective_fail):
             # Need to patch _get_dynamodb to return our patched table
-            with patch("shared.auth._get_dynamodb") as mock_ddb:
+            with patch("shared.auth.get_dynamodb") as mock_ddb:
                 mock_ddb.return_value.Table.return_value = table
                 allowed, count = check_and_increment_usage(user["user_id"], user["key_hash"], 5000)
 
@@ -1011,7 +1011,7 @@ class TestCheckAndIncrementUsageCircuitBreaker:
         mock_table.update_item.side_effect = mock_update_item
         mock_table.get_item.side_effect = mock_get_item
 
-        with patch("shared.auth._get_dynamodb") as mock_ddb:
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
             mock_ddb.return_value.Table.return_value = mock_table
             allowed, count = check_and_increment_usage(user_id, "some_hash", 100)
 
@@ -1036,7 +1036,7 @@ class TestCheckAndIncrementUsageCircuitBreaker:
         mock_table = MagicMock()
         mock_table.update_item.side_effect = throttle_error
 
-        with patch("shared.auth._get_dynamodb") as mock_ddb:
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
             mock_ddb.return_value.Table.return_value = mock_table
             with pytest.raises(ClientError):
                 check_and_increment_usage("user_throttle", "hash", 5000)
@@ -1082,7 +1082,7 @@ class TestCheckAndIncrementUsageBatchCircuitBreaker:
                 raise RuntimeError("Per-key counter update failed")
             return original_update(**kwargs)
 
-        with patch("shared.auth._get_dynamodb") as mock_ddb:
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
             patched_table = __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock(wraps=table)
             patched_table.update_item = selective_fail
             patched_table.get_item = table.get_item
@@ -1108,7 +1108,7 @@ class TestCheckAndIncrementUsageBatchCircuitBreaker:
         mock_table.update_item.side_effect = condition_error
         mock_table.get_item.side_effect = RuntimeError("Get item failed")
 
-        with patch("shared.auth._get_dynamodb") as mock_ddb:
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
             mock_ddb.return_value.Table.return_value = mock_table
             allowed, count = check_and_increment_usage_batch("user_x", "hash_x", 200, count=10)
 
@@ -1133,7 +1133,7 @@ class TestCheckAndIncrementUsageBatchCircuitBreaker:
         mock_table = MagicMock()
         mock_table.update_item.side_effect = throttle_error
 
-        with patch("shared.auth._get_dynamodb") as mock_ddb:
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
             mock_ddb.return_value.Table.return_value = mock_table
             with pytest.raises(ClientError):
                 check_and_increment_usage_batch("user_t", "hash_t", 5000, count=5)
@@ -1267,7 +1267,7 @@ class TestCheckAndIncrementUsageWithBonus:
                     )
             return original_update(**kwargs)
 
-        with patch("shared.auth._get_dynamodb") as mock_ddb:
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
             patched_table = MagicMock(wraps=table)
             patched_table.update_item = simulate_race
             patched_table.get_item = table.get_item
@@ -1314,7 +1314,7 @@ class TestCheckAndIncrementUsageWithBonus:
                 )
             return original_update(**kwargs)
 
-        with patch("shared.auth._get_dynamodb") as mock_ddb:
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
             patched_table = MagicMock(wraps=table)
             patched_table.update_item = simulate_race
             patched_table.get_item = table.get_item
@@ -1356,7 +1356,7 @@ class TestCheckAndIncrementUsageWithBonus:
                 raise RuntimeError("Per-key counter failed")
             return original_update(**kwargs)
 
-        with patch("shared.auth._get_dynamodb") as mock_ddb:
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
             from unittest.mock import MagicMock
             patched_table = MagicMock(wraps=table)
             patched_table.update_item = selective_fail
@@ -1386,7 +1386,7 @@ class TestCheckAndIncrementUsageWithBonus:
         mock_table = MagicMock()
         mock_table.get_item.side_effect = throttle_error
 
-        with patch("shared.auth._get_dynamodb") as mock_ddb:
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
             mock_ddb.return_value.Table.return_value = mock_table
             with pytest.raises(ClientError):
                 check_and_increment_usage_with_bonus("user_t", "hash_t", 5000)

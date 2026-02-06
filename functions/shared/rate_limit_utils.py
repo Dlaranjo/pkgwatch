@@ -78,19 +78,11 @@ def check_usage_alerts(user: dict, current_usage: int) -> Optional[dict]:
 # External service rate limiting with sharded counters
 import os
 import random
-import boto3
 from botocore.exceptions import ClientError
 
-_dynamodb = None
+from shared.aws_clients import get_dynamodb
+
 RATE_LIMIT_SHARDS = 10
-
-
-def _get_dynamodb():
-    """Get DynamoDB resource, creating it lazily on first use."""
-    global _dynamodb
-    if _dynamodb is None:
-        _dynamodb = boto3.resource("dynamodb")
-    return _dynamodb
 
 
 def check_and_increment_external_rate_limit(
@@ -108,7 +100,7 @@ def check_and_increment_external_rate_limit(
     Returns:
         True if request is allowed, False if rate limited
     """
-    table = _get_dynamodb().Table(table_name or os.environ.get("API_KEYS_TABLE"))
+    table = get_dynamodb().Table(table_name or os.environ.get("API_KEYS_TABLE"))
     now = datetime.now(timezone.utc)
     window_key = now.strftime("%Y-%m-%d-%H")
     shard_id = random.randint(0, RATE_LIMIT_SHARDS - 1)

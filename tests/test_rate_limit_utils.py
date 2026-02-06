@@ -149,16 +149,16 @@ class TestExternalRateLimiting:
         """Should lazily initialize DynamoDB resource on first use."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        import shared.rate_limit_utils as module
+        import shared.aws_clients as aws_clients_module
 
-        module._dynamodb = None
+        aws_clients_module._dynamodb = None
 
         # First call should create DynamoDB resource
-        db1 = module._get_dynamodb()
+        db1 = aws_clients_module.get_dynamodb()
         assert db1 is not None
 
         # Second call should return same instance
-        db2 = module._get_dynamodb()
+        db2 = aws_clients_module.get_dynamodb()
         assert db1 is db2
 
     @mock_aws
@@ -284,10 +284,11 @@ class TestExternalRateLimiting:
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         import shared.rate_limit_utils as module
+        import shared.aws_clients as aws_clients_module
 
-        module._dynamodb = None
+        aws_clients_module._dynamodb = None
 
-        with patch.object(module, "_get_dynamodb") as mock_get_db:
+        with patch("shared.rate_limit_utils.get_dynamodb") as mock_get_db:
             mock_table = MagicMock()
             mock_table.update_item.side_effect = ClientError(
                 {"Error": {"Code": "ProvisionedThroughputExceededException"}},

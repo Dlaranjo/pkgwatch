@@ -10,9 +10,6 @@ PkgWatch is a dependency health intelligence platform that predicts npm and Pyth
 
 ### Python (Lambda functions)
 ```bash
-# Run all tests (sequential, default for local dev)
-PYTHONPATH=functions:. pytest tests/ -v --ignore=tests/integration
-
 # Run all tests in parallel (~3x faster, matches CI)
 PYTHONPATH=functions:. pytest -n auto --dist loadfile --ignore=tests/integration
 
@@ -128,56 +125,3 @@ Lambda functions expect:
 - `RAW_DATA_BUCKET` - S3 bucket for raw API responses
 - `PACKAGE_QUEUE_URL`, `DLQ_URL` - SQS queue URLs
 - `GITHUB_TOKEN_SECRET_ARN`, `SESSION_SECRET_ARN` - Secrets Manager ARNs
-
-## User Management / Testing
-
-### User Data Model
-Users are stored in the `pkgwatch-api-keys` DynamoDB table with these record types:
-- **API Key records**: `pk=user_xxx`, `sk=<key_hash>` - Contains tier, email, stripe fields, key_suffix
-- **USER_META records**: `pk=user_xxx`, `sk=USER_META` - Aggregated usage counters, key_count
-
-Each user can have multiple API keys. The `tier` field is stored on each API key record (kept in sync by webhook handlers).
-
-### Resetting Users for Testing
-To wipe all users and start fresh:
-
-```bash
-# 1. Delete all user records from pkgwatch-api-keys
-aws dynamodb scan --table-name pkgwatch-api-keys \
-  --filter-expression "begins_with(pk, :u) OR pk = :t" \
-  --expression-attribute-values '{":u":{"S":"user_"},":t":{"S":"test-user-cli"}}' \
-  --projection-expression "pk, sk" --output json | \
-  jq -c '.Items[]' | while read item; do
-    aws dynamodb delete-item --table-name pkgwatch-api-keys --key "$item"
-  done
-
-# 2. Clear billing events (Stripe webhook audit trail)
-aws dynamodb scan --table-name pkgwatch-billing-events \
-  --projection-expression "pk, sk" --output json | \
-  jq -c '.Items[]' | while read item; do
-    aws dynamodb delete-item --table-name pkgwatch-billing-events --key "$item"
-  done
-```
-
-### Downgrading a User to Free Tier
-To downgrade a specific user (e.g., for testing payment flow):
-
-```bash
-# 1. Find user's API key records
-aws dynamodb query --table-name pkgwatch-api-keys \
-  --key-condition-expression "pk = :pk" \
-  --expression-attribute-values '{":pk":{"S":"user_xxx"}}' \
-  --output json | jq '.Items[] | {sk: .sk.S, tier: .tier.S}'
-
-# 2. Update EACH API key record (not USER_META) to remove Stripe fields
-aws dynamodb update-item --table-name pkgwatch-api-keys \
-  --key '{"pk":{"S":"user_xxx"},"sk":{"S":"<key_hash>"}}' \
-  --update-expression 'SET tier = :tier, monthly_limit = :limit REMOVE stripe_customer_id, stripe_subscription_id' \
-  --expression-attribute-values '{":tier":{"S":"free"},":limit":{"N":"5000"}}'
-
-# 3. Cancel Stripe subscription (if active)
-STRIPE_KEY=$(aws secretsmanager get-secret-value --secret-id pkgwatch/stripe-secret --query SecretString --output text | jq -r '.key')
-curl -X DELETE "https://api.stripe.com/v1/subscriptions/<sub_id>" -u "$STRIPE_KEY:"
-```
-
-**Important**: Users may have multiple API key records. You must update ALL of them to avoid inconsistency. The `stripe_subscription_id` field triggers checkout to return 409, so it must be removed for users to go through the payment flow again.
