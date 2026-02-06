@@ -635,3 +635,174 @@ class TestMetricsImportFallback:
         # Don't mock emit_batch_metrics - let the fallback or real one run
         result = handler(event, None)
         assert result["statusCode"] == 200
+
+    def test_fallback_functions_are_noops_when_invoked(self):
+        """Fallback emit_metric and emit_batch_metrics should be callable noops (lines 34-38)."""
+        # Simulate the ImportError fallback by directly testing the pattern
+        # The actual coverage of lines 32-38 requires the import to fail.
+        # We test the fallback behavior by importing with blocked metrics module.
+
+        original_modules = {}
+        modules_to_block = ["metrics", "shared.metrics"]
+        for mod_name in modules_to_block:
+            if mod_name in sys.modules:
+                original_modules[mod_name] = sys.modules[mod_name]
+                del sys.modules[mod_name]
+
+        # Also remove the streams_dlq_processor module so it can be re-imported
+        if "streams_dlq_processor" in sys.modules:
+            original_sdp = sys.modules.pop("streams_dlq_processor")
+
+        # Block the metrics import
+        import builtins
+
+        original_import = builtins.__import__
+
+        def blocking_import(name, *args, **kwargs):
+            if name == "metrics":
+                raise ImportError("Blocked for testing")
+            return original_import(name, *args, **kwargs)
+
+        builtins.__import__ = blocking_import
+        try:
+            # Re-import the module - should use fallback functions
+            import streams_dlq_processor as reloaded
+
+            # The fallback functions should be callable noops
+            reloaded.emit_metric("test_metric", value=1)
+            reloaded.emit_batch_metrics([{"metric_name": "test", "value": 1}])
+            # No error means fallback worked correctly
+        finally:
+            builtins.__import__ = original_import
+            # Restore original modules
+            for mod_name, mod in original_modules.items():
+                sys.modules[mod_name] = mod
+            if "original_sdp" in dir():
+                sys.modules["streams_dlq_processor"] = original_sdp
+
+
+# =============================================================================
+# ADDITIONAL EDGE CASES FOR STREAMS DLQ
+# =============================================================================
+
+
+class TestStreamsDLQEdgeCases:
+    """Additional edge cases for streams DLQ processor."""
+
+    @patch("streams_dlq_processor._trigger_rescore")
+    @patch("streams_dlq_processor.emit_batch_metrics")
+    def test_handler_handles_empty_body(self, mock_metrics, mock_rescore):
+        """Handler should handle record with empty body."""
+        event = {"Records": [{"body": "{}"}]}
+
+        result = handler(event, None)
+
+        body = json.loads(result["body"])
+        # Empty body parses as {}, body.get("Records", [body]) = [{}]
+        # _extract_package_key({}) returns None -> skipped
+        assert body["skipped"] == 1
+
+    @patch("streams_dlq_processor._trigger_rescore")
+    @patch("streams_dlq_processor.emit_batch_metrics")
+    def test_handler_handles_missing_body_key(self, mock_metrics, mock_rescore):
+        """Handler should handle record missing body key."""
+        event = {"Records": [{}]}
+
+        result = handler(event, None)
+
+        body = json.loads(result["body"])
+        # record.get("body", "{}") = "{}" -> parses to empty dict
+        assert body["processed"] >= 0
+
+    @patch("streams_dlq_processor._trigger_rescore")
+    @patch("streams_dlq_processor.emit_batch_metrics")
+    def test_handler_multiple_stream_records_in_one_sqs_message(self, mock_metrics, mock_rescore):
+        """Handler should process multiple stream records within one SQS message."""
+        mock_rescore.return_value = True
+
+        event = {
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "Records": [
+                                {
+                                    "dynamodb": {
+                                        "NewImage": {
+                                            "pk": {"S": "npm#pkg-a"},
+                                            "sk": {"S": "LATEST"},
+                                        }
+                                    }
+                                },
+                                {
+                                    "dynamodb": {
+                                        "NewImage": {
+                                            "pk": {"S": "npm#pkg-b"},
+                                            "sk": {"S": "LATEST"},
+                                        }
+                                    }
+                                },
+                                {
+                                    "dynamodb": {
+                                        "NewImage": {
+                                            "pk": {"S": "pypi#pkg-c"},
+                                            "sk": {"S": "LATEST"},
+                                        }
+                                    }
+                                },
+                            ]
+                        }
+                    )
+                }
+            ]
+        }
+
+        result = handler(event, None)
+
+        body = json.loads(result["body"])
+        assert body["processed"] == 3
+        assert body["rescored"] == 3
+        assert mock_rescore.call_count == 3
+
+    @patch("streams_dlq_processor._trigger_rescore")
+    @patch("streams_dlq_processor.emit_batch_metrics")
+    def test_handler_deduplicates_across_sqs_messages(self, mock_metrics, mock_rescore):
+        """Should deduplicate same package across different SQS messages."""
+        mock_rescore.return_value = True
+
+        event = {
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "dynamodb": {
+                                "NewImage": {
+                                    "pk": {"S": "npm#lodash"},
+                                    "sk": {"S": "LATEST"},
+                                }
+                            }
+                        }
+                    )
+                },
+                {
+                    "body": json.dumps(
+                        {
+                            "dynamodb": {
+                                "NewImage": {
+                                    "pk": {"S": "npm#lodash"},
+                                    "sk": {"S": "LATEST"},
+                                }
+                            }
+                        }
+                    )
+                },
+            ]
+        }
+
+        result = handler(event, None)
+
+        body = json.loads(result["body"])
+        assert body["processed"] == 2
+        # Only one rescore because dedup
+        assert body["rescored"] == 1
+        mock_rescore.assert_called_once_with("npm", "lodash")

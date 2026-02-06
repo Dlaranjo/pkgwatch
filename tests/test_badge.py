@@ -2,6 +2,7 @@
 Tests for GET /badge/{ecosystem}/{name} endpoint.
 """
 
+import xml.etree.ElementTree as ET
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -446,3 +447,325 @@ class TestBadgeHandler:
         result = handler(event, {})
 
         assert result["isBase64Encoded"] is False
+
+
+class TestBadgeSVGInjection:
+    """Security tests: SVG injection attacks via label, value, and package name."""
+
+    def _make_event(self, ecosystem="npm", name="lodash", style=None, label=None):
+        """Build a minimal API Gateway event for badge requests."""
+        event = {
+            "httpMethod": "GET",
+            "headers": {},
+            "pathParameters": {"ecosystem": ecosystem, "name": name},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {
+                "identity": {"sourceIp": "127.0.0.1"},
+            },
+        }
+        if style:
+            event["queryStringParameters"]["style"] = style
+        if label:
+            event["queryStringParameters"]["label"] = label
+        return event
+
+    @patch("api.badge.get_package")
+    def test_svg_injection_in_label_escaped(self, mock_get):
+        """SVG/script injection in label param must be XML-escaped."""
+        mock_get.return_value = {"health_score": Decimal("85")}
+
+        from api.badge import handler
+
+        event = self._make_event(ecosystem="npm", name="pkg", label='<script>alert("xss")</script>')
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        body = result["body"]
+        # Raw script tag must not appear in SVG
+        assert "<script>" not in body
+        assert "&lt;script&gt;" in body
+        # Must still be valid XML
+        ET.fromstring(body)
+
+    @patch("api.badge.get_package")
+    def test_svg_injection_in_score_value_escaped(self, mock_get):
+        """If health_score were somehow a string with HTML, it should be safe."""
+        # This tests the _escape_xml on the value side
+        mock_get.return_value = {"health_score": None}
+
+        from api.badge import handler
+
+        event = self._make_event(ecosystem="npm", name="pkg")
+        result = handler(event, {})
+
+        body = result["body"]
+        # "unknown" should appear, which is safe text
+        assert "unknown" in body
+        # Must be valid XML
+        ET.fromstring(body)
+
+    @patch("api.badge.get_package")
+    def test_ampersand_in_label_escaped(self, mock_get):
+        """Ampersand in label must be XML-escaped."""
+        mock_get.return_value = {"health_score": Decimal("85")}
+
+        from api.badge import handler
+
+        event = self._make_event(ecosystem="npm", name="pkg", label="AT&T")
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        body = result["body"]
+        assert "&amp;" in body
+        # Must be valid XML
+        ET.fromstring(body)
+
+    @patch("api.badge.get_package")
+    def test_quote_in_label_escaped(self, mock_get):
+        """Quotes in label must be XML-escaped."""
+        mock_get.return_value = {"health_score": Decimal("85")}
+
+        from api.badge import handler
+
+        event = self._make_event(ecosystem="npm", name="pkg", label='say "hello"')
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        body = result["body"]
+        assert "&quot;" in body
+        ET.fromstring(body)
+
+    @patch("api.badge.get_package")
+    def test_label_truncated_to_100_chars(self, mock_get):
+        """Labels longer than 100 chars must be truncated."""
+        mock_get.return_value = {"health_score": Decimal("85")}
+
+        from api.badge import handler
+
+        long_label = "x" * 200
+        event = self._make_event(ecosystem="npm", name="pkg", label=long_label)
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        body = result["body"]
+        # The label in the SVG should be at most 100 chars
+        assert "x" * 101 not in body
+
+    @patch("api.badge.get_package")
+    def test_path_traversal_in_badge_name(self, mock_get):
+        """Path traversal in package name should return not found badge."""
+        mock_get.return_value = None
+
+        from api.badge import handler
+
+        event = self._make_event(ecosystem="npm", name="../../../etc/passwd")
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        body = result["body"]
+        assert "not found" in body
+        assert "etc/passwd" not in body or "&" in body  # Either not present or XML-escaped
+
+
+class TestBadgeCacheHeaders:
+    """Tests for badge cache header correctness."""
+
+    def _make_event(self, ecosystem="npm", name="lodash", style=None, label=None):
+        """Build a minimal API Gateway event for badge requests."""
+        event = {
+            "httpMethod": "GET",
+            "headers": {},
+            "pathParameters": {"ecosystem": ecosystem, "name": name},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+        if style:
+            event["queryStringParameters"]["style"] = style
+        if label:
+            event["queryStringParameters"]["label"] = label
+        return event
+
+    @patch("api.badge.get_package")
+    def test_success_badge_has_1_hour_cache(self, mock_get):
+        """Successful badge should have max-age=3600 (1 hour)."""
+        mock_get.return_value = {"health_score": Decimal("85")}
+
+        from api.badge import handler
+
+        event = self._make_event(ecosystem="npm", name="lodash")
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        assert result["headers"]["Cache-Control"] == "public, max-age=3600"
+
+    @patch("api.badge.get_package")
+    def test_error_badge_has_5_min_cache(self, mock_get):
+        """Error badge should have max-age=300 (5 minutes)."""
+        mock_get.return_value = None
+
+        from api.badge import handler
+
+        event = self._make_event(ecosystem="npm", name="nonexistent")
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        assert result["headers"]["Cache-Control"] == "public, max-age=300"
+
+    @patch("api.badge.get_package")
+    def test_invalid_ecosystem_error_badge_has_5_min_cache(self, mock_get):
+        """Invalid ecosystem error badge should have 5 min cache."""
+        from api.badge import handler
+
+        event = self._make_event(ecosystem="rubygems", name="rails")
+        result = handler(event, {})
+
+        assert result["headers"]["Cache-Control"] == "public, max-age=300"
+
+    @patch("api.badge.get_package")
+    def test_missing_name_error_badge_has_5_min_cache(self, mock_get):
+        """Missing name error badge should have 5 min cache."""
+        from api.badge import handler
+
+        event = self._make_event(ecosystem="npm", name="lodash")
+        event["pathParameters"]["name"] = None
+        result = handler(event, {})
+
+        assert result["headers"]["Cache-Control"] == "public, max-age=300"
+
+
+class TestBadgeColorAccuracy:
+    """Tests to verify exact color for each score range boundary."""
+
+    def _make_event(self, ecosystem="npm", name="pkg"):
+        return {
+            "httpMethod": "GET",
+            "headers": {},
+            "pathParameters": {"ecosystem": ecosystem, "name": name},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+    @patch("api.badge.get_package")
+    def test_score_0_is_red(self, mock_get):
+        """Score of 0 should produce red badge."""
+        mock_get.return_value = {"health_score": Decimal("0")}
+
+        from api.badge import handler
+
+        result = handler(self._make_event(), {})
+        assert "#e05d44" in result["body"]
+
+    @patch("api.badge.get_package")
+    def test_score_49_is_red(self, mock_get):
+        """Score of 49 should produce red badge."""
+        mock_get.return_value = {"health_score": Decimal("49")}
+
+        from api.badge import handler
+
+        result = handler(self._make_event(), {})
+        assert "#e05d44" in result["body"]
+
+    @patch("api.badge.get_package")
+    def test_score_50_is_yellow(self, mock_get):
+        """Score of 50 should produce yellow badge."""
+        mock_get.return_value = {"health_score": Decimal("50")}
+
+        from api.badge import handler
+
+        result = handler(self._make_event(), {})
+        assert "#dfb317" in result["body"]
+
+    @patch("api.badge.get_package")
+    def test_score_69_is_yellow(self, mock_get):
+        """Score of 69 should produce yellow badge."""
+        mock_get.return_value = {"health_score": Decimal("69")}
+
+        from api.badge import handler
+
+        result = handler(self._make_event(), {})
+        assert "#dfb317" in result["body"]
+
+    @patch("api.badge.get_package")
+    def test_score_70_is_green(self, mock_get):
+        """Score of 70 should produce green badge."""
+        mock_get.return_value = {"health_score": Decimal("70")}
+
+        from api.badge import handler
+
+        result = handler(self._make_event(), {})
+        assert "#4c1" in result["body"]
+
+    @patch("api.badge.get_package")
+    def test_score_100_is_green(self, mock_get):
+        """Score of 100 should produce green badge."""
+        mock_get.return_value = {"health_score": Decimal("100")}
+
+        from api.badge import handler
+
+        result = handler(self._make_event(), {})
+        assert "#4c1" in result["body"]
+
+    @patch("api.badge.get_package")
+    def test_score_none_is_grey(self, mock_get):
+        """Score of None should produce grey badge."""
+        mock_get.return_value = {"health_score": None}
+
+        from api.badge import handler
+
+        result = handler(self._make_event(), {})
+        assert "#9f9f9f" in result["body"]
+
+
+class TestBadgeNullPathParameters:
+    """Tests for null/missing pathParameters edge cases in badge."""
+
+    def _make_event(self, ecosystem="npm", name="lodash"):
+        return {
+            "httpMethod": "GET",
+            "headers": {},
+            "pathParameters": {"ecosystem": ecosystem, "name": name},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+    @patch("api.badge.get_package")
+    def test_null_path_parameters(self, mock_get):
+        """None pathParameters should return error badge."""
+        from api.badge import handler
+
+        event = self._make_event()
+        event["pathParameters"] = None
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        assert "error" in result["body"]
+
+    @patch("api.badge.get_package")
+    def test_empty_path_parameters(self, mock_get):
+        """Empty pathParameters should return error badge."""
+        from api.badge import handler
+
+        event = self._make_event()
+        event["pathParameters"] = {}
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        assert "error" in result["body"]
+
+    @patch("api.badge.get_package")
+    def test_null_query_string_parameters(self, mock_get):
+        """None queryStringParameters should not crash."""
+        mock_get.return_value = {"health_score": Decimal("85")}
+
+        from api.badge import handler
+
+        event = self._make_event()
+        event["queryStringParameters"] = None
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        assert "pkgwatch" in result["body"]

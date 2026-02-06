@@ -903,3 +903,302 @@ class TestIntegration:
                 assert body["audited"] == 5
                 assert body["missing"] == 0
                 assert body["added"] == 0
+
+
+class TestConditionalCheckFailedRaceCondition:
+    """Tests for ConditionalCheckFailedException handling (line 119).
+
+    This covers the race condition where another process adds the same
+    package between our get_item check and put_item call.
+    """
+
+    @mock_aws
+    def test_race_condition_on_put_item_silently_continues(self, mock_dynamodb):
+        """Should silently skip when ConditionalCheckFailed during put_item.
+
+        Covers line 119: pass in the except ConditionalCheckFailedException block.
+        This uses the real moto DynamoDB to trigger the actual condition expression.
+        """
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+
+        # Pre-insert the package so the ConditionExpression fails
+        table.put_item(
+            Item={
+                "pk": "npm#race-condition-pkg",
+                "sk": "LATEST",
+                "name": "race-condition-pkg",
+                "ecosystem": "npm",
+            }
+        )
+
+        import importlib
+
+        import discovery.npmsio_audit as module
+
+        importlib.reload(module)
+
+        with patch.object(module, "fetch_npmsio_top_packages") as mock_fetch:
+            mock_fetch.return_value = [
+                {"name": "race-condition-pkg", "score": 0.9},
+            ]
+
+            # Patch get_item to return empty (package "not found") to force put_item attempt
+            original_get = table.get_item
+
+            def patched_get(**kwargs):
+                pk = kwargs.get("Key", {}).get("pk", "")
+                if pk == "npm#race-condition-pkg":
+                    return {}  # Pretend it doesn't exist
+                return original_get(**kwargs)
+
+            with patch.object(table, "get_item", side_effect=patched_get):
+                with patch.object(module.dynamodb, "Table", return_value=table):
+                    with patch.object(module, "sqs"):
+                        result = module.handler({}, None)
+
+                        assert result["statusCode"] == 200
+                        body = json.loads(result["body"])
+                        # Package was not added (ConditionalCheckFailed)
+                        assert body["added"] == 0
+
+
+class TestMetricsImportErrorNpmsio:
+    """Tests for metrics ImportError handling (lines 134-135)."""
+
+    @mock_aws
+    def test_handles_metrics_import_error(self, mock_dynamodb):
+        """Should handle ImportError when shared.metrics is not available.
+
+        Covers lines 134-135: except ImportError: pass
+        """
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        import discovery.npmsio_audit as module
+
+        importlib.reload(module)
+
+        # Remove shared.metrics from sys.modules to force ImportError
+        saved = sys.modules.pop("shared.metrics", None)
+        try:
+            with patch.object(module, "fetch_npmsio_top_packages") as mock_fetch:
+                mock_fetch.return_value = [
+                    {"name": "metrics-test-pkg", "score": 0.9},
+                ]
+
+                with patch.object(module, "sqs"):
+                    result = module.handler({}, None)
+
+                    assert result["statusCode"] == 200
+                    body = json.loads(result["body"])
+                    assert body["added"] == 1
+        finally:
+            if saved is not None:
+                sys.modules["shared.metrics"] = saved
+
+
+class TestNpmsioApiReliability:
+    """Tests for npms.io API failure handling and rate limiting."""
+
+    def test_partial_fetch_on_mid_pagination_error(self):
+        """Should return packages fetched before an error occurs mid-pagination."""
+        import discovery.npmsio_audit as module
+
+        first_response = MagicMock()
+        first_response.json.return_value = {
+            "results": [
+                {"package": {"name": "pkg-1"}, "score": {"final": 0.9}},
+                {"package": {"name": "pkg-2"}, "score": {"final": 0.8}},
+            ]
+        }
+        first_response.raise_for_status = MagicMock()
+
+        with patch("discovery.npmsio_audit.httpx.Client") as mock_client:
+            mock_get = mock_client.return_value.__enter__.return_value.get
+            # First call succeeds, second call fails
+            mock_get.side_effect = [
+                first_response,
+                Exception("Connection reset"),
+            ]
+
+            result = module.fetch_npmsio_top_packages(1000)
+
+            # Should return the packages from the first successful request
+            assert len(result) == 2
+            assert result[0]["name"] == "pkg-1"
+
+    def test_handles_rate_limit_response(self):
+        """Should handle HTTP 429 rate limit gracefully."""
+        import discovery.npmsio_audit as module
+
+        mock_request = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+
+        with patch("discovery.npmsio_audit.httpx.Client") as mock_client:
+            mock_client.return_value.__enter__.return_value.get.side_effect = httpx.HTTPStatusError(
+                "Too Many Requests", request=mock_request, response=mock_response
+            )
+
+            result = module.fetch_npmsio_top_packages(10)
+
+            assert result == []
+
+
+class TestNpmsioDeduplication:
+    """Tests for deduplication in the audit handler."""
+
+    @mock_aws
+    def test_does_not_add_duplicate_packages(self, mock_dynamodb):
+        """Should not add packages that already exist in the database."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+
+        # Pre-populate database with existing packages
+        for name in ["existing-1", "existing-2"]:
+            table.put_item(
+                Item={
+                    "pk": f"npm#{name}",
+                    "sk": "LATEST",
+                    "name": name,
+                    "ecosystem": "npm",
+                }
+            )
+
+        import importlib
+
+        import discovery.npmsio_audit as module
+
+        importlib.reload(module)
+
+        with patch.object(module, "fetch_npmsio_top_packages") as mock_fetch:
+            mock_fetch.return_value = [
+                {"name": "existing-1", "score": 0.9},
+                {"name": "existing-2", "score": 0.8},
+                {"name": "truly-new", "score": 0.7},
+            ]
+
+            with patch.object(module, "sqs"):
+                result = module.handler({}, None)
+
+                body = json.loads(result["body"])
+                assert body["audited"] == 3
+                assert body["missing"] == 1  # Only truly-new
+                assert body["added"] == 1
+
+
+class TestMetricsImportErrorForced:
+    """Force a real ImportError for shared.metrics to cover lines 134-135."""
+
+    @mock_aws
+    def test_metrics_import_error_via_import_hook(self, mock_dynamodb):
+        """Cover lines 134-135 by forcing ImportError via __import__ override.
+
+        The existing test removes shared.metrics from sys.modules, but Python
+        can re-import it from the filesystem. This test uses a custom import
+        hook to truly block the import.
+        """
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        import discovery.npmsio_audit as module
+
+        importlib.reload(module)
+
+        original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+
+        def blocked_import(name, *args, **kwargs):
+            if name == "shared.metrics":
+                raise ImportError("Blocked in test")
+            return original_import(name, *args, **kwargs)
+
+        with patch.object(module, "fetch_npmsio_top_packages") as mock_fetch:
+            mock_fetch.return_value = [
+                {"name": "import-hook-pkg", "score": 0.9},
+            ]
+
+            with patch.object(module, "sqs"):
+                with patch("builtins.__import__", side_effect=blocked_import):
+                    result = module.handler({}, None)
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["added"] == 1
+
+
+class TestConditionalCheckFailedDirect:
+    """Direct test for ConditionalCheckFailedException at line 119.
+
+    This covers the race condition where another process inserts the same
+    package between our get_item check and put_item call.
+    """
+
+    @mock_aws
+    def test_conditional_check_on_real_dynamo_with_preinserted_pkg(self, mock_dynamodb):
+        """Cover line 119: pass in except ConditionalCheckFailedException.
+
+        We pre-insert a package so the ConditionExpression fails, and patch
+        get_item to return "not found" to force the put_item attempt.
+        """
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+
+        # Pre-insert the package so ConditionExpression="attribute_not_exists(pk)" fails
+        table.put_item(
+            Item={
+                "pk": "npm#preinserted-pkg",
+                "sk": "LATEST",
+                "name": "preinserted-pkg",
+                "ecosystem": "npm",
+            }
+        )
+
+        import importlib
+
+        import discovery.npmsio_audit as module
+
+        importlib.reload(module)
+
+        # Create a wrapper table that delegates to real table but fakes get_item
+        # to simulate the race: get_item says "not found", but put_item hits
+        # ConditionalCheckFailedException because another process inserted it.
+        real_put_item = table.put_item
+        real_get_item = table.get_item
+        real_meta = table.meta
+
+        mock_table = MagicMock()
+        mock_table.put_item.side_effect = real_put_item
+        mock_table.meta = real_meta
+
+        def faked_get_item(**kwargs):
+            pk = kwargs.get("Key", {}).get("pk", "")
+            if pk == "npm#preinserted-pkg":
+                return {}  # Pretend not found
+            return real_get_item(**kwargs)
+
+        mock_table.get_item.side_effect = faked_get_item
+
+        with patch.object(module, "fetch_npmsio_top_packages") as mock_fetch:
+            mock_fetch.return_value = [
+                {"name": "preinserted-pkg", "score": 0.9},
+            ]
+
+            with patch.object(module.dynamodb, "Table", return_value=mock_table):
+                with patch.object(module, "sqs"):
+                    result = module.handler({}, None)
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        # Package was NOT added because put_item hit ConditionalCheckFailed
+        assert body["added"] == 0

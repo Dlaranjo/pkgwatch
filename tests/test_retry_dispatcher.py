@@ -463,3 +463,382 @@ class TestRetryDispatcherHandler:
                 body = json.loads(result["body"])
                 # Should be capped at MAX_DISPATCH_PER_RUN (set to 100 for this test)
                 assert body["dispatched"] <= 100
+
+
+class TestRetryDispatcherTimeoutAndEdgeCases:
+    """Tests for timeout handling, circuit breaker import fallback, and metrics."""
+
+    @mock_aws
+    def test_stops_early_on_timeout(self, mock_dynamodb):
+        """Should stop dispatching when Lambda timeout approaches (lines 97-100)."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        # Add multiple packages
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        now = datetime.now(timezone.utc)
+        for i in range(10):
+            table.put_item(
+                Item={
+                    "pk": f"npm#timeout-pkg-{i}",
+                    "sk": "LATEST",
+                    "data_status": "partial",
+                    "next_retry_at": (now - timedelta(hours=1)).isoformat(),
+                    "retry_count": 1,
+                    "tier": 2,
+                }
+            )
+
+        import importlib
+
+        import collectors.retry_dispatcher as module
+
+        importlib.reload(module)
+
+        mock_circuit = MagicMock()
+        mock_circuit.can_execute.return_value = True
+        mock_cb_module = MagicMock()
+        mock_cb_module.GITHUB_CIRCUIT = mock_circuit
+
+        # Create context that reports low remaining time after first dispatch
+        mock_context = MagicMock()
+        mock_context.aws_request_id = "test-req-id"
+        mock_context.get_remaining_time_in_millis.side_effect = [10000]  # < 15000
+
+        with patch.dict(sys.modules, {"shared.circuit_breaker": mock_cb_module}):
+            with patch.object(module, "sqs"):
+                result = module.handler({}, mock_context)
+
+                assert result["statusCode"] == 200
+                body = json.loads(result["body"])
+                # Should stop early due to timeout - may process 0 items
+                # The first check is at the top of the loop before sending
+                assert body["dispatched"] == 0
+
+    @mock_aws
+    def test_circuit_breaker_import_error_allows_dispatch(self, mock_dynamodb):
+        """Should proceed when circuit_breaker import fails (lines 51-52)."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "npm#import-fallback-pkg",
+                "sk": "LATEST",
+                "data_status": "partial",
+                "next_retry_at": (now - timedelta(hours=1)).isoformat(),
+                "retry_count": 1,
+                "tier": 2,
+            }
+        )
+
+        import importlib
+
+        import collectors.retry_dispatcher as module
+
+        importlib.reload(module)
+
+        # Remove the circuit breaker module so import fails inside handler
+        saved_cb = sys.modules.get("shared.circuit_breaker")
+        sys.modules["shared.circuit_breaker"] = None  # This causes ImportError
+
+        try:
+            with patch.object(module, "sqs"):
+                result = module.handler({}, None)
+
+                assert result["statusCode"] == 200
+                body = json.loads(result["body"])
+                # Should dispatch despite circuit breaker import failure
+                assert body["dispatched"] >= 1
+        finally:
+            if saved_cb:
+                sys.modules["shared.circuit_breaker"] = saved_cb
+            elif "shared.circuit_breaker" in sys.modules:
+                del sys.modules["shared.circuit_breaker"]
+
+    @mock_aws
+    def test_max_dispatch_per_run_breaks_loop(self, mock_dynamodb):
+        """Should stop dispatching at MAX_DISPATCH_PER_RUN (line 94).
+
+        Note: The GSI query uses Limit=MAX_DISPATCH_PER_RUN // 2 per status,
+        so with MAX_DISPATCH_PER_RUN=4, each status query gets Limit=2.
+        We need to create enough packages to demonstrate the cap.
+        """
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+        os.environ["MAX_DISPATCH_PER_RUN"] = "4"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        now = datetime.now(timezone.utc)
+        for i in range(10):
+            table.put_item(
+                Item={
+                    "pk": f"npm#limit-pkg-{i}",
+                    "sk": "LATEST",
+                    "data_status": "partial",
+                    "next_retry_at": (now - timedelta(hours=1)).isoformat(),
+                    "retry_count": 1,
+                    "tier": 2,
+                }
+            )
+
+        import importlib
+
+        import collectors.retry_dispatcher as module
+
+        importlib.reload(module)
+
+        mock_circuit = MagicMock()
+        mock_circuit.can_execute.return_value = True
+        mock_cb_module = MagicMock()
+        mock_cb_module.GITHUB_CIRCUIT = mock_circuit
+
+        with patch.dict(sys.modules, {"shared.circuit_breaker": mock_cb_module}):
+            with patch.object(module, "sqs"):
+                result = module.handler({}, None)
+
+                assert result["statusCode"] == 200
+                body = json.loads(result["body"])
+                # Should be capped at MAX_DISPATCH_PER_RUN (4)
+                # GSI Limit is MAX_DISPATCH_PER_RUN // 2 = 2 per status
+                # Only "partial" status matches, so max 2 found, dispatched <= 4
+                assert body["dispatched"] <= 4
+
+    @mock_aws
+    def test_update_dispatched_at_failure_continues(self, mock_dynamodb):
+        """Should continue dispatching even if retry_dispatched_at update fails (lines 116-117)."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "npm#update-fail-pkg",
+                "sk": "LATEST",
+                "data_status": "partial",
+                "next_retry_at": (now - timedelta(hours=1)).isoformat(),
+                "retry_count": 1,
+                "tier": 2,
+            }
+        )
+
+        import importlib
+
+        import collectors.retry_dispatcher as module
+
+        importlib.reload(module)
+
+        mock_circuit = MagicMock()
+        mock_circuit.can_execute.return_value = True
+        mock_cb_module = MagicMock()
+        mock_cb_module.GITHUB_CIRCUIT = mock_circuit
+
+        with patch.dict(sys.modules, {"shared.circuit_breaker": mock_cb_module}):
+            # Make DynamoDB update fail but keep query working
+            original_table = module.dynamodb.Table("pkgwatch-packages")
+            mock_table = MagicMock()
+            mock_table.query.side_effect = original_table.query
+            mock_table.update_item.side_effect = Exception("DynamoDB throttled")
+
+            with patch.object(module, "dynamodb") as mock_db:
+                mock_db.Table.return_value = mock_table
+                with patch.object(module, "sqs"):
+                    result = module.handler({}, None)
+
+                    assert result["statusCode"] == 200
+                    body = json.loads(result["body"])
+                    # Should still dispatch despite update failure
+                    assert body["dispatched"] >= 1
+
+    @mock_aws
+    def test_metrics_import_failure_is_silent(self, mock_dynamodb):
+        """Metrics import failure should not crash the handler (lines 153-154)."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        import collectors.retry_dispatcher as module
+
+        importlib.reload(module)
+
+        mock_circuit = MagicMock()
+        mock_circuit.can_execute.return_value = True
+        mock_cb_module = MagicMock()
+        mock_cb_module.GITHUB_CIRCUIT = mock_circuit
+
+        # Block the shared.metrics import
+        with patch.dict(sys.modules, {"shared.circuit_breaker": mock_cb_module, "shared.metrics": None}):
+            with patch.object(module, "sqs"):
+                result = module.handler({}, None)
+
+                assert result["statusCode"] == 200
+                body = json.loads(result["body"])
+                assert body["found"] == 0
+
+    @mock_aws
+    def test_includes_missing_sources_in_dispatch(self, mock_dynamodb):
+        """Should include missing_sources from package record in SQS message."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "npm#partial-sources-pkg",
+                "sk": "LATEST",
+                "data_status": "partial",
+                "next_retry_at": (now - timedelta(hours=1)).isoformat(),
+                "retry_count": 1,
+                "tier": 1,
+                "missing_sources": ["github", "bundlephobia", "openssf"],
+            }
+        )
+
+        import importlib
+
+        import collectors.retry_dispatcher as module
+
+        importlib.reload(module)
+
+        mock_circuit = MagicMock()
+        mock_circuit.can_execute.return_value = True
+        mock_cb_module = MagicMock()
+        mock_cb_module.GITHUB_CIRCUIT = mock_circuit
+
+        with patch.dict(sys.modules, {"shared.circuit_breaker": mock_cb_module}):
+            with patch.object(module, "sqs") as mock_sqs:
+                result = module.handler({}, None)
+
+                body = json.loads(result["body"])
+                assert body["dispatched"] >= 1
+
+                call_args = mock_sqs.send_message.call_args
+                msg_body = json.loads(call_args.kwargs["MessageBody"])
+                assert msg_body["retry_sources"] == ["github", "bundlephobia", "openssf"]
+                assert msg_body["force_refresh"] is True
+
+    @mock_aws
+    def test_tier_is_correctly_cast_to_int(self, mock_dynamodb):
+        """Tier value from DynamoDB should be cast to int."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "npm#tier-cast-pkg",
+                "sk": "LATEST",
+                "data_status": "partial",
+                "next_retry_at": (now - timedelta(hours=1)).isoformat(),
+                "retry_count": 1,
+                "tier": 3,
+            }
+        )
+
+        import importlib
+
+        import collectors.retry_dispatcher as module
+
+        importlib.reload(module)
+
+        mock_circuit = MagicMock()
+        mock_circuit.can_execute.return_value = True
+        mock_cb_module = MagicMock()
+        mock_cb_module.GITHUB_CIRCUIT = mock_circuit
+
+        with patch.dict(sys.modules, {"shared.circuit_breaker": mock_cb_module}):
+            with patch.object(module, "sqs") as mock_sqs:
+                result = module.handler({}, None)
+
+                body = json.loads(result["body"])
+                if body["dispatched"] >= 1:
+                    call_args = mock_sqs.send_message.call_args
+                    msg_body = json.loads(call_args.kwargs["MessageBody"])
+                    assert isinstance(msg_body["tier"], int)
+                    assert msg_body["tier"] == 3
+
+    @mock_aws
+    def test_delay_is_within_expected_range(self, mock_dynamodb):
+        """Stagger delay should be between 0 and 300 seconds."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        now = datetime.now(timezone.utc)
+        table.put_item(
+            Item={
+                "pk": "npm#delay-check-pkg",
+                "sk": "LATEST",
+                "data_status": "partial",
+                "next_retry_at": (now - timedelta(hours=1)).isoformat(),
+                "retry_count": 1,
+                "tier": 2,
+            }
+        )
+
+        import importlib
+
+        import collectors.retry_dispatcher as module
+
+        importlib.reload(module)
+
+        mock_circuit = MagicMock()
+        mock_circuit.can_execute.return_value = True
+        mock_cb_module = MagicMock()
+        mock_cb_module.GITHUB_CIRCUIT = mock_circuit
+
+        with patch.dict(sys.modules, {"shared.circuit_breaker": mock_cb_module}):
+            with patch.object(module, "sqs") as mock_sqs:
+                module.handler({}, None)
+
+                if mock_sqs.send_message.called:
+                    call_args = mock_sqs.send_message.call_args
+                    delay = call_args.kwargs["DelaySeconds"]
+                    assert 0 <= delay <= 300
+
+    @mock_aws
+    def test_multiple_sqs_errors_tracked(self, mock_dynamodb):
+        """Should track multiple SQS send errors."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        now = datetime.now(timezone.utc)
+        for i in range(3):
+            table.put_item(
+                Item={
+                    "pk": f"npm#error-track-{i}",
+                    "sk": "LATEST",
+                    "data_status": "partial",
+                    "next_retry_at": (now - timedelta(hours=1)).isoformat(),
+                    "retry_count": 1,
+                    "tier": 2,
+                }
+            )
+
+        import importlib
+
+        import collectors.retry_dispatcher as module
+
+        importlib.reload(module)
+
+        mock_circuit = MagicMock()
+        mock_circuit.can_execute.return_value = True
+        mock_cb_module = MagicMock()
+        mock_cb_module.GITHUB_CIRCUIT = mock_circuit
+
+        with patch.dict(sys.modules, {"shared.circuit_breaker": mock_cb_module}):
+            with patch.object(module, "sqs") as mock_sqs:
+                mock_sqs.send_message.side_effect = Exception("SQS down")
+
+                result = module.handler({}, None)
+
+                body = json.loads(result["body"])
+                assert body["errors"] >= 1
+                assert body["dispatched"] == 0

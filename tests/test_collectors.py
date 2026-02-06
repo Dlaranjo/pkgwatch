@@ -7574,3 +7574,925 @@ def mock_dynamodb():
     """Provide a mock DynamoDB resource."""
     with mock_aws():
         yield boto3.resource("dynamodb", region_name="us-east-1")
+
+
+# =============================================================================
+# SELECTIVE RETRY: NPM CACHED DATA (lines 733-742)
+# =============================================================================
+
+
+class TestSelectiveRetryNpmCached:
+    """Tests for selective retry using cached npm data when npm is not in retry_sources."""
+
+    def test_selective_retry_uses_cached_npm_data(self):
+        """When npm is not in retry_sources, cached npm data should be used."""
+        from package_collector import collect_package_data
+
+        existing = {
+            "weekly_downloads": 5000,
+            "maintainers": ["user1"],
+            "maintainer_count": 1,
+            "is_deprecated": False,
+            "deprecation_message": None,
+            "created_at": "2020-01-01T00:00:00Z",
+            "last_published": "2024-01-01T00:00:00Z",
+            "has_types": True,
+            "module_type": "module",
+            "has_exports": True,
+            "engines": {"node": ">=14"},
+            "repository_url": "https://github.com/owner/repo",
+        }
+
+        with (
+            patch(
+                "package_collector.get_depsdev_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "latest_version": "1.0.0",
+                    "published_at": "2024-01-01T00:00:00Z",
+                    "licenses": ["MIT"],
+                    "dependencies_direct": 2,
+                    "advisories": [],
+                    "openssf_score": 7.0,
+                    "openssf_checks": [],
+                    "dependents_count": 100,
+                    "repository_url": "https://github.com/owner/repo",
+                },
+            ),
+            patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+            patch("package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={}),
+            patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}),
+            patch(
+                "package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=False
+            ),
+            patch("package_collector.GITHUB_CIRCUIT") as mock_circuit,
+        ):
+            mock_circuit.can_execute_async = AsyncMock(return_value=True)
+
+            # retry_sources=["github"] means we only retry github, not npm
+            result = run_async(collect_package_data("npm", "test-pkg", existing=existing, retry_sources=["github"]))
+
+            # npm data should come from cache
+            assert result["weekly_downloads"] == 5000
+            assert result["maintainers"] == ["user1"]
+            assert result["has_types"] is True
+            assert "npm_cached" in result["sources"]
+
+    def test_selective_retry_uses_cached_npm_repo_url_fallback(self):
+        """When npm is skipped and deps.dev has no repo, cached npm repo_url should be used."""
+        from package_collector import collect_package_data
+
+        existing = {
+            "weekly_downloads": 5000,
+            "maintainers": ["user1"],
+            "maintainer_count": 1,
+            "is_deprecated": False,
+            "repository_url": "https://github.com/owner/repo",
+        }
+
+        with (
+            patch(
+                "package_collector.get_depsdev_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "latest_version": "1.0.0",
+                    "published_at": "2024-01-01T00:00:00Z",
+                    "licenses": ["MIT"],
+                    "dependencies_direct": 0,
+                    "advisories": [],
+                    "openssf_score": None,
+                    "openssf_checks": [],
+                    "dependents_count": 0,
+                    # No repository_url from deps.dev
+                },
+            ),
+            patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+            patch("package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={}),
+            patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}),
+            patch(
+                "package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=False
+            ),
+            patch("package_collector.GITHUB_CIRCUIT") as mock_circuit,
+        ):
+            mock_circuit.can_execute_async = AsyncMock(return_value=True)
+
+            result = run_async(collect_package_data("npm", "test-pkg", existing=existing, retry_sources=["github"]))
+
+            # Should have fallen back to cached repo URL
+            assert result["repository_url"] == "https://github.com/owner/repo"
+
+
+# =============================================================================
+# SELECTIVE RETRY: BUNDLEPHOBIA CACHED DATA (lines 745-752)
+# =============================================================================
+
+
+class TestSelectiveRetryBundlephobiaCached:
+    """Tests for selective retry using cached bundlephobia data."""
+
+    def test_selective_retry_uses_cached_bundlephobia_data(self):
+        """When bundlephobia is not in retry_sources, cached data should be used."""
+        from package_collector import collect_package_data
+
+        existing = {
+            "weekly_downloads": 5000,
+            "maintainers": ["user1"],
+            "maintainer_count": 1,
+            "is_deprecated": False,
+            "bundle_size": 50000,
+            "bundle_size_gzip": 15000,
+            "bundle_size_category": "small",
+            "bundle_dependency_count": 3,
+            "repository_url": "https://github.com/owner/repo",
+        }
+
+        with (
+            patch(
+                "package_collector.get_depsdev_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "latest_version": "1.0.0",
+                    "published_at": "2024-01-01T00:00:00Z",
+                    "licenses": ["MIT"],
+                    "dependencies_direct": 0,
+                    "advisories": [],
+                    "openssf_score": 7.0,
+                    "openssf_checks": [],
+                    "dependents_count": 100,
+                    "repository_url": "https://github.com/owner/repo",
+                },
+            ),
+            patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+            patch(
+                "package_collector.get_npm_metadata",
+                new_callable=AsyncMock,
+                return_value={
+                    "name": "test-pkg",
+                    "weekly_downloads": 5000,
+                    "maintainers": ["user1"],
+                    "maintainer_count": 1,
+                    "is_deprecated": False,
+                    "created_at": "2020-01-01T00:00:00Z",
+                    "last_published": "2024-01-01T00:00:00Z",
+                    "has_types": False,
+                    "module_type": "commonjs",
+                    "has_exports": False,
+                    "engines": None,
+                    "repository_url": "https://github.com/owner/repo",
+                    "deprecation_message": None,
+                },
+            ),
+            patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={}),
+            patch(
+                "package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=False
+            ),
+            patch("package_collector.GITHUB_CIRCUIT") as mock_circuit,
+        ):
+            mock_circuit.can_execute_async = AsyncMock(return_value=True)
+
+            # retry_sources=["github"] means we only retry github, not bundlephobia
+            result = run_async(collect_package_data("npm", "test-pkg", existing=existing, retry_sources=["github"]))
+
+            # bundlephobia data should come from cache
+            assert result.get("bundle_size") == 50000
+            assert result.get("bundle_size_gzip") == 15000
+            assert "bundlephobia_cached" in result["sources"]
+
+    def test_selective_retry_bundlephobia_cached_no_data(self):
+        """When bundlephobia cached data is all None, should not add to sources."""
+        from package_collector import collect_package_data
+
+        existing = {
+            "weekly_downloads": 5000,
+            "maintainers": ["user1"],
+            "maintainer_count": 1,
+            "is_deprecated": False,
+            # No bundlephobia fields at all
+        }
+
+        with (
+            patch(
+                "package_collector.get_depsdev_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "latest_version": "1.0.0",
+                    "published_at": "2024-01-01T00:00:00Z",
+                    "licenses": ["MIT"],
+                    "dependencies_direct": 0,
+                    "advisories": [],
+                    "openssf_score": 7.0,
+                    "openssf_checks": [],
+                    "dependents_count": 100,
+                    "repository_url": "https://github.com/owner/repo",
+                },
+            ),
+            patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+            patch(
+                "package_collector.get_npm_metadata",
+                new_callable=AsyncMock,
+                return_value={
+                    "name": "test-pkg",
+                    "weekly_downloads": 5000,
+                    "maintainers": ["user1"],
+                    "maintainer_count": 1,
+                    "is_deprecated": False,
+                    "created_at": "2020-01-01T00:00:00Z",
+                    "last_published": "2024-01-01T00:00:00Z",
+                    "has_types": False,
+                    "module_type": "commonjs",
+                    "has_exports": False,
+                    "engines": None,
+                    "repository_url": "https://github.com/owner/repo",
+                    "deprecation_message": None,
+                },
+            ),
+            patch("package_collector.get_bundle_size", new_callable=AsyncMock),
+            patch(
+                "package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=False
+            ),
+            patch("package_collector.GITHUB_CIRCUIT") as mock_circuit,
+        ):
+            mock_circuit.can_execute_async = AsyncMock(return_value=True)
+
+            result = run_async(collect_package_data("npm", "test-pkg", existing=existing, retry_sources=["github"]))
+
+            # bundlephobia_cached should NOT be in sources (all values are None)
+            assert "bundlephobia_cached" not in result["sources"]
+
+
+# =============================================================================
+# NPM/BUNDLEPHOBIA SKIPPED DUE TO SELECTIVE RETRY (lines 785, 805)
+# =============================================================================
+
+
+class TestSelectiveRetrySkippedCollectors:
+    """Tests for collectors skipped entirely due to selective retry."""
+
+    def test_npm_skipped_due_to_selective_retry_sets_none(self):
+        """When npm is skipped (not in retry_sources, no existing), npm_result should be None."""
+        from package_collector import collect_package_data
+
+        with (
+            patch(
+                "package_collector.get_depsdev_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "latest_version": "1.0.0",
+                    "published_at": "2024-01-01T00:00:00Z",
+                    "licenses": ["MIT"],
+                    "dependencies_direct": 0,
+                    "advisories": [],
+                    "openssf_score": 7.0,
+                    "openssf_checks": [],
+                    "dependents_count": 100,
+                    "repository_url": "https://github.com/owner/repo",
+                },
+            ),
+            patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+            patch(
+                "package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=False
+            ),
+            patch("package_collector.GITHUB_CIRCUIT") as mock_circuit,
+        ):
+            mock_circuit.can_execute_async = AsyncMock(return_value=True)
+
+            # retry_sources=["github"] and no existing data
+            result = run_async(collect_package_data("npm", "test-pkg", existing=None, retry_sources=["github"]))
+
+            # npm was skipped entirely (no existing data to cache from)
+            assert "npm" not in result["sources"]
+            assert "npm_cached" not in result["sources"]
+            # Should still have deps.dev data
+            assert "deps.dev" in result["sources"]
+
+
+# =============================================================================
+# PYPI BATCH DOWNLOADS: ValueError/TypeError (lines 927-928)
+# =============================================================================
+
+
+class TestPyPIBatchDownloadsErrorHandling:
+    """Tests for PyPI batch download fallback with invalid dates."""
+
+    def test_pypi_batch_downloads_with_invalid_date(self):
+        """When downloads_fetched_at is invalid, should fall back to inline downloads."""
+        from package_collector import collect_package_data
+
+        existing = {
+            "downloads_fetched_at": "not-a-valid-date",
+            "weekly_downloads": 50000,
+            "downloads_source": "bigquery",
+        }
+
+        with (
+            patch(
+                "package_collector.get_depsdev_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "latest_version": "1.0.0",
+                    "published_at": "2024-01-01T00:00:00Z",
+                    "licenses": ["MIT"],
+                    "dependencies_direct": 0,
+                    "advisories": [],
+                    "openssf_score": 7.0,
+                    "openssf_checks": [],
+                    "dependents_count": 100,
+                    "repository_url": "https://github.com/owner/repo",
+                },
+            ),
+            patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+            patch(
+                "package_collector.get_pypi_metadata",
+                new_callable=AsyncMock,
+                return_value={
+                    "name": "test-pkg",
+                    "latest_version": "1.0.0",
+                    "weekly_downloads": 1000,
+                    "maintainers": ["author"],
+                    "maintainer_count": 1,
+                    "is_deprecated": False,
+                    "created_at": "2020-01-01T00:00:00Z",
+                    "last_published": "2024-01-01T00:00:00Z",
+                    "requires_python": ">=3.8",
+                    "development_status": "5 - Production/Stable",
+                    "python_versions": ["3.9", "3.10"],
+                    "repository_url": "https://github.com/owner/repo",
+                },
+            ),
+            patch(
+                "package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=False
+            ),
+            patch("package_collector.GITHUB_CIRCUIT") as mock_circuit,
+        ):
+            mock_circuit.can_execute_async = AsyncMock(return_value=True)
+
+            result = run_async(collect_package_data("pypi", "test-pkg", existing=existing))
+
+            # Should use inline downloads (1000) since batch date parsing failed
+            assert result["weekly_downloads"] == 1000
+
+    def test_pypi_batch_downloads_with_none_fetched_at(self):
+        """When downloads_fetched_at is None/missing, should use inline downloads."""
+        from package_collector import collect_package_data
+
+        existing = {
+            "downloads_fetched_at": None,
+            "weekly_downloads": 50000,
+            "downloads_source": "bigquery",
+        }
+
+        with (
+            patch(
+                "package_collector.get_depsdev_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "latest_version": "1.0.0",
+                    "published_at": "2024-01-01T00:00:00Z",
+                    "licenses": ["MIT"],
+                    "dependencies_direct": 0,
+                    "advisories": [],
+                    "openssf_score": 7.0,
+                    "openssf_checks": [],
+                    "dependents_count": 100,
+                    "repository_url": "https://github.com/owner/repo",
+                },
+            ),
+            patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+            patch(
+                "package_collector.get_pypi_metadata",
+                new_callable=AsyncMock,
+                return_value={
+                    "name": "test-pkg",
+                    "latest_version": "1.0.0",
+                    "weekly_downloads": 2000,
+                    "maintainers": ["author"],
+                    "maintainer_count": 1,
+                    "is_deprecated": False,
+                    "created_at": "2020-01-01T00:00:00Z",
+                    "last_published": "2024-01-01T00:00:00Z",
+                    "requires_python": ">=3.8",
+                    "development_status": None,
+                    "python_versions": [],
+                    "repository_url": "https://github.com/owner/repo",
+                },
+            ),
+            patch(
+                "package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=False
+            ),
+            patch("package_collector.GITHUB_CIRCUIT") as mock_circuit,
+        ):
+            mock_circuit.can_execute_async = AsyncMock(return_value=True)
+
+            result = run_async(collect_package_data("pypi", "test-pkg", existing=existing))
+
+            # Should use inline PyPI downloads
+            assert result["weekly_downloads"] == 2000
+
+
+# =============================================================================
+# SELECTIVE RETRY: GITHUB CACHED DATA (lines 979-986)
+# =============================================================================
+
+
+class TestSelectiveRetryGitHubCached:
+    """Tests for selective retry using cached GitHub data."""
+
+    def test_selective_retry_uses_cached_github_data(self):
+        """When github is not in retry_sources, cached github data should be used."""
+        from package_collector import collect_package_data
+
+        existing = {
+            "stars": 5000,
+            "forks": 200,
+            "open_issues": 10,
+            "days_since_last_commit": 5,
+            "commits_90d": 50,
+            "active_contributors_90d": 3,
+            "total_contributors": 10,
+            "true_bus_factor": 2,
+            "bus_factor_confidence": "HIGH",
+            "contribution_distribution": [{"login": "dev1", "pct": 60}],
+            "archived": False,
+            "repository_url": "https://github.com/owner/repo",
+        }
+
+        with (
+            patch(
+                "package_collector.get_depsdev_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "latest_version": "1.0.0",
+                    "published_at": "2024-01-01T00:00:00Z",
+                    "licenses": ["MIT"],
+                    "dependencies_direct": 0,
+                    "advisories": [],
+                    "openssf_score": 7.0,
+                    "openssf_checks": [],
+                    "dependents_count": 100,
+                    "repository_url": "https://github.com/owner/repo",
+                },
+            ),
+            patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+            patch(
+                "package_collector.get_npm_metadata",
+                new_callable=AsyncMock,
+                return_value={
+                    "name": "test-pkg",
+                    "weekly_downloads": 5000,
+                    "maintainers": ["user1"],
+                    "maintainer_count": 1,
+                    "is_deprecated": False,
+                    "created_at": "2020-01-01T00:00:00Z",
+                    "last_published": "2024-01-01T00:00:00Z",
+                    "has_types": False,
+                    "module_type": "commonjs",
+                    "has_exports": False,
+                    "engines": None,
+                    "repository_url": "https://github.com/owner/repo",
+                    "deprecation_message": None,
+                },
+            ),
+            patch("package_collector.get_bundle_size", new_callable=AsyncMock, return_value={"error": "not_found"}),
+        ):
+            # retry_sources=["npm"] means we only retry npm, not github
+            result = run_async(collect_package_data("npm", "test-pkg", existing=existing, retry_sources=["npm"]))
+
+            # GitHub data should come from cache
+            assert result["stars"] == 5000
+            assert result["forks"] == 200
+            assert result["commits_90d"] == 50
+            assert result["true_bus_factor"] == 2
+            assert "github_cached" in result["sources"]
+
+
+# =============================================================================
+# GITHUB TRANSIENT VS NON-TRANSIENT ERRORS (lines 1042-1054)
+# =============================================================================
+
+
+class TestGitHubTransientVsNonTransientErrors:
+    """Tests for GitHub error classification (transient vs non-transient)."""
+
+    def test_github_transient_error_records_failure(self):
+        """Transient GitHub errors should record failure for circuit breaker."""
+        from package_collector import collect_package_data
+
+        with (
+            patch(
+                "package_collector.get_depsdev_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "latest_version": "1.0.0",
+                    "published_at": "2024-01-01T00:00:00Z",
+                    "licenses": ["MIT"],
+                    "dependencies_direct": 0,
+                    "advisories": [],
+                    "openssf_score": 7.0,
+                    "openssf_checks": [],
+                    "dependents_count": 100,
+                    "repository_url": "https://github.com/owner/repo",
+                },
+            ),
+            patch("package_collector.check_and_increment_external_rate_limit", return_value=False),
+            patch("package_collector.GITHUB_CIRCUIT") as mock_circuit,
+            patch("package_collector.get_github_semaphore") as mock_sem,
+            patch(
+                "package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=True
+            ),
+            patch("package_collector.get_github_token", return_value="ghp_test"),
+            patch("package_collector.GitHubCollector") as mock_gh_cls,
+            patch("package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=None),
+        ):
+            mock_circuit.can_execute_async = AsyncMock(return_value=True)
+            mock_circuit.record_failure_async = AsyncMock()
+            mock_circuit.record_success_async = AsyncMock()
+            mock_sem.return_value = asyncio.Semaphore(5)
+
+            # Simulate a transient error (e.g., "server_error")
+            mock_collector = AsyncMock()
+            mock_collector.get_repo_metrics = AsyncMock(return_value={"error": "server_error"})
+            mock_gh_cls.return_value = mock_collector
+
+            result = run_async(collect_package_data("npm", "test-pkg", existing=None))
+
+            # Transient error should record failure for circuit breaker
+            mock_circuit.record_failure_async.assert_called_once()
+            assert result["github_error"] == "server_error"
+
+    def test_github_non_transient_error_skips_circuit_breaker(self):
+        """Non-transient GitHub errors (404, invalid URL) should not trip circuit breaker."""
+        from package_collector import collect_package_data
+
+        with (
+            patch(
+                "package_collector.get_depsdev_info",
+                new_callable=AsyncMock,
+                return_value={
+                    "latest_version": "1.0.0",
+                    "published_at": "2024-01-01T00:00:00Z",
+                    "licenses": ["MIT"],
+                    "dependencies_direct": 0,
+                    "advisories": [],
+                    "openssf_score": 7.0,
+                    "openssf_checks": [],
+                    "dependents_count": 100,
+                    "repository_url": "https://github.com/owner/repo",
+                },
+            ),
+            patch("package_collector.check_and_increment_external_rate_limit", return_value=False),
+            patch("package_collector.GITHUB_CIRCUIT") as mock_circuit,
+            patch("package_collector.get_github_semaphore") as mock_sem,
+            patch(
+                "package_collector._check_and_increment_github_rate_limit", new_callable=AsyncMock, return_value=True
+            ),
+            patch("package_collector.get_github_token", return_value="ghp_test"),
+            patch("package_collector.GitHubCollector") as mock_gh_cls,
+            patch("package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=None),
+        ):
+            mock_circuit.can_execute_async = AsyncMock(return_value=True)
+            mock_circuit.record_failure_async = AsyncMock()
+            mock_circuit.record_success_async = AsyncMock()
+            mock_sem.return_value = asyncio.Semaphore(5)
+
+            # Simulate a non-transient error (404 not found)
+            mock_collector = AsyncMock()
+            mock_collector.get_repo_metrics = AsyncMock(return_value={"error": "repository_not_found"})
+            mock_gh_cls.return_value = mock_collector
+
+            result = run_async(collect_package_data("npm", "test-pkg", existing=None))
+
+            # Non-transient error should NOT record failure for circuit breaker
+            mock_circuit.record_failure_async.assert_not_called()
+            assert result["github_error"] == "repository_not_found"
+
+
+# =============================================================================
+# _try_stale_fallback: has_data_check returns False (line 505)
+# =============================================================================
+
+
+class TestTryStaleHasDataCheckFails:
+    """Tests for _try_stale_fallback when has_data_check returns False."""
+
+    def test_stale_fallback_returns_false_when_has_data_check_fails(self):
+        """When has_data_check returns False, stale fallback should be skipped."""
+        from package_collector import _try_stale_fallback
+
+        combined_data = {"sources": []}
+        existing = {
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+            # No GitHub data - has_data_check will fail
+        }
+
+        def always_false_check(data):
+            return False
+
+        def dummy_extractor(data):
+            return {"stars": data.get("stars")}
+
+        result = run_async(
+            _try_stale_fallback(
+                combined_data,
+                "npm",
+                "test-pkg",
+                "github",
+                "circuit_open",
+                dummy_extractor,
+                existing=existing,
+                has_data_check=always_false_check,
+            )
+        )
+
+        assert result is False
+        assert "github_stale" not in combined_data.get("sources", [])
+
+    def test_stale_fallback_with_require_any_cached_value_all_none(self):
+        """When require_any_cached_value=True and all cached values are None, source is not added."""
+        from package_collector import _try_stale_fallback
+
+        combined_data = {"sources": []}
+        existing = {
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+        }
+
+        def all_none_extractor(data):
+            return {"bundle_size": None, "bundle_size_gzip": None}
+
+        result = run_async(
+            _try_stale_fallback(
+                combined_data,
+                "npm",
+                "test-pkg",
+                "bundlephobia",
+                "rate_limit_exceeded",
+                all_none_extractor,
+                existing=existing,
+                require_any_cached_value=True,
+            )
+        )
+
+        assert result is True  # Fallback was "attempted"
+        # But source should NOT be added since all values are None
+        assert "bundlephobia_stale" not in combined_data.get("sources", [])
+
+
+# =============================================================================
+# PROCESS BATCH: UNKNOWN RESULT FORMAT (lines 1519-1520)
+# =============================================================================
+
+
+class TestProcessBatchUnknownResultFormat:
+    """Tests for process_batch handling of unknown result formats."""
+
+    def test_process_batch_unknown_result_type(self):
+        """When process_single_package returns unexpected format, should count as failure."""
+        from package_collector import process_batch
+
+        records = [
+            {
+                "messageId": "msg-1",
+                "body": json.dumps({"ecosystem": "npm", "name": "test-pkg", "tier": 1}),
+            },
+        ]
+
+        with (
+            patch(
+                "package_collector.get_bulk_download_stats",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch(
+                "package_collector.process_single_package",
+                new_callable=AsyncMock,
+                return_value="unexpected_string_result",  # Not a tuple or exception
+            ),
+            patch("package_collector.emit_metric"),
+            patch("package_collector.emit_batch_metrics"),
+        ):
+            successes, failed_ids = run_async(process_batch(records))
+
+            assert successes == 0
+            assert "msg-1" in failed_ids
+
+    def test_process_batch_none_result(self):
+        """When process_single_package returns None, should count as failure."""
+        from package_collector import process_batch
+
+        records = [
+            {
+                "messageId": "msg-1",
+                "body": json.dumps({"ecosystem": "npm", "name": "test-pkg", "tier": 1}),
+            },
+        ]
+
+        with (
+            patch(
+                "package_collector.get_bulk_download_stats",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch(
+                "package_collector.process_single_package",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch("package_collector.emit_metric"),
+            patch("package_collector.emit_batch_metrics"),
+        ):
+            successes, failed_ids = run_async(process_batch(records))
+
+            assert successes == 0
+            assert "msg-1" in failed_ids
+
+
+# =============================================================================
+# SELECTIVE RETRY: LOGGING (line 1395)
+# =============================================================================
+
+
+class TestSelectiveRetryLogging:
+    """Tests for the selective retry logging path."""
+
+    def test_process_single_package_logs_selective_retry(self):
+        """When retry_sources is provided, selective retry path is logged."""
+        from package_collector import process_single_package
+
+        message = {
+            "ecosystem": "npm",
+            "name": "retry-pkg",
+            "tier": 1,
+            "reason": "incomplete_data_retry",
+            "retry_sources": ["npm", "github"],
+        }
+
+        existing_data = {
+            "pk": "npm#retry-pkg",
+            "sk": "LATEST",
+            "last_updated": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+            "retry_count": 0,
+        }
+
+        with (
+            patch(
+                "package_collector._get_existing_package_data",
+                new_callable=AsyncMock,
+                return_value=existing_data,
+            ),
+            patch("package_collector._increment_retry_count", new_callable=AsyncMock),
+            patch(
+                "package_collector.collect_package_data",
+                new_callable=AsyncMock,
+                return_value={
+                    "ecosystem": "npm",
+                    "name": "retry-pkg",
+                    "collected_at": datetime.now(timezone.utc).isoformat(),
+                    "sources": ["deps.dev", "npm"],
+                    "data_freshness": "fresh",
+                    "latest_version": "1.0.0",
+                },
+            ),
+            patch("package_collector.store_raw_data"),
+            patch("package_collector.store_package_data", new_callable=AsyncMock),
+        ):
+            success, pkg_name, error = run_async(process_single_package(message))
+
+            assert success is True
+            assert "retry-pkg" in pkg_name
+
+
+# =============================================================================
+# IDEMPOTENCY: SAME MESSAGE PROCESSED TWICE
+# =============================================================================
+
+
+class TestIdempotency:
+    """Tests for idempotent message processing."""
+
+    def test_same_message_processed_twice_is_safe(self):
+        """Processing the same message twice should be safe (dedup)."""
+        from package_collector import process_single_package
+
+        message = {
+            "ecosystem": "npm",
+            "name": "idempotent-pkg",
+            "tier": 1,
+        }
+
+        # First time: recently updated, should skip
+        recently_updated = datetime.now(timezone.utc).isoformat()
+        existing_data = {
+            "pk": "npm#idempotent-pkg",
+            "sk": "LATEST",
+            "last_updated": recently_updated,
+        }
+
+        with patch(
+            "package_collector._get_existing_package_data",
+            new_callable=AsyncMock,
+            return_value=existing_data,
+        ):
+            success, pkg_name, error = run_async(process_single_package(message))
+
+            # Dedup should skip - treating it as success
+            assert success is True
+            assert error is None
+
+    def test_force_refresh_bypasses_dedup(self):
+        """force_refresh should bypass deduplication."""
+        from package_collector import process_single_package
+
+        message = {
+            "ecosystem": "npm",
+            "name": "forced-pkg",
+            "tier": 1,
+            "force_refresh": True,
+        }
+
+        recently_updated = datetime.now(timezone.utc).isoformat()
+        existing_data = {
+            "pk": "npm#forced-pkg",
+            "sk": "LATEST",
+            "last_updated": recently_updated,
+        }
+
+        with (
+            patch(
+                "package_collector._get_existing_package_data",
+                new_callable=AsyncMock,
+                return_value=existing_data,
+            ),
+            patch(
+                "package_collector.collect_package_data",
+                new_callable=AsyncMock,
+                return_value={
+                    "ecosystem": "npm",
+                    "name": "forced-pkg",
+                    "collected_at": datetime.now(timezone.utc).isoformat(),
+                    "sources": ["deps.dev"],
+                    "data_freshness": "fresh",
+                    "latest_version": "1.0.0",
+                },
+            ),
+            patch("package_collector.store_raw_data"),
+            patch("package_collector.store_package_data", new_callable=AsyncMock),
+        ):
+            success, pkg_name, error = run_async(process_single_package(message))
+
+            # Should NOT skip even though recently updated
+            assert success is True
+
+
+# =============================================================================
+# DYNAMO WRITE FAILURE IN STORE_PACKAGE_DATA
+# =============================================================================
+
+
+class TestDynamoWriteFailureInPipeline:
+    """Tests for DynamoDB write failure propagation in the pipeline."""
+
+    def test_store_failure_propagates_and_stores_error(self):
+        """When store_package_data fails, process_single_package should catch and store error."""
+        from package_collector import process_single_package
+
+        message = {
+            "ecosystem": "npm",
+            "name": "failing-store-pkg",
+            "tier": 1,
+        }
+
+        with (
+            patch(
+                "package_collector._get_existing_package_data",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "package_collector.collect_package_data",
+                new_callable=AsyncMock,
+                return_value={
+                    "ecosystem": "npm",
+                    "name": "failing-store-pkg",
+                    "collected_at": datetime.now(timezone.utc).isoformat(),
+                    "sources": ["deps.dev"],
+                    "data_freshness": "fresh",
+                    "latest_version": "1.0.0",
+                },
+            ),
+            patch("package_collector.store_raw_data"),
+            patch(
+                "package_collector.store_package_data",
+                new_callable=AsyncMock,
+                side_effect=Exception("DynamoDB ProvisionedThroughputExceededException"),
+            ),
+            patch(
+                "package_collector._store_collection_error",
+                new_callable=AsyncMock,
+            ) as mock_store_error,
+        ):
+            success, pkg_name, error_reason = run_async(process_single_package(message))
+
+            # Should fail
+            assert success is False
+            assert error_reason == "Exception"
+            # Error should be stored for DLQ processor
+            mock_store_error.assert_called_once()

@@ -453,7 +453,7 @@ class TestHandlePaymentFailed:
     @mock_aws
     def test_email_failure_does_not_break_grace_period(self, mock_dynamodb):
         """SES failure should not prevent grace period from starting."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
@@ -4808,10 +4808,12 @@ class TestPaymentFailedReRaiseErrors:
         with patch("api.stripe_webhook.get_dynamodb") as mock_db:
             mock_db.return_value.Table.return_value = mock_table
             with pytest.raises(ClientError) as exc_info:
-                _handle_payment_failed({
-                    "customer": "cus_reraise_first",
-                    "attempt_count": 1,
-                })
+                _handle_payment_failed(
+                    {
+                        "customer": "cus_reraise_first",
+                        "attempt_count": 1,
+                    }
+                )
             assert exc_info.value.response["Error"]["Code"] == "ProvisionedThroughputExceededException"
 
     @mock_aws
@@ -4845,10 +4847,12 @@ class TestPaymentFailedReRaiseErrors:
         with patch("api.stripe_webhook.get_dynamodb") as mock_db:
             mock_db.return_value.Table.return_value = mock_table
             with pytest.raises(ClientError) as exc_info:
-                _handle_payment_failed({
-                    "customer": "cus_reraise_down",
-                    "attempt_count": 3,
-                })
+                _handle_payment_failed(
+                    {
+                        "customer": "cus_reraise_down",
+                        "attempt_count": 3,
+                    }
+                )
             assert exc_info.value.response["Error"]["Code"] == "InternalServerError"
 
 
@@ -4941,7 +4945,7 @@ class TestUserMetaSyncNonConditionalError:
     @mock_aws
     def test_user_meta_non_conditional_error_logged_not_raised(self, mock_dynamodb):
         """Non-ConditionalCheckFailedException in USER_META sync should be logged but not raised."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
 
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 

@@ -218,3 +218,96 @@ async def test_retry_async_with_kwargs():
 
     result = await test_func(value=5)
     assert result == 10
+
+
+# =============================================================================
+# ADDITIONAL RETRY EDGE CASES
+# =============================================================================
+
+
+def test_calculate_delay_with_zero_jitter():
+    """Delay calculation with zero jitter should be deterministic."""
+    config = RetryConfig(base_delay=2.0, exponential_base=3.0, jitter_factor=0.0, max_delay=100.0)
+
+    assert calculate_delay(0, config) == pytest.approx(2.0)
+    assert calculate_delay(1, config) == pytest.approx(6.0)
+    assert calculate_delay(2, config) == pytest.approx(18.0)
+
+
+def test_calculate_delay_max_delay_with_jitter():
+    """When base delay exceeds max, jitter should still be within bounds."""
+    config = RetryConfig(base_delay=1.0, max_delay=1.0, jitter_factor=0.5)
+
+    # All delays should be between 1.0 and 1.5 (max_delay + jitter)
+    for _ in range(50):
+        delay = calculate_delay(10, config)
+        assert 1.0 <= delay <= 1.5
+
+
+@pytest.mark.asyncio
+async def test_retry_async_non_retryable_exception_not_retried():
+    """Non-retryable exceptions should immediately propagate."""
+    call_count = 0
+
+    async def test_func():
+        nonlocal call_count
+        call_count += 1
+        raise TypeError("not retryable")
+
+    config = RetryConfig(
+        max_retries=5,
+        base_delay=0.01,
+        retryable_exceptions=(ValueError,),
+    )
+
+    with pytest.raises(TypeError, match="not retryable"):
+        await retry_async(test_func, config=config)
+
+    # Should only be called once since TypeError is not retryable
+    assert call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_async_zero_max_retries():
+    """With max_retries=0, should only try once."""
+    call_count = 0
+
+    async def test_func():
+        nonlocal call_count
+        call_count += 1
+        raise ValueError("fail")
+
+    config = RetryConfig(max_retries=0, base_delay=0.01)
+
+    with pytest.raises(ValueError, match="fail"):
+        await retry_async(test_func, config=config)
+
+    assert call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_decorator_preserves_function_name():
+    """Retry decorator should preserve the original function name."""
+
+    @retry(RetryConfig(max_retries=1))
+    async def my_special_function():
+        return "result"
+
+    assert my_special_function.__name__ == "my_special_function"
+
+
+def test_preconfigured_retry_configs():
+    """Verify pre-configured retry configs have correct values."""
+    from functions.shared.retry import DYNAMODB_RETRY_CONFIG, GITHUB_RETRY_CONFIG, HTTP_RETRY_CONFIG
+
+    assert HTTP_RETRY_CONFIG.max_retries == 3
+    assert HTTP_RETRY_CONFIG.base_delay == 1.0
+    assert HTTP_RETRY_CONFIG.max_delay == 30.0
+
+    assert GITHUB_RETRY_CONFIG.max_retries == 3
+    assert GITHUB_RETRY_CONFIG.base_delay == 2.0
+    assert GITHUB_RETRY_CONFIG.max_delay == 60.0
+
+    assert DYNAMODB_RETRY_CONFIG.max_retries == 3
+    assert DYNAMODB_RETRY_CONFIG.base_delay == 0.1
+    assert DYNAMODB_RETRY_CONFIG.max_delay == 2.0

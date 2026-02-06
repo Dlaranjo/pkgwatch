@@ -749,3 +749,517 @@ class TestEdgeCasesAndErrorHandling:
             log_message = mock_logger.info.call_args[0][0]
             assert "Requeued" in log_message
             assert "msg-12345" in log_message
+
+
+# =============================================================================
+# HANDLER TIMEOUT AND METRICS EDGE CASES
+# =============================================================================
+
+
+class TestHandlerTimeoutAndMetrics:
+    """Tests for handler timeout guard and metrics emission failure."""
+
+    @mock_aws
+    def test_handler_stops_early_on_timeout(self, mock_dynamodb, dlq_environment):
+        """Should stop processing when Lambda timeout approaches (lines 88-91)."""
+        # Create a context mock that reports low remaining time
+        mock_context = MagicMock()
+        mock_context.aws_request_id = "test-req-id"
+        mock_context.get_remaining_time_in_millis.return_value = 20000  # < 30000
+
+        single_message = {
+            "MessageId": "msg-timeout",
+            "ReceiptHandle": "receipt-timeout",
+            "Body": json.dumps({"ecosystem": "npm", "name": "test"}),
+        }
+
+        with patch("collectors.dlq_processor.sqs") as mock_sqs:
+            # Return messages, but timeout should prevent processing
+            mock_sqs.receive_message.return_value = {"Messages": [single_message]}
+
+            result = dlq_environment.handler({}, mock_context)
+
+            # Should stop before receiving any messages due to timeout
+            assert result["processed"] == 0
+            # receive_message should not have been called
+            mock_sqs.receive_message.assert_not_called()
+
+    @mock_aws
+    def test_handler_stops_mid_batch_on_timeout(self, mock_dynamodb, dlq_environment):
+        """Should stop between batches when timeout approaches."""
+        mock_context = MagicMock()
+        mock_context.aws_request_id = "test-req-id"
+        # First check has enough time, second does not
+        mock_context.get_remaining_time_in_millis.side_effect = [60000, 20000]
+
+        messages = [
+            {
+                "MessageId": "msg-1",
+                "ReceiptHandle": "receipt-1",
+                "Body": json.dumps({"ecosystem": "npm", "name": "test-1"}),
+            }
+        ]
+
+        with patch("collectors.dlq_processor.sqs") as mock_sqs:
+            mock_sqs.receive_message.side_effect = [
+                {"Messages": messages},
+                {"Messages": messages},  # Won't be reached
+            ]
+
+            result = dlq_environment.handler({}, mock_context)
+
+            # Should only process first batch
+            assert result["processed"] == 1
+            assert mock_sqs.receive_message.call_count == 1
+
+    @mock_aws
+    def test_handler_metrics_emission_failure_is_silent(self, mock_dynamodb, dlq_environment):
+        """Metrics emission failure should not crash the handler (lines 135-136)."""
+        with patch("collectors.dlq_processor.sqs") as mock_sqs:
+            mock_sqs.receive_message.return_value = {"Messages": []}
+
+            with patch("collectors.dlq_processor.emit_batch_metrics", side_effect=Exception("CloudWatch down")):
+                result = dlq_environment.handler({}, None)
+
+            # Handler should complete successfully despite metrics failure
+            assert "processed" in result
+            assert result["processed"] == 0
+
+
+# =============================================================================
+# DLQ MESSAGE PROCESSING - ERROR INFO LOOKUP AND DELETE FAILURES
+# =============================================================================
+
+
+class TestDLQMessageErrorInfoLookup:
+    """Tests for error info lookup from package records and delete failures."""
+
+    @mock_aws
+    def test_fetches_error_info_from_package_record(self, mock_dynamodb, dlq_environment):
+        """Should fetch error info from DynamoDB when message has no _last_error (line 197-200)."""
+        # Seed the packages table with error info
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        table.put_item(
+            Item={
+                "pk": "npm#pkg-with-error",
+                "sk": "LATEST",
+                "collection_error": "HTTP 503: Service Unavailable",
+                "collection_error_class": "transient",
+            }
+        )
+
+        message = {
+            "MessageId": "msg-lookup-error",
+            "ReceiptHandle": "receipt-lookup",
+            "Body": json.dumps(
+                {
+                    "ecosystem": "npm",
+                    "name": "pkg-with-error",
+                    # No _last_error or _error_class
+                }
+            ),
+        }
+
+        with patch("collectors.dlq_processor.sqs") as mock_sqs:
+            result = dlq_environment._process_dlq_message(message)
+
+            # Should be requeued since the stored error is transient
+            assert result == "requeued"
+            mock_sqs.send_message.assert_called_once()
+
+    @mock_aws
+    def test_uses_stored_error_class_from_package_record(self, mock_dynamodb, dlq_environment):
+        """Should use stored error_class from package record (line 199-200)."""
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        table.put_item(
+            Item={
+                "pk": "npm#permanent-fail-pkg",
+                "sk": "LATEST",
+                "collection_error": "HTTP 404: Not Found",
+                "collection_error_class": "permanent",
+            }
+        )
+
+        message = {
+            "MessageId": "msg-stored-class",
+            "ReceiptHandle": "receipt-stored",
+            "Body": json.dumps(
+                {
+                    "ecosystem": "npm",
+                    "name": "permanent-fail-pkg",
+                    "_last_error": "unknown",  # Triggers lookup
+                }
+            ),
+        }
+
+        with patch("collectors.dlq_processor.sqs") as mock_sqs:
+            result = dlq_environment._process_dlq_message(message)
+
+            # Should be permanently failed because stored class is "permanent"
+            assert result == "permanently_failed"
+            mock_sqs.send_message.assert_not_called()
+
+    @mock_aws
+    def test_sets_last_error_to_unknown_when_empty_after_fetch(self, mock_dynamodb, dlq_environment):
+        """Should set last_error to 'unknown' when fetch returns empty (line 205-206)."""
+        # Package record exists but with no error info
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        table.put_item(
+            Item={
+                "pk": "npm#no-error-info",
+                "sk": "LATEST",
+                # No collection_error or collection_error_class
+            }
+        )
+
+        message = {
+            "MessageId": "msg-no-error",
+            "ReceiptHandle": "receipt-no-error",
+            "Body": json.dumps(
+                {
+                    "ecosystem": "npm",
+                    "name": "no-error-info",
+                    # No _last_error
+                }
+            ),
+        }
+
+        with patch("collectors.dlq_processor.sqs"):
+            result = dlq_environment._process_dlq_message(message)
+
+            # Should still requeue (unknown errors are retried)
+            assert result == "requeued"
+
+    @mock_aws
+    def test_delete_failure_after_permanent_fail_still_emits_metric(self, mock_dynamodb, dlq_environment):
+        """Failed delete of permanently failed message should still emit metric (lines 225-226)."""
+        message = {
+            "MessageId": "msg-delete-fail",
+            "ReceiptHandle": "receipt-delete-fail",
+            "Body": json.dumps(
+                {
+                    "ecosystem": "npm",
+                    "name": "perm-fail-pkg",
+                    "_retry_count": 5,
+                    "_last_error": "HTTP 404: Not Found",
+                }
+            ),
+        }
+
+        with (
+            patch("collectors.dlq_processor.sqs") as mock_sqs,
+            patch("collectors.dlq_processor.emit_dlq_metric") as mock_emit_dlq,
+        ):
+            # Make delete fail
+            mock_sqs.delete_message.side_effect = Exception("SQS delete failed")
+
+            result = dlq_environment._process_dlq_message(message)
+
+            assert result == "permanently_failed"
+            # Metric should still be emitted even when delete fails
+            mock_emit_dlq.assert_called_with("permanent_failure", "perm-fail-pkg")
+
+    @mock_aws
+    def test_delete_invalid_message_failure(self, mock_dynamodb, dlq_environment):
+        """Failed delete of invalid (unparseable) message should log warning (line 185)."""
+        invalid_message = {
+            "MessageId": "msg-invalid-delete-fail",
+            "ReceiptHandle": "receipt-invalid-delete-fail",
+            "Body": "not valid json {{",
+        }
+
+        with (
+            patch("collectors.dlq_processor.sqs") as mock_sqs,
+            patch("collectors.dlq_processor.logger") as mock_logger,
+        ):
+            mock_sqs.delete_message.side_effect = Exception("Delete failed")
+
+            result = dlq_environment._process_dlq_message(invalid_message)
+
+            assert result == "skipped"
+            # Should log warning about failed delete of invalid message
+            warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+            assert any("Failed to delete invalid message" in str(c) for c in warning_calls)
+
+
+# =============================================================================
+# SHOULD_RETRY FUNCTION TESTS
+# =============================================================================
+
+
+class TestShouldRetry:
+    """Tests for the should_retry helper function."""
+
+    def test_permanent_error_not_retried(self, dlq_environment):
+        """Permanent errors should not be retried."""
+        body = {
+            "_retry_count": 0,
+            "_last_error": "404 Not Found",
+            "_error_class": "permanent",
+        }
+        assert dlq_environment.should_retry(body) is False
+
+    def test_max_retries_not_retried(self, dlq_environment):
+        """Messages at max retries should not be retried."""
+        body = {
+            "_retry_count": 5,
+            "_last_error": "timeout",
+            "_error_class": "transient",
+        }
+        assert dlq_environment.should_retry(body) is False
+
+    def test_transient_error_below_max_retried(self, dlq_environment):
+        """Transient errors below max retries should be retried."""
+        body = {
+            "_retry_count": 2,
+            "_last_error": "timeout",
+            "_error_class": "transient",
+        }
+        assert dlq_environment.should_retry(body) is True
+
+    def test_unknown_error_below_max_retried(self, dlq_environment):
+        """Unknown errors below max retries should be retried."""
+        body = {
+            "_retry_count": 3,
+            "_last_error": "weird error",
+            "_error_class": "unknown",
+        }
+        assert dlq_environment.should_retry(body) is True
+
+    def test_missing_fields_defaults(self, dlq_environment):
+        """Should handle missing fields with sensible defaults."""
+        body = {}  # No retry_count, no error, no class
+        assert dlq_environment.should_retry(body) is True
+
+    def test_exactly_at_max_retries_not_retried(self, dlq_environment):
+        """Exactly at MAX_DLQ_RETRIES should not be retried."""
+        body = {"_retry_count": 5}  # MAX_DLQ_RETRIES = 5
+        assert dlq_environment.should_retry(body) is False
+
+    def test_one_below_max_retries_retried(self, dlq_environment):
+        """One below MAX_DLQ_RETRIES should still be retried."""
+        body = {"_retry_count": 4}
+        assert dlq_environment.should_retry(body) is True
+
+
+# =============================================================================
+# DELETE DLQ MESSAGE WITH RETRIES
+# =============================================================================
+
+
+class TestDeleteDLQMessage:
+    """Tests for _delete_dlq_message with internal retry logic."""
+
+    @mock_aws
+    def test_delete_succeeds_on_first_attempt(self, mock_dynamodb, dlq_environment):
+        """Should return True when delete succeeds on first attempt."""
+        message = {"ReceiptHandle": "test-receipt"}
+
+        with patch("collectors.dlq_processor.sqs") as mock_sqs:
+            result = dlq_environment._delete_dlq_message(message)
+            assert result is True
+            assert mock_sqs.delete_message.call_count == 1
+
+    @mock_aws
+    def test_delete_retries_on_failure(self, mock_dynamodb, dlq_environment):
+        """Should retry delete on failure and succeed eventually."""
+        message = {"ReceiptHandle": "test-receipt"}
+
+        with patch("collectors.dlq_processor.sqs") as mock_sqs, patch("time.sleep"):
+            # Fail first, succeed second
+            mock_sqs.delete_message.side_effect = [
+                Exception("Temporary SQS error"),
+                None,  # Success
+            ]
+
+            result = dlq_environment._delete_dlq_message(message)
+            assert result is True
+            assert mock_sqs.delete_message.call_count == 2
+
+    @mock_aws
+    def test_delete_returns_false_after_all_retries_exhausted(self, mock_dynamodb, dlq_environment):
+        """Should return False after all retry attempts fail (covers line 289 fallback)."""
+        message = {"ReceiptHandle": "test-receipt"}
+
+        with patch("collectors.dlq_processor.sqs") as mock_sqs, patch("time.sleep"):
+            mock_sqs.delete_message.side_effect = Exception("Persistent SQS error")
+
+            result = dlq_environment._delete_dlq_message(message, max_retries=3)
+            assert result is False
+            assert mock_sqs.delete_message.call_count == 3
+
+
+# =============================================================================
+# GET PACKAGE ERROR INFO TESTS
+# =============================================================================
+
+
+class TestGetPackageErrorInfo:
+    """Tests for _get_package_error_info function."""
+
+    @mock_aws
+    def test_returns_error_info_from_package_record(self, mock_dynamodb, dlq_environment):
+        """Should return error info from DynamoDB package record."""
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        table.put_item(
+            Item={
+                "pk": "npm#test-pkg",
+                "sk": "LATEST",
+                "collection_error": "HTTP 503",
+                "collection_error_class": "transient",
+            }
+        )
+
+        error_msg, error_class = dlq_environment._get_package_error_info("npm", "test-pkg")
+        assert error_msg == "HTTP 503"
+        assert error_class == "transient"
+
+    @mock_aws
+    def test_returns_unknown_when_no_error_fields(self, mock_dynamodb, dlq_environment):
+        """Should return 'unknown' when package has no error fields."""
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        table.put_item(
+            Item={
+                "pk": "npm#clean-pkg",
+                "sk": "LATEST",
+            }
+        )
+
+        error_msg, error_class = dlq_environment._get_package_error_info("npm", "clean-pkg")
+        assert error_msg == "unknown"
+        assert error_class == "unknown"
+
+    @mock_aws
+    def test_returns_unknown_when_package_not_found(self, mock_dynamodb, dlq_environment):
+        """Should return 'unknown' when package doesn't exist."""
+        error_msg, error_class = dlq_environment._get_package_error_info("npm", "nonexistent-pkg")
+        assert error_msg == "unknown"
+        assert error_class == "unknown"
+
+    @mock_aws
+    def test_handles_dynamodb_error_gracefully(self, mock_dynamodb, dlq_environment):
+        """Should return 'unknown' when DynamoDB throws error."""
+        with patch("collectors.dlq_processor.dynamodb") as mock_db:
+            mock_table = MagicMock()
+            mock_table.get_item.side_effect = Exception("DynamoDB unavailable")
+            mock_db.Table.return_value = mock_table
+
+            error_msg, error_class = dlq_environment._get_package_error_info("npm", "test")
+            assert error_msg == "unknown"
+            assert error_class == "unknown"
+
+
+# =============================================================================
+# MALFORMED AND HUGE PAYLOAD EDGE CASES
+# =============================================================================
+
+
+class TestMalformedAndHugePayloads:
+    """Tests for malformed messages and unusually large payloads."""
+
+    @mock_aws
+    def test_message_with_empty_body_key(self, mock_dynamodb, dlq_environment):
+        """Message with empty Body string should be skipped."""
+        message = {
+            "MessageId": "msg-empty-body",
+            "ReceiptHandle": "receipt-empty",
+            "Body": "",
+        }
+
+        with patch("collectors.dlq_processor.sqs"):
+            result = dlq_environment._process_dlq_message(message)
+            assert result == "skipped"
+
+    @mock_aws
+    def test_message_missing_body_key(self, mock_dynamodb, dlq_environment):
+        """Message completely missing Body key should be skipped."""
+        message = {
+            "MessageId": "msg-no-body",
+            "ReceiptHandle": "receipt-no-body",
+            # No Body key at all
+        }
+
+        with patch("collectors.dlq_processor.sqs"):
+            result = dlq_environment._process_dlq_message(message)
+            assert result == "skipped"
+
+    @mock_aws
+    def test_huge_payload_still_processed(self, mock_dynamodb, dlq_environment):
+        """Large message payloads should still be processed correctly."""
+        large_body = {
+            "ecosystem": "npm",
+            "name": "big-pkg",
+            "extra_data": "x" * 100000,  # 100KB of extra data
+        }
+
+        message = {
+            "MessageId": "msg-huge",
+            "ReceiptHandle": "receipt-huge",
+            "Body": json.dumps(large_body),
+        }
+
+        with patch("collectors.dlq_processor.sqs"):
+            result = dlq_environment._process_dlq_message(message)
+            assert result == "requeued"
+
+    @mock_aws
+    def test_message_with_float_retry_count(self, mock_dynamodb, dlq_environment):
+        """Retry count stored as float should be converted to int via int()."""
+        message = {
+            "MessageId": "msg-float-retry",
+            "ReceiptHandle": "receipt-float",
+            "Body": json.dumps(
+                {
+                    "ecosystem": "npm",
+                    "name": "test",
+                    "_retry_count": 3.7,  # Float instead of int
+                }
+            ),
+        }
+
+        with patch("collectors.dlq_processor.sqs") as mock_sqs:
+            result = dlq_environment._process_dlq_message(message)
+            assert result == "requeued"
+            body = json.loads(mock_sqs.send_message.call_args.kwargs["MessageBody"])
+            assert body["_retry_count"] == 4  # int(3.7) + 1 = 4
+
+    @mock_aws
+    def test_permanent_error_skips_retry_directly(self, mock_dynamodb, dlq_environment):
+        """Message with permanent error class should skip retry immediately."""
+        message = {
+            "MessageId": "msg-perm",
+            "ReceiptHandle": "receipt-perm",
+            "Body": json.dumps(
+                {
+                    "ecosystem": "npm",
+                    "name": "gone-pkg",
+                    "_retry_count": 0,
+                    "_last_error": "HTTP 404: Package not found",
+                }
+            ),
+        }
+
+        with patch("collectors.dlq_processor.sqs") as mock_sqs:
+            result = dlq_environment._process_dlq_message(message)
+
+            # Permanent error should not be requeued even with 0 retries
+            assert result == "permanently_failed"
+            mock_sqs.send_message.assert_not_called()
+
+    @mock_aws
+    def test_message_without_ecosystem_or_name_still_requeues(self, mock_dynamodb, dlq_environment):
+        """Message without ecosystem/name fields should still be requeued."""
+        message = {
+            "MessageId": "msg-no-pkg-info",
+            "ReceiptHandle": "receipt-no-pkg",
+            "Body": json.dumps(
+                {
+                    "some_other_field": "value",
+                }
+            ),
+        }
+
+        with patch("collectors.dlq_processor.sqs"):
+            result = dlq_environment._process_dlq_message(message)
+            # No ecosystem/name means no lookup, error is unknown, retries < max -> requeue
+            assert result == "requeued"

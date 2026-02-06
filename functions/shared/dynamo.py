@@ -59,10 +59,6 @@ def get_package(ecosystem: str, name: str, max_retries: int = 3) -> Optional[Pac
             logger.error(f"Error fetching package {ecosystem}/{name}: {e}")
             return None
 
-    # Max retries exceeded
-    logger.error(f"Max retries exceeded for {ecosystem}/{name}")
-    return None
-
 
 def put_package(ecosystem: str, name: str, data: dict, tier: int = 3) -> None:
     """

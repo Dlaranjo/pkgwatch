@@ -1160,3 +1160,501 @@ class TestStripeKeyCache:
 
         key = billing_utils.get_stripe_api_key()
         assert key == "sk_plain_text_key"
+
+
+class TestAuthMeStripeRefreshUserMetaErrors:
+    """Tests covering lines 292-294 and 308-310 in auth_me.py.
+
+    Lines 292-294: ClientError during USER_META update in _refresh_from_stripe
+                   that is NOT a ConditionalCheckFailedException (logged as error).
+    Lines 308-310: Generic (non-Stripe) Exception during _refresh_from_stripe.
+    """
+
+    @mock_aws
+    def test_user_meta_update_non_conditional_client_error(
+        self, aws_credentials, mock_dynamodb, setup_session_secret, setup_stripe_secret
+    ):
+        """Should still succeed when USER_META update fails with non-conditional ClientError."""
+        secret = setup_session_secret
+        import api.auth_callback as auth_callback
+
+        auth_callback._session_secret_cache = None
+
+        import importlib
+
+        import api.auth_me as module
+
+        for key in ["STRIPE_PRICE_STARTER", "STRIPE_PRICE_PRO", "STRIPE_PRICE_BUSINESS"]:
+            os.environ.pop(key, None)
+        importlib.reload(module)
+
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        billing_utils._secretsmanager = None
+        billing_utils.STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        create_test_user(
+            table,
+            "user_meta_err",
+            "metaerr@example.com",
+            tier="starter",
+            stripe_subscription_id="sub_meta_err",
+        )
+        create_user_meta(table, "user_meta_err")
+
+        session_data = {
+            "user_id": "user_meta_err",
+            "email": "metaerr@example.com",
+            "tier": "starter",
+            "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+        }
+        token = create_session_token(session_data, secret)
+
+        mock_subscription = {
+            "status": "active",
+            "cancel_at_period_end": False,
+            "items": {
+                "data": [
+                    {
+                        "price": {"id": "price_pro"},
+                        "current_period_end": 1735689600,
+                    }
+                ]
+            },
+        }
+
+        # We need the real table update to succeed for API key records
+        # but fail for USER_META. Patch _refresh_from_stripe's inner update.
+        from botocore.exceptions import ClientError as BotoClientError
+
+        original_update = table.update_item
+        call_count = [0]
+
+        def selective_fail(**kwargs):
+            call_count[0] += 1
+            key = kwargs.get("Key", {})
+            cond_expr = kwargs.get("ConditionExpression", "")
+            # The USER_META update uses ConditionExpression="attribute_exists(pk)"
+            if key.get("sk") == "USER_META" and "attribute_exists(pk)" in str(cond_expr):
+                raise BotoClientError(
+                    {"Error": {"Code": "InternalServerError", "Message": "DynamoDB internal error"}},
+                    "UpdateItem",
+                )
+            return original_update(**kwargs)
+
+        with patch("stripe.Subscription.retrieve", return_value=mock_subscription):
+            with patch.object(module, "get_dynamodb") as mock_ddb:
+                patched_table = MagicMock(wraps=table)
+                patched_table.update_item = selective_fail
+                patched_table.query = table.query
+                patched_table.get_item = table.get_item
+                mock_ddb.return_value.Table.return_value = patched_table
+
+                event = {
+                    "headers": {"cookie": f"session={token}"},
+                    "queryStringParameters": {"refresh": "stripe"},
+                }
+
+                result = module.handler(event, None)
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        # Should still show refreshed data (USER_META error is non-fatal)
+        assert body["tier"] == "pro"
+        assert body["data_source"] == "live"
+
+    @mock_aws
+    def test_generic_exception_during_stripe_refresh(
+        self, aws_credentials, mock_dynamodb, setup_session_secret, setup_stripe_secret
+    ):
+        """Should return cached data when a generic (non-Stripe) Exception occurs during refresh."""
+        secret = setup_session_secret
+        import api.auth_callback as auth_callback
+
+        auth_callback._session_secret_cache = None
+
+        import importlib
+
+        import api.auth_me as module
+
+        importlib.reload(module)
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        billing_utils._secretsmanager = None
+        billing_utils.STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        create_test_user(
+            table,
+            "user_gen_err",
+            "generr@example.com",
+            tier="pro",
+            stripe_subscription_id="sub_gen_err",
+        )
+        create_user_meta(table, "user_gen_err")
+
+        session_data = {
+            "user_id": "user_gen_err",
+            "email": "generr@example.com",
+            "tier": "pro",
+            "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+        }
+        token = create_session_token(session_data, secret)
+
+        # Raise a generic Exception (not stripe.StripeError) - covers lines 308-310
+        with patch("stripe.Subscription.retrieve", side_effect=RuntimeError("Unexpected connection reset")):
+            event = {
+                "headers": {"cookie": f"session={token}"},
+                "queryStringParameters": {"refresh": "stripe"},
+            }
+
+            result = module.handler(event, None)
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["tier"] == "pro"  # Cached value
+        assert body["data_source"] == "cache"  # Fallback to cache
+
+    @mock_aws
+    def test_user_meta_conditional_check_failure_silently_ignored(
+        self, aws_credentials, mock_dynamodb, setup_session_secret, setup_stripe_secret
+    ):
+        """ConditionalCheckFailedException on USER_META update should be silently ignored (line 293 condition)."""
+        secret = setup_session_secret
+        import api.auth_callback as auth_callback
+
+        auth_callback._session_secret_cache = None
+
+        import importlib
+
+        import api.auth_me as module
+
+        for key in ["STRIPE_PRICE_STARTER", "STRIPE_PRICE_PRO", "STRIPE_PRICE_BUSINESS"]:
+            os.environ.pop(key, None)
+        importlib.reload(module)
+
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        billing_utils._secretsmanager = None
+        billing_utils.STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        create_test_user(
+            table,
+            "user_cond_fail",
+            "condfail@example.com",
+            tier="starter",
+            stripe_subscription_id="sub_cond_fail",
+        )
+        # Do NOT create USER_META, so ConditionExpression="attribute_exists(pk)" will fail
+
+        session_data = {
+            "user_id": "user_cond_fail",
+            "email": "condfail@example.com",
+            "tier": "starter",
+            "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+        }
+        token = create_session_token(session_data, secret)
+
+        mock_subscription = {
+            "status": "active",
+            "cancel_at_period_end": False,
+            "items": {
+                "data": [
+                    {
+                        "price": {"id": "price_pro"},
+                        "current_period_end": 1735689600,
+                    }
+                ]
+            },
+        }
+
+        with patch("stripe.Subscription.retrieve", return_value=mock_subscription):
+            event = {
+                "headers": {"cookie": f"session={token}"},
+                "queryStringParameters": {"refresh": "stripe"},
+            }
+
+            result = module.handler(event, None)
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        # Refresh should still succeed even though USER_META update failed
+        assert body["tier"] == "pro"
+        assert body["data_source"] == "live"
+
+
+class TestAuthMeCreatedAtParsingError:
+    """Tests covering lines 165-166 in auth_me.py.
+
+    Lines 165-166: except (ValueError, TypeError): pass when parsing created_at
+    for the late referral code deadline.
+    """
+
+    @mock_aws
+    def test_malformed_created_at_in_user_meta(self, aws_credentials, mock_dynamodb, setup_session_secret):
+        """Should handle malformed created_at gracefully (ValueError branch)."""
+        secret = setup_session_secret
+        import api.auth_callback as auth_callback
+
+        auth_callback._session_secret_cache = None
+
+        import importlib
+
+        import api.auth_me as module
+
+        importlib.reload(module)
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        create_test_user(table, "user_bad_created", "bad@example.com", tier="free")
+        # USER_META with malformed created_at
+        create_user_meta(table, "user_bad_created", created_at="not-a-valid-iso-date")
+
+        session_data = {
+            "user_id": "user_bad_created",
+            "email": "bad@example.com",
+            "tier": "free",
+            "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+        }
+        token = create_session_token(session_data, secret)
+
+        event = {
+            "headers": {"cookie": f"session={token}"},
+            "queryStringParameters": None,
+        }
+
+        result = module.handler(event, None)
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        # Should default to can_add_referral=False when parsing fails
+        assert body["can_add_referral"] is False
+
+    @mock_aws
+    def test_none_created_at_in_user_meta(self, aws_credentials, mock_dynamodb, setup_session_secret):
+        """Should handle None created_at gracefully (TypeError branch)."""
+        secret = setup_session_secret
+        import api.auth_callback as auth_callback
+
+        auth_callback._session_secret_cache = None
+
+        import importlib
+
+        import api.auth_me as module
+
+        importlib.reload(module)
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        create_test_user(table, "user_none_created", "none@example.com", tier="free")
+        # USER_META without created_at field at all
+        table.put_item(
+            Item={
+                "pk": "user_none_created",
+                "sk": "USER_META",
+                "requests_this_month": 0,
+                "key_count": 1,
+            }
+        )
+
+        session_data = {
+            "user_id": "user_none_created",
+            "email": "none@example.com",
+            "tier": "free",
+            "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+        }
+        token = create_session_token(session_data, secret)
+
+        event = {
+            "headers": {"cookie": f"session={token}"},
+            "queryStringParameters": None,
+        }
+
+        result = module.handler(event, None)
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["can_add_referral"] is False
+
+
+class TestAuthMeStripeKeyNotAvailable:
+    """Tests covering lines 221-222 in auth_me.py.
+
+    Lines 221-222: get_stripe_api_key() returns None, so refresh returns None.
+    """
+
+    @mock_aws
+    def test_refresh_with_no_stripe_key_returns_cached(self, aws_credentials, mock_dynamodb, setup_session_secret):
+        """Should return cached data when Stripe API key is not available."""
+        secret = setup_session_secret
+        import api.auth_callback as auth_callback
+
+        auth_callback._session_secret_cache = None
+
+        import importlib
+
+        import api.auth_me as module
+
+        importlib.reload(module)
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        create_test_user(
+            table,
+            "user_no_stripe_key",
+            "nokey@example.com",
+            tier="pro",
+            stripe_subscription_id="sub_nokey",
+        )
+        create_user_meta(table, "user_no_stripe_key")
+
+        session_data = {
+            "user_id": "user_no_stripe_key",
+            "email": "nokey@example.com",
+            "tier": "pro",
+            "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+        }
+        token = create_session_token(session_data, secret)
+
+        # Patch get_stripe_api_key to return None
+        with patch.object(module, "get_stripe_api_key", return_value=None):
+            event = {
+                "headers": {"cookie": f"session={token}"},
+                "queryStringParameters": {"refresh": "stripe"},
+            }
+
+            result = module.handler(event, None)
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["tier"] == "pro"  # Cached value unchanged
+        assert body["data_source"] == "cache"  # Did not refresh
+
+
+class TestAuthMeSessionBypass:
+    """Security tests for session authentication bypass attempts."""
+
+    @mock_aws
+    def test_cookie_with_extra_fields_ignored(self, aws_credentials, mock_dynamodb, setup_session_secret):
+        """Extra cookies alongside session should not affect behavior."""
+        secret = setup_session_secret
+        import api.auth_callback as auth_callback
+
+        auth_callback._session_secret_cache = None
+
+        import importlib
+
+        import api.auth_me as module
+
+        importlib.reload(module)
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        create_test_user(table, "user_extra_cookie", "extra@example.com", tier="free")
+
+        session_data = {
+            "user_id": "user_extra_cookie",
+            "email": "extra@example.com",
+            "tier": "free",
+            "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+        }
+        token = create_session_token(session_data, secret)
+
+        event = {
+            "headers": {"cookie": f"tracking=abc123; session={token}; other=xyz"},
+            "queryStringParameters": None,
+        }
+
+        result = module.handler(event, None)
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["user_id"] == "user_extra_cookie"
+
+    @mock_aws
+    def test_case_insensitive_cookie_header(self, aws_credentials, mock_dynamodb, setup_session_secret):
+        """Should handle 'Cookie' header (capital C) as well as 'cookie'."""
+        secret = setup_session_secret
+        import api.auth_callback as auth_callback
+
+        auth_callback._session_secret_cache = None
+
+        import importlib
+
+        import api.auth_me as module
+
+        importlib.reload(module)
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        create_test_user(table, "user_cookie_case", "case@example.com", tier="free")
+
+        session_data = {
+            "user_id": "user_cookie_case",
+            "email": "case@example.com",
+            "tier": "free",
+            "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+        }
+        token = create_session_token(session_data, secret)
+
+        # Use "Cookie" (capital C) header
+        event = {
+            "headers": {"Cookie": f"session={token}"},
+            "queryStringParameters": None,
+        }
+
+        result = module.handler(event, None)
+        assert result["statusCode"] == 200
+
+    @mock_aws
+    def test_wrong_cookie_name_returns_401(self, aws_credentials, mock_dynamodb, setup_session_secret):
+        """Should return 401 when cookie has wrong name (e.g., 'token' instead of 'session')."""
+        setup_session_secret
+        import api.auth_callback as auth_callback
+
+        auth_callback._session_secret_cache = None
+
+        import importlib
+
+        import api.auth_me as module
+
+        importlib.reload(module)
+
+        event = {
+            "headers": {"cookie": "token=some_value; auth=something_else"},
+            "queryStringParameters": None,
+        }
+
+        result = module.handler(event, None)
+        assert result["statusCode"] == 401
+
+    @mock_aws
+    def test_no_cache_headers_in_response(self, aws_credentials, mock_dynamodb, setup_session_secret):
+        """Should include no-cache headers to prevent stale data."""
+        secret = setup_session_secret
+        import api.auth_callback as auth_callback
+
+        auth_callback._session_secret_cache = None
+
+        import importlib
+
+        import api.auth_me as module
+
+        importlib.reload(module)
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        create_test_user(table, "user_nocache", "nocache@example.com", tier="free")
+
+        session_data = {
+            "user_id": "user_nocache",
+            "email": "nocache@example.com",
+            "tier": "free",
+            "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+        }
+        token = create_session_token(session_data, secret)
+
+        event = {
+            "headers": {"cookie": f"session={token}"},
+            "queryStringParameters": None,
+        }
+
+        result = module.handler(event, None)
+        assert result["statusCode"] == 200
+        assert "no-store" in result["headers"].get("Cache-Control", "")
+        assert "no-cache" in result["headers"].get("Cache-Control", "")

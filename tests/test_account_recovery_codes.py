@@ -13,8 +13,9 @@ import hmac
 import json
 import os
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+from botocore.exceptions import ClientError
 from moto import mock_aws
 
 # Set environment variables before importing handlers
@@ -365,3 +366,290 @@ class TestRecoveryUtils:
         assert validate_recovery_code_format("ABCD") is False  # Too short
         assert validate_recovery_code_format("ABCD-1234-EF56-789G") is False  # Invalid char
         assert validate_recovery_code_format("ABCD-1234-EF56-78901") is False  # Too long
+
+
+class TestRecoveryCodesSessionEdgeCases:
+    """Tests for session edge cases in account recovery codes."""
+
+    @mock_aws
+    def test_session_without_user_id_returns_401(self, mock_dynamodb, seeded_api_keys_table):
+        """Should return 401 when session has no user_id (line 79)."""
+        from api.account_recovery_codes import handler
+
+        # Create a session token without user_id
+        session_data = {
+            "email": "test@example.com",
+            "tier": "free",
+            "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+        }
+        payload = base64.urlsafe_b64encode(json.dumps(session_data).encode()).decode()
+        signature = hmac.new("test-secret".encode(), payload.encode(), hashlib.sha256).hexdigest()
+        session_token = f"{payload}.{signature}"
+
+        event = {
+            "httpMethod": "GET",
+            "headers": {
+                "cookie": f"session={session_token}",
+                "origin": "https://pkgwatch.dev",
+            },
+        }
+
+        with patch("api.auth_callback._get_session_secret", return_value="test-secret"):
+            response = handler(event, None)
+
+        assert response["statusCode"] == 401
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "unauthorized"
+        assert body["error"]["message"] == "Invalid session"
+
+    @mock_aws
+    def test_unsupported_http_method_returns_405(self, mock_dynamodb, seeded_api_keys_table):
+        """Should return 405 for unsupported HTTP method like PATCH (line 89)."""
+        from api.account_recovery_codes import handler
+
+        session_token = create_session_token("user_test123", "test@example.com")
+
+        event = {
+            "httpMethod": "PATCH",
+            "headers": {
+                "cookie": f"session={session_token}",
+                "origin": "https://pkgwatch.dev",
+            },
+        }
+
+        with patch("api.auth_callback._get_session_secret", return_value="test-secret"):
+            response = handler(event, None)
+
+        assert response["statusCode"] == 405
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "method_not_allowed"
+
+
+class TestRecoveryCodesClientErrors:
+    """Tests for DynamoDB ClientError handling in account recovery codes."""
+
+    @mock_aws
+    def test_generate_codes_dynamo_error(self, mock_dynamodb, seeded_api_keys_table):
+        """Should return 500 when DynamoDB fails during code generation (lines 136-138)."""
+        from api.account_recovery_codes import handler
+
+        session_token = create_session_token("user_test123", "test@example.com")
+
+        event = {
+            "httpMethod": "POST",
+            "body": "{}",
+            "headers": {
+                "cookie": f"session={session_token}",
+                "origin": "https://pkgwatch.dev",
+            },
+        }
+
+        with (
+            patch("api.auth_callback._get_session_secret", return_value="test-secret"),
+            patch("api.account_recovery_codes.dynamodb") as mock_ddb,
+        ):
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            mock_table.update_item.side_effect = ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "DynamoDB failure"}},
+                "UpdateItem",
+            )
+            response = handler(event, None)
+
+        assert response["statusCode"] == 500
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "internal_error"
+        assert body["error"]["message"] == "Failed to generate recovery codes"
+
+    @mock_aws
+    def test_delete_codes_non_conditional_dynamo_error(self, mock_dynamodb, seeded_api_keys_table):
+        """Should return 500 when DynamoDB fails during code deletion (non-conditional, lines 171-172)."""
+        from api.account_recovery_codes import handler
+
+        session_token = create_session_token("user_test123", "test@example.com")
+
+        event = {
+            "httpMethod": "DELETE",
+            "headers": {
+                "cookie": f"session={session_token}",
+                "origin": "https://pkgwatch.dev",
+            },
+        }
+
+        with (
+            patch("api.auth_callback._get_session_secret", return_value="test-secret"),
+            patch("api.account_recovery_codes.dynamodb") as mock_ddb,
+        ):
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            mock_table.update_item.side_effect = ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "DynamoDB failure"}},
+                "UpdateItem",
+            )
+            response = handler(event, None)
+
+        assert response["statusCode"] == 500
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "internal_error"
+        assert body["error"]["message"] == "Failed to invalidate recovery codes"
+
+    @mock_aws
+    def test_get_status_dynamo_error(self, mock_dynamodb, seeded_api_keys_table):
+        """Should return 500 when DynamoDB fails during status check (lines 208-210)."""
+        from api.account_recovery_codes import handler
+
+        session_token = create_session_token("user_test123", "test@example.com")
+
+        event = {
+            "httpMethod": "GET",
+            "headers": {
+                "cookie": f"session={session_token}",
+                "origin": "https://pkgwatch.dev",
+            },
+        }
+
+        with (
+            patch("api.auth_callback._get_session_secret", return_value="test-secret"),
+            patch("api.account_recovery_codes.dynamodb") as mock_ddb,
+        ):
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            mock_table.get_item.side_effect = ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "DynamoDB failure"}},
+                "GetItem",
+            )
+            response = handler(event, None)
+
+        assert response["statusCode"] == 500
+        body = json.loads(response["body"])
+        assert body["error"]["code"] == "internal_error"
+        assert body["error"]["message"] == "Failed to get recovery codes status"
+
+
+class TestRecoveryCodesSecurityAbuseScenarios:
+    """Security-focused tests for account recovery codes management."""
+
+    @mock_aws
+    def test_codes_cannot_be_accessed_by_different_user(self, mock_dynamodb, seeded_api_keys_table):
+        """Should ensure codes are scoped to the authenticated user.
+
+        This validates that a user can only manage their own recovery codes,
+        not another user's codes.
+        """
+        table, test_key = seeded_api_keys_table
+
+        from shared.recovery_utils import generate_recovery_codes
+
+        _, hashes = generate_recovery_codes(count=4)
+
+        # Store codes for user_test123
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": "USER_META",
+                "recovery_codes_hash": hashes,
+                "recovery_codes_count": 4,
+            }
+        )
+
+        from api.account_recovery_codes import handler
+
+        # Different user trying to check status
+        other_session = create_session_token("user_OTHER_999", "attacker@evil.com")
+
+        event = {
+            "httpMethod": "GET",
+            "headers": {
+                "cookie": f"session={other_session}",
+                "origin": "https://pkgwatch.dev",
+            },
+        }
+
+        with patch("api.auth_callback._get_session_secret", return_value="test-secret"):
+            response = handler(event, None)
+
+        assert response["statusCode"] == 200
+        body = json.loads(response["body"])
+        # Other user has no codes - does not reveal user_test123's codes
+        assert body["has_codes"] is False
+        assert body["codes_remaining"] == 0
+
+    @mock_aws
+    def test_regenerating_codes_invalidates_previous(self, mock_dynamodb, seeded_api_keys_table):
+        """Should ensure old codes are invalidated when new codes are generated.
+
+        This prevents attackers who obtained old codes from using them after regeneration.
+        """
+        table, test_key = seeded_api_keys_table
+
+        from shared.recovery_utils import generate_recovery_codes, verify_recovery_code
+
+        old_codes, old_hashes = generate_recovery_codes(count=4)
+
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": "USER_META",
+                "recovery_codes_hash": old_hashes,
+                "recovery_codes_count": 4,
+            }
+        )
+
+        from api.account_recovery_codes import handler
+
+        session_token = create_session_token("user_test123", "test@example.com")
+
+        event = {
+            "httpMethod": "POST",
+            "body": "{}",
+            "headers": {
+                "cookie": f"session={session_token}",
+                "origin": "https://pkgwatch.dev",
+            },
+        }
+
+        with patch("api.auth_callback._get_session_secret", return_value="test-secret"):
+            response = handler(event, None)
+
+        assert response["statusCode"] == 200
+
+        # Verify old codes no longer work against the new hashes
+        meta = table.get_item(Key={"pk": "user_test123", "sk": "USER_META"})["Item"]
+        new_hashes = meta["recovery_codes_hash"]
+
+        for old_code in old_codes:
+            is_valid, _ = verify_recovery_code(old_code, new_hashes)
+            assert is_valid is False, f"Old code {old_code} should be invalid after regeneration"
+
+    @mock_aws
+    def test_no_cookie_header_returns_401(self, mock_dynamodb, seeded_api_keys_table):
+        """Should reject requests with no cookie header at all (line 54 area)."""
+        from api.account_recovery_codes import handler
+
+        event = {
+            "httpMethod": "GET",
+            "headers": {
+                "origin": "https://pkgwatch.dev",
+            },
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 401
+
+    @mock_aws
+    def test_cookie_without_session_returns_401(self, mock_dynamodb, seeded_api_keys_table):
+        """Should reject requests with cookie but no session cookie."""
+        from api.account_recovery_codes import handler
+
+        event = {
+            "httpMethod": "GET",
+            "headers": {
+                "cookie": "other_cookie=some_value",
+                "origin": "https://pkgwatch.dev",
+            },
+        }
+
+        response = handler(event, None)
+
+        assert response["statusCode"] == 401

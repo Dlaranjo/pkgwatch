@@ -861,3 +861,108 @@ class TestRetryWithBackoff:
         with pytest.raises(httpx.HTTPStatusError):
             run_async(retry_with_backoff(mock_func, max_retries=3, base_delay=0.01))
         assert call_count == 3
+
+
+# =============================================================================
+# RETRY_WITH_BACKOFF EDGE CASE: last_exception is raised at end (line 89)
+# =============================================================================
+
+
+class TestRetryWithBackoffFinalRaise:
+    """Tests for the final raise path in retry_with_backoff."""
+
+    def test_retry_all_network_errors_raises_last(self):
+        """All retries fail with network error, should raise last exception."""
+        from npm_collector import retry_with_backoff
+
+        call_count = 0
+
+        async def always_network_fail():
+            nonlocal call_count
+            call_count += 1
+            raise httpx.ConnectError("Network unreachable")
+
+        with pytest.raises(httpx.ConnectError, match="Network unreachable"):
+            run_async(retry_with_backoff(always_network_fail, max_retries=3, base_delay=0.01))
+
+        assert call_count == 3
+
+
+# =============================================================================
+# DOWNLOADS ERROR: GENERIC EXCEPTION PATH (lines 188-190)
+# =============================================================================
+
+
+class TestDownloadsGenericException:
+    """Tests for generic exception handling in download stats fetch."""
+
+    def test_downloads_generic_exception_records_error(self):
+        """Generic exception during download stats should record error type."""
+        from npm_collector import get_npm_metadata
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "registry.npmjs.org" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "name": "test-pkg",
+                        "dist-tags": {"latest": "1.0.0"},
+                        "time": {"created": "2020-01-01T00:00:00.000Z", "1.0.0": "2024-01-01T00:00:00.000Z"},
+                        "maintainers": [],
+                        "repository": {},
+                        "versions": {"1.0.0": {"name": "test-pkg", "version": "1.0.0"}},
+                    },
+                )
+            elif "api.npmjs.org" in url:
+                # Return invalid JSON to trigger a generic exception path
+                return httpx.Response(200, content=b"not valid json")
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_npm_metadata("test-pkg"))
+
+            # Should succeed with 0 downloads and have downloads_error
+            assert "error" not in result  # Main result should not have error
+            assert result["weekly_downloads"] == 0
+            assert "downloads_error" in result
+            assert result["downloads_error"].startswith("error_")
+
+
+# =============================================================================
+# BULK DOWNLOAD STATS: SINGLE PACKAGE RESPONSE FORMAT
+# =============================================================================
+
+
+class TestBulkDownloadStatsSinglePackage:
+    """Tests for the single-package response format in bulk downloads."""
+
+    def test_bulk_stats_single_package_response(self):
+        """Test single-package format from bulk API."""
+        from npm_collector import get_bulk_download_stats
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "api.npmjs.org" in url:
+                # npm returns different format for single package
+                return httpx.Response(
+                    200,
+                    json={"downloads": 5000000, "package": "lodash"},
+                )
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_bulk_download_stats(["lodash"]))
+            assert result["lodash"] == 5000000

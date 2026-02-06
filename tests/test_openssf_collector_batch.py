@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import boto3
 import httpx
+from botocore.exceptions import ClientError
 from moto import mock_aws
 
 # Set environment before imports
@@ -669,3 +670,195 @@ class TestIncrementalWrites:
         # Should have called _write_openssf_updates twice (at 10 and at end with 5)
         assert write_call_count[0] == 2
         assert result["total_processed"] == 15
+
+
+# =============================================================================
+# HANDLER: GENERIC EXCEPTION HANDLING (lines 101-106)
+# =============================================================================
+
+
+class TestHandlerGenericException:
+    """Tests for generic exception handling in handler."""
+
+    @mock_aws
+    def test_handler_generic_exception_continues(self):
+        """Test that generic exceptions don't stop batch processing."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        create_dynamodb_tables(dynamodb)
+        table = dynamodb.Table("pkgwatch-packages")
+
+        table.put_item(
+            Item={
+                "pk": "npm#except-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "except-pkg",
+                "tier": 1,
+                "repository_url": "https://github.com/owner/except-pkg",
+            }
+        )
+        table.put_item(
+            Item={
+                "pk": "npm#good-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "good-pkg",
+                "tier": 1,
+                "repository_url": "https://github.com/owner/good-pkg",
+            }
+        )
+
+        # Mock HTTP client - first request raises exception, second succeeds
+        call_count = [0]
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            call_count[0] += 1
+            url = str(request.url)
+            if "except-pkg" in url:
+                raise ConnectionError("Connection reset")
+            return httpx.Response(200, json={"score": 8.0, "checks": []})
+
+        transport = httpx.MockTransport(mock_handler)
+        original_init = httpx.Client.__init__
+
+        def patched_init(self, **kwargs):
+            kwargs["transport"] = transport
+            original_init(self, **kwargs)
+
+        write_calls = []
+
+        def mock_write(tbl, updates):
+            write_calls.append(updates.copy())
+
+        with patch.object(httpx.Client, "__init__", patched_init):
+            with patch("collectors.openssf_collector_batch.time.sleep"):
+                with patch("collectors.openssf_collector_batch._write_openssf_updates", mock_write):
+                    from collectors.openssf_collector_batch import handler
+
+                    result = handler({}, None)
+
+        # Batch should continue despite exception
+        assert result["packages_updated"] == 1
+        assert result["total_processed"] == 2  # Both were processed (1 exception, 1 success)
+
+
+# =============================================================================
+# _convert_floats_to_decimal EDGE CASES (line 170)
+# =============================================================================
+
+
+class TestConvertFloatsToDecimalBatch:
+    """Tests for float-to-Decimal conversion in batch collector."""
+
+    def test_convert_nested_structure(self):
+        """Test conversion of nested structures."""
+        from collectors.openssf_collector_batch import _convert_floats_to_decimal
+
+        data = {
+            "score": 7.5,
+            "checks": [
+                {"name": "Maintained", "score": 10.0},
+                {"name": "Code-Review", "score": 8.5},
+            ],
+            "nested": {"inner": 3.14},
+        }
+
+        result = _convert_floats_to_decimal(data)
+
+        assert isinstance(result["score"], Decimal)
+        assert result["score"] == Decimal("7.5")
+        assert isinstance(result["checks"][0]["score"], Decimal)
+        assert isinstance(result["nested"]["inner"], Decimal)
+
+    def test_convert_non_float_types_unchanged(self):
+        """Test that non-float types pass through unchanged."""
+        from collectors.openssf_collector_batch import _convert_floats_to_decimal
+
+        assert _convert_floats_to_decimal("hello") == "hello"
+        assert _convert_floats_to_decimal(42) == 42
+        assert _convert_floats_to_decimal(True) is True
+        assert _convert_floats_to_decimal(None) is None
+
+
+# =============================================================================
+# _write_openssf_updates: DynamoDB ClientError (lines 202-203)
+# =============================================================================
+
+
+class TestWriteOpenSSFUpdatesClientError:
+    """Tests for ClientError handling in _write_openssf_updates."""
+
+    @mock_aws
+    def test_write_continues_on_client_error(self):
+        """Test that ClientError on one item doesn't stop others."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        create_dynamodb_tables(dynamodb)
+        table = dynamodb.Table("pkgwatch-packages")
+
+        # Add packages
+        table.put_item(Item={"pk": "npm#pkg1", "sk": "LATEST", "ecosystem": "npm", "name": "pkg1"})
+        table.put_item(Item={"pk": "npm#pkg2", "sk": "LATEST", "ecosystem": "npm", "name": "pkg2"})
+
+        # First update will intentionally fail, second should succeed
+        original_update = table.update_item
+        call_count = [0]
+
+        def mock_update(**kwargs):
+            call_count[0] += 1
+            pk = kwargs["Key"]["pk"]
+            if pk == "npm#pkg1":
+                raise ClientError(
+                    {"Error": {"Code": "ValidationException", "Message": "Test error"}},
+                    "UpdateItem",
+                )
+            return original_update(**kwargs)
+
+        table.update_item = mock_update
+
+        updates = [
+            {"pk": "npm#pkg1", "openssf_score": Decimal("5.0"), "openssf_checks": [], "openssf_source": "direct_batch"},
+            {"pk": "npm#pkg2", "openssf_score": Decimal("7.0"), "openssf_checks": [], "openssf_source": "direct_batch"},
+        ]
+
+        from collectors.openssf_collector_batch import _write_openssf_updates
+
+        # Should not raise despite pkg1 failing
+        _write_openssf_updates(table, updates)
+
+        # pkg2 should be updated despite pkg1 failure
+        item = table.get_item(Key={"pk": "npm#pkg2", "sk": "LATEST"})["Item"]
+        assert float(item["openssf_score"]) == 7.0
+
+
+# =============================================================================
+# HANDLER: PACKAGE WITHOUT REPOSITORY URL (line 58)
+# =============================================================================
+
+
+class TestHandlerNoRepoUrl:
+    """Tests for handler skipping packages without repo URL."""
+
+    @mock_aws
+    def test_handler_skips_packages_without_repo_url(self):
+        """Packages without repository_url should be skipped during processing."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        create_dynamodb_tables(dynamodb)
+        table = dynamodb.Table("pkgwatch-packages")
+
+        # Package without repo URL - scan won't return it because of FilterExpression
+        table.put_item(
+            Item={
+                "pk": "npm#no-repo",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "no-repo",
+                "tier": 1,
+            }
+        )
+
+        from collectors.openssf_collector_batch import handler
+
+        result = handler({}, None)
+
+        assert result["packages_updated"] == 0
+        assert result["total_processed"] == 0

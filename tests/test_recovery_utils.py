@@ -419,3 +419,39 @@ class TestIntegration:
         is_valid, index = verify_recovery_code(plaintext_codes[0], hashed_codes)
         assert is_valid is True
         assert index == 0
+
+
+class TestMaskEmailEdgeCases:
+    """Additional edge case tests for mask_email (covering line 188)."""
+
+    def test_masks_email_with_empty_local_part(self):
+        """Should handle email with empty local part like '@example.com' (line 188).
+
+        This tests the branch where len(local) == 0 after rsplit.
+        """
+        result = mask_email("@example.com")
+        assert result == "***@example.com"
+
+    def test_masks_email_with_two_char_local(self):
+        """Should mask two-character local part, showing only first char."""
+        result = mask_email("ab@test.org")
+        assert result == "a***@test.org"
+
+
+class TestVerifyRecoveryCodeMalformedHashes:
+    """Test code verification against badly-formatted hash entries."""
+
+    def test_skips_hash_without_dollar_sign(self):
+        """Should skip stored hashes that lack the salt$hash separator."""
+        hashes = ["nodollarsign"]
+        is_valid, index = verify_recovery_code("AAAA-BBBB-CCCC-DDDD", hashes)
+        assert is_valid is False
+        assert index == -1
+
+    def test_handles_value_error_in_hex_decoding(self):
+        """Should handle ValueError when hex decoding fails (e.g., odd-length or invalid hex)."""
+        # Salt is valid hex but hash contains invalid hex character 'x'
+        hashes = ["0123456789abcdef0123456789abcdef$xyz_not_valid_hex"]
+        is_valid, index = verify_recovery_code("AAAA-BBBB-CCCC-DDDD", hashes)
+        assert is_valid is False
+        assert index == -1

@@ -354,3 +354,216 @@ class TestCreateCheckoutHandler:
                 assert result["statusCode"] == 500
                 body = json.loads(result["body"])
                 assert body["error"]["code"] == "price_not_configured"
+
+
+class TestCreateCheckoutPendingSkip:
+    """Tests for PENDING record skipping in checkout (line 125)."""
+
+    @mock_aws
+    def test_skips_pending_records_when_finding_current_tier(self, mock_dynamodb, api_gateway_event):
+        """Should skip PENDING records and find the verified record's tier."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Add PENDING record (should be skipped)
+        table.put_item(
+            Item={
+                "pk": "user_pending_checkout",
+                "sk": "PENDING",
+                "email": "pending_checkout@example.com",
+                "tier": "free",
+            }
+        )
+
+        # Add verified record
+        key_hash = hashlib.sha256(b"pw_pending_checkout").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_pending_checkout",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "pending_checkout@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+
+        import api.create_checkout as checkout_module
+
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        checkout_module.TIER_TO_PRICE["pro"] = "price_pro_123"
+
+        with patch("api.create_checkout.get_stripe_api_key", return_value="sk_test_123"):
+            with patch("api.auth_callback.verify_session_token") as mock_verify:
+                mock_verify.return_value = {
+                    "user_id": "user_pending_checkout",
+                    "email": "pending_checkout@example.com",
+                }
+
+                with patch.object(checkout_module, "stripe") as mock_stripe:
+                    mock_session = MagicMock()
+                    mock_session.url = "https://checkout.stripe.com/test"
+                    mock_stripe.checkout.Session.create.return_value = mock_session
+
+                    api_gateway_event["httpMethod"] = "POST"
+                    api_gateway_event["headers"]["cookie"] = "session=valid"
+                    api_gateway_event["body"] = json.dumps({"tier": "pro"})
+
+                    result = checkout_module.handler(api_gateway_event, {})
+
+                    assert result["statusCode"] == 200
+
+
+class TestCreateCheckoutExistingSubscription:
+    """Tests for existing subscription redirect (line 134)."""
+
+    @mock_aws
+    def test_redirects_existing_subscriber_to_upgrade_flow(self, mock_dynamodb, api_gateway_event):
+        """Should return 409 for users with existing subscription_id."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_existing_sub").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_existing_sub",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "existing_sub@example.com",
+                "tier": "starter",
+                "stripe_customer_id": "cus_existing",
+                "stripe_subscription_id": "sub_existing_123",  # Has subscription
+                "email_verified": True,
+            }
+        )
+
+        import api.create_checkout as checkout_module
+
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        checkout_module.TIER_TO_PRICE["pro"] = "price_pro_123"
+
+        with patch("api.create_checkout.get_stripe_api_key", return_value="sk_test_123"):
+            with patch("api.auth_callback.verify_session_token") as mock_verify:
+                mock_verify.return_value = {
+                    "user_id": "user_existing_sub",
+                    "email": "existing_sub@example.com",
+                }
+
+                api_gateway_event["httpMethod"] = "POST"
+                api_gateway_event["headers"]["cookie"] = "session=valid"
+                api_gateway_event["body"] = json.dumps({"tier": "pro"})
+
+                result = checkout_module.handler(api_gateway_event, {})
+
+                assert result["statusCode"] == 409
+                body = json.loads(result["body"])
+                assert body["error"]["code"] == "upgrade_required"
+                assert "proration" in body["error"]["message"].lower()
+
+
+class TestCreateCheckoutStripeErrors:
+    """Tests for Stripe API errors during checkout session creation (lines 190-195)."""
+
+    @mock_aws
+    def test_stripe_error_returns_500(self, mock_dynamodb, api_gateway_event):
+        """StripeError during session creation should return 500."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_stripe_err").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_stripe_err",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "stripe_err@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+
+        import stripe as real_stripe
+
+        import api.create_checkout as checkout_module
+
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        checkout_module.TIER_TO_PRICE["pro"] = "price_pro_123"
+
+        with patch("api.create_checkout.get_stripe_api_key", return_value="sk_test_123"):
+            with patch("api.auth_callback.verify_session_token") as mock_verify:
+                mock_verify.return_value = {
+                    "user_id": "user_stripe_err",
+                    "email": "stripe_err@example.com",
+                }
+
+                with patch.object(checkout_module, "stripe") as mock_stripe:
+                    mock_stripe.StripeError = real_stripe.StripeError
+                    mock_stripe.checkout.Session.create.side_effect = real_stripe.StripeError("Rate limit exceeded")
+
+                    api_gateway_event["httpMethod"] = "POST"
+                    api_gateway_event["headers"]["cookie"] = "session=valid"
+                    api_gateway_event["body"] = json.dumps({"tier": "pro"})
+
+                    result = checkout_module.handler(api_gateway_event, {})
+
+                    assert result["statusCode"] == 500
+                    body = json.loads(result["body"])
+                    assert body["error"]["code"] == "stripe_error"
+                    # Internal error details should not be leaked
+                    assert "Rate limit" not in body["error"]["message"]
+
+    @mock_aws
+    def test_generic_exception_returns_500(self, mock_dynamodb, api_gateway_event):
+        """Generic Exception during session creation should return 500 (lines 193-195)."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_generic_err").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_generic_err",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "generic_err@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+
+        import stripe as real_stripe
+
+        import api.create_checkout as checkout_module
+
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        checkout_module.TIER_TO_PRICE["pro"] = "price_pro_123"
+
+        with patch("api.create_checkout.get_stripe_api_key", return_value="sk_test_123"):
+            with patch("api.auth_callback.verify_session_token") as mock_verify:
+                mock_verify.return_value = {
+                    "user_id": "user_generic_err",
+                    "email": "generic_err@example.com",
+                }
+
+                with patch.object(checkout_module, "stripe") as mock_stripe:
+                    # Keep StripeError as real class so RuntimeError is NOT caught by it
+                    mock_stripe.StripeError = real_stripe.StripeError
+                    mock_stripe.checkout.Session.create.side_effect = RuntimeError("Unexpected internal error")
+
+                    api_gateway_event["httpMethod"] = "POST"
+                    api_gateway_event["headers"]["cookie"] = "session=valid"
+                    api_gateway_event["body"] = json.dumps({"tier": "pro"})
+
+                    result = checkout_module.handler(api_gateway_event, {})
+
+                    assert result["statusCode"] == 500
+                    body = json.loads(result["body"])
+                    assert body["error"]["code"] == "internal_error"
+                    assert "Unexpected" not in body["error"]["message"]

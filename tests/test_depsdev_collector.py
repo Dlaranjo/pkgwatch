@@ -906,3 +906,244 @@ class TestOpenSSFScorecard:
 
             assert result["openssf_score"] is None
             assert result["openssf_checks"] == []
+
+
+# =============================================================================
+# RETRY_WITH_BACKOFF: EDGE CASE - last_exception never set (line 97)
+# =============================================================================
+
+
+class TestRetryWithBackoffEdgeCases:
+    """Tests for retry_with_backoff edge cases."""
+
+    def test_retry_raises_after_all_retries_with_network_error(self):
+        """All retries fail with network error, should raise the last exception."""
+        from depsdev_collector import retry_with_backoff
+
+        call_count = 0
+
+        async def always_fails():
+            nonlocal call_count
+            call_count += 1
+            raise httpx.ConnectError("Network down")
+
+        with pytest.raises(httpx.ConnectError):
+            run_async(retry_with_backoff(always_fails, max_retries=3, base_delay=0.01))
+
+        assert call_count == 3
+
+
+# =============================================================================
+# GET_DEPENDENCIES: 404 IN HTTPStatusError PATH (lines 290-293)
+# =============================================================================
+
+
+class TestGetDependencies404ViaException:
+    """Tests for get_dependencies when 404 is raised as HTTPStatusError."""
+
+    def test_get_dependencies_404_via_http_status_error(self):
+        """Test that 404 HTTPStatusError returns empty list."""
+        from depsdev_collector import get_dependencies
+
+        request_count = [0]
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            request_count[0] += 1
+            url = str(request.url)
+            if "/packages/" in url:
+                # Simulate 404 via raise_for_status (not inline check)
+                resp = httpx.Response(
+                    404,
+                    request=httpx.Request("GET", url),
+                )
+                raise httpx.HTTPStatusError("Not found", request=resp.request, response=resp)
+            return httpx.Response(404)
+
+        # Use a custom async client that raises on 404
+        async def mock_get(url, **kwargs):
+            resp = httpx.Response(404, request=httpx.Request("GET", url))
+            resp.raise_for_status()
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_dependencies("nonexistent-pkg-2"))
+            assert result == []
+
+
+# =============================================================================
+# GET_DEPENDENCIES: No latest version found (line 306)
+# =============================================================================
+
+
+class TestGetDependenciesNoDefaultVersion:
+    """Tests for get_dependencies when no default version exists."""
+
+    def test_get_dependencies_no_default_version_falls_back_to_last(self):
+        """Test that when no isDefault version, falls back to last version."""
+        from depsdev_collector import get_dependencies
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if ":dependencies" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "nodes": [
+                            {
+                                "versionKey": {"system": "npm", "name": "test-pkg", "version": "1.0.0"},
+                                "relation": "SELF",
+                            },
+                            {"versionKey": {"system": "npm", "name": "dep1", "version": "2.0.0"}, "relation": "DIRECT"},
+                        ],
+                    },
+                )
+            elif "/packages/" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "packageKey": {"system": "NPM", "name": "test-pkg"},
+                        "versions": [
+                            {
+                                "versionKey": {"system": "NPM", "name": "test-pkg", "version": "0.9.0"},
+                                "isDefault": False,
+                            },
+                            {
+                                "versionKey": {"system": "NPM", "name": "test-pkg", "version": "1.0.0"},
+                                "isDefault": False,
+                            },
+                        ],
+                    },
+                )
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_dependencies("test-pkg"))
+            assert "dep1" in result
+
+
+# =============================================================================
+# GET_PACKAGE_INFO: repo URL with .git suffix (line 178)
+# =============================================================================
+
+
+class TestGetPackageInfoRepoUrlCleaning:
+    """Tests for repository URL cleaning in get_package_info."""
+
+    def _create_package_response(self, name="test-pkg"):
+        return {
+            "packageKey": {"system": "NPM", "name": name},
+            "versions": [
+                {"versionKey": {"system": "NPM", "name": name, "version": "1.0.0"}, "isDefault": True},
+            ],
+        }
+
+    def test_repo_url_git_suffix_stripped(self):
+        """Test that .git suffix is stripped from repo URL for project lookup."""
+        from depsdev_collector import get_package_info
+
+        project_urls = []
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if ":dependents" in url:
+                return httpx.Response(200, json={"dependentCount": 0})
+            elif "/versions/" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "versionKey": {"version": "1.0.0"},
+                        "publishedAt": "2024-01-01T00:00:00Z",
+                        "licenses": ["MIT"],
+                        "relations": {"dependencies": []},
+                        "advisories": [],
+                        "links": [
+                            {"label": "SOURCE_REPO", "url": "https://github.com/owner/repo.git"},
+                        ],
+                    },
+                )
+            elif "/packages/" in url:
+                return httpx.Response(200, json=self._create_package_response())
+            elif "/projects/" in url:
+                project_urls.append(url)
+                return httpx.Response(200, json={"starsCount": 100, "forksCount": 10})
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_package_info("test-pkg"))
+
+            # The project URL should have the cleaned repo path (no .git)
+            assert len(project_urls) == 1
+            assert ".git" not in project_urls[0]
+            # But the raw repo URL should be preserved in the result
+            assert result["repository_url"] == "https://github.com/owner/repo.git"
+
+
+# =============================================================================
+# GET_PACKAGE_INFO: defaultVersion field used (line 131-134)
+# =============================================================================
+
+
+class TestGetPackageInfoDefaultVersion:
+    """Tests for defaultVersion field in get_package_info."""
+
+    def test_uses_default_version_when_present(self):
+        """Test that defaultVersion field is used directly when present."""
+        from depsdev_collector import get_package_info
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if ":dependents" in url:
+                return httpx.Response(200, json={"dependentCount": 0})
+            elif "/versions/2.0.0" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "versionKey": {"version": "2.0.0"},
+                        "publishedAt": "2024-01-01T00:00:00Z",
+                        "licenses": ["MIT"],
+                        "relations": {"dependencies": []},
+                        "advisories": [],
+                        "links": [],
+                    },
+                )
+            elif "/packages/" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "packageKey": {"system": "NPM", "name": "test-pkg"},
+                        "defaultVersion": "2.0.0",
+                        "versions": [
+                            {"versionKey": {"version": "1.0.0"}, "isDefault": False},
+                            {"versionKey": {"version": "2.0.0"}, "isDefault": True},
+                        ],
+                    },
+                )
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_package_info("test-pkg"))
+
+            assert result["latest_version"] == "2.0.0"

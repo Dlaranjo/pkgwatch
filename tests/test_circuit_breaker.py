@@ -417,3 +417,170 @@ def test_full_lifecycle_closed_open_halfopen_closed():
     # 5. After success_threshold successes, back to CLOSED
     assert breaker.state == CircuitState.CLOSED
     assert breaker._state.failure_count == 0
+
+
+# =============================================================================
+# ADDITIONAL CIRCUIT BREAKER TESTS
+# =============================================================================
+
+
+def test_record_failure_with_error_object():
+    """record_failure should accept an error object."""
+    config = CircuitBreakerConfig(failure_threshold=5)
+    breaker = InMemoryCircuitBreaker("test-with-error", config)
+
+    error = ValueError("test error")
+    breaker.record_failure(error=error)
+    assert breaker._state.failure_count == 1
+
+
+def test_multiple_open_close_cycles():
+    """Circuit should handle multiple open/close cycles correctly."""
+    config = CircuitBreakerConfig(
+        failure_threshold=2,
+        success_threshold=1,
+        timeout_seconds=0.05,
+    )
+    breaker = InMemoryCircuitBreaker("multi-cycle", config)
+
+    for cycle in range(3):
+        # Open the circuit
+        breaker.record_failure()
+        breaker.record_failure()
+        assert breaker._state.state == CircuitState.OPEN
+
+        # Wait for half-open
+        time.sleep(0.1)
+        assert breaker.state == CircuitState.HALF_OPEN
+
+        # Close with success
+        breaker.can_execute()
+        breaker.record_success()
+        assert breaker.state == CircuitState.CLOSED
+        assert breaker._state.failure_count == 0
+
+
+def test_closed_state_check_timeout_is_noop():
+    """_check_timeout_transition should be a no-op in CLOSED state."""
+    breaker = InMemoryCircuitBreaker("closed-timeout")
+    # In CLOSED state, check_timeout should just return CLOSED
+    result = breaker._check_timeout_transition()
+    assert result == CircuitState.CLOSED
+
+
+def test_half_open_state_check_timeout_is_noop():
+    """_check_timeout_transition should be a no-op in HALF_OPEN state."""
+    config = CircuitBreakerConfig(failure_threshold=1, timeout_seconds=0)
+    breaker = InMemoryCircuitBreaker("ho-timeout", config)
+
+    # Manually set to HALF_OPEN
+    breaker._state.state = CircuitState.HALF_OPEN
+
+    result = breaker._check_timeout_transition()
+    assert result == CircuitState.HALF_OPEN
+
+
+@pytest.mark.asyncio
+async def test_can_execute_async_open_state():
+    """Async can_execute should return False when circuit is OPEN."""
+    config = CircuitBreakerConfig(failure_threshold=1, timeout_seconds=60)
+    breaker = InMemoryCircuitBreaker("async-open", config)
+
+    breaker.record_failure()
+    assert breaker._state.state == CircuitState.OPEN
+
+    result = await breaker.can_execute_async()
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_can_execute_async_closed_state():
+    """Async can_execute should return True when circuit is CLOSED."""
+    breaker = InMemoryCircuitBreaker("async-closed")
+    result = await breaker.can_execute_async()
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_record_success_async_open_state_noop():
+    """Async record_success in OPEN state should be a no-op."""
+    config = CircuitBreakerConfig(failure_threshold=1)
+    breaker = InMemoryCircuitBreaker("async-open-success", config)
+
+    breaker.record_failure()
+    assert breaker._state.state == CircuitState.OPEN
+
+    await breaker.record_success_async()
+    # Should still be OPEN
+    assert breaker._state.state == CircuitState.OPEN
+
+
+@pytest.mark.asyncio
+async def test_record_failure_async_open_state():
+    """Async record_failure in OPEN state should still update counters."""
+    config = CircuitBreakerConfig(failure_threshold=1)
+    breaker = InMemoryCircuitBreaker("async-open-fail", config)
+
+    breaker.record_failure()
+    assert breaker._state.state == CircuitState.OPEN
+    assert breaker._state.failure_count == 1
+
+    await breaker.record_failure_async()
+    assert breaker._state.state == CircuitState.OPEN
+    assert breaker._state.failure_count == 2
+
+
+def test_pre_configured_circuit_breakers():
+    """Verify pre-configured circuit breakers exist with correct names."""
+    from functions.shared.circuit_breaker import (
+        BUNDLEPHOBIA_CIRCUIT,
+        DEPSDEV_CIRCUIT,
+        DYNAMODB_CIRCUIT,
+        GITHUB_CIRCUIT,
+        NPM_CIRCUIT,
+        OPENSSF_CIRCUIT,
+        PYPI_CIRCUIT,
+        PYPISTATS_CIRCUIT,
+    )
+
+    assert GITHUB_CIRCUIT.name == "github"
+    assert DEPSDEV_CIRCUIT.name == "deps.dev"
+    assert NPM_CIRCUIT.name == "npm"
+    assert BUNDLEPHOBIA_CIRCUIT.name == "bundlephobia"
+    assert PYPI_CIRCUIT.name == "pypi"
+    assert PYPISTATS_CIRCUIT.name == "pypistats"
+    assert OPENSSF_CIRCUIT.name == "openssf"
+    assert DYNAMODB_CIRCUIT.name == "dynamodb"
+
+    # DYNAMODB_CIRCUIT should always be InMemoryCircuitBreaker
+    assert isinstance(DYNAMODB_CIRCUIT, InMemoryCircuitBreaker)
+
+
+def test_circuit_breaker_config_defaults():
+    """Default config values should be sensible."""
+    config = CircuitBreakerConfig()
+    assert config.failure_threshold == 5
+    assert config.success_threshold == 2
+    assert config.timeout_seconds == 60
+    assert config.half_open_max_calls == 3
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_decorator_records_success():
+    """Decorator should record success after successful function call."""
+    config = CircuitBreakerConfig(failure_threshold=5)
+    test_breaker = InMemoryCircuitBreaker("test-decorator-success", config)
+
+    # Record some failures first
+    test_breaker.record_failure()
+    test_breaker.record_failure()
+    assert test_breaker._state.failure_count == 2
+
+    @circuit_breaker(test_breaker)
+    async def test_func():
+        return "ok"
+
+    result = await test_func()
+    assert result == "ok"
+    # Success should reset failure count
+    assert test_breaker._state.failure_count == 0

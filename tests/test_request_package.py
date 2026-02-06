@@ -625,3 +625,195 @@ class TestRequestPackageErrorPaths:
                 event = {**api_gateway_event, "body": json.dumps({"name": "throttled-pkg"})}
                 with pytest.raises(ClientError):
                     module.handler(event, None)
+
+
+class TestRateLimitClientErrorNonConditional:
+    """Tests for non-ConditionalCheckFailedException ClientError in check_and_record_rate_limit.
+
+    Covers lines 196-197 in request_package.py - a ClientError with a code other than
+    ConditionalCheckFailedException should log a warning and return False (fail closed).
+    """
+
+    @mock_aws
+    def test_non_conditional_client_error_returns_false(self, mock_dynamodb):
+        """Should return False (fail closed) for ClientError that is not ConditionalCheckFailed (lines 196-197)."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        import importlib
+
+        from botocore.exceptions import ClientError
+
+        import api.request_package as module
+
+        importlib.reload(module)
+
+        # Mock get_dynamodb so update_item raises a non-conditional ClientError
+        mock_table = MagicMock()
+        mock_table.update_item.side_effect = ClientError(
+            {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Rate exceeded"}},
+            "UpdateItem",
+        )
+
+        mock_db = MagicMock()
+        mock_db.Table.return_value = mock_table
+
+        with patch.object(module, "get_dynamodb", return_value=mock_db):
+            result = module.check_and_record_rate_limit("192.168.1.99")
+            assert result is False
+
+    @mock_aws
+    def test_internal_server_error_client_error_returns_false(self, mock_dynamodb):
+        """Should return False for InternalServerError ClientError (lines 196-197)."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        import importlib
+
+        from botocore.exceptions import ClientError
+
+        import api.request_package as module
+
+        importlib.reload(module)
+
+        mock_table = MagicMock()
+        mock_table.update_item.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "DynamoDB internal error"}},
+            "UpdateItem",
+        )
+
+        mock_db = MagicMock()
+        mock_db.Table.return_value = mock_table
+
+        with patch.object(module, "get_dynamodb", return_value=mock_db):
+            result = module.check_and_record_rate_limit("10.0.0.1")
+            assert result is False
+
+
+class TestRequestPackageInputValidation:
+    """Security tests for input validation on request_package endpoint."""
+
+    @mock_aws
+    def test_xss_in_package_name_not_reflected(self, mock_dynamodb, api_gateway_event):
+        """XSS attempt in package name should not be reflected unsafely."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        import api.request_package as module
+
+        importlib.reload(module)
+
+        with patch.object(module, "validate_package_exists") as mock_validate:
+            mock_validate.return_value = False
+
+            event = {
+                **api_gateway_event,
+                "body": json.dumps({"name": "<script>alert('xss')</script>"}),
+            }
+            result = module.handler(event, None)
+
+            # Response must be valid JSON with application/json Content-Type
+            # which prevents browser XSS interpretation
+            assert result["headers"]["Content-Type"] == "application/json"
+            body = json.loads(result["body"])
+            assert body["error"]["code"] == "package_not_found"
+
+    @mock_aws
+    def test_empty_name_after_strip_returns_400(self, mock_dynamodb, api_gateway_event):
+        """Name that is only whitespace should return 400 after strip."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        import api.request_package as module
+
+        importlib.reload(module)
+
+        event = {**api_gateway_event, "body": json.dumps({"name": "   "})}
+        result = module.handler(event, None)
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "missing_name"
+
+    @mock_aws
+    def test_npm_name_normalization_in_request(self, mock_dynamodb, api_gateway_event):
+        """npm package names should be normalized to lowercase in request endpoint."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        import api.request_package as module
+
+        importlib.reload(module)
+
+        # Add existing package with lowercase name
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        table.put_item(
+            Item={
+                "pk": "npm#lodash",
+                "sk": "LATEST",
+                "name": "lodash",
+                "ecosystem": "npm",
+                "health_score": 85,
+            }
+        )
+
+        event = {**api_gateway_event, "body": json.dumps({"name": "LODASH"})}
+        result = module.handler(event, None)
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["status"] == "exists"
+        assert body["package"] == "lodash"
+
+    @mock_aws
+    def test_null_body_returns_400(self, mock_dynamodb, api_gateway_event):
+        """Null body should return 400 for missing name, not crash."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        import api.request_package as module
+
+        importlib.reload(module)
+
+        event = {**api_gateway_event, "body": None}
+        result = module.handler(event, None)
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "missing_name"
+
+    @mock_aws
+    def test_queued_response_has_eta_field(self, mock_dynamodb, api_gateway_event):
+        """Queued response must include eta_minutes field."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        import api.request_package as module
+
+        importlib.reload(module)
+
+        with patch.object(module, "validate_package_exists") as mock_validate:
+            mock_validate.return_value = True
+            with patch.object(module, "get_sqs", return_value=MagicMock()):
+                event = {**api_gateway_event, "body": json.dumps({"name": "new-eta-pkg"})}
+                result = module.handler(event, None)
+
+                assert result["statusCode"] == 200
+                body = json.loads(result["body"])
+                assert body["status"] == "queued"
+                assert "eta_minutes" in body
+                assert isinstance(body["eta_minutes"], int)
+                assert body["eta_minutes"] == 5

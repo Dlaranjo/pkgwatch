@@ -1081,3 +1081,48 @@ class TestIntegration:
 
         assert len(data["rows"]) == 1
         assert data["rows"][0]["project"] == "valid"
+
+
+class TestMetricsImportErrorForced:
+    """Force a real ImportError for shared.metrics to cover lines 150-151."""
+
+    @mock_aws
+    def test_metrics_import_error_via_import_hook(self, mock_dynamodb, setup_s3_public_bucket):
+        """Cover lines 150-151 by forcing ImportError via __import__ override.
+
+        The existing test patches sys.modules with None, but that causes an
+        ImportError only if the module was already in sys.modules. This test
+        uses a custom import hook to truly block the import.
+        """
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        table.put_item(
+            Item={
+                "pk": "npm#import-hook-pkg",
+                "sk": "LATEST",
+                "name": "import-hook-pkg",
+                "ecosystem": "npm",
+                "weekly_downloads": 1000,
+            }
+        )
+
+        import importlib
+
+        import discovery.publish_top_packages as module
+
+        importlib.reload(module)
+
+        original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+
+        def blocked_import(name, *args, **kwargs):
+            if name == "shared.metrics":
+                raise ImportError("Blocked in test")
+            return original_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=blocked_import):
+            result = module.handler({}, None)
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["published"] == 1

@@ -275,3 +275,98 @@ class TestBuildDataQualityCompact:
 
         assert result["assessment"] == "UNAVAILABLE"
         assert result["has_repository"] is False
+
+
+# =============================================================================
+# COMPREHENSIVE ASSESSMENT CATEGORY TESTS
+# =============================================================================
+
+
+class TestAssessmentCategoryExhaustive:
+    """Exhaustive testing of all data_status x has_repo combinations."""
+
+    import pytest
+
+    @pytest.mark.parametrize(
+        "status,has_repo,expected",
+        [
+            ("complete", True, "VERIFIED"),
+            ("complete", False, "VERIFIED"),
+            ("partial", True, "PARTIAL"),
+            ("partial", False, "UNVERIFIED"),
+            ("minimal", True, "UNVERIFIED"),
+            ("minimal", False, "UNVERIFIED"),
+            ("abandoned_minimal", True, "UNAVAILABLE"),
+            ("abandoned_minimal", False, "UNAVAILABLE"),
+            ("abandoned_partial", True, "UNAVAILABLE"),
+            ("abandoned_partial", False, "UNAVAILABLE"),
+            ("pending", True, "UNVERIFIED"),
+            ("pending", False, "UNVERIFIED"),
+            ("", True, "UNVERIFIED"),
+            ("", False, "UNVERIFIED"),
+        ],
+    )
+    def test_all_status_repo_combinations(self, status, has_repo, expected):
+        """Every status x has_repo combination should map to expected category."""
+        assert get_assessment_category(status, has_repo) == expected
+
+
+class TestQualityExplanationEdgeCases:
+    """Edge case tests for quality explanations."""
+
+    def test_all_sources_missing(self):
+        """Multiple missing sources should all appear in explanation."""
+        result = get_quality_explanation("partial", ["github", "npm", "depsdev"], True)
+        assert "GitHub data collection failed" in result
+        assert "Registry data incomplete" in result
+        assert "deps.dev data unavailable" in result
+
+    def test_abandoned_partial_returns_unavailable_message(self):
+        """abandoned_partial should return same message as abandoned_minimal."""
+        result_min = get_quality_explanation("abandoned_minimal", [], False)
+        result_partial = get_quality_explanation("abandoned_partial", [], False)
+        assert result_min == result_partial
+
+    def test_unknown_missing_source_shows_generic(self):
+        """Unknown source names should result in generic message."""
+        result = get_quality_explanation("partial", ["unknown_source"], True)
+        assert result == "Some data sources unavailable"
+
+
+class TestBuildDataQualityFullEdgeCases:
+    """Additional edge cases for build_data_quality_full."""
+
+    def test_abandoned_partial_returns_unavailable(self):
+        """abandoned_partial should also return UNAVAILABLE assessment."""
+        item = {
+            "data_status": "abandoned_partial",
+            "missing_sources": ["github"],
+            "repository_url": "https://github.com/owner/repo",
+        }
+        result = build_data_quality_full(item)
+        assert result["assessment"] == "UNAVAILABLE"
+        assert "unavailable after multiple collection attempts" in result["explanation"]
+
+    def test_missing_repository_url_key_entirely(self):
+        """Missing repository_url key should default to has_repository=False."""
+        item = {"data_status": "complete"}
+        result = build_data_quality_full(item)
+        assert result["has_repository"] is False
+
+    def test_integer_missing_sources_handled(self):
+        """Integer type missing_sources should be converted to empty list."""
+        item = {
+            "data_status": "partial",
+            "missing_sources": 42,
+        }
+        result = build_data_quality_full(item)
+        assert result["missing_sources"] == []
+
+    def test_dict_missing_sources_handled(self):
+        """Dict type missing_sources should be converted to empty list."""
+        item = {
+            "data_status": "partial",
+            "missing_sources": {"github": True},
+        }
+        result = build_data_quality_full(item)
+        assert result["missing_sources"] == []

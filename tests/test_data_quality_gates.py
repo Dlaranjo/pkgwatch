@@ -288,3 +288,97 @@ def mock_dynamodb():
         )
 
         yield dynamodb
+
+
+# =============================================================================
+# COMPREHENSIVE IS_QUERYABLE TESTS FROM SHARED MODULE
+# =============================================================================
+
+
+class TestIsQueryableFromSharedModule:
+    """Tests using the real is_queryable from shared.data_quality.
+
+    This ensures the local copy in this file stays in sync with
+    the canonical implementation.
+    """
+
+    def test_local_copy_matches_shared_implementation(self):
+        """Local _is_queryable must match shared.data_quality.is_queryable exactly."""
+        from shared.data_quality import is_queryable as shared_is_queryable
+
+        test_cases = [
+            {"latest_version": "1.0.0", "health_score": 85, "weekly_downloads": 1000},
+            {"latest_version": "1.0.0", "health_score": 85, "weekly_downloads": 0, "dependents_count": 100},
+            {"latest_version": "1.0.0", "health_score": 85, "weekly_downloads": 0, "data_status": "complete"},
+            {"latest_version": None, "health_score": 85, "weekly_downloads": 1000},
+            {"latest_version": "1.0.0", "health_score": None, "weekly_downloads": 1000},
+            {"latest_version": "1.0.0", "health_score": 85, "weekly_downloads": 0, "dependents_count": 0},
+            {},
+            {"latest_version": "0.0.1", "health_score": 0, "weekly_downloads": 1, "data_status": "minimal"},
+            {"latest_version": "1.0.0", "health_score": 0.0, "weekly_downloads": 0, "data_status": "complete"},
+        ]
+
+        for data in test_cases:
+            local_result = _is_queryable(data)
+            shared_result = shared_is_queryable(data)
+            assert local_result == shared_result, f"Mismatch for {data}: local={local_result}, shared={shared_result}"
+
+    def test_health_score_zero_is_truthy(self):
+        """health_score=0 should be considered present (not None)."""
+        from shared.data_quality import is_queryable
+
+        data = {
+            "latest_version": "1.0.0",
+            "health_score": 0,
+            "weekly_downloads": 100,
+        }
+        assert is_queryable(data) is True
+
+    def test_health_score_zero_float_is_truthy(self):
+        """health_score=0.0 should be considered present."""
+        from shared.data_quality import is_queryable
+
+        data = {
+            "latest_version": "1.0.0",
+            "health_score": 0.0,
+            "weekly_downloads": 100,
+        }
+        assert is_queryable(data) is True
+
+    def test_weekly_downloads_missing_key_defaults_to_zero(self):
+        """Missing weekly_downloads key should default to 0."""
+        from shared.data_quality import is_queryable
+
+        data = {
+            "latest_version": "1.0.0",
+            "health_score": 50,
+            # No weekly_downloads key at all
+            "dependents_count": 0,
+        }
+        assert is_queryable(data) is False
+
+    def test_complete_status_is_escape_hatch(self):
+        """data_status='complete' should make package queryable even with 0 downloads."""
+        from shared.data_quality import is_queryable
+
+        data = {
+            "latest_version": "1.0.0",
+            "health_score": 50,
+            "weekly_downloads": 0,
+            "dependents_count": 0,
+            "data_status": "complete",
+        }
+        assert is_queryable(data) is True
+
+    def test_partial_status_no_escape_hatch(self):
+        """data_status='partial' should NOT make package queryable with 0 downloads."""
+        from shared.data_quality import is_queryable
+
+        data = {
+            "latest_version": "1.0.0",
+            "health_score": 50,
+            "weekly_downloads": 0,
+            "dependents_count": 0,
+            "data_status": "partial",
+        }
+        assert is_queryable(data) is False

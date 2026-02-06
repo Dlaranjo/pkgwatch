@@ -819,3 +819,535 @@ class TestSessionSecretPlainStringFormat:
             secret = _get_session_secret()
 
             assert secret == "plain-string-secret-value"
+
+
+class TestRecheckErrorDuringConditionalFailure:
+    """Tests for lines 171-178: error during recheck after ConditionalCheckFailedException."""
+
+    @mock_aws
+    def test_recheck_exception_returns_internal_error(self, mock_dynamodb, base_event):
+        """Should return internal_error when the recheck after conditional failure itself fails."""
+        with mock_session_secret():
+            from api.auth_callback import handler
+
+            with patch("api.auth_callback.dynamodb") as mock_db:
+                mock_table = MagicMock()
+
+                # GSI query returns a user
+                mock_table.query.return_value = {"Items": [{"pk": "user_recheck_fail", "sk": "hash123"}]}
+
+                # get_item returns the full user with token
+                mock_table.get_item.side_effect = [
+                    {
+                        "Item": {
+                            "pk": "user_recheck_fail",
+                            "sk": "hash123",
+                            "email": "test@example.com",
+                            "tier": "free",
+                            "magic_token": "some_token",
+                            "magic_expires": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
+                        }
+                    },
+                    # Second get_item (recheck) raises an exception
+                    Exception("DynamoDB error during recheck"),
+                ]
+
+                # Conditional update fails
+                error_response = {
+                    "Error": {
+                        "Code": "ConditionalCheckFailedException",
+                        "Message": "Condition check failed",
+                    }
+                }
+                mock_table.update_item.side_effect = ClientError(error_response, "UpdateItem")
+                mock_db.Table.return_value = mock_table
+
+                base_event["queryStringParameters"] = {"token": "some_token"}
+
+                result = handler(base_event, {})
+
+                assert result["statusCode"] == 302
+                location = result["headers"]["Location"]
+                assert "error=internal_error" in location
+
+    @mock_aws
+    def test_generic_exception_during_token_update_returns_internal_error(self, mock_dynamodb, base_event):
+        """Should return internal_error when a generic exception (not ClientError) occurs during token update."""
+        with mock_session_secret():
+            from api.auth_callback import handler
+
+            with patch("api.auth_callback.dynamodb") as mock_db:
+                mock_table = MagicMock()
+
+                # GSI query returns a user
+                mock_table.query.return_value = {"Items": [{"pk": "user_generic_err", "sk": "hash456"}]}
+
+                # get_item returns full user
+                mock_table.get_item.return_value = {
+                    "Item": {
+                        "pk": "user_generic_err",
+                        "sk": "hash456",
+                        "email": "test@example.com",
+                        "tier": "free",
+                        "magic_token": "some_token",
+                        "magic_expires": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
+                    }
+                }
+
+                # update_item raises a generic exception (not ClientError)
+                mock_table.update_item.side_effect = RuntimeError("Network timeout during update")
+                mock_db.Table.return_value = mock_table
+
+                base_event["queryStringParameters"] = {"token": "some_token"}
+
+                result = handler(base_event, {})
+
+                assert result["statusCode"] == 302
+                location = result["headers"]["Location"]
+                assert "error=internal_error" in location
+
+    @mock_aws
+    def test_non_conditional_client_error_during_token_update(self, mock_dynamodb, base_event):
+        """Should return internal_error when a non-conditional ClientError occurs during token update."""
+        with mock_session_secret():
+            from api.auth_callback import handler
+
+            with patch("api.auth_callback.dynamodb") as mock_db:
+                mock_table = MagicMock()
+
+                mock_table.query.return_value = {"Items": [{"pk": "user_err", "sk": "hash789"}]}
+
+                mock_table.get_item.return_value = {
+                    "Item": {
+                        "pk": "user_err",
+                        "sk": "hash789",
+                        "email": "test@example.com",
+                        "tier": "free",
+                        "magic_token": "some_token",
+                        "magic_expires": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
+                    }
+                }
+
+                # Non-conditional ClientError
+                error_response = {
+                    "Error": {
+                        "Code": "InternalServerError",
+                        "Message": "DynamoDB internal error",
+                    }
+                }
+                mock_table.update_item.side_effect = ClientError(error_response, "UpdateItem")
+                mock_db.Table.return_value = mock_table
+
+                base_event["queryStringParameters"] = {"token": "some_token"}
+
+                result = handler(base_event, {})
+
+                assert result["statusCode"] == 302
+                location = result["headers"]["Location"]
+                assert "error=internal_error" in location
+
+
+class TestVerifySessionTokenExceptionHandling:
+    """Tests for lines 242-243: exception handling in verify_session_token."""
+
+    @mock_aws
+    def test_corrupted_base64_payload_returns_none(self, mock_dynamodb):
+        """Should return None when base64 payload is corrupted/invalid."""
+        with mock_session_secret() as secret:
+            from api.auth_callback import verify_session_token
+
+            # Token with valid-looking format but corrupted base64 that fails decoding
+            # Use a payload that is valid base64 but not valid JSON
+            corrupted_payload = base64.urlsafe_b64encode(b"not json at all {{{").decode()
+            sig = hmac.new(secret.encode(), corrupted_payload.encode(), hashlib.sha256).hexdigest()
+            token = f"{corrupted_payload}.{sig}"
+
+            result = verify_session_token(token)
+            assert result is None
+
+    @mock_aws
+    def test_token_with_only_dots_returns_none(self, mock_dynamodb):
+        """Should return None for token that is just dots."""
+        with mock_session_secret():
+            from api.auth_callback import verify_session_token
+
+            assert verify_session_token("...") is None
+
+    @mock_aws
+    def test_token_with_empty_segments_returns_none(self, mock_dynamodb):
+        """Should return None for token with empty payload or signature segments."""
+        with mock_session_secret():
+            from api.auth_callback import verify_session_token
+
+            assert verify_session_token(".signature") is None
+            assert verify_session_token("payload.") is None
+
+    @mock_aws
+    def test_token_with_invalid_utf8_returns_none(self, mock_dynamodb):
+        """Should return None when decoded payload contains invalid data."""
+        with mock_session_secret() as secret:
+            from api.auth_callback import verify_session_token
+
+            # Create a payload that is valid base64 but decodes to bytes that fail JSON parse
+            raw_bytes = b"\x80\x81\x82\x83"
+            payload = base64.urlsafe_b64encode(raw_bytes).decode()
+            sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+            token = f"{payload}.{sig}"
+
+            result = verify_session_token(token)
+            assert result is None
+
+
+class TestTokenMismatchAfterConditionalFailure:
+    """Tests for line 170: token mismatch scenario in conditional check failure handling."""
+
+    @mock_aws
+    def test_token_mismatch_returns_invalid_token(self, mock_dynamodb, base_event):
+        """Should return invalid_token when stored token differs from expected (shouldn't happen normally)."""
+        with mock_session_secret():
+            from api.auth_callback import handler
+
+            with patch("api.auth_callback.dynamodb") as mock_db:
+                mock_table = MagicMock()
+
+                mock_table.query.return_value = {"Items": [{"pk": "user_mismatch", "sk": "hash_mm"}]}
+
+                # First get_item returns user with token
+                # Second get_item (recheck) returns user with DIFFERENT token
+                mock_table.get_item.side_effect = [
+                    {
+                        "Item": {
+                            "pk": "user_mismatch",
+                            "sk": "hash_mm",
+                            "email": "mismatch@example.com",
+                            "tier": "free",
+                            "magic_token": "original_token",
+                            "magic_expires": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
+                        }
+                    },
+                    {
+                        "Item": {
+                            "pk": "user_mismatch",
+                            "sk": "hash_mm",
+                            "email": "mismatch@example.com",
+                            "tier": "free",
+                            # Token exists but is different (mismatch)
+                            "magic_token": "different_token",
+                            "magic_expires": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
+                        }
+                    },
+                ]
+
+                # Conditional update fails
+                error_response = {
+                    "Error": {
+                        "Code": "ConditionalCheckFailedException",
+                        "Message": "Condition check failed",
+                    }
+                }
+                mock_table.update_item.side_effect = ClientError(error_response, "UpdateItem")
+                mock_db.Table.return_value = mock_table
+
+                base_event["queryStringParameters"] = {"token": "original_token"}
+
+                result = handler(base_event, {})
+
+                assert result["statusCode"] == 302
+                location = result["headers"]["Location"]
+                assert "error=invalid_token" in location
+
+
+class TestTokenAlreadyConsumedRecheck:
+    """Tests to specifically cover lines 151-156: token was already consumed by another request."""
+
+    @mock_aws
+    def test_recheck_finds_token_consumed_returns_already_used(self, mock_dynamodb, base_event):
+        """Should return token_already_used when recheck shows magic_token is gone (consumed by concurrent request)."""
+        with mock_session_secret():
+            from api.auth_callback import handler
+
+            with patch("api.auth_callback.dynamodb") as mock_db:
+                mock_table = MagicMock()
+
+                # GSI query returns the user (token still in index)
+                mock_table.query.return_value = {"Items": [{"pk": "user_consumed", "sk": "hash_consumed"}]}
+
+                # First get_item returns user WITH token (initial fetch)
+                # Second get_item returns user WITHOUT token (recheck after conditional failure)
+                mock_table.get_item.side_effect = [
+                    {
+                        "Item": {
+                            "pk": "user_consumed",
+                            "sk": "hash_consumed",
+                            "email": "consumed@example.com",
+                            "tier": "free",
+                            "magic_token": "some_token",
+                            "magic_expires": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
+                        }
+                    },
+                    {
+                        "Item": {
+                            "pk": "user_consumed",
+                            "sk": "hash_consumed",
+                            "email": "consumed@example.com",
+                            "tier": "free",
+                            # No magic_token - it was consumed by concurrent request
+                        }
+                    },
+                ]
+
+                # Conditional update fails (another request consumed the token first)
+                error_response = {
+                    "Error": {
+                        "Code": "ConditionalCheckFailedException",
+                        "Message": "Condition check failed",
+                    }
+                }
+                mock_table.update_item.side_effect = ClientError(error_response, "UpdateItem")
+                mock_db.Table.return_value = mock_table
+
+                base_event["queryStringParameters"] = {"token": "some_token"}
+
+                result = handler(base_event, {})
+
+                assert result["statusCode"] == 302
+                location = result["headers"]["Location"]
+                assert "error=token_already_used" in location
+                assert "already+been+used" in location or "already%20been%20used" in location.lower()
+
+
+class TestRecheckExceptionDuringConditionalFailureExtended:
+    """Additional tests to cover lines 171-178 in auth_callback.py.
+
+    These lines handle:
+    - Lines 171-173: Exception raised during the recheck get_item after conditional failure
+    - Lines 176-178: Generic (non-ClientError) exception during the update_item call
+    """
+
+    @mock_aws
+    def test_recheck_get_item_raises_client_error(self, mock_dynamodb, base_event):
+        """Should return internal_error when recheck get_item raises ClientError."""
+        with mock_session_secret():
+            from api.auth_callback import handler
+
+            with patch("api.auth_callback.dynamodb") as mock_db:
+                mock_table = MagicMock()
+
+                mock_table.query.return_value = {"Items": [{"pk": "user_recheck_ce", "sk": "hash_ce"}]}
+
+                # First get_item returns user data; second raises ClientError
+                mock_table.get_item.side_effect = [
+                    {
+                        "Item": {
+                            "pk": "user_recheck_ce",
+                            "sk": "hash_ce",
+                            "email": "test@example.com",
+                            "tier": "free",
+                            "magic_token": "some_token",
+                            "magic_expires": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
+                        }
+                    },
+                    ClientError(
+                        {"Error": {"Code": "InternalServerError", "Message": "DynamoDB error"}},
+                        "GetItem",
+                    ),
+                ]
+
+                # Conditional update fails, triggering the recheck path
+                cond_error = {
+                    "Error": {
+                        "Code": "ConditionalCheckFailedException",
+                        "Message": "Condition check failed",
+                    }
+                }
+                mock_table.update_item.side_effect = ClientError(cond_error, "UpdateItem")
+                mock_db.Table.return_value = mock_table
+
+                base_event["queryStringParameters"] = {"token": "some_token"}
+
+                result = handler(base_event, {})
+
+                assert result["statusCode"] == 302
+                location = result["headers"]["Location"]
+                assert "error=internal_error" in location
+
+    @mock_aws
+    def test_update_item_raises_timeout_error(self, mock_dynamodb, base_event):
+        """Should return internal_error when update_item raises a TimeoutError (non-ClientError)."""
+        with mock_session_secret():
+            from api.auth_callback import handler
+
+            with patch("api.auth_callback.dynamodb") as mock_db:
+                mock_table = MagicMock()
+
+                mock_table.query.return_value = {"Items": [{"pk": "user_timeout", "sk": "hash_to"}]}
+
+                mock_table.get_item.return_value = {
+                    "Item": {
+                        "pk": "user_timeout",
+                        "sk": "hash_to",
+                        "email": "test@example.com",
+                        "tier": "free",
+                        "magic_token": "some_token",
+                        "magic_expires": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
+                    }
+                }
+
+                # update_item raises a non-ClientError exception (lines 176-178)
+                mock_table.update_item.side_effect = TimeoutError("Connection timed out")
+                mock_db.Table.return_value = mock_table
+
+                base_event["queryStringParameters"] = {"token": "some_token"}
+
+                result = handler(base_event, {})
+
+                assert result["statusCode"] == 302
+                location = result["headers"]["Location"]
+                assert "error=internal_error" in location
+
+
+class TestVerifySessionTokenMalformedPayloads:
+    """Additional tests to firmly cover lines 242-243 (exception catch-all in verify_session_token)."""
+
+    @mock_aws
+    def test_payload_with_missing_exp_field(self, mock_dynamodb):
+        """Token with valid signature but missing 'exp' field should return None (exp defaults to 0, expired)."""
+        with mock_session_secret() as secret:
+            from api.auth_callback import verify_session_token
+
+            # Create a payload without 'exp'
+            data = {"user_id": "test", "email": "a@b.com"}
+            payload = base64.urlsafe_b64encode(json.dumps(data).encode()).decode()
+            sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+            token = f"{payload}.{sig}"
+
+            result = verify_session_token(token)
+            # exp defaults to 0, which is in the past, so returns None
+            assert result is None
+
+    @mock_aws
+    def test_non_dict_json_payload_returns_none(self, mock_dynamodb):
+        """Token whose payload decodes to a JSON array (not dict) should return None via exception."""
+        with mock_session_secret() as secret:
+            from api.auth_callback import verify_session_token
+
+            # Payload is a JSON array, not a dict. data.get("exp") will raise AttributeError
+            payload = base64.urlsafe_b64encode(json.dumps([1, 2, 3]).encode()).decode()
+            sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+            token = f"{payload}.{sig}"
+
+            result = verify_session_token(token)
+            assert result is None
+
+    @mock_aws
+    def test_token_with_no_session_secret_returns_none(self, mock_dynamodb):
+        """verify_session_token should return None when session secret is empty."""
+        from api.auth_callback import verify_session_token
+
+        # Patch _get_session_secret to return empty string
+        with patch("api.auth_callback._get_session_secret", return_value=""):
+            result = verify_session_token("some.token")
+            assert result is None
+
+    @mock_aws
+    def test_token_without_dot_separator_returns_none(self, mock_dynamodb):
+        """Token without any dot should return None (no separator check)."""
+        with mock_session_secret():
+            from api.auth_callback import verify_session_token
+
+            result = verify_session_token("nodotinthistoken")
+            assert result is None
+
+
+class TestSessionCookieSecurity:
+    """Security tests for session cookie attributes and tampering."""
+
+    @mock_aws
+    def test_cookie_max_age_matches_session_ttl(
+        self, mock_dynamodb, base_event, api_keys_table, user_with_valid_magic_token
+    ):
+        """Cookie Max-Age should match SESSION_TTL_DAYS * 86400."""
+        with mock_session_secret():
+            from api.auth_callback import SESSION_TTL_DAYS, handler
+
+            base_event["queryStringParameters"] = {"token": user_with_valid_magic_token["magic_token"]}
+
+            result = handler(base_event, {})
+
+            cookie = result["headers"]["Set-Cookie"]
+            expected_max_age = f"Max-Age={SESSION_TTL_DAYS * 86400}"
+            assert expected_max_age in cookie
+
+    @mock_aws
+    def test_session_token_with_escalated_tier_rejected(self, mock_dynamodb):
+        """A session token where the tier was tampered to 'business' should be rejected (signature mismatch)."""
+        with mock_session_secret() as secret:
+            from api.auth_callback import _create_session_token, verify_session_token
+
+            # Create a valid token with 'free' tier
+            session_data = {
+                "user_id": "user_test",
+                "email": "test@example.com",
+                "tier": "free",
+                "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+            }
+            token = _create_session_token(session_data, secret)
+
+            # Tamper: change tier to 'business'
+            payload_b64, sig = token.rsplit(".", 1)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode()).decode())
+            payload["tier"] = "business"
+            tampered_payload = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+            tampered_token = f"{tampered_payload}.{sig}"
+
+            # Verification should reject it
+            result = verify_session_token(tampered_token)
+            assert result is None
+
+    @mock_aws
+    def test_session_token_with_modified_email_rejected(self, mock_dynamodb):
+        """A session token where email was changed should be rejected."""
+        with mock_session_secret() as secret:
+            from api.auth_callback import _create_session_token, verify_session_token
+
+            session_data = {
+                "user_id": "user_test",
+                "email": "original@example.com",
+                "tier": "free",
+                "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+            }
+            token = _create_session_token(session_data, secret)
+
+            # Tamper: change email
+            payload_b64, sig = token.rsplit(".", 1)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode()).decode())
+            payload["email"] = "attacker@evil.com"
+            tampered_payload = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+            tampered_token = f"{tampered_payload}.{sig}"
+
+            result = verify_session_token(tampered_token)
+            assert result is None
+
+    @mock_aws
+    def test_session_token_with_extended_expiry_rejected(self, mock_dynamodb):
+        """A session token where expiry was pushed far into the future should be rejected."""
+        with mock_session_secret() as secret:
+            from api.auth_callback import _create_session_token, verify_session_token
+
+            session_data = {
+                "user_id": "user_test",
+                "email": "test@example.com",
+                "tier": "free",
+                "exp": int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp()),
+            }
+            token = _create_session_token(session_data, secret)
+
+            # Tamper: extend expiry to 10 years
+            payload_b64, sig = token.rsplit(".", 1)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode()).decode())
+            payload["exp"] = int((datetime.now(timezone.utc) + timedelta(days=3650)).timestamp())
+            tampered_payload = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+            tampered_token = f"{tampered_payload}.{sig}"
+
+            result = verify_session_token(tampered_token)
+            assert result is None

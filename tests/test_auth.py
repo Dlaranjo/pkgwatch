@@ -1632,3 +1632,266 @@ class TestTriggerReferralActivityGate:
         with patch("shared.referral_utils.add_bonus_with_cap", side_effect=RuntimeError("Boom")):
             # Should not raise
             _trigger_referral_activity_gate(user_id, meta)
+
+
+class TestValidateApiKeyMaxRetriesExhausted:
+    """Tests covering lines 160-161: max retries exceeded path in validate_api_key."""
+
+    @mock_aws
+    def test_all_retries_fail_with_throttling_returns_none(self, aws_credentials, mock_dynamodb):
+        """When every retry attempt is throttled, should return None after exhausting retries."""
+        from unittest.mock import MagicMock, patch
+
+        from botocore.exceptions import ClientError
+
+        from shared.auth import validate_api_key
+
+        # Create throttling error
+        throttle_error = ClientError(
+            {"Error": {"Code": "ProvisionedThroughputExceededException", "Message": "Rate exceeded"}},
+            "Query",
+        )
+
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
+            mock_table = MagicMock()
+            # All attempts fail with throttling
+            mock_table.query.side_effect = throttle_error
+            mock_ddb.return_value.Table.return_value = mock_table
+
+            with patch("shared.auth.time.sleep"):
+                # Use max_retries=3 to go through all retries
+                result = validate_api_key("pw_test_exhaust_retries_key", max_retries=3)
+
+        assert result is None
+        # Should have attempted 3 times
+        assert mock_table.query.call_count == 3
+
+
+class TestCheckAndIncrementUsageWithBonusReRaise:
+    """Tests covering re-raise lines in check_and_increment_usage_with_bonus.
+
+    Line 440: re-raise after bonus conditional check failure (non-ConditionalCheckFailedException)
+    Line 469: re-raise after monthly limit conditional check failure (non-ConditionalCheckFailedException)
+    """
+
+    @mock_aws
+    def test_bonus_path_non_conditional_client_error_reraises(self, aws_credentials, mock_dynamodb):
+        """Non-conditional ClientError during bonus update should re-raise (line 440)."""
+        from unittest.mock import MagicMock, patch
+
+        import boto3
+        from botocore.exceptions import ClientError
+
+        from shared.auth import check_and_increment_usage_with_bonus
+
+        user_id = "user_bonus_reraise"
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+
+        # Set up at monthly limit with bonus available (to trigger bonus path)
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "requests_this_month": 100,
+                "bonus_requests": 50,
+                "total_packages_scanned": 50,
+            }
+        )
+
+        original_update = table.update_item
+
+        def fail_bonus_update(**kwargs):
+            update_expr = kwargs.get("UpdateExpression", "")
+            if "bonus_requests" in update_expr and "bonus_requests - " in update_expr:
+                raise ClientError(
+                    {"Error": {"Code": "InternalServerError", "Message": "DynamoDB internal error"}},
+                    "UpdateItem",
+                )
+            return original_update(**kwargs)
+
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
+            patched_table = MagicMock(wraps=table)
+            patched_table.update_item = fail_bonus_update
+            patched_table.get_item = table.get_item
+            mock_ddb.return_value.Table.return_value = patched_table
+
+            with pytest.raises(ClientError) as exc_info:
+                check_and_increment_usage_with_bonus(user_id, "some_hash", limit=100, count=1)
+
+            assert exc_info.value.response["Error"]["Code"] == "InternalServerError"
+
+    @mock_aws
+    def test_monthly_path_non_conditional_client_error_reraises(self, aws_credentials, mock_dynamodb):
+        """Non-conditional ClientError during monthly update should re-raise (line 469)."""
+        from unittest.mock import MagicMock, patch
+
+        import boto3
+        from botocore.exceptions import ClientError
+
+        from shared.auth import check_and_increment_usage_with_bonus
+
+        user_id = "user_monthly_reraise"
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+
+        # Set up with room in monthly limit (NOT in bonus path)
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "requests_this_month": 50,
+                "bonus_requests": 10,
+                "total_packages_scanned": 50,
+            }
+        )
+
+        original_update = table.update_item
+
+        def fail_monthly_update(**kwargs):
+            kwargs.get("UpdateExpression", "")
+            kwargs.get("ConditionExpression", "")
+            # Monthly path uses max_allowed in condition
+            if "max_allowed" in str(kwargs.get("ExpressionAttributeValues", {})):
+                raise ClientError(
+                    {"Error": {"Code": "InternalServerError", "Message": "DynamoDB error"}},
+                    "UpdateItem",
+                )
+            return original_update(**kwargs)
+
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
+            patched_table = MagicMock(wraps=table)
+            patched_table.update_item = fail_monthly_update
+            patched_table.get_item = table.get_item
+            mock_ddb.return_value.Table.return_value = patched_table
+
+            with pytest.raises(ClientError) as exc_info:
+                check_and_increment_usage_with_bonus(user_id, "some_hash", limit=5000, count=1)
+
+            assert exc_info.value.response["Error"]["Code"] == "InternalServerError"
+
+
+class TestTriggerReferralActivityGateEdgeCases:
+    """Tests covering lines 541-542, 566 in _trigger_referral_activity_gate.
+
+    Lines 541-542: except (ValueError, TypeError): pass - invalid referral_pending_expires format
+    Line 566: re-raise from conditional check failure (non-ConditionalCheckFailedException)
+    """
+
+    @mock_aws
+    def test_malformed_expires_value_ignored(self, aws_credentials, mock_dynamodb):
+        """Should handle malformed referral_pending_expires gracefully (lines 541-542)."""
+        from unittest.mock import patch
+
+        import boto3
+
+        from shared.auth import _trigger_referral_activity_gate
+
+        user_id = "user_bad_expires"
+        referrer_id = "user_referrer_bad"
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+
+        # Create USER_META with pending referral
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "referral_pending": True,
+                "referred_by": referrer_id,
+            }
+        )
+
+        # Pass malformed expires in meta - should hit except (ValueError, TypeError)
+        meta = {
+            "referred_by": referrer_id,
+            "referral_pending_expires": "not-a-valid-date-at-all",
+        }
+
+        # Should not raise - the malformed date should be silently ignored
+        # and processing should continue to the conditional update
+        with (
+            patch("shared.referral_utils.add_bonus_with_cap", return_value=5000),
+            patch("shared.referral_utils.update_referral_event_to_credited"),
+            patch("shared.referral_utils.update_referrer_stats"),
+        ):
+            _trigger_referral_activity_gate(user_id, meta)
+
+    @mock_aws
+    def test_none_expires_value_ignored(self, aws_credentials, mock_dynamodb):
+        """Should handle None referral_pending_expires gracefully (TypeError branch)."""
+        from unittest.mock import patch
+
+        import boto3
+
+        from shared.auth import _trigger_referral_activity_gate
+
+        user_id = "user_none_expires"
+        referrer_id = "user_referrer_none"
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "referral_pending": True,
+                "referred_by": referrer_id,
+            }
+        )
+
+        meta = {
+            "referred_by": referrer_id,
+            "referral_pending_expires": None,  # Will cause TypeError in fromisoformat
+        }
+
+        with (
+            patch("shared.referral_utils.add_bonus_with_cap", return_value=5000),
+            patch("shared.referral_utils.update_referral_event_to_credited"),
+            patch("shared.referral_utils.update_referrer_stats"),
+        ):
+            _trigger_referral_activity_gate(user_id, meta)
+
+    @mock_aws
+    def test_conditional_update_non_conditional_error_reraises(self, aws_credentials, mock_dynamodb):
+        """Non-ConditionalCheckFailedException during atomic gate should re-raise (line 566)."""
+        from unittest.mock import MagicMock, patch
+
+        import boto3
+        from botocore.exceptions import ClientError
+
+        from shared.auth import _trigger_referral_activity_gate
+
+        user_id = "user_gate_reraise"
+        referrer_id = "user_referrer_reraise"
+        table = boto3.resource("dynamodb").Table("pkgwatch-api-keys")
+
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "referral_pending": True,
+                "referred_by": referrer_id,
+            }
+        )
+
+        meta = {"referred_by": referrer_id}
+
+        original_update = table.update_item
+
+        def fail_conditional(**kwargs):
+            cond_expr = kwargs.get("ConditionExpression", "")
+            # The idempotency conditional update
+            if "referral_pending" in str(cond_expr) and "referral_activity_credited" in str(cond_expr):
+                raise ClientError(
+                    {"Error": {"Code": "InternalServerError", "Message": "DynamoDB error"}},
+                    "UpdateItem",
+                )
+            return original_update(**kwargs)
+
+        with patch("shared.auth.get_dynamodb") as mock_ddb:
+            patched_table = MagicMock(wraps=table)
+            patched_table.update_item = fail_conditional
+            patched_table.get_item = table.get_item
+            mock_ddb.return_value.Table.return_value = patched_table
+
+            with pytest.raises(ClientError) as exc_info:
+                _trigger_referral_activity_gate(user_id, meta)
+
+            assert exc_info.value.response["Error"]["Code"] == "InternalServerError"

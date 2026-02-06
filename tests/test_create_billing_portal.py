@@ -573,3 +573,99 @@ class TestBillingPortalReturnUrl:
                     # Verify return_url includes portal_return param
                     call_args = mock_stripe.billing_portal.Session.create.call_args
                     assert "portal_return=1" in call_args[1]["return_url"]
+
+
+class TestBillingPortalPendingSkip:
+    """Tests for PENDING record skipping in billing portal (line 93)."""
+
+    @mock_aws
+    def test_skips_pending_records_returns_no_subscription(self, mock_dynamodb, api_gateway_event):
+        """Should skip PENDING records and return no_subscription if only PENDING exists."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Only PENDING record with stripe_customer_id (should be ignored)
+        table.put_item(
+            Item={
+                "pk": "user_pending_portal",
+                "sk": "PENDING",
+                "email": "pending_portal@example.com",
+                "stripe_customer_id": "cus_should_skip",
+            }
+        )
+
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
+            with patch("api.auth_callback.verify_session_token") as mock_verify:
+                mock_verify.return_value = {
+                    "user_id": "user_pending_portal",
+                    "email": "pending_portal@example.com",
+                }
+
+                from api.create_billing_portal import handler
+
+                api_gateway_event["httpMethod"] = "POST"
+                api_gateway_event["headers"]["cookie"] = "session=valid"
+
+                result = handler(api_gateway_event, {})
+
+                assert result["statusCode"] == 400
+                body = json.loads(result["body"])
+                assert body["error"]["code"] == "no_subscription"
+
+
+class TestBillingPortalGenericException:
+    """Tests for generic Exception handling in billing portal (lines 122-124)."""
+
+    @mock_aws
+    def test_generic_exception_returns_500(self, mock_dynamodb, api_gateway_event):
+        """Generic Exception during portal session creation should return 500."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BASE_URL"] = "https://pkgwatch.dev"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_portal_generic").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_portal_generic",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "portal_generic@example.com",
+                "tier": "pro",
+                "stripe_customer_id": "cus_portal_generic",
+                "email_verified": True,
+            }
+        )
+
+        import api.create_billing_portal as portal_module
+
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+
+        with patch("api.create_billing_portal.get_stripe_api_key", return_value="sk_test_123"):
+            with patch("api.auth_callback.verify_session_token") as mock_verify:
+                mock_verify.return_value = {
+                    "user_id": "user_portal_generic",
+                    "email": "portal_generic@example.com",
+                }
+
+                with patch.object(portal_module, "stripe") as mock_stripe:
+                    import stripe as real_stripe
+
+                    mock_stripe.StripeError = real_stripe.StripeError
+                    # Raise a non-StripeError exception
+                    mock_stripe.billing_portal.Session.create.side_effect = RuntimeError("Unexpected internal error")
+
+                    api_gateway_event["httpMethod"] = "POST"
+                    api_gateway_event["headers"]["cookie"] = "session=valid"
+
+                    result = portal_module.handler(api_gateway_event, {})
+
+                    assert result["statusCode"] == 500
+                    body = json.loads(result["body"])
+                    assert body["error"]["code"] == "internal_error"
+                    # Should not leak internal error details
+                    assert "Unexpected" not in body["error"]["message"]

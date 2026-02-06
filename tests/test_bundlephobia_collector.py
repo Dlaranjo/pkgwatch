@@ -851,3 +851,75 @@ class TestEdgeCases:
         result = run_async(retry_with_backoff(mock_func, max_retries=3, base_delay=0.01))
         assert result["success"] is True
         assert call_count == 3
+
+
+# =============================================================================
+# RETRY_WITH_BACKOFF: FINAL RAISE PATH (line 88)
+# =============================================================================
+
+
+class TestBundlephobiaRetryFinalRaise:
+    """Tests for the final raise path in retry_with_backoff."""
+
+    def test_retry_all_network_errors_raises_last(self):
+        """All retries fail with network error, should raise last exception."""
+        from bundlephobia_collector import retry_with_backoff
+
+        call_count = 0
+
+        async def always_fail():
+            nonlocal call_count
+            call_count += 1
+            raise httpx.ConnectError("DNS resolution failed")
+
+        with pytest.raises(httpx.ConnectError, match="DNS resolution failed"):
+            run_async(retry_with_backoff(always_fail, max_retries=3, base_delay=0.01))
+
+        assert call_count == 3
+
+    def test_retry_mixed_error_types(self):
+        """Test retry with alternating error types."""
+        from bundlephobia_collector import retry_with_backoff
+
+        call_count = 0
+
+        async def alternating_errors():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                response = httpx.Response(500, request=httpx.Request("GET", "http://test"))
+                raise httpx.HTTPStatusError("Server error", request=response.request, response=response)
+            elif call_count == 2:
+                raise httpx.ConnectError("Connection reset")
+            return "finally_succeeded"
+
+        result = run_async(retry_with_backoff(alternating_errors, max_retries=3, base_delay=0.01))
+        assert result == "finally_succeeded"
+        assert call_count == 3
+
+
+# =============================================================================
+# GET_BUNDLE_SIZE: OTHER HTTP STATUS CODES
+# =============================================================================
+
+
+class TestBundleSizeOtherHttpErrors:
+    """Tests for get_bundle_size with non-404/429/504 errors."""
+
+    def test_non_retryable_http_error_raises(self):
+        """Non-retryable HTTP errors (e.g., 403) should raise."""
+        from bundlephobia_collector import get_bundle_size
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(403)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
+                run_async(get_bundle_size("forbidden-pkg"))
+            assert exc_info.value.response.status_code == 403

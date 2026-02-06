@@ -1027,6 +1027,78 @@ class TestRecoveryUpdateEmailNormalization:
         assert change["new_email"] == "new@example.com"
 
     @mock_aws
+    def test_confirm_email_recovery_session_delete_failure_ignored(self, mock_dynamodb, seeded_api_keys_table):
+        """Should ignore ClientError when deleting recovery session (lines 186-187).
+
+        After email change completes, the handler tries to clean up the recovery
+        session. If that delete fails with ClientError, it's silently ignored.
+        """
+        table, test_key = seeded_api_keys_table
+        key_hash = hashlib.sha256(test_key.encode()).hexdigest()
+
+        change_token = "change-token-session-del-err"
+        recovery_session_sk = "RECOVERY_session-del-fail"
+        now = datetime.now(timezone.utc)
+
+        from api.recovery_confirm_email import handler
+
+        event = {"queryStringParameters": {"token": change_token}}
+
+        delete_call_count = 0
+
+        def selective_delete(**kwargs):
+            """First delete (EMAIL_CHANGE record) succeeds, second (recovery session) fails."""
+            nonlocal delete_call_count
+            delete_call_count += 1
+            key = kwargs.get("Key", {})
+            if key.get("sk", "").startswith("RECOVERY_"):
+                raise ClientError({"Error": {"Code": "InternalServerError", "Message": "Delete failed"}}, "DeleteItem")
+            return {}
+
+        with (
+            patch("api.recovery_confirm_email._get_session_secret", return_value="test-secret"),
+            patch("api.recovery_confirm_email.dynamodb") as mock_ddb,
+            patch("api.recovery_confirm_email.ses") as mock_ses,
+            patch("api.recovery_confirm_email._create_session_token", return_value="fake-session-token"),
+        ):
+            mock_ses.send_email = MagicMock()
+            mock_table = MagicMock()
+            mock_ddb.Table.return_value = mock_table
+            mock_table.scan.return_value = {
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": f"EMAIL_CHANGE_{change_token}",
+                        "old_email": "test@example.com",
+                        "new_email": "new@example.com",
+                        "change_token": change_token,
+                        "recovery_session_sk": recovery_session_sk,
+                        "ttl": int((now + timedelta(hours=24)).timestamp()),
+                    }
+                ]
+            }
+            mock_table.query.return_value = {
+                "Items": [
+                    {
+                        "pk": "user_test123",
+                        "sk": key_hash,
+                        "key_hash": key_hash,
+                        "email": "test@example.com",
+                        "tier": "free",
+                    },
+                ]
+            }
+            mock_table.delete_item.side_effect = selective_delete
+            mock_table.update_item.return_value = {}
+
+            response = handler(event, None)
+
+        # Should succeed despite recovery session delete failure
+        assert response["statusCode"] == 302
+        assert "email_changed=true" in response["headers"]["Location"]
+        assert "Set-Cookie" in response["headers"]
+
+    @mock_aws
     def test_strips_whitespace_from_email(self, mock_dynamodb, seeded_api_keys_table):
         """Should strip whitespace from new email."""
         table, test_key = seeded_api_keys_table

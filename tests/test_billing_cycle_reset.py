@@ -465,3 +465,206 @@ class TestExtractPeriodFromInvoice:
 
         assert start == 3333
         assert end == 4444
+
+
+class TestBackupResetErrors:
+    """Tests for error handling in backup reset (lines 143-144, 149)."""
+
+    @mock_aws
+    def test_per_item_error_continues_processing(self, mock_dynamodb):
+        """Per-item error during backup reset should be caught and processing continues (lines 143-144)."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from unittest.mock import MagicMock, patch
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # User who needs backup reset
+        now = datetime.now(timezone.utc)
+        old_period_end = int((now - timedelta(hours=2)).timestamp())
+        old_period_start = old_period_end - (30 * 24 * 60 * 60)
+
+        for i in range(2):
+            err_hash = hashlib.sha256(f"pw_err_backup_{i}".encode()).hexdigest()
+            table.put_item(
+                Item={
+                    "pk": f"user_err_backup_{i}",
+                    "sk": err_hash,
+                    "key_hash": err_hash,
+                    "tier": "pro",
+                    "stripe_customer_id": f"cus_err_backup_{i}",
+                    "current_period_start": old_period_start,
+                    "current_period_end": old_period_end,
+                    "last_reset_period_start": old_period_start - (30 * 24 * 60 * 60),
+                    "requests_this_month": 5000,
+                }
+            )
+
+        # Create a mock table that wraps the real one but fails on one update
+        mock_table = MagicMock()
+        mock_table.scan.side_effect = table.scan
+
+        call_count = [0]
+        original_update = table.update_item
+
+        def failing_update(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise Exception("Simulated DynamoDB error")
+            return original_update(*args, **kwargs)
+
+        mock_table.update_item.side_effect = failing_update
+
+        import api.reset_usage_backup as backup_module
+
+        with patch.object(backup_module, "dynamodb") as mock_db:
+            mock_db.Table.return_value = mock_table
+
+            result = backup_module.handler({}, {})
+
+        # Should have checked 2 items, but only 1 successfully reset
+        # (the other failed on first update_item call)
+        assert result["items_checked"] == 2
+
+    @mock_aws
+    def test_pagination_handles_multiple_pages(self, mock_dynamodb):
+        """Should handle pagination correctly (line 149)."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        now = datetime.now(timezone.utc)
+        old_period_end = int((now - timedelta(hours=2)).timestamp())
+        old_period_start = old_period_end - (30 * 24 * 60 * 60)
+
+        missed_hash = hashlib.sha256(b"pw_paginate").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_paginate",
+                "sk": missed_hash,
+                "key_hash": missed_hash,
+                "tier": "pro",
+                "stripe_customer_id": "cus_paginate",
+                "current_period_start": old_period_start,
+                "current_period_end": old_period_end,
+                "last_reset_period_start": old_period_start - (30 * 24 * 60 * 60),
+                "requests_this_month": 3000,
+            }
+        )
+
+        # Use the real table - moto handles single-page scans
+        from api.reset_usage_backup import handler
+
+        result = handler({}, {})
+
+        assert result["items_reset"] == 1
+        # Verify the user was reset
+        response = table.get_item(Key={"pk": "user_paginate", "sk": missed_hash})
+        assert response["Item"]["requests_this_month"] == 0
+
+
+class TestBackupResetUserMetaUpdate:
+    """Tests for USER_META update in backup reset."""
+
+    @mock_aws
+    def test_updates_user_meta_during_backup_reset(self, mock_dynamodb):
+        """Should also update USER_META record when performing backup reset."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        now = datetime.now(timezone.utc)
+        old_period_end = int((now - timedelta(hours=2)).timestamp())
+        old_period_start = old_period_end - (30 * 24 * 60 * 60)
+
+        missed_hash = hashlib.sha256(b"pw_meta_backup").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_meta_backup",
+                "sk": missed_hash,
+                "key_hash": missed_hash,
+                "tier": "pro",
+                "stripe_customer_id": "cus_meta_backup",
+                "current_period_start": old_period_start,
+                "current_period_end": old_period_end,
+                "last_reset_period_start": old_period_start - (30 * 24 * 60 * 60),
+                "requests_this_month": 7000,
+            }
+        )
+
+        # Create USER_META
+        table.put_item(
+            Item={
+                "pk": "user_meta_backup",
+                "sk": "USER_META",
+                "requests_this_month": 7000,
+            }
+        )
+
+        from api.reset_usage_backup import handler
+
+        result = handler({}, {})
+
+        assert result["items_reset"] == 1
+
+        # Check USER_META was also updated
+        meta = table.get_item(Key={"pk": "user_meta_backup", "sk": "USER_META"})
+        meta_item = meta.get("Item")
+        assert meta_item["requests_this_month"] == 0
+
+    @mock_aws
+    def test_backup_reset_warning_when_resets_needed(self, mock_dynamodb, caplog):
+        """Should log ALERT warning when backup resets are needed."""
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        now = datetime.now(timezone.utc)
+        old_period_end = int((now - timedelta(hours=2)).timestamp())
+        old_period_start = old_period_end - (30 * 24 * 60 * 60)
+
+        alert_hash = hashlib.sha256(b"pw_alert_backup").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_alert_backup",
+                "sk": alert_hash,
+                "key_hash": alert_hash,
+                "tier": "pro",
+                "stripe_customer_id": "cus_alert_backup",
+                "current_period_start": old_period_start,
+                "current_period_end": old_period_end,
+                "last_reset_period_start": old_period_start - (30 * 24 * 60 * 60),
+                "requests_this_month": 2000,
+            }
+        )
+
+        from api.reset_usage_backup import handler
+
+        handler({}, {})
+
+        assert "ALERT" in caplog.text
+        assert "check Stripe webhook delivery" in caplog.text
+
+
+class TestInvoicePaidMissingSubscription:
+    """Test for invoice.paid with no subscription ID."""
+
+    @mock_aws
+    def test_handles_no_subscription_id_gracefully(self, mock_dynamodb):
+        """Should handle invoice.paid with missing subscription field."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.stripe_webhook import _handle_invoice_paid
+
+        invoice = {
+            "customer": "cus_no_sub",
+            "billing_reason": "subscription_cycle",
+            "lines": {"data": [{"type": "subscription", "period": {"start": 1706745600, "end": 1709424000}}]},
+        }
+
+        # Should not raise even without subscription field
+        _handle_invoice_paid(invoice)

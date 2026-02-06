@@ -861,3 +861,133 @@ class TestIntegration:
 
                 # Should still succeed
                 assert result["statusCode"] == 200
+
+
+class TestMetricsImportError:
+    """Tests for metrics ImportError handling (lines 116-117)."""
+
+    @mock_aws
+    def test_handles_metrics_import_error_gracefully(self, mock_dynamodb):
+        """Should handle ImportError when shared.metrics is not available.
+
+        Covers lines 116-117: except ImportError: pass
+        """
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["DISCOVERY_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        now = datetime.now(timezone.utc).isoformat()
+
+        table.put_item(
+            Item={
+                "pk": "npm#metrics-import-pkg",
+                "sk": "LATEST",
+                "tier": 1,
+                "last_updated": now,
+            }
+        )
+
+        import importlib
+
+        import discovery.graph_expander_dispatcher as module
+
+        importlib.reload(module)
+
+        # Remove shared.metrics from sys.modules to force ImportError
+        saved = sys.modules.pop("shared.metrics", None)
+        try:
+            with patch.object(module, "sqs"):
+                result = module.handler({}, None)
+
+                assert result["statusCode"] == 200
+                body = json.loads(result["body"])
+                assert body["dispatched"] == 1
+        finally:
+            if saved is not None:
+                sys.modules["shared.metrics"] = saved
+
+
+class TestMetricsImportErrorForced:
+    """Force a real ImportError for shared.metrics to cover lines 116-117."""
+
+    @mock_aws
+    def test_metrics_import_error_via_import_hook(self, mock_dynamodb):
+        """Cover lines 116-117 by forcing ImportError via __import__ override.
+
+        The existing test removes shared.metrics from sys.modules, but Python
+        can re-import it from the filesystem. This test uses a custom import
+        hook to truly block the import.
+        """
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["DISCOVERY_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        now = datetime.now(timezone.utc).isoformat()
+
+        table.put_item(
+            Item={
+                "pk": "npm#hook-test-pkg",
+                "sk": "LATEST",
+                "tier": 1,
+                "last_updated": now,
+            }
+        )
+
+        import importlib
+
+        import discovery.graph_expander_dispatcher as module
+
+        importlib.reload(module)
+
+        original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+
+        def blocked_import(name, *args, **kwargs):
+            if name == "shared.metrics":
+                raise ImportError("Blocked in test")
+            return original_import(name, *args, **kwargs)
+
+        with patch.object(module, "sqs"):
+            with patch("builtins.__import__", side_effect=blocked_import):
+                result = module.handler({}, None)
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["dispatched"] == 1
+        assert body["messages"] == 1
+
+
+class TestDeduplicationInDispatch:
+    """Tests for deduplication behavior during dispatch."""
+
+    @mock_aws
+    def test_same_package_in_multiple_tiers_dispatched_once_each(self, mock_dynamodb):
+        """If a package appears in both tier queries, both copies are dispatched.
+
+        The dispatcher doesn't deduplicate at this level - it sends whatever
+        DynamoDB returns. Deduplication happens at the worker level.
+        """
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["DISCOVERY_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        import discovery.graph_expander_dispatcher as module
+
+        importlib.reload(module)
+
+        # Mock table to return same package for both tier queries
+        mock_table = MagicMock()
+        mock_table.query.return_value = {
+            "Items": [
+                {"pk": "npm#shared-pkg", "sk": "LATEST", "tier": 1},
+            ]
+        }
+
+        with patch.object(module.dynamodb, "Table", return_value=mock_table):
+            with patch.object(module, "sqs"):
+                result = module.handler({}, None)
+
+                assert result["statusCode"] == 200
+                body = json.loads(result["body"])
+                # Both tier queries return the same package = 2 total
+                assert body["dispatched"] == 2

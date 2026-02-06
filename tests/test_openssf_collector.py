@@ -194,3 +194,34 @@ class TestGetOpenSSFScorecard:
         result = await get_openssf_scorecard("owner", "repo")
         assert result is not None
         assert result["openssf_score"] == 0
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_4xx_non_429_returns_none(self):
+        """Test that non-429 4xx errors return None (line 83-84 coverage)."""
+        respx.get(f"{OPENSSF_API}/projects/github.com/owner/repo").mock(return_value=httpx.Response(403))
+
+        result = await get_openssf_scorecard("owner", "repo")
+        assert result is None
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_generic_exception_returns_none(self):
+        """Test that generic non-HTTP exceptions return None."""
+        respx.get(f"{OPENSSF_API}/projects/github.com/owner/repo").mock(side_effect=ValueError("Unexpected error"))
+
+        result = await get_openssf_scorecard("owner", "repo")
+        assert result is None
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_empty_checks_list(self):
+        """Test handling of empty checks list."""
+        respx.get(f"{OPENSSF_API}/projects/github.com/owner/repo").mock(
+            return_value=httpx.Response(200, json={"score": 7.0, "checks": []})
+        )
+
+        result = await get_openssf_scorecard("owner", "repo")
+        assert result is not None
+        assert result["openssf_checks"] == []
+        assert result["openssf_score"] == 7.0

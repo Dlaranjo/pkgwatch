@@ -2064,9 +2064,7 @@ class TestLargeDependencyLists:
         assert body["error"]["code"] == "rate_limit_exceeded"
 
     @mock_aws
-    def test_rejects_scan_exceeding_max_dependencies(
-        self, seeded_api_keys_table, api_gateway_event
-    ):
+    def test_rejects_scan_exceeding_max_dependencies(self, seeded_api_keys_table, api_gateway_event):
         """Should return 400 when scan exceeds MAX_DEPENDENCIES_PER_SCAN."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -2939,9 +2937,16 @@ class TestPostScanResponseSchema:
         body = json.loads(result["body"])
 
         required_keys = {
-            "total", "critical", "high", "medium", "low",
-            "packages", "not_found", "data_quality",
-            "verified_risk_count", "unverified_risk_count",
+            "total",
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "packages",
+            "not_found",
+            "data_quality",
+            "verified_risk_count",
+            "unverified_risk_count",
         }
         assert required_keys.issubset(set(body.keys())), f"Missing: {required_keys - set(body.keys())}"
 
@@ -2985,25 +2990,28 @@ class TestPostScanResponseSchema:
         table, test_key = seeded_api_keys_table
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps(
-            {"dependencies": {"lodash": "^4.17.21", "abandoned-pkg": "^1.0.0"}}
-        )
+        api_gateway_event["body"] = json.dumps({"dependencies": {"lodash": "^4.17.21", "abandoned-pkg": "^1.0.0"}})
 
         result = handler(api_gateway_event, {})
         body = json.loads(result["body"])
 
         per_package_keys = {
-            "package", "health_score", "risk_level",
-            "abandonment_risk", "is_deprecated", "archived",
-            "last_updated", "data_quality",
+            "package",
+            "health_score",
+            "risk_level",
+            "abandonment_risk",
+            "is_deprecated",
+            "archived",
+            "last_updated",
+            "data_quality",
         }
         for pkg in body["packages"]:
-            assert per_package_keys.issubset(set(pkg.keys())), f"Missing in {pkg['package']}: {per_package_keys - set(pkg.keys())}"
+            assert per_package_keys.issubset(set(pkg.keys())), (
+                f"Missing in {pkg['package']}: {per_package_keys - set(pkg.keys())}"
+            )
 
     @mock_aws
-    def test_content_type_is_application_json(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_content_type_is_application_json(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Response Content-Type must be application/json."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -3088,9 +3096,7 @@ class TestPostScanSecurityInputValidation:
         table, test_key = seeded_api_keys_table
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps(
-            {"dependencies": {"<script>alert(1)</script>": "^1.0.0"}}
-        )
+        api_gateway_event["body"] = json.dumps({"dependencies": {"<script>alert(1)</script>": "^1.0.0"}})
 
         result = handler(api_gateway_event, {})
         # Should succeed (package won't be found) but not crash
@@ -3141,9 +3147,7 @@ class TestPostScanCORSHeaders:
         assert result["headers"].get("Access-Control-Allow-Origin") == "https://pkgwatch.dev"
 
     @mock_aws
-    def test_no_cors_for_disallowed_origin(
-        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
-    ):
+    def test_no_cors_for_disallowed_origin(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
         """Should not include CORS headers for disallowed origin."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
@@ -3177,9 +3181,7 @@ class TestPostScanRiskCountConsistency:
         table, test_key = seeded_api_keys_table
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps(
-            {"dependencies": {"lodash": "^4.17.21", "abandoned-pkg": "^1.0.0"}}
-        )
+        api_gateway_event["body"] = json.dumps({"dependencies": {"lodash": "^4.17.21", "abandoned-pkg": "^1.0.0"}})
 
         result = handler(api_gateway_event, {})
         body = json.loads(result["body"])
@@ -3201,9 +3203,7 @@ class TestPostScanRiskCountConsistency:
         table, test_key = seeded_api_keys_table
         api_gateway_event["httpMethod"] = "POST"
         api_gateway_event["headers"]["x-api-key"] = test_key
-        api_gateway_event["body"] = json.dumps(
-            {"dependencies": {"lodash": "^4", "unknown-pkg-123": "^1.0.0"}}
-        )
+        api_gateway_event["body"] = json.dumps({"dependencies": {"lodash": "^4", "unknown-pkg-123": "^1.0.0"}})
 
         result = handler(api_gateway_event, {})
         body = json.loads(result["body"])

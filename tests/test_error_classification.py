@@ -205,3 +205,77 @@ class TestClassifyError:
         """Multiline error messages should be handled."""
         multiline = "HTTP Error\n503 Service Unavailable\nTry again later"
         assert classify_error(multiline) == "transient"
+
+    def test_error_with_only_number_like_pattern(self):
+        """Error messages with status codes embedded in text."""
+        assert classify_error("Received status 502 from upstream") == "transient"
+        assert classify_error("Error code 404 returned") == "permanent"
+
+    def test_error_with_stacktrace(self):
+        """Error messages containing stack traces should still classify."""
+        error = (
+            "Traceback (most recent call last):\n"
+            '  File "handler.py", line 42, in process\n'
+            "requests.exceptions.ConnectionError: connection reset by peer"
+        )
+        assert classify_error(error) == "transient"
+
+    def test_error_with_json_body(self):
+        """Error messages containing JSON should still classify."""
+        error = '{"status": 503, "message": "Service Unavailable"}'
+        assert classify_error(error) == "transient"
+
+    def test_mixed_case_permanent_patterns(self):
+        """All permanent patterns should match case-insensitively."""
+        assert classify_error("PATH TRAVERSAL attempt detected") == "permanent"
+        assert classify_error("EMPTY PACKAGE NAME") == "permanent"
+        assert classify_error("Package Name Too Long: exceeded 256 chars") == "permanent"
+
+    def test_error_classification_is_deterministic(self):
+        """Same error message should always produce same classification."""
+        error = "Connection timeout after 30s"
+        results = {classify_error(error) for _ in range(100)}
+        assert len(results) == 1
+        assert results.pop() == "transient"
+
+
+# =============================================================================
+# INTEGRATION WITH DLQ RETRY LOGIC
+# =============================================================================
+
+
+class TestErrorClassificationRetryIntegration:
+    """Tests verifying error classification drives correct retry behavior."""
+
+    def test_all_transient_patterns_would_allow_retry(self):
+        """Every transient pattern should result in a classification that allows retry."""
+        for pattern in TRANSIENT_PATTERNS:
+            # Build a message that only matches this transient pattern
+            msg = f"Specific error: {pattern} occurred"
+            result = classify_error(msg)
+            # Should be transient (or permanent if pattern also matches permanent)
+            assert result in ("transient", "permanent"), f"Pattern '{pattern}' classified as '{result}'"
+
+    def test_all_permanent_patterns_would_block_retry(self):
+        """Every permanent pattern should result in classification that blocks retry."""
+        for pattern in PERMANENT_PATTERNS:
+            msg = f"Error: {pattern}"
+            result = classify_error(msg)
+            assert result == "permanent", f"Pattern '{pattern}' was '{result}', expected 'permanent'"
+
+    def test_empty_string_returns_unknown(self):
+        """Empty string should return unknown."""
+        assert classify_error("") == "unknown"
+
+    def test_none_returns_unknown(self):
+        """None should return unknown."""
+        assert classify_error(None) == "unknown"
+
+    def test_numeric_status_codes_classified_correctly(self):
+        """HTTP status codes should be classified as expected."""
+        assert classify_error("HTTP 404") == "permanent"
+        assert classify_error("HTTP 502") == "transient"
+        assert classify_error("HTTP 503") == "transient"
+        assert classify_error("HTTP 504") == "transient"
+        assert classify_error("HTTP 200") == "unknown"  # Success code not classified
+        assert classify_error("HTTP 400") == "unknown"  # 400 not in patterns

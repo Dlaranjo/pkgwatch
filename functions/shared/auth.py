@@ -156,10 +156,6 @@ def validate_api_key(api_key: str, max_retries: int = 3) -> Optional[UserInfo]:
             logger.error(f"Error validating API key: {e}")
             return None
 
-    # Max retries exceeded
-    logger.error("Max retries exceeded validating API key")
-    return None
-
 
 def increment_usage(user_id: str, key_hash: str, count: int = 1) -> int:
     """

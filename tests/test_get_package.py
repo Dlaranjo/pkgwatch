@@ -1376,3 +1376,542 @@ class TestQueryableFieldFallback:
         assert result["statusCode"] == 200
         body = json.loads(result["body"])
         assert body["package"] == "premigration-pkg"
+
+
+class TestGetPackageResponseSchema:
+    """Tests verifying exact response JSON schema (field names, types, nesting)."""
+
+    @mock_aws
+    def test_200_response_has_exact_top_level_fields(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """200 response must contain exactly the expected top-level keys."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+
+        expected_keys = {
+            "package",
+            "ecosystem",
+            "health_score",
+            "risk_level",
+            "abandonment_risk",
+            "components",
+            "confidence",
+            "signals",
+            "openssf_checks",
+            "advisories",
+            "latest_version",
+            "last_published",
+            "repository_url",
+            "last_updated",
+            "data_quality",
+            "feedback_url",
+        }
+        actual_keys = set(body.keys())
+        # The only extra key allowed is usage_alert (present when near limit)
+        assert expected_keys.issubset(actual_keys), f"Missing keys: {expected_keys - actual_keys}"
+
+    @mock_aws
+    def test_200_response_field_types(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
+        """200 response fields must have the correct types."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+        body = json.loads(result["body"])
+
+        assert isinstance(body["package"], str)
+        assert isinstance(body["ecosystem"], str)
+        assert isinstance(body["health_score"], (int, float, type(None)))
+        assert isinstance(body["risk_level"], (str, type(None)))
+        assert isinstance(body["signals"], dict)
+        assert isinstance(body["openssf_checks"], dict)
+        assert isinstance(body["advisories"], list)
+        assert isinstance(body["data_quality"], dict)
+        assert isinstance(body["feedback_url"], str)
+
+    @mock_aws
+    def test_signals_substructure_types(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
+        """Signals substructure must have the correct field types."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+        body = json.loads(result["body"])
+        signals = body["signals"]
+
+        assert isinstance(signals["true_bus_factor"], (int, float))
+        assert isinstance(signals["bus_factor_confidence"], str)
+        assert signals["bus_factor_confidence"] in ("LOW", "MEDIUM", "HIGH")
+
+    @mock_aws
+    def test_feedback_url_contains_encoded_package_name(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """feedback_url must contain properly URL-encoded ecosystem and package name."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+        body = json.loads(result["body"])
+
+        assert "github.com/Dlaranjo/pkgwatch/issues/new" in body["feedback_url"]
+        assert "score-feedback" in body["feedback_url"]
+        assert "npm" in body["feedback_url"]
+        assert "lodash" in body["feedback_url"]
+
+    @mock_aws
+    def test_202_response_has_exact_fields(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
+        """202 response must contain exactly the expected keys."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
+        packages_table.put_item(
+            Item={
+                "pk": "npm#collecting-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "collecting-pkg",
+                "health_score": 50,
+                "data_status": "pending",
+                "queryable": False,
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "collecting-pkg"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 202
+        body = json.loads(result["body"])
+
+        expected_keys = {"status", "package", "ecosystem", "data_status", "message", "retry_after_seconds"}
+        assert set(body.keys()) == expected_keys
+        assert body["status"] == "collecting"
+        assert isinstance(body["retry_after_seconds"], int)
+
+    @mock_aws
+    def test_202_response_content_type_is_json(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
+        """202 response must have Content-Type: application/json."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
+        packages_table.put_item(
+            Item={
+                "pk": "npm#ct-test-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "ct-test-pkg",
+                "health_score": 50,
+                "data_status": "pending",
+                "queryable": False,
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "ct-test-pkg"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 202
+        assert result["headers"]["Content-Type"] == "application/json"
+
+    @mock_aws
+    def test_404_error_response_has_exact_structure(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """404 error response must have {"error": {"code": ..., "message": ...}}."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "no-such-pkg"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 404
+        body = json.loads(result["body"])
+
+        assert "error" in body
+        assert isinstance(body["error"]["code"], str)
+        assert isinstance(body["error"]["message"], str)
+        assert body["error"]["code"] == "package_not_found"
+        assert "no-such-pkg" in body["error"]["message"]
+
+    @mock_aws
+    def test_200_response_content_type_is_json(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
+        """200 response must have Content-Type: application/json."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 200
+        assert result["headers"]["Content-Type"] == "application/json"
+
+    @mock_aws
+    def test_429_authenticated_response_has_upgrade_url(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
+        """429 for authenticated users must include upgrade_url and retry_after_seconds."""
+        import hashlib
+
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        test_key = "pw_schema_test_rate_limit"
+        key_hash = hashlib.sha256(test_key.encode()).hexdigest()
+
+        table.put_item(
+            Item={
+                "pk": "user_schema_429",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "schema429@example.com",
+                "tier": "free",
+                "created_at": "2024-01-01T00:00:00Z",
+                "email_verified": True,
+            }
+        )
+        table.put_item(
+            Item={
+                "pk": "user_schema_429",
+                "sk": "USER_META",
+                "requests_this_month": 5000,
+            }
+        )
+
+        from api.get_package import handler
+
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 429
+        body = json.loads(result["body"])
+
+        assert body["error"]["code"] == "rate_limit_exceeded"
+        assert "upgrade_url" in body["error"]
+        assert "retry_after_seconds" in body["error"]
+        assert isinstance(body["error"]["retry_after_seconds"], int)
+        assert body["error"]["retry_after_seconds"] > 0
+
+    @mock_aws
+    def test_429_demo_response_has_signup_url(self, mock_dynamodb, seeded_packages_table, api_gateway_event):
+        """429 for demo users must include signup_url and retry_after_seconds."""
+        from datetime import datetime, timezone
+
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        now = datetime.now(timezone.utc)
+        current_hour = now.strftime("%Y-%m-%d-%H")
+
+        table.put_item(
+            Item={
+                "pk": "demo#127.0.0.1",
+                "sk": f"hour#{current_hour}",
+                "requests": 21,
+                "ttl": int(now.timestamp()) + 7200,
+            }
+        )
+
+        from api.get_package import handler
+
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 429
+        body = json.loads(result["body"])
+
+        assert body["error"]["code"] == "demo_rate_limit_exceeded"
+        assert "signup_url" in body["error"]
+        assert "retry_after_seconds" in body["error"]
+        assert body["error"]["retry_after_seconds"] == 3600
+
+
+class TestGetPackageSecurityInputValidation:
+    """Security tests: input validation against injection attacks."""
+
+    @mock_aws
+    def test_sql_injection_in_package_name(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
+        """SQL injection attempt in package name should return 404, not leak data."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        injection_names = [
+            "'; DROP TABLE packages; --",
+            "1 OR 1=1",
+            "lodash' UNION SELECT * FROM users --",
+        ]
+
+        for name in injection_names:
+            api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": name}
+            api_gateway_event["headers"]["x-api-key"] = test_key
+            result = handler(api_gateway_event, {})
+            assert result["statusCode"] == 404, f"Injection attempt should return 404: {name}"
+
+    @mock_aws
+    def test_path_traversal_in_package_name(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
+        """Path traversal in package name should return 404, not leak files."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        traversal_names = [
+            "../../../etc/passwd",
+            "..%2F..%2F..%2Fetc%2Fpasswd",
+            "....//....//etc/passwd",
+        ]
+
+        for name in traversal_names:
+            api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": name}
+            api_gateway_event["headers"]["x-api-key"] = test_key
+            result = handler(api_gateway_event, {})
+            assert result["statusCode"] == 404, f"Path traversal should return 404: {name}"
+            body = json.loads(result["body"])
+            # Must not leak file content
+            assert "root:" not in body.get("error", {}).get("message", "")
+
+    @mock_aws
+    def test_xss_in_package_name_returns_valid_json(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """XSS attempt in package name should return valid JSON, not HTML."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        xss_name = "<script>alert('xss')</script>"
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": xss_name}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 404
+        # Response must be valid JSON (Content-Type: application/json protects against XSS)
+        body = json.loads(result["body"])
+        assert result["headers"]["Content-Type"] == "application/json"
+        assert body["error"]["code"] == "package_not_found"
+
+    @mock_aws
+    def test_null_byte_in_package_name(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
+        """Null byte in package name should not crash the handler."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "pkg\x00evil"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] in (400, 404)
+
+    @mock_aws
+    def test_extremely_long_package_name_1000_chars(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """Extremely long package name should not crash or cause DoS."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        long_name = "a" * 1000
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": long_name}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 404
+
+    @mock_aws
+    def test_unicode_emoji_package_name(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
+        """Unicode emoji in package name should not crash."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "pkg-\U0001f4a9-test"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] in (400, 404)
+
+
+class TestGetPackageCORSHeaders:
+    """Tests for CORS header correctness in all response types."""
+
+    @mock_aws
+    def test_200_response_includes_cors_for_allowed_origin(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """200 response should include CORS headers for allowed origin."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["headers"]["origin"] = "https://pkgwatch.dev"
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 200
+        assert result["headers"].get("Access-Control-Allow-Origin") == "https://pkgwatch.dev"
+        assert "Access-Control-Allow-Methods" in result["headers"]
+
+    @mock_aws
+    def test_200_response_no_cors_for_disallowed_origin(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """200 response should NOT include CORS headers for disallowed origin."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["headers"]["origin"] = "https://evil-site.com"
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 200
+        assert "Access-Control-Allow-Origin" not in result["headers"]
+
+    @mock_aws
+    def test_404_response_includes_cors_for_allowed_origin(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """404 error response should include CORS headers for allowed origin."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "no-such-pkg"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["headers"]["origin"] = "https://pkgwatch.dev"
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 404
+        assert result["headers"].get("Access-Control-Allow-Origin") == "https://pkgwatch.dev"
+
+    @mock_aws
+    def test_202_response_includes_cors_for_allowed_origin(
+        self, seeded_api_keys_table, mock_dynamodb, api_gateway_event
+    ):
+        """202 collecting response should include CORS headers."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
+        packages_table.put_item(
+            Item={
+                "pk": "npm#cors-test-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "cors-test-pkg",
+                "health_score": 50,
+                "data_status": "pending",
+                "queryable": False,
+                "last_updated": "2024-01-01T00:00:00Z",
+            }
+        )
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "cors-test-pkg"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["headers"]["origin"] = "https://pkgwatch.dev"
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 202
+        assert result["headers"].get("Access-Control-Allow-Origin") == "https://pkgwatch.dev"
+
+
+class TestGetPackageRateLimitReset:
+    """Tests for X-RateLimit-Reset header precision."""
+
+    @mock_aws
+    def test_authenticated_rate_limit_reset_is_end_of_month(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """Authenticated X-RateLimit-Reset should be end of current month."""
+        import time
+
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 200
+
+        reset_ts = int(result["headers"]["X-RateLimit-Reset"])
+        # Should be in the future
+        assert reset_ts > int(time.time())
+        # Should be no more than 31 days from now
+        assert reset_ts < int(time.time()) + 31 * 86400 + 86400

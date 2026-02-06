@@ -991,3 +991,333 @@ class TestConcurrencySimulation:
             Key={"pk": verified_user_with_magic_token["user_id"], "sk": verified_user_with_magic_token["key_hash"]}
         )
         assert "magic_token" not in response["Item"]
+
+
+# ============================================================================
+# resend_verification.py - Coverage Gaps (lines 70-71, 77, 119-120, 152-154)
+# ============================================================================
+
+
+class TestResendVerificationCoverageGaps:
+    """Tests covering specific uncovered lines in resend_verification.py.
+
+    Lines 70-71: json.JSONDecodeError when parsing request body
+    Line 77: invalid email (missing @ or empty)
+    Lines 119-120: except (ValueError, TypeError) when parsing last_verification_sent
+    Lines 152-154: General except Exception handler
+    """
+
+    @mock_aws
+    def test_invalid_json_body_returns_400(self, mock_dynamodb, setup_env, api_gateway_event):
+        """Should return 400 for invalid JSON body (lines 70-71)."""
+        from api.resend_verification import handler
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = "not valid json {{{{"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_json"
+
+    @mock_aws
+    def test_empty_email_returns_400(self, mock_dynamodb, setup_env, api_gateway_event):
+        """Should return 400 for empty email (line 77)."""
+        from api.resend_verification import handler
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = json.dumps({"email": ""})
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_email"
+
+    @mock_aws
+    def test_email_without_at_sign_returns_400(self, mock_dynamodb, setup_env, api_gateway_event):
+        """Should return 400 for email without @ (line 77)."""
+        from api.resend_verification import handler
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = json.dumps({"email": "notanemailaddress"})
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_email"
+
+    @mock_aws
+    def test_missing_email_field_returns_400(self, mock_dynamodb, setup_env, api_gateway_event):
+        """Should return 400 when email field is missing entirely (line 77)."""
+        from api.resend_verification import handler
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = json.dumps({"name": "test"})
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_email"
+
+    @mock_aws
+    def test_malformed_last_verification_sent_timestamp(self, mock_dynamodb, mock_ses, setup_env, api_gateway_event):
+        """Should ignore malformed last_verification_sent and continue (lines 119-120)."""
+        from api.resend_verification import handler
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create PENDING record with malformed last_verification_sent
+        user_id = f"user_{secrets.token_hex(8)}"
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "PENDING",
+                "email": "malformed_ts@example.com",
+                "verification_token": secrets.token_urlsafe(32),
+                "verification_expires": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "last_verification_sent": "not-a-valid-timestamp-at-all",  # Malformed
+            }
+        )
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = json.dumps({"email": "malformed_ts@example.com"})
+
+        result = handler(api_gateway_event, {})
+
+        # Should succeed (malformed timestamp silently ignored, treated as no cooldown)
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert "pending verification" in body["message"]
+
+    @mock_aws
+    def test_none_last_verification_sent_timestamp(self, mock_dynamodb, mock_ses, setup_env, api_gateway_event):
+        """Should handle None last_verification_sent gracefully (TypeError in lines 119-120)."""
+        from api.resend_verification import handler
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        user_id = f"user_{secrets.token_hex(8)}"
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "PENDING",
+                "email": "none_ts@example.com",
+                "verification_token": secrets.token_urlsafe(32),
+                "verification_expires": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                # last_verification_sent not set at all (will be None from .get())
+            }
+        )
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = json.dumps({"email": "none_ts@example.com"})
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+
+    @mock_aws
+    def test_database_error_returns_500(self, mock_dynamodb, setup_env, api_gateway_event):
+        """Should return 500 when database query fails (lines 152-154)."""
+        from unittest.mock import patch
+
+        from api.resend_verification import handler
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = json.dumps({"email": "error@example.com"})
+
+        # Patch dynamodb to raise an exception during query
+        with patch("api.resend_verification.dynamodb") as mock_db:
+            from unittest.mock import MagicMock
+
+            mock_table = MagicMock()
+            mock_table.query.side_effect = RuntimeError("DynamoDB connection error")
+            mock_db.Table.return_value = mock_table
+
+            result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 500
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "internal_error"
+
+    @mock_aws
+    def test_null_body_treated_as_empty_json(self, mock_dynamodb, setup_env, api_gateway_event):
+        """Should handle None body gracefully (the `or "{}"` pattern)."""
+        from api.resend_verification import handler
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = None
+
+        result = handler(api_gateway_event, {})
+
+        # Empty JSON => empty email => 400
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_email"
+
+
+class TestResendVerificationEmailEnumeration:
+    """Security tests for email enumeration prevention in resend_verification."""
+
+    @mock_aws
+    def test_same_message_for_existing_vs_nonexistent_email(
+        self, mock_dynamodb, mock_ses, pending_user, setup_env, api_gateway_event
+    ):
+        """Should return identical success message regardless of email existence."""
+        from api.resend_verification import handler
+
+        api_gateway_event["httpMethod"] = "POST"
+
+        # Request for existing pending email
+        api_gateway_event["body"] = json.dumps({"email": pending_user["email"]})
+        result_existing = handler(api_gateway_event, {})
+        body_existing = json.loads(result_existing["body"])
+
+        # Request for nonexistent email
+        api_gateway_event["body"] = json.dumps({"email": "nonexistent_user_xyz@example.com"})
+        result_nonexistent = handler(api_gateway_event, {})
+        body_nonexistent = json.loads(result_nonexistent["body"])
+
+        # Both should be 200 with same message
+        assert result_existing["statusCode"] == 200
+        assert result_nonexistent["statusCode"] == 200
+        assert body_existing["message"] == body_nonexistent["message"]
+
+    @mock_aws
+    def test_email_normalization_case_insensitive(self, mock_dynamodb, mock_ses, setup_env, api_gateway_event):
+        """Email should be normalized to lowercase before lookup."""
+        from api.resend_verification import handler
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        # Create pending user with lowercase email
+        user_id = f"user_{secrets.token_hex(8)}"
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "PENDING",
+                "email": "test@example.com",
+                "verification_token": secrets.token_urlsafe(32),
+                "verification_expires": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+        api_gateway_event["httpMethod"] = "POST"
+        # Send with mixed case
+        api_gateway_event["body"] = json.dumps({"email": "  Test@EXAMPLE.com  "})
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 200
+
+    @mock_aws
+    def test_whitespace_only_email_returns_400(self, mock_dynamodb, setup_env, api_gateway_event):
+        """Should return 400 for whitespace-only email."""
+        from api.resend_verification import handler
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = json.dumps({"email": "   "})
+
+        result = handler(api_gateway_event, {})
+        assert result["statusCode"] == 400
+
+
+class TestResendVerificationTimingNormalization:
+    """Additional tests for timing normalization to prevent side-channel attacks."""
+
+    @mock_aws
+    def test_error_responses_also_timing_normalized(self, mock_dynamodb, setup_env, api_gateway_event):
+        """Error responses (500) should also be timing-normalized (lines 152-154)."""
+        from unittest.mock import patch
+
+        from api.resend_verification import MIN_RESPONSE_TIME_SECONDS, handler
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = json.dumps({"email": "error@example.com"})
+
+        with patch("api.resend_verification.dynamodb") as mock_db:
+            from unittest.mock import MagicMock
+
+            mock_table = MagicMock()
+            mock_table.query.side_effect = RuntimeError("DynamoDB error")
+            mock_db.Table.return_value = mock_table
+
+            start = time.time()
+            result = handler(api_gateway_event, {})
+            elapsed = time.time() - start
+
+        assert result["statusCode"] == 500
+        # Error response should also be timing-normalized
+        assert elapsed >= MIN_RESPONSE_TIME_SECONDS - 0.1
+
+
+class TestSessionTamperingAndBypass:
+    """Additional security tests for session cookie tampering and auth bypass."""
+
+    @mock_aws
+    def test_auth_callback_with_xss_in_token(self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event):
+        """XSS payload in token should not be reflected unsanitized in redirect."""
+        import api.auth_callback
+
+        api.auth_callback._session_secret_cache = None
+        api.auth_callback._session_secret_cache_time = 0.0
+
+        from api.auth_callback import handler
+
+        # Token is an XSS payload
+        api_gateway_event["queryStringParameters"] = {"token": '<script>alert("xss")</script>'}
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 302
+        location = result["headers"]["Location"]
+        # Token should not appear unencoded in the redirect URL
+        assert "<script>" not in location
+
+    @mock_aws
+    def test_auth_callback_with_null_bytes_in_token(
+        self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event
+    ):
+        """Null bytes in token should be handled safely."""
+        import api.auth_callback
+
+        api.auth_callback._session_secret_cache = None
+        api.auth_callback._session_secret_cache_time = 0.0
+
+        from api.auth_callback import handler
+
+        api_gateway_event["queryStringParameters"] = {"token": "valid_looking\x00hidden_payload"}
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 302
+        assert "error=" in result["headers"]["Location"]
+
+    @mock_aws
+    def test_resend_verification_with_xss_in_email(self, mock_dynamodb, setup_env, api_gateway_event):
+        """XSS payload in email field should be handled safely."""
+        from api.resend_verification import handler
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = json.dumps({"email": '<script>alert("xss")</script>@evil.com'})
+
+        result = handler(api_gateway_event, {})
+        # Should either be rejected (400 for invalid email) or return generic success
+        assert result["statusCode"] in [200, 400]
+
+    @mock_aws
+    def test_resend_verification_sql_injection_in_email(self, mock_dynamodb, setup_env, api_gateway_event):
+        """SQL injection in email should be handled safely."""
+        from api.resend_verification import handler
+
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["body"] = json.dumps({"email": "'; DROP TABLE users; --@evil.com"})
+
+        result = handler(api_gateway_event, {})
+        # Should return success (email exists check is generic)
+        assert result["statusCode"] == 200

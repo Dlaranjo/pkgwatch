@@ -642,3 +642,47 @@ class TestRecoveryInitiateCORSHeaders:
             response = handler(event, None)
 
         assert response["statusCode"] == 200
+
+
+class TestRecoveryInitiateUserMetaInGSI:
+    """Tests for when USER_META appears in email-index GSI results (line 119)."""
+
+    @mock_aws
+    def test_handles_user_meta_in_gsi_results(self, mock_dynamodb, seeded_api_keys_table):
+        """Should correctly extract USER_META from GSI results when it has an email field.
+
+        When USER_META has an email field, it appears in email-index GSI results
+        alongside the API key record. The code on line 119 handles this case.
+        """
+        table, test_key = seeded_api_keys_table
+
+        # Create USER_META with an email field so it appears in email-index GSI
+        from shared.recovery_utils import generate_recovery_codes
+
+        _, hashed_codes = generate_recovery_codes(count=4)
+
+        table.put_item(
+            Item={
+                "pk": "user_test123",
+                "sk": "USER_META",
+                "email": "test@example.com",  # This makes it appear in email-index GSI
+                "recovery_codes_hash": hashed_codes,
+                "recovery_codes_count": 4,
+            }
+        )
+
+        from api.recovery_initiate import handler
+
+        event = {
+            "body": json.dumps({"email": "test@example.com"}),
+            "headers": {"origin": "https://pkgwatch.dev"},
+        }
+
+        with patch("time.sleep"):
+            response = handler(event, None)
+
+        assert response["statusCode"] == 200
+        body = json.loads(response["body"])
+        # Should detect recovery codes from USER_META returned via GSI
+        assert body["has_recovery_codes"] is True
+        assert "recovery_session_id" in body

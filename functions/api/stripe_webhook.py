@@ -723,9 +723,7 @@ def _handle_payment_failed(invoice: dict):
                 # Send payment failure notification email (best-effort)
                 recipient_email = customer_email or item.get("email")
                 if recipient_email:
-                    _send_payment_failed_email(
-                        recipient_email, item.get("tier", "paid"), GRACE_PERIOD_DAYS
-                    )
+                    _send_payment_failed_email(recipient_email, item.get("tier", "paid"), GRACE_PERIOD_DAYS)
                 logger.info(f"Payment failed for {item['pk']}, grace period started ({GRACE_PERIOD_DAYS} days)")
             except ClientError as e:
                 if e.response["Error"]["Code"] == "ConditionalCheckFailedException":

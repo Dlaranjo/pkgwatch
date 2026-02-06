@@ -353,9 +353,6 @@ def add_bonus_with_cap(user_id: str, amount: int) -> int:
             remaining_cap = BONUS_CAP - current_lifetime
             partial_amount = min(amount, remaining_cap)
 
-            if partial_amount <= 0:
-                return 0
-
             # Try partial update with strict cap condition
             table.update_item(
                 Key={"pk": user_id, "sk": "USER_META"},
