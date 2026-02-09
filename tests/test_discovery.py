@@ -987,6 +987,366 @@ class TestFetchNpmsioTopPackages:
             assert result == []
 
 
+class TestPypiAudit:
+    """Tests for the PyPI audit Lambda."""
+
+    @mock_aws
+    def test_returns_zero_when_no_packages_fetched(self, mock_dynamodb):
+        """Should return zero when top-pypi-packages returns no data."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        import discovery.pypi_audit as module
+
+        importlib.reload(module)
+
+        with patch.object(module, "fetch_top_pypi_packages") as mock_fetch:
+            mock_fetch.return_value = []
+
+            result = module.handler({}, None)
+
+            assert result["statusCode"] == 200
+            body = json.loads(result["body"])
+            assert body["audited"] == 0
+            assert body["missing"] == 0
+            assert body["added"] == 0
+
+    @mock_aws
+    def test_finds_missing_pypi_packages(self, mock_dynamodb):
+        """Should identify PyPI packages we don't have."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        # Add one existing package
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        table.put_item(
+            Item={
+                "pk": "pypi#requests",
+                "sk": "LATEST",
+                "name": "requests",
+            }
+        )
+
+        import importlib
+
+        import discovery.pypi_audit as module
+
+        importlib.reload(module)
+
+        with patch.object(module, "fetch_top_pypi_packages") as mock_fetch:
+            mock_fetch.return_value = [
+                {"name": "requests", "download_count": 50000000},  # Exists
+                {"name": "flask", "download_count": 5000000},  # Missing
+                {"name": "django", "download_count": 8000000},  # Missing
+            ]
+
+            with patch.object(module, "sqs"):
+                result = module.handler({}, None)
+
+                assert result["statusCode"] == 200
+                body = json.loads(result["body"])
+                assert body["audited"] == 3
+                assert body["missing"] == 2
+                assert body["added"] == 2
+
+    @mock_aws
+    def test_skips_low_download_packages(self, mock_dynamodb):
+        """Should skip packages below download threshold."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        import discovery.pypi_audit as module
+
+        importlib.reload(module)
+
+        with patch.object(module, "fetch_top_pypi_packages") as mock_fetch:
+            mock_fetch.return_value = [
+                {"name": "tiny-pkg", "download_count": 500},  # Below 10K threshold
+                {"name": "popular-pkg", "download_count": 1000000},  # Above threshold
+            ]
+
+            with patch.object(module, "sqs"):
+                result = module.handler({}, None)
+
+                assert result["statusCode"] == 200
+                body = json.loads(result["body"])
+                assert body["missing"] == 2
+                assert body["added"] == 1  # Only popular-pkg added
+
+    @mock_aws
+    def test_queues_added_packages(self, mock_dynamodb):
+        """Should queue added packages for collection."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        import discovery.pypi_audit as module
+
+        importlib.reload(module)
+
+        with patch.object(module, "fetch_top_pypi_packages") as mock_fetch:
+            mock_fetch.return_value = [
+                {"name": "new-pkg", "download_count": 500000},
+            ]
+
+            with patch.object(module, "sqs") as mock_sqs:
+                result = module.handler({}, None)
+
+                assert result["statusCode"] == 200
+                body = json.loads(result["body"])
+                assert body["queued"] == 1
+
+                mock_sqs.send_message.assert_called_once()
+                call_args = mock_sqs.send_message.call_args
+                msg_body = json.loads(call_args.kwargs["MessageBody"])
+                assert msg_body["name"] == "new-pkg"
+                assert msg_body["ecosystem"] == "pypi"
+                assert msg_body["reason"] == "pypi_audit"
+
+    @mock_aws
+    def test_skips_packages_without_name(self, mock_dynamodb):
+        """Should skip packages without name field."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        import discovery.pypi_audit as module
+
+        importlib.reload(module)
+
+        with patch.object(module, "fetch_top_pypi_packages") as mock_fetch:
+            mock_fetch.return_value = [
+                {"download_count": 1000000},  # Missing name
+                {"name": "valid-pkg", "download_count": 500000},
+            ]
+
+            with patch.object(module, "sqs"):
+                result = module.handler({}, None)
+
+                assert result["statusCode"] == 200
+                body = json.loads(result["body"])
+                assert body["audited"] == 2
+                assert body["missing"] == 1
+
+    @mock_aws
+    def test_handles_get_item_exception(self, mock_dynamodb):
+        """Should continue when get_item fails for a package."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        import discovery.pypi_audit as module
+
+        importlib.reload(module)
+
+        with patch.object(module, "fetch_top_pypi_packages") as mock_fetch:
+            mock_fetch.return_value = [
+                {"name": "error-pkg", "download_count": 500000},
+                {"name": "ok-pkg", "download_count": 500000},
+            ]
+
+            mock_table = MagicMock()
+            call_count = [0]
+
+            def mock_get_item(**kwargs):
+                call_count[0] += 1
+                if call_count[0] == 1:
+                    raise Exception("DynamoDB error")
+                return {}  # Not found
+
+            mock_table.get_item.side_effect = mock_get_item
+            mock_table.put_item.return_value = {}
+
+            with patch.object(module.dynamodb, "Table", return_value=mock_table):
+                with patch.object(module, "sqs"):
+                    result = module.handler({}, None)
+
+                    assert result["statusCode"] == 200
+                    body = json.loads(result["body"])
+                    # Should still process ok-pkg
+                    assert body["audited"] == 2
+
+    @mock_aws
+    def test_handles_conditional_check_failed(self, mock_dynamodb):
+        """Should handle race condition when package already exists."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        from botocore.exceptions import ClientError
+
+        import discovery.pypi_audit as module
+
+        importlib.reload(module)
+
+        with patch.object(module, "fetch_top_pypi_packages") as mock_fetch:
+            mock_fetch.return_value = [
+                {"name": "race-pkg", "download_count": 500000},
+            ]
+
+            mock_table = MagicMock()
+            mock_table.get_item.return_value = {}  # Not found initially
+
+            error_response = {"Error": {"Code": "ConditionalCheckFailedException"}}
+            mock_table.put_item.side_effect = ClientError(error_response, "PutItem")
+
+            with patch.object(module.dynamodb, "Table", return_value=mock_table):
+                with patch.object(module, "sqs"):
+                    result = module.handler({}, None)
+
+                    assert result["statusCode"] == 200
+                    body = json.loads(result["body"])
+                    assert body["added"] == 0
+
+    @mock_aws
+    def test_normalizes_pypi_names(self, mock_dynamodb):
+        """Should normalize PyPI package names per PEP 503."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import importlib
+
+        import discovery.pypi_audit as module
+
+        importlib.reload(module)
+
+        # Verify normalization function
+        assert module.normalize_pypi_name("Flask") == "flask"
+        assert module.normalize_pypi_name("Requests_Oauthlib") == "requests-oauthlib"
+        assert module.normalize_pypi_name("Flask.WTF") == "flask-wtf"
+        assert module.normalize_pypi_name("foo__bar") == "foo-bar"
+
+
+class TestFetchTopPypiPackages:
+    """Tests for fetch_top_pypi_packages function."""
+
+    def test_fetch_returns_packages(self):
+        """Should fetch and parse packages from top-pypi-packages dataset."""
+        import discovery.pypi_audit as module
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "last_update": "2025-01-01",
+            "rows": [
+                {"project": "boto3", "download_count": 1600000000},
+                {"project": "urllib3", "download_count": 1100000000},
+            ],
+        }
+
+        with patch("discovery.pypi_audit.httpx.Client") as mock_client:
+            mock_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+            result = module.fetch_top_pypi_packages()
+
+            assert len(result) == 2
+            assert result[0]["name"] == "boto3"
+            assert result[0]["download_count"] == 1600000000
+            assert result[1]["name"] == "urllib3"
+
+    def test_fetch_normalizes_names(self):
+        """Should normalize PyPI names in fetched results."""
+        import discovery.pypi_audit as module
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "rows": [
+                {"project": "Flask-WTF", "download_count": 5000000},
+                {"project": "Jinja2", "download_count": 4000000},
+            ],
+        }
+
+        with patch("discovery.pypi_audit.httpx.Client") as mock_client:
+            mock_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+            result = module.fetch_top_pypi_packages()
+
+            assert result[0]["name"] == "flask-wtf"
+            assert result[1]["name"] == "jinja2"
+
+    def test_fetch_handles_empty_response(self):
+        """Should handle empty results."""
+        import discovery.pypi_audit as module
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"rows": []}
+
+        with patch("discovery.pypi_audit.httpx.Client") as mock_client:
+            mock_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+            result = module.fetch_top_pypi_packages()
+
+            assert result == []
+
+    def test_fetch_handles_http_error(self):
+        """Should handle HTTP errors gracefully."""
+        import discovery.pypi_audit as module
+
+        with patch("discovery.pypi_audit.httpx.Client") as mock_client:
+            mock_client.return_value.__enter__.return_value.get.side_effect = httpx.HTTPStatusError(
+                "Server error", request=MagicMock(), response=MagicMock()
+            )
+
+            result = module.fetch_top_pypi_packages()
+
+            assert result == []
+
+    def test_fetch_handles_generic_exception(self):
+        """Should handle generic exceptions gracefully."""
+        import discovery.pypi_audit as module
+
+        with patch("discovery.pypi_audit.httpx.Client") as mock_client:
+            mock_client.return_value.__enter__.return_value.get.side_effect = Exception("Network error")
+
+            result = module.fetch_top_pypi_packages()
+
+            assert result == []
+
+    def test_fetch_skips_rows_without_project(self):
+        """Should skip rows missing the project field."""
+        import discovery.pypi_audit as module
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "rows": [
+                {"download_count": 1600000000},  # Missing project
+                {"project": "boto3", "download_count": 1600000000},
+            ],
+        }
+
+        with patch("discovery.pypi_audit.httpx.Client") as mock_client:
+            mock_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+            result = module.fetch_top_pypi_packages()
+
+            assert len(result) == 1
+            assert result[0]["name"] == "boto3"
+
+    def test_fetch_respects_max_packages(self):
+        """Should limit results to MAX_PACKAGES."""
+        import discovery.pypi_audit as module
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "rows": [{"project": f"pkg-{i}", "download_count": 1000000 - i} for i in range(100)],
+        }
+
+        with patch("discovery.pypi_audit.httpx.Client") as mock_client:
+            mock_client.return_value.__enter__.return_value.get.return_value = mock_response
+
+            with patch.object(module, "MAX_PACKAGES", 50):
+                result = module.fetch_top_pypi_packages()
+
+                assert len(result) == 50
+
+
 class TestGetDependencies:
     """Tests for the get_dependencies function in depsdev_collector."""
 

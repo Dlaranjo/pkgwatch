@@ -827,6 +827,38 @@ export class PipelineStack extends cdk.Stack {
     });
 
     // ===========================================
+    // Lambda: PyPI Audit
+    // ===========================================
+    // Quarterly audit to find missing popular PyPI packages
+    const pypiAudit = new lambda.Function(this, "PypiAudit", {
+      ...commonLambdaProps,
+      functionName: "pkgwatch-pypi-audit",
+      handler: "pypi_audit.handler",
+      code: discoveryCode,
+      timeout: cdk.Duration.minutes(10),
+      memorySize: 1024,
+      description: "Quarterly audit against top-pypi-packages to find missing PyPI packages",
+    });
+
+    packagesTable.grantReadWriteData(pypiAudit);
+    packageQueue.grantSendMessages(pypiAudit);
+    pypiAudit.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudwatch:PutMetricData"],
+        resources: ["*"],
+        conditions: { StringEquals: { "cloudwatch:namespace": "PkgWatch" } },
+      })
+    );
+
+    // Quarterly: 1st of Jan, Apr, Jul, Oct at 3:00 AM UTC (1hr after npm audit)
+    new events.Rule(this, "PypiAuditSchedule", {
+      ruleName: "pkgwatch-pypi-audit",
+      schedule: events.Schedule.expression("cron(0 3 1 1,4,7,10 ? *)"),
+      description: "Quarterly audit of PyPI package coverage",
+      targets: [new targets.LambdaFunction(pypiAudit)],
+    });
+
+    // ===========================================
     // Lambda: Data Status Metrics
     // ===========================================
     // Daily metrics emission for data completeness tracking
