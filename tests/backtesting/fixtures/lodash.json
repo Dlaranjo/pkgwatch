@@ -1,0 +1,43 @@
+{
+  "meta": {
+    "name": "lodash",
+    "ecosystem": "npm",
+    "evaluation_date": "2025-10-01T00:00:00Z",
+    "narrative": "Lodash is the most popular JavaScript utility library with massive adoption. While commit activity has slowed (John-David Dalton is the primary maintainer), it remains one of the most downloaded npm packages. This is a mature, stable library that doesn't need frequent updates - a good test of the maturity factor in the scoring model.",
+    "fixture_source": "web research 2025 (approximate values)"
+  },
+  "data": {
+    "days_since_last_commit": 60,
+    "true_bus_factor": 1,
+    "active_contributors_90d": 2,
+    "prs_merged_90d": 3,
+    "prs_opened_90d": 10,
+    "weekly_downloads": 50000000,
+    "dependents_count": 190000,
+    "stars": 60000,
+    "last_published": "2024-09-15T00:00:00Z",
+    "commits_90d_non_bot": 5,
+    "commits_90d": 8,
+    "total_contributors": 350,
+    "avg_issue_response_hours": 72,
+    "openssf_score": 5.5,
+    "advisories": [],
+    "openssf_checks": [],
+    "created_at": "2012-04-07T00:00:00Z",
+    "last_updated": "2025-09-30T00:00:00Z",
+    "github_error": null,
+    "npm_error": null,
+    "pypi_error": null,
+    "depsdev_error": null,
+    "repository_url": "https://github.com/lodash/lodash",
+    "archived": false,
+    "is_deprecated": false,
+    "deprecation_message": null
+  },
+  "expected": {
+    "known_abandoned": false,
+    "health_score_min": 55,
+    "abandonment_risk_max": 38,
+    "notes": "Mature utility library with low commit velocity but massive adoption. Tests the maturity factor - high downloads + low activity should not be penalized as heavily as true abandonment. Score may be higher than other healthy packages due to bus factor = 1 and stale releases (381 days since last publish)."
+  }
+}

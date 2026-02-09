@@ -1,0 +1,45 @@
+{
+  "meta": {
+    "name": "request",
+    "ecosystem": "npm",
+    "evaluation_date": "2019-12-01T00:00:00Z",
+    "narrative": "request was the most popular HTTP client for Node.js. Mikeal Rogers announced maintenance mode in March 2019 and formally deprecated it in February 2020. By late 2019, commit activity had nearly stopped while downloads remained sky-high due to deep ecosystem entrenchment. Classic case of a graceful deprecation where adoption metrics mask declining maintainer health.",
+    "fixture_source": "historical research (approximate values)"
+  },
+  "data": {
+    "days_since_last_commit": 120,
+    "true_bus_factor": 2,
+    "active_contributors_90d": 1,
+    "prs_merged_90d": 2,
+    "prs_opened_90d": 15,
+    "weekly_downloads": 18000000,
+    "dependents_count": 48000,
+    "stars": 25600,
+    "last_published": "2019-03-11T00:00:00Z",
+    "commits_90d_non_bot": 3,
+    "commits_90d": 5,
+    "total_contributors": 58,
+    "avg_issue_response_hours": 168,
+    "openssf_score": null,
+    "advisories": [],
+    "openssf_checks": [],
+    "created_at": "2011-04-17T00:00:00Z",
+    "last_updated": "2019-11-30T00:00:00Z",
+    "github_error": null,
+    "npm_error": null,
+    "pypi_error": null,
+    "depsdev_error": null,
+    "repository_url": "https://github.com/request/request",
+    "archived": false,
+    "is_deprecated": false,
+    "deprecation_message": null
+  },
+  "expected": {
+    "known_abandoned": true,
+    "abandoned_date": "2020-02-11",
+    "failure_mode": "graceful_deprecation",
+    "health_score_max": 65,
+    "abandonment_risk_min": 30,
+    "notes": "High adoption masks declining activity. Score should be MEDIUM-HIGH risk, not LOW. Maturity factor may boost evolution score due to massive adoption + low commits."
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "meta": {
+    "name": "left-pad",
+    "ecosystem": "npm",
+    "evaluation_date": "2016-03-01T00:00:00Z",
+    "narrative": "left-pad was a trivial 11-line npm package for left-padding strings. In March 2016, its author Azer Koculu unpublished it from npm after a trademark dispute with Kik messenger. The removal broke thousands of builds including React, Babel, and many other major projects. This exposed npm's fragile dependency model. The package had a single maintainer and was a tiny utility with no meaningful development activity.",
+    "fixture_source": "historical research (approximate values)"
+  },
+  "data": {
+    "days_since_last_commit": 180,
+    "true_bus_factor": 1,
+    "active_contributors_90d": 0,
+    "prs_merged_90d": 0,
+    "prs_opened_90d": 0,
+    "weekly_downloads": 625000,
+    "dependents_count": 400,
+    "stars": 30,
+    "last_published": "2016-01-06T00:00:00Z",
+    "commits_90d_non_bot": 0,
+    "commits_90d": 0,
+    "total_contributors": 1,
+    "avg_issue_response_hours": null,
+    "openssf_score": null,
+    "advisories": [],
+    "openssf_checks": [],
+    "created_at": "2014-08-27T00:00:00Z",
+    "last_updated": "2016-02-29T00:00:00Z",
+    "github_error": null,
+    "npm_error": null,
+    "pypi_error": null,
+    "depsdev_error": null,
+    "repository_url": "https://github.com/azer/left-pad",
+    "archived": false,
+    "is_deprecated": false,
+    "deprecation_message": null
+  },
+  "expected": {
+    "known_abandoned": true,
+    "abandoned_date": "2016-03-22",
+    "failure_mode": "unpublished",
+    "health_score_max": 52,
+    "abandonment_risk_min": 40,
+    "notes": "Single maintainer, tiny package with no recent development. Moderate downloads from transitive dependency chains. All maintainer health indicators were poor. Evolution score is moderate because last release was only ~54 days before evaluation."
+  }
+}

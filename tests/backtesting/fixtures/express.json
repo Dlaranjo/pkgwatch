@@ -1,0 +1,43 @@
+{
+  "meta": {
+    "name": "express",
+    "ecosystem": "npm",
+    "evaluation_date": "2025-10-01T00:00:00Z",
+    "narrative": "Express is the most popular Node.js web framework, maintained by the OpenJS Foundation. Express 5.1 was released in March 2025 as the new default. The project has active maintainers, regular releases, and massive ecosystem adoption.",
+    "fixture_source": "web research 2025 (approximate values)"
+  },
+  "data": {
+    "days_since_last_commit": 7,
+    "true_bus_factor": 4,
+    "active_contributors_90d": 8,
+    "prs_merged_90d": 15,
+    "prs_opened_90d": 25,
+    "weekly_downloads": 30000000,
+    "dependents_count": 75000,
+    "stars": 66000,
+    "last_published": "2025-08-15T00:00:00Z",
+    "commits_90d_non_bot": 30,
+    "commits_90d": 40,
+    "total_contributors": 300,
+    "avg_issue_response_hours": 24,
+    "openssf_score": 7.0,
+    "advisories": [],
+    "openssf_checks": [{"name": "Security-Policy", "score": 10}],
+    "created_at": "2010-12-29T00:00:00Z",
+    "last_updated": "2025-09-30T00:00:00Z",
+    "github_error": null,
+    "npm_error": null,
+    "pypi_error": null,
+    "depsdev_error": null,
+    "repository_url": "https://github.com/expressjs/express",
+    "archived": false,
+    "is_deprecated": false,
+    "deprecation_message": null
+  },
+  "expected": {
+    "known_abandoned": false,
+    "health_score_min": 65,
+    "abandonment_risk_max": 15,
+    "notes": "Active foundation-backed project. High adoption, regular releases, multiple active maintainers."
+  }
+}

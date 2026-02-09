@@ -1,0 +1,45 @@
+{
+  "meta": {
+    "name": "colors",
+    "ecosystem": "npm",
+    "evaluation_date": "2021-12-01T00:00:00Z",
+    "narrative": "colors was a popular terminal string styling library maintained solely by Marak Squires. In January 2022, Marak deliberately sabotaged the package by publishing an infinite loop in v1.4.1/v1.4.2, protesting lack of compensation for open source work. The warning signs were clear: single maintainer, no releases in over 2 years, no PR activity, despite 20M+ weekly downloads. A textbook bus-factor-of-1 risk.",
+    "fixture_source": "historical research (approximate values)"
+  },
+  "data": {
+    "days_since_last_commit": 200,
+    "true_bus_factor": 1,
+    "active_contributors_90d": 0,
+    "prs_merged_90d": 0,
+    "prs_opened_90d": 5,
+    "weekly_downloads": 20000000,
+    "dependents_count": 18000,
+    "stars": 5200,
+    "last_published": "2020-01-20T00:00:00Z",
+    "commits_90d_non_bot": 0,
+    "commits_90d": 0,
+    "total_contributors": 25,
+    "avg_issue_response_hours": null,
+    "openssf_score": null,
+    "advisories": [],
+    "openssf_checks": [],
+    "created_at": "2012-01-25T00:00:00Z",
+    "last_updated": "2021-11-30T00:00:00Z",
+    "github_error": null,
+    "npm_error": null,
+    "pypi_error": null,
+    "depsdev_error": null,
+    "repository_url": "https://github.com/Marak/colors.js",
+    "archived": false,
+    "is_deprecated": false,
+    "deprecation_message": null
+  },
+  "expected": {
+    "known_abandoned": true,
+    "abandoned_date": "2022-01-08",
+    "failure_mode": "sabotage",
+    "health_score_max": 55,
+    "abandonment_risk_min": 50,
+    "notes": "Classic bus factor risk. Zero recent activity despite massive downloads. The scoring system should flag the single maintainer and complete lack of recent commits. High user-centric score masks the maintenance gap."
+  }
+}

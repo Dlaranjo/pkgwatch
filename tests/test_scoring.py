@@ -3245,10 +3245,11 @@ class TestAbandonmentRiskPrecise:
         import math
 
         # base_risk=0.5, months=12
-        # k=1.5, lambda_=18, adjusted_lambda=18*(1-0.5*0.5)=13.5
-        # survival = exp(-((12/13.5)^1.5))
+        # k=1.5, lambda_=52, alpha=2.8
+        # adjusted_lambda = 52 * exp(-0.5 * 2.8) = 52 * exp(-1.4)
+        # survival = exp(-((12/adjusted_lambda)^1.5))
         # risk = 1 - survival
-        adjusted_lambda = 18 * (1 - 0.5 * 0.5)
+        adjusted_lambda = 52 * math.exp(-0.5 * 2.8)
         survival = math.exp(-((12 / adjusted_lambda) ** 1.5))
         expected_risk = 1 - survival
 
@@ -3260,10 +3261,10 @@ class TestAbandonmentRiskPrecise:
         import math
 
         # base_risk=0.0, months=12
-        # adjusted_lambda = 18 * (1 - 0 * 0.5) = 18
-        # survival = exp(-((12/18)^1.5))
+        # adjusted_lambda = 52 * exp(0) = 52
+        # survival = exp(-((12/52)^1.5))
         result = _calculate_time_adjusted_risk(0.0, 12)
-        adjusted_lambda = 18
+        adjusted_lambda = 52 * math.exp(0)
         expected = 1 - math.exp(-((12 / adjusted_lambda) ** 1.5))
         assert result == pytest.approx(expected, abs=1e-10)
         assert result > 0, "Zero base risk should still have time-dependent risk"
@@ -3273,9 +3274,9 @@ class TestAbandonmentRiskPrecise:
         import math
 
         # base_risk=1.0, months=12
-        # adjusted_lambda = 18 * (1 - 1.0 * 0.5) = 9
+        # adjusted_lambda = 52 * exp(-1.0 * 2.8) = 52 * exp(-2.8)
         result = _calculate_time_adjusted_risk(1.0, 12)
-        adjusted_lambda = 9
+        adjusted_lambda = 52 * math.exp(-2.8)
         expected = min(1 - math.exp(-((12 / adjusted_lambda) ** 1.5)), 0.95)
         assert result == pytest.approx(expected, abs=1e-10)
 

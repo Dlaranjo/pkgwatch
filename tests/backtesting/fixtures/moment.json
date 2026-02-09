@@ -1,0 +1,45 @@
+{
+  "meta": {
+    "name": "moment",
+    "ecosystem": "npm",
+    "evaluation_date": "2020-06-01T00:00:00Z",
+    "narrative": "Moment.js was the dominant JavaScript date library with massive adoption. The team announced the project was 'done' in September 2020, recommending alternatives like Luxon, Day.js, or native Intl. By mid-2020, development had slowed to near-zero but the package remained hugely popular. This is a classic maintenance-mode scenario where the library works but is no longer evolving.",
+    "fixture_source": "historical research (approximate values)"
+  },
+  "data": {
+    "days_since_last_commit": 90,
+    "true_bus_factor": 3,
+    "active_contributors_90d": 2,
+    "prs_merged_90d": 3,
+    "prs_opened_90d": 20,
+    "weekly_downloads": 15000000,
+    "dependents_count": 62000,
+    "stars": 47500,
+    "last_published": "2020-01-07T00:00:00Z",
+    "commits_90d_non_bot": 4,
+    "commits_90d": 6,
+    "total_contributors": 630,
+    "avg_issue_response_hours": 120,
+    "openssf_score": null,
+    "advisories": [],
+    "openssf_checks": [],
+    "created_at": "2011-10-10T00:00:00Z",
+    "last_updated": "2020-05-31T00:00:00Z",
+    "github_error": null,
+    "npm_error": null,
+    "pypi_error": null,
+    "depsdev_error": null,
+    "repository_url": "https://github.com/moment/moment",
+    "archived": false,
+    "is_deprecated": false,
+    "deprecation_message": null
+  },
+  "expected": {
+    "known_abandoned": true,
+    "abandoned_date": "2020-09-15",
+    "failure_mode": "maintenance_mode",
+    "health_score_max": 70,
+    "abandonment_risk_min": 25,
+    "notes": "Massive adoption + large contributor base historically. Score may still be moderate due to maturity factor. Abandonment risk should be elevated but not extreme since the project still works and was deliberately sunset."
+  }
+}

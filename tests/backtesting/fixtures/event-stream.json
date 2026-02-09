@@ -1,0 +1,45 @@
+{
+  "meta": {
+    "name": "event-stream",
+    "ecosystem": "npm",
+    "evaluation_date": "2018-09-01T00:00:00Z",
+    "narrative": "event-stream was a popular Node.js stream manipulation library by dominictarr. In September 2018, the maintainer handed off control to a new contributor (right9ctrl) who injected a malicious dependency (flatmap-stream) targeting the Copay Bitcoin wallet. This was discovered in November 2018. The package had a single original maintainer who openly stated he didn't have time to maintain it. A clear case of maintainer abandonment leading to supply chain compromise.",
+    "fixture_source": "historical research (approximate values)"
+  },
+  "data": {
+    "days_since_last_commit": 730,
+    "true_bus_factor": 1,
+    "active_contributors_90d": 0,
+    "prs_merged_90d": 0,
+    "prs_opened_90d": 1,
+    "weekly_downloads": 2000000,
+    "dependents_count": 1800,
+    "stars": 1900,
+    "last_published": "2015-11-08T00:00:00Z",
+    "commits_90d_non_bot": 0,
+    "commits_90d": 0,
+    "total_contributors": 12,
+    "avg_issue_response_hours": null,
+    "openssf_score": null,
+    "advisories": [],
+    "openssf_checks": [],
+    "created_at": "2011-09-15T00:00:00Z",
+    "last_updated": "2018-08-31T00:00:00Z",
+    "github_error": null,
+    "npm_error": null,
+    "pypi_error": null,
+    "depsdev_error": null,
+    "repository_url": "https://github.com/dominictarr/event-stream",
+    "archived": false,
+    "is_deprecated": false,
+    "deprecation_message": null
+  },
+  "expected": {
+    "known_abandoned": true,
+    "abandoned_date": "2018-09-09",
+    "failure_mode": "supply_chain_attack",
+    "health_score_max": 45,
+    "abandonment_risk_min": 70,
+    "notes": "Clear abandonment signals: no commits in 2+ years, single maintainer, no releases in nearly 3 years. Despite moderate download count, all maintenance indicators were red. The scoring system should catch this."
+  }
+}
