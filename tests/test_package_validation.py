@@ -2,6 +2,7 @@
 
 from shared.package_validation import (
     normalize_npm_name,
+    normalize_pypi_name,
     validate_npm_package_name,
     validate_pypi_package_name,
 )
@@ -187,3 +188,31 @@ class TestPypiValidation:
         """Empty name should fail."""
         is_valid, error, _ = validate_pypi_package_name("")
         assert is_valid is False
+
+
+class TestNormalizePypiName:
+    """Tests for normalize_pypi_name (PEP 503)."""
+
+    def test_lowercase(self):
+        assert normalize_pypi_name("Flask") == "flask"
+
+    def test_underscores_to_hyphens(self):
+        assert normalize_pypi_name("python_dateutil") == "python-dateutil"
+
+    def test_dots_to_hyphens(self):
+        assert normalize_pypi_name("zope.interface") == "zope-interface"
+
+    def test_mixed_separators(self):
+        assert normalize_pypi_name("Foo._-Bar") == "foo-bar"
+
+    def test_consecutive_separators(self):
+        assert normalize_pypi_name("foo..bar") == "foo-bar"
+
+    def test_empty_string(self):
+        assert normalize_pypi_name("") == ""
+
+    def test_already_normalized(self):
+        assert normalize_pypi_name("requests") == "requests"
+
+    def test_scikit_learn(self):
+        assert normalize_pypi_name("scikit-learn") == "scikit-learn"

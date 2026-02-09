@@ -9,7 +9,7 @@ from moto import mock_aws
 
 
 class TestCountByStatus:
-    """Tests for the count_by_status function."""
+    """Tests for the count_by_status function (deprecated GSI-based)."""
 
     @mock_aws
     def test_counts_packages_with_given_status(self, mock_dynamodb):
@@ -18,7 +18,7 @@ class TestCountByStatus:
 
         table = mock_dynamodb.Table("pkgwatch-packages")
 
-        # Insert 3 complete packages
+        # Insert 3 complete packages (with next_retry_at for GSI visibility)
         for i in range(3):
             table.put_item(
                 Item={
@@ -68,6 +68,105 @@ class TestCountByStatus:
         assert count_by_status(table, "pending") == 0
 
 
+class TestScanAllMetrics:
+    """Tests for the scan_all_metrics function."""
+
+    @mock_aws
+    def test_counts_all_statuses_including_without_next_retry_at(self, mock_dynamodb):
+        """Should count packages correctly even without next_retry_at (the GSI bug)."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+
+        # Complete packages WITHOUT next_retry_at (these were invisible to the GSI)
+        for i in range(5):
+            table.put_item(
+                Item={
+                    "pk": f"npm#complete-{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "npm",
+                    "data_status": "complete",
+                    "weekly_downloads": 1000,
+                }
+            )
+
+        # Partial packages WITH next_retry_at
+        for i in range(3):
+            table.put_item(
+                Item={
+                    "pk": f"pypi#partial-{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "pypi",
+                    "data_status": "partial",
+                    "next_retry_at": "2024-01-01T00:00:00Z",
+                    "weekly_downloads": 500,
+                }
+            )
+
+        from admin.data_status_metrics import scan_all_metrics
+
+        result = scan_all_metrics(table)
+
+        assert result["status_counts"]["complete"] == 5
+        assert result["status_counts"]["partial"] == 3
+        assert result["coverage"]["npm_total"] == 5
+        assert result["coverage"]["npm_with_downloads"] == 5
+        assert result["coverage"]["pypi_total"] == 3
+        assert result["coverage"]["pypi_with_downloads"] == 3
+
+    @mock_aws
+    def test_counts_pypi_never_fetched(self, mock_dynamodb):
+        """Should count PyPI packages with no downloads_status as never_fetched."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+
+        # PyPI package with no downloads_status
+        table.put_item(
+            Item={
+                "pk": "pypi#pkg-a",
+                "sk": "LATEST",
+                "ecosystem": "pypi",
+                "data_status": "complete",
+                "weekly_downloads": 0,
+            }
+        )
+        # PyPI package with downloads_status = "collected"
+        table.put_item(
+            Item={
+                "pk": "pypi#pkg-b",
+                "sk": "LATEST",
+                "ecosystem": "pypi",
+                "data_status": "complete",
+                "weekly_downloads": 100,
+                "downloads_status": "collected",
+            }
+        )
+
+        from admin.data_status_metrics import scan_all_metrics
+
+        result = scan_all_metrics(table)
+
+        assert result["coverage"]["pypi_never_fetched"] == 1
+        assert result["coverage"]["pypi_with_downloads"] == 1
+
+    @mock_aws
+    def test_returns_zeros_for_empty_table(self, mock_dynamodb):
+        """Should return zero counts for empty table."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+
+        from admin.data_status_metrics import scan_all_metrics
+
+        result = scan_all_metrics(table)
+
+        for status in ["complete", "partial", "minimal", "pending", "abandoned_minimal", "abandoned_partial"]:
+            assert result["status_counts"][status] == 0
+        assert result["coverage"]["npm_total"] == 0
+        assert result["coverage"]["pypi_total"] == 0
+
+
 class TestDataStatusMetricsHandler:
     """Tests for the data_status_metrics Lambda handler."""
 
@@ -78,7 +177,7 @@ class TestDataStatusMetricsHandler:
 
         table = mock_dynamodb.Table("pkgwatch-packages")
 
-        # Seed packages with different statuses
+        # Seed packages with different statuses — NO next_retry_at on complete/abandoned
         statuses = {
             "complete": 5,
             "partial": 3,
@@ -91,14 +190,17 @@ class TestDataStatusMetricsHandler:
         counter = 0
         for status, count in statuses.items():
             for i in range(count):
-                table.put_item(
-                    Item={
-                        "pk": f"npm#pkg-{counter}",
-                        "sk": "LATEST",
-                        "data_status": status,
-                        "next_retry_at": f"2024-01-01T{counter:02d}:00:00Z",
-                    }
-                )
+                item = {
+                    "pk": f"npm#pkg-{counter}",
+                    "sk": "LATEST",
+                    "ecosystem": "npm",
+                    "data_status": status,
+                    "weekly_downloads": 100,
+                }
+                # Only partial/minimal/pending get next_retry_at (matching real behavior)
+                if status in ("partial", "minimal", "pending"):
+                    item["next_retry_at"] = f"2024-01-01T{counter:02d}:00:00Z"
+                table.put_item(Item=item)
                 counter += 1
 
         # Reset the module-level dynamodb resource to use mock
@@ -136,8 +238,8 @@ class TestDataStatusMetricsHandler:
             assert counts[status] == 0
 
     @mock_aws
-    def test_handles_query_error_gracefully(self, mock_dynamodb):
-        """Should set count to 0 and log error when query fails."""
+    def test_handles_scan_error_gracefully(self, mock_dynamodb):
+        """Should set counts to 0 and log error when scan fails."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         import admin.data_status_metrics as metrics_module
@@ -145,22 +247,11 @@ class TestDataStatusMetricsHandler:
 
         metrics_module.dynamodb = mock_dynamodb
 
-        # Patch count_by_status to raise an exception for a specific status
-        original_count = metrics_module.count_by_status
-
-        def failing_count(table, status):
-            if status == "complete":
-                raise Exception("Simulated DynamoDB error")
-            return original_count(table, status)
-
-        with patch.object(metrics_module, "count_by_status", side_effect=failing_count):
+        with patch.object(metrics_module, "scan_all_metrics", side_effect=Exception("Simulated DynamoDB error")):
             result = handler({}, {})
 
         assert result["statusCode"] == 200
-        # "complete" should be 0 due to the error
         assert result["counts"]["complete"] == 0
-        # Other statuses should still work
-        assert "partial" in result["counts"]
 
     @mock_aws
     def test_emits_cloudwatch_metrics(self, mock_dynamodb):
@@ -168,12 +259,14 @@ class TestDataStatusMetricsHandler:
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
 
         table = mock_dynamodb.Table("pkgwatch-packages")
+        # Complete package WITHOUT next_retry_at — must still be counted
         table.put_item(
             Item={
                 "pk": "npm#pkg-1",
                 "sk": "LATEST",
+                "ecosystem": "npm",
                 "data_status": "complete",
-                "next_retry_at": "2024-01-01T00:00:00Z",
+                "weekly_downloads": 1000,
             }
         )
 

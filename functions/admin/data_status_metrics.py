@@ -1,7 +1,7 @@
 """Emit CloudWatch metrics for data status distribution.
 
 Triggered daily by EventBridge to track data completeness trends.
-Uses GSI queries with pagination to efficiently count packages by status.
+Uses a single table scan to count both status distribution and download coverage.
 """
 
 import logging
@@ -18,12 +18,16 @@ PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 
 
 def count_by_status(table, status: str) -> int:
-    """Count packages with given data_status, handling pagination."""
+    """Count packages with given data_status using GSI.
+
+    DEPRECATED: GSI excludes packages without next_retry_at (all "complete" and
+    "abandoned" packages). Use scan_all_metrics() instead for accurate counts.
+    Kept for backward compatibility with existing tests.
+    """
     total = 0
     last_key = None
 
     while True:
-        # GSI "v2" - original index was replaced (DynamoDB doesn't support in-place mods)
         query_params = {
             "IndexName": "data-status-index-v2",
             "KeyConditionExpression": Key("data_status").eq(status),
@@ -42,12 +46,20 @@ def count_by_status(table, status: str) -> int:
     return total
 
 
-def count_download_coverage(table) -> dict:
-    """Scan LATEST records to compute download coverage by ecosystem.
+def scan_all_metrics(table) -> dict:
+    """Single-pass scan to collect both status counts and download coverage.
 
-    Full table scan for ~12K packages takes ~10-30s, well within the 2-minute
-    Lambda timeout. Replace with pre-aggregated counters if package count exceeds 50K.
+    Replaces the broken GSI query (which missed packages without next_retry_at)
+    and the separate download coverage scan, halving total scan time.
     """
+    status_counts = {
+        "complete": 0,
+        "partial": 0,
+        "minimal": 0,
+        "pending": 0,
+        "abandoned_minimal": 0,
+        "abandoned_partial": 0,
+    }
     coverage = {
         "npm_total": 0,
         "npm_with_downloads": 0,
@@ -59,12 +71,18 @@ def count_download_coverage(table) -> dict:
     scan_kwargs = {
         "FilterExpression": "sk = :sk",
         "ExpressionAttributeValues": {":sk": "LATEST"},
-        "ProjectionExpression": "ecosystem, weekly_downloads, downloads_status",
+        "ProjectionExpression": "data_status, ecosystem, weekly_downloads, downloads_status",
     }
 
     while True:
         response = table.scan(**scan_kwargs)
         for item in response.get("Items", []):
+            # Status counts
+            ds = item.get("data_status", "")
+            if ds in status_counts:
+                status_counts[ds] += 1
+
+            # Download coverage
             eco = item.get("ecosystem", "")
             downloads = int(item.get("weekly_downloads", 0))
 
@@ -76,37 +94,30 @@ def count_download_coverage(table) -> dict:
                 coverage["pypi_total"] += 1
                 if downloads > 0:
                     coverage["pypi_with_downloads"] += 1
-                ds = item.get("downloads_status")
-                if not ds or ds == "never_fetched":
+                dl_status = item.get("downloads_status")
+                if not dl_status or dl_status == "never_fetched":
                     coverage["pypi_never_fetched"] += 1
 
         if "LastEvaluatedKey" not in response:
             break
         scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
 
-    return coverage
+    return {"status_counts": status_counts, "coverage": coverage}
 
 
 def handler(event, context):
     """Emit data status distribution and download coverage metrics."""
     table = dynamodb.Table(PACKAGES_TABLE)
 
-    counts = {}
-    for status in ["complete", "partial", "minimal", "pending", "abandoned_minimal", "abandoned_partial"]:
-        try:
-            counts[status] = count_by_status(table, status)
-        except Exception as e:
-            logger.error(f"Failed to count {status} packages: {e}")
-            counts[status] = 0
-
-    logger.info(f"Data status counts: {counts}")
-
-    # Download coverage scan
     try:
-        coverage = count_download_coverage(table)
+        result = scan_all_metrics(table)
+        counts = result["status_counts"]
+        coverage = result["coverage"]
+        logger.info(f"Data status counts: {counts}")
         logger.info(f"Download coverage: {coverage}")
     except Exception as e:
-        logger.error(f"Failed to compute download coverage: {e}")
+        logger.error(f"Failed to scan metrics: {e}")
+        counts = {s: 0 for s in ["complete", "partial", "minimal", "pending", "abandoned_minimal", "abandoned_partial"]}
         coverage = {}
 
     # Compute percentages

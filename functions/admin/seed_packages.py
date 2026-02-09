@@ -16,6 +16,7 @@ Event format:
 import json
 import logging
 import os
+import re
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -342,9 +343,11 @@ def fetch_top_pypi_packages(count: int) -> list[dict]:
         for i, row in enumerate(rows[:count]):
             pkg_name = row.get("project")
             if pkg_name:
+                # Normalize per PEP 503 to prevent orphaned records
+                normalized_name = re.sub(r"[-_.]+", "-", pkg_name.lower())
                 packages.append(
                     {
-                        "name": pkg_name,
+                        "name": normalized_name,
                         "rank": i + 1,
                     }
                 )

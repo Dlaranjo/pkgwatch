@@ -21,6 +21,7 @@ This collector is separate from the main package_collector to:
 
 import logging
 import os
+import re
 import time
 from datetime import datetime, timezone
 
@@ -288,7 +289,8 @@ def _get_packages_needing_refresh(table, limit: int, context=None) -> list:
             for item in items:
                 if len(packages) >= limit:
                     break
-                packages.append(item["name"])
+                # Normalize per PEP 503 to match canonical DynamoDB keys
+                packages.append(re.sub(r"[-_.]+", "-", item["name"].lower()))
 
             if "LastEvaluatedKey" not in response:
                 break
@@ -330,7 +332,7 @@ def _get_packages_needing_refresh(table, limit: int, context=None) -> list:
 
             # Sort by oldest downloads_fetched_at first
             oldest_packages.sort(key=lambda x: x.get("downloads_fetched_at", ""))
-            packages.extend([item["name"] for item in oldest_packages[:remaining]])
+            packages.extend([re.sub(r"[-_.]+", "-", item["name"].lower()) for item in oldest_packages[:remaining]])
 
         logger.info(f"Found {len(packages)} packages after {pages_scanned} pages")
         return packages
@@ -352,11 +354,13 @@ def _write_updates(table, updates: list):
     for update in updates:
         try:
             downloads_status = update.get("downloads_status", "collected")
+            # Normalize name per PEP 503 to match canonical DynamoDB keys
+            normalized_name = re.sub(r"[-_.]+", "-", update["name"].lower())
 
             # For rate_limited or error status, only update status fields (preserve existing downloads)
             if downloads_status in ("rate_limited", "error"):
                 table.update_item(
-                    Key={"pk": f"pypi#{update['name']}", "sk": "LATEST"},
+                    Key={"pk": f"pypi#{normalized_name}", "sk": "LATEST"},
                     UpdateExpression="SET downloads_status = :ds, downloads_source = :s, downloads_fetched_at = :t",
                     ExpressionAttributeValues={
                         ":ds": downloads_status,
@@ -367,7 +371,7 @@ def _write_updates(table, updates: list):
             else:
                 # Full update for collected/unavailable status
                 table.update_item(
-                    Key={"pk": f"pypi#{update['name']}", "sk": "LATEST"},
+                    Key={"pk": f"pypi#{normalized_name}", "sk": "LATEST"},
                     UpdateExpression="SET weekly_downloads = :d, downloads_source = :s, downloads_status = :ds, downloads_fetched_at = :t",
                     ExpressionAttributeValues={
                         ":d": update["weekly_downloads"],

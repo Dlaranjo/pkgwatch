@@ -928,12 +928,6 @@ async def collect_package_data(
                             pass
                     combined_data["weekly_downloads"] = pypi_downloads
 
-                    # Preserve batch collector tracking fields (PyPI only)
-                    if existing:
-                        for field in ("downloads_status", "downloads_source", "downloads_fetched_at"):
-                            if existing.get(field) and not combined_data.get(field):
-                                combined_data[field] = existing[field]
-
                     combined_data["maintainers"] = pypi_data.get("maintainers", [])
                     combined_data["maintainer_count"] = pypi_data.get("maintainer_count", 0)
                     combined_data["is_deprecated"] = pypi_data.get("is_deprecated", False)
@@ -1136,6 +1130,14 @@ async def collect_package_data(
                             combined_data["openssf_freshness"] = "stale"
                             combined_data["openssf_stale_reason"] = openssf_error
 
+    # Preserve downloads tracking fields from existing record for ALL code paths.
+    # Without this, error paths (circuit_open, rate_limit, selective_retry) lose
+    # downloads_fetched_at, causing the batch collector to re-fetch the same packages.
+    if existing:
+        for field in ("downloads_status", "downloads_source", "downloads_fetched_at"):
+            if existing.get(field) and not combined_data.get(field):
+                combined_data[field] = existing[field]
+
     return combined_data
 
 
@@ -1290,6 +1292,14 @@ def store_package_data_sync(ecosystem: str, name: str, data: dict, tier: int):
         "downloads_status": data.get("downloads_status"),
         "downloads_source": data.get("downloads_source"),
         "downloads_fetched_at": data.get("downloads_fetched_at"),
+        # Scoring fields (carried forward from existing record by process_single_package)
+        "health_score": data.get("health_score"),
+        "risk_level": data.get("risk_level"),
+        "score_components": data.get("score_components"),
+        "confidence": data.get("confidence"),
+        "confidence_interval": data.get("confidence_interval"),
+        "abandonment_risk": data.get("abandonment_risk"),
+        "scored_at": data.get("scored_at"),
     }
 
     # Calculate data completeness status for retry tracking
@@ -1399,6 +1409,22 @@ async def process_single_package(message: dict, bulk_downloads: dict = None) -> 
     try:
         # Collect data from all sources (or selectively for retries)
         data = await collect_package_data(ecosystem, name, existing, retry_sources, bulk_downloads)
+
+        # Preserve scoring fields from existing record.
+        # score_package.py writes these via update_item, but store_package_data_sync
+        # uses put_item which replaces the full record, wiping scores every cycle.
+        if existing:
+            for field in (
+                "health_score",
+                "risk_level",
+                "score_components",
+                "confidence",
+                "confidence_interval",
+                "abandonment_risk",
+                "scored_at",
+            ):
+                if existing.get(field) is not None and field not in data:
+                    data[field] = existing[field]
 
         # Pass existing retry_count to store_package_data for retry tracking
         # (used to calculate next_retry_at if collection is still incomplete)

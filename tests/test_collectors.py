@@ -16,6 +16,7 @@ import json
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -2987,6 +2988,102 @@ class TestStorePackageData:
             assert item["data_status"] == "minimal"
             # Should have next_retry_at for future retry
             assert "next_retry_at" in item
+
+
+class TestScoringFieldPreservation:
+    """Tests for scoring field carry-forward across collection cycles (Fix 1)."""
+
+    @mock_aws
+    def test_store_package_data_preserves_scoring_fields(self):
+        """put_item should retain health_score/risk_level/etc from data dict."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
+            from importlib import reload
+
+            import package_collector
+
+            reload(package_collector)
+
+            data = {
+                "latest_version": "1.0.0",
+                "weekly_downloads": 50000,
+                "sources": ["deps.dev", "npm"],
+                # Scoring fields (carried forward from existing)
+                "health_score": 82,
+                "risk_level": "LOW",
+                "score_components": {"maintenance": 90, "security": 75},
+                "confidence": 0.85,
+                "abandonment_risk": "LOW",
+                "scored_at": "2024-01-15T00:00:00Z",
+            }
+
+            package_collector.store_package_data_sync("npm", "scored-pkg", data, tier=1)
+
+            table = dynamodb.Table("pkgwatch-packages")
+            response = table.get_item(Key={"pk": "npm#scored-pkg", "sk": "LATEST"})
+
+            item = response["Item"]
+            assert item["health_score"] == 82
+            assert item["risk_level"] == "LOW"
+            assert item["confidence"] == Decimal("0.85")
+            assert item["abandonment_risk"] == "LOW"
+            assert item["scored_at"] == "2024-01-15T00:00:00Z"
+
+    @mock_aws
+    def test_store_package_data_preserves_downloads_tracking(self):
+        """put_item should retain downloads tracking fields from data dict."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
+            from importlib import reload
+
+            import package_collector
+
+            reload(package_collector)
+
+            data = {
+                "latest_version": "1.0.0",
+                "weekly_downloads": 50000,
+                "sources": ["deps.dev", "pypi"],
+                "downloads_status": "collected",
+                "downloads_source": "pypistats",
+                "downloads_fetched_at": "2024-01-14T12:00:00Z",
+            }
+
+            package_collector.store_package_data_sync("pypi", "flask", data, tier=1)
+
+            table = dynamodb.Table("pkgwatch-packages")
+            response = table.get_item(Key={"pk": "pypi#flask", "sk": "LATEST"})
+
+            item = response["Item"]
+            assert item["downloads_status"] == "collected"
+            assert item["downloads_source"] == "pypistats"
+            assert item["downloads_fetched_at"] == "2024-01-14T12:00:00Z"
 
 
 class TestHandler:

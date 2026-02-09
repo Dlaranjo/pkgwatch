@@ -29,6 +29,13 @@ def normalize_npm_name(name: str) -> str:
     return name.lower() if name else ""
 
 
+def normalize_pypi_name(name: str) -> str:
+    """Normalize PyPI package name per PEP 503."""
+    if not name:
+        return ""
+    return re.sub(r"[-_.]+", "-", name.lower())
+
+
 def validate_npm_package_name(name: str) -> Tuple[bool, Optional[str], str]:
     """
     Validate and normalize an npm package name.
@@ -76,7 +83,7 @@ def validate_pypi_package_name(name: str) -> Tuple[bool, Optional[str], str]:
             "",
         )
 
-    normalized = re.sub(r"[-_.]+", "-", name.lower())
+    normalized = normalize_pypi_name(name)
 
     if not PYPI_PACKAGE_PATTERN.match(name):
         return False, "Invalid PyPI package name format", normalized

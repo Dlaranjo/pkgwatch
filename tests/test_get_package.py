@@ -1301,19 +1301,19 @@ class TestNpmCaseNormalization:
         assert body["package"] == "lodash"
 
     @mock_aws
-    def test_does_not_normalize_pypi_name(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
-        """Should NOT normalize PyPI package names (different from npm)."""
+    def test_normalizes_pypi_name(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
+        """Should normalize PyPI package names per PEP 503."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
-        # PyPI normalization is different from npm - check it doesn't apply npm rules
+        # Store with normalized name (lowercase, hyphens)
         packages_table = mock_dynamodb.Table("pkgwatch-packages")
         packages_table.put_item(
             Item={
-                "pk": "pypi#Flask",
+                "pk": "pypi#flask",
                 "sk": "LATEST",
                 "ecosystem": "pypi",
-                "name": "Flask",
+                "name": "flask",
                 "health_score": 85,
                 "risk_level": "LOW",
                 "last_updated": "2024-01-01T00:00:00Z",
@@ -1326,15 +1326,15 @@ class TestNpmCaseNormalization:
         from api.get_package import handler
 
         table, test_key = seeded_api_keys_table
+        # Request with mixed case — should normalize to "flask"
         api_gateway_event["pathParameters"] = {"ecosystem": "pypi", "name": "Flask"}
         api_gateway_event["headers"]["x-api-key"] = test_key
 
         result = handler(api_gateway_event, {})
 
-        # PyPI names are NOT normalized via normalize_npm_name (which only applies for npm)
         assert result["statusCode"] == 200
         body = json.loads(result["body"])
-        assert body["package"] == "Flask"
+        assert body["package"] == "flask"
 
 
 class TestQueryableFieldFallback:

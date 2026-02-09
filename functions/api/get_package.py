@@ -21,7 +21,7 @@ from shared.auth import check_and_increment_usage_with_bonus, validate_api_key
 from shared.aws_clients import get_dynamodb
 from shared.constants import DEMO_REQUESTS_PER_HOUR
 from shared.data_quality import build_data_quality_full, is_queryable
-from shared.package_validation import normalize_npm_name
+from shared.package_validation import normalize_npm_name, normalize_pypi_name
 from shared.rate_limit_utils import check_usage_alerts
 from shared.response_utils import decimal_default, error_response, get_cors_headers
 
@@ -198,9 +198,11 @@ def handler(event, context):
 
     name = unquote(name)
 
-    # Normalize npm package names to lowercase (npm is case-insensitive)
+    # Normalize package names (both registries are case-insensitive)
     if ecosystem == "npm":
         name = normalize_npm_name(name)
+    elif ecosystem == "pypi":
+        name = normalize_pypi_name(name)
 
     # Validate ecosystem
     if ecosystem not in ["npm", "pypi"]:
