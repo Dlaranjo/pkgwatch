@@ -3,14 +3,14 @@
 ## Current Version
 
 **Version:** v1
-**Base URL:** `https://api.pkgwatch.dev/v1`
+**Base URL:** `https://api.pkgwatch.dev`
 **Status:** Active (Current)
 
 ## Versioning Principles
 
 ### 1. URL-Based Versioning
 
-We use URL path versioning (`/v1`, `/v2`, etc.) for major API versions:
+The API Gateway stage name is `v1`, with a `BasePathMapping` that maps `api.pkgwatch.dev` directly to it. This means the base URL is `https://api.pkgwatch.dev` (no `/v1` prefix). Future major versions may use URL path versioning (`/v2`, etc.):
 - **Clear and explicit**: Version is immediately visible in the URL
 - **Easy to route**: Different versions can be deployed independently
 - **Simple caching**: CDNs and proxies can cache different versions separately

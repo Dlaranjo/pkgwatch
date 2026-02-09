@@ -58,6 +58,21 @@ const components = [
         </p>
       </div>
 
+      <!-- Methodology Disclaimer -->
+      <div class="mb-12 p-6 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+        <h3 class="text-lg font-medium text-blue-400 mb-3">About Our Scoring Model</h3>
+        <p class="text-zinc-400 text-sm mb-3">
+          PkgWatch uses heuristic weights informed by software engineering research and practitioner experience.
+          Component weights and scoring functions are designed to produce intuitive, directionally correct results
+          but have not yet been validated against a large historical dataset.
+        </p>
+        <p class="text-zinc-400 text-sm">
+          We are actively building a backtesting framework to validate scoring accuracy against known package outcomes.
+          Validation results will be published on this page as they become available.
+          Scores should be treated as advisory indicators, not definitive assessments.
+        </p>
+      </div>
+
       <!-- Component Weights Visual -->
       <section class="mb-16">
         <h2 class="text-2xl font-semibold text-white mb-6">Component Weights</h2>
@@ -196,6 +211,34 @@ const components = [
             <p class="text-sm text-zinc-400">
               <span class="text-zinc-300">Why it matters:</span> Bot commits can artificially inflate activity metrics. We analyze real human contributions for more accurate health assessment.
             </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Abandonment Risk Prediction -->
+      <section class="mb-16">
+        <div class="flex items-center gap-3 mb-6">
+          <h2 class="text-2xl font-semibold text-white">Abandonment Risk Prediction</h2>
+          <span class="text-xs font-medium bg-amber-500/20 text-amber-400 px-2 py-1 rounded">Beta</span>
+        </div>
+        <div class="bg-zinc-800/50 rounded-lg p-6 border border-zinc-700/50">
+          <p class="text-zinc-400 mb-4">
+            PkgWatch estimates the probability that a package will be abandoned within the next 12 months
+            using a Weibull survival analysis model. The model considers four risk factors:
+          </p>
+          <ul class="text-sm text-zinc-400 space-y-2 mb-4">
+            <li><span class="text-zinc-300">Inactivity (35%):</span> Time since last commit relative to historical patterns</li>
+            <li><span class="text-zinc-300">Bus Factor (30%):</span> Contribution concentration risk</li>
+            <li><span class="text-zinc-300">Adoption (20%):</span> Download and dependent count trends</li>
+            <li><span class="text-zinc-300">Release (15%):</span> Time since last release</li>
+          </ul>
+          <div class="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg text-sm">
+            <span class="text-amber-400 font-medium">Beta Notice:</span>
+            <span class="text-zinc-400 ml-1">
+              The Weibull model parameters (shape k=1.5, scale &lambda;=18 months) are heuristic estimates
+              that have not yet been fitted to historical abandonment data.
+              Abandonment probabilities should be interpreted as relative risk indicators, not precise predictions.
+            </span>
           </div>
         </div>
       </section>

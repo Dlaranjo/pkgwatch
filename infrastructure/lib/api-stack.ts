@@ -183,7 +183,7 @@ export class ApiStack extends cdk.Stack {
       functionName: "pkgwatch-api-scan",
       handler: "api.post_scan.handler",
       code: apiCodeWithShared,
-      timeout: cdk.Duration.seconds(90), // Increased from 60s for batch operations
+      timeout: cdk.Duration.seconds(28), // API Gateway hard-limits at 29s; align Lambda to match
       memorySize: 1024, // Increased from 512 - heavy batch operations need more resources
       description: `Scan package.json for health scores [${buildId}]`,
       // Note: Removed reservedConcurrentExecutions to avoid account limit issues
@@ -1653,15 +1653,15 @@ export class ApiStack extends cdk.Stack {
             sampledRequestsEnabled: true,
           },
         },
-        // Rate Limiting - 100 requests per 5 minutes per IP (20/min)
-        // Legitimate CI/CD usage is ~10-20 requests/minute
+        // Rate Limiting - 500 requests per 5 minutes per IP (100/min)
+        // CI/CD pipelines scanning large repos need headroom; app-level quotas enforce tier limits
         {
           name: "RateLimitRule",
           priority: 30,
           action: { block: {} },
           statement: {
             rateBasedStatement: {
-              limit: 100, // Reduced from 500 - previous limit was too permissive
+              limit: 500, // 100/min per IP; app-level quotas enforce business limits
               aggregateKeyType: "IP",
             },
           },

@@ -1099,10 +1099,10 @@ class TestRecoveryVerifyCodeRaceConditions:
         }
 
         # Mock update_item to raise ConditionalCheckFailedException
-        with patch("time.sleep"), patch("api.recovery_verify_code.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_verify_code.get_dynamodb") as mock_ddb:
             mock_table = MagicMock()
-            mock_ddb.Table.return_value = mock_table
-            mock_table.scan.return_value = {
+            mock_ddb.return_value.Table.return_value = mock_table
+            mock_table.query.return_value = {
                 "Items": [
                     {
                         "pk": "user_test123",
@@ -1148,10 +1148,10 @@ class TestRecoveryVerifyCodeErrorHandling:
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), patch("api.recovery_verify_code.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_verify_code.get_dynamodb") as mock_ddb:
             mock_table = MagicMock()
-            mock_ddb.Table.return_value = mock_table
-            mock_table.scan.side_effect = ClientError(
+            mock_ddb.return_value.Table.return_value = mock_table
+            mock_table.query.side_effect = ClientError(
                 {"Error": {"Code": "InternalServerError", "Message": "Test"}}, "Scan"
             )
             response = handler(event, None)
@@ -1178,10 +1178,10 @@ class TestRecoveryVerifyCodeErrorHandling:
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        with patch("time.sleep"), patch("api.recovery_verify_code.dynamodb") as mock_ddb:
+        with patch("time.sleep"), patch("api.recovery_verify_code.get_dynamodb") as mock_ddb:
             mock_table = MagicMock()
-            mock_ddb.Table.return_value = mock_table
-            mock_table.scan.return_value = {
+            mock_ddb.return_value.Table.return_value = mock_table
+            mock_table.query.return_value = {
                 "Items": [
                     {
                         "pk": "user_test123",

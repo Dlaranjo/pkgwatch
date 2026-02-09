@@ -20,7 +20,7 @@
 - 🌐 **Website:** https://pkgwatch.dev
 - 📖 **Docs:** https://pkgwatch.dev/docs
 - 🔬 **Methodology:** https://pkgwatch.dev/methodology
-- 🚀 **API:** https://api.pkgwatch.dev/v1/
+- 🚀 **API:** https://api.pkgwatch.dev/
 
 ## Features
 
@@ -65,17 +65,17 @@ pkgwatch scan --fail-on HIGH
 ```bash
 # Get health score for npm package
 curl -H "X-API-Key: pw_your_key" \
-  https://api.pkgwatch.dev/v1/packages/npm/lodash
+  https://api.pkgwatch.dev/packages/npm/lodash
 
 # Get health score for Python package
 curl -H "X-API-Key: pw_your_key" \
-  https://api.pkgwatch.dev/v1/packages/pypi/requests
+  https://api.pkgwatch.dev/packages/pypi/requests
 
 # Scan multiple packages
 curl -X POST -H "X-API-Key: pw_your_key" \
   -H "Content-Type: application/json" \
   -d '{"dependencies": {"lodash": "^4.17.21", "express": "^4.18.0"}}' \
-  https://api.pkgwatch.dev/v1/scan
+  https://api.pkgwatch.dev/scan
 ```
 
 Get your API key at [pkgwatch.dev](https://pkgwatch.dev)

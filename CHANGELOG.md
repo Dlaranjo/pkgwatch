@@ -10,13 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.0] - 2026-02-05
 
 ### Added
-- Product review document with comprehensive analysis
-- Agent prompts for parallel development
 - OpenAPI 3.0 specification documenting all API endpoints
 - Comprehensive documentation (READMEs, CONTRIBUTING.md, .env.example)
 - Customer feedback mechanisms across all touchpoints (CLI, Action, dashboard)
 - Data quality transparency indicators in API responses
-- User reset procedures for testing in CLAUDE.md
 
 ### Changed
 - Unified signup and login into single `/start` page

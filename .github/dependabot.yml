@@ -1,0 +1,88 @@
+version: 2
+updates:
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Python (Lambda functions)
+  - package-ecosystem: "pip"
+    directory: "/functions"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # npm - root workspace
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      npm-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # npm - infrastructure (CDK)
+  - package-ecosystem: "npm"
+    directory: "/infrastructure"
+    schedule:
+      interval: "weekly"
+    groups:
+      infra-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # npm - CLI
+  - package-ecosystem: "npm"
+    directory: "/cli"
+    schedule:
+      interval: "weekly"
+    groups:
+      cli-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # npm - GitHub Action
+  - package-ecosystem: "npm"
+    directory: "/action"
+    schedule:
+      interval: "weekly"
+    groups:
+      action-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # npm - API client
+  - package-ecosystem: "npm"
+    directory: "/packages/api-client"
+    schedule:
+      interval: "weekly"
+    groups:
+      api-client-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # npm - Web
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+    groups:
+      web-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"

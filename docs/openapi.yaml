@@ -23,7 +23,7 @@ info:
     name: Proprietary
 
 servers:
-  - url: https://api.pkgwatch.dev/v1
+  - url: https://api.pkgwatch.dev
     description: Production
 
 security:
@@ -584,6 +584,10 @@ components:
             issue_response:
               type: string
               example: responsive
+              description: >
+                Issue response time classification. Note: response times are currently
+                estimated using heuristics (24h for closed issues with comments, 48h for
+                open issues with comments), not measured from actual issue timelines.
 
     PackageSignals:
       type: object

@@ -189,6 +189,17 @@ export class StorageStack extends cdk.Stack {
       nonKeyAttributes: ["pk", "email"], // Include email for self-referral check
     });
 
+    // GSI for looking up recovery sessions by session ID
+    // Replaces O(n) table scan with O(1) query in recovery_verify_code.py
+    this.apiKeysTable.addGlobalSecondaryIndex({
+      indexName: "recovery-session-index",
+      partitionKey: {
+        name: "recovery_session_id",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // ===========================================
     // DynamoDB: Billing Events Table
     // ===========================================

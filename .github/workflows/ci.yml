@@ -42,7 +42,6 @@ jobs:
         run: |
           pip install pip-audit
           pip-audit -r functions/requirements.txt
-        continue-on-error: true
 
       - name: Run tests with coverage
         run: pytest -n auto --dist loadfile --tb=short --cov=functions --cov-report=xml --cov-report=term-missing --cov-fail-under=80
@@ -63,8 +62,7 @@ jobs:
 
       - name: Audit infrastructure dependencies
         working-directory: infrastructure
-        run: npm audit --audit-level=high
-        continue-on-error: true
+        run: npm audit --audit-level=critical
 
       - name: CDK Synth (validation only)
         working-directory: infrastructure
@@ -86,8 +84,7 @@ jobs:
           cache: 'npm'
 
       - name: Audit npm dependencies
-        run: npm audit --audit-level=high
-        continue-on-error: true
+        run: npm audit --audit-level=critical
 
       - name: Build and verify api-client
         run: |
@@ -124,8 +121,7 @@ jobs:
 
       - name: Audit web dependencies
         working-directory: web
-        run: npm audit --audit-level=high
-        continue-on-error: true
+        run: npm audit --audit-level=critical
 
       - name: Build web
         working-directory: web

@@ -17,9 +17,10 @@ import os
 import time
 from datetime import datetime, timezone
 
-import boto3
+from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
+from shared.aws_clients import get_dynamodb
 from shared.recovery_utils import (
     generate_recovery_token,
     validate_recovery_code_format,
@@ -30,7 +31,6 @@ from shared.response_utils import error_response, success_response
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-dynamodb = boto3.resource("dynamodb")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
 # Minimum response time for timing normalization (1.5s)
@@ -102,30 +102,19 @@ def handler(event, context):
             error_response(400, "invalid_code_format", "Invalid recovery code format", origin=origin),
         )
 
+    dynamodb = get_dynamodb()
     table = dynamodb.Table(API_KEYS_TABLE)
     now = datetime.now(timezone.utc)
 
-    # We need to find the recovery session first to get the user_id
-    # Since we don't know the user_id yet, we need to scan for the session
-    # This is acceptable because recovery sessions have a 4-hour TTL
-    # and the recovery flow is not high-frequency
-
-    # First, let's try to find any session with this ID by scanning
-    # In production, you might want a GSI on recovery_session_id
-    # For now, we'll use a scan with a filter (sessions are short-lived)
-
     try:
-        # Scan for the recovery session
-        # Note: This is acceptable for recovery flow which is low-frequency
-        scan_response = table.scan(
-            FilterExpression="recovery_session_id = :session_id",
-            ExpressionAttributeValues={":session_id": recovery_session_id},
-            ProjectionExpression="pk, sk, email, #ttl_attr, verified, recovery_method",
-            ExpressionAttributeNames={"#ttl_attr": "ttl"},
+        # Query the recovery session using GSI instead of scanning the full table
+        query_response = table.query(
+            IndexName="recovery-session-index",
+            KeyConditionExpression=Key("recovery_session_id").eq(recovery_session_id),
         )
-        sessions = scan_response.get("Items", [])
+        sessions = query_response.get("Items", [])
     except ClientError as e:
-        logger.error(f"Error scanning for recovery session: {e}")
+        logger.error(f"Error querying for recovery session: {e}")
         return _timed_response(
             start_time,
             error_response(500, "internal_error", "Failed to verify session", origin=origin),
