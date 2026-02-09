@@ -88,8 +88,7 @@ class TestAbandonedPackageComponents:
 
         maintainer = result["components"]["maintainer_health"]
         assert maintainer < 40, (
-            f"{name}: maintainer_health={maintainer} too high for "
-            f"single-maintainer package with low activity"
+            f"{name}: maintainer_health={maintainer} too high for single-maintainer package with low activity"
         )
 
     @pytest.mark.parametrize("name", ["event-stream"])
@@ -105,8 +104,7 @@ class TestAbandonedPackageComponents:
 
         evolution = result["components"]["evolution_health"]
         assert evolution < 40, (
-            f"{name}: evolution_health={evolution} too high for "
-            f"package with no recent releases or commits"
+            f"{name}: evolution_health={evolution} too high for package with no recent releases or commits"
         )
 
     @pytest.mark.parametrize("name", ["request", "moment", "colors"])
@@ -147,8 +145,7 @@ class TestHealthyPackageHealthScores:
         min_score = expected["health_score_min"]
 
         assert score >= min_score, (
-            f"{name}: health_score={score} below min={min_score}. "
-            f"Components: {result['components']}"
+            f"{name}: health_score={score} below min={min_score}. Components: {result['components']}"
         )
 
     @pytest.mark.parametrize("name", ["react", "numpy"])
@@ -359,19 +356,21 @@ class TestScoringDiagnostics:
                 health = calculate_health_score(fixture["data"])
                 risk = calculate_abandonment_risk(fixture["data"])
 
-            rows.append({
-                "name": name,
-                "group": "ABANDONED" if is_abandoned else "HEALTHY",
-                "health_score": health["health_score"],
-                "risk_level": health["risk_level"],
-                "abandonment_risk": risk["probability"],
-                "maintainer": health["components"]["maintainer_health"],
-                "user_centric": health["components"]["user_centric"],
-                "evolution": health["components"]["evolution_health"],
-                "community": health["components"]["community_health"],
-                "security": health["components"]["security_health"],
-                "confidence": health["confidence"]["level"],
-            })
+            rows.append(
+                {
+                    "name": name,
+                    "group": "ABANDONED" if is_abandoned else "HEALTHY",
+                    "health_score": health["health_score"],
+                    "risk_level": health["risk_level"],
+                    "abandonment_risk": risk["probability"],
+                    "maintainer": health["components"]["maintainer_health"],
+                    "user_centric": health["components"]["user_centric"],
+                    "evolution": health["components"]["evolution_health"],
+                    "community": health["components"]["community_health"],
+                    "security": health["components"]["security_health"],
+                    "confidence": health["confidence"]["level"],
+                }
+            )
 
         # Print formatted table
         print("\n" + "=" * 120)
