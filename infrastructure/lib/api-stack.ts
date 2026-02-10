@@ -1686,13 +1686,20 @@ export class ApiStack extends cdk.Stack {
 
     // Helper to create standard Lambda alarms
     // Returns { allAlarms, errorAlarm } so error alarm can be used for CodeDeploy rollback
+    interface LambdaAlarmOptions {
+      duration?: boolean; // default: true
+      throttle?: boolean; // default: true
+    }
+
     const createLambdaAlarms = (
       fn: lambda.Function,
-      name: string
+      name: string,
+      options: LambdaAlarmOptions = {}
     ): { allAlarms: cloudwatch.Alarm[]; errorAlarm: cloudwatch.Alarm } => {
+      const { duration = true, throttle = true } = options;
       const alarms: cloudwatch.Alarm[] = [];
 
-      // Error rate alarm (> 5% errors over 5 minutes)
+      // Error rate alarm (> 5 errors over 5 minutes) - always created (CodeDeploy rollback depends on it)
       const errorAlarm = new cloudwatch.Alarm(this, `${name}ErrorAlarm`, {
         alarmName: `pkgwatch-api-${name.toLowerCase()}-errors`,
         alarmDescription: `High error rate on ${name} Lambda`,
@@ -1708,38 +1715,42 @@ export class ApiStack extends cdk.Stack {
       });
       alarms.push(errorAlarm);
 
-      // Duration alarm (P99 > 80% of timeout)
-      const timeoutMs = fn.timeout?.toMilliseconds() ?? 30000;
-      const durationAlarm = new cloudwatch.Alarm(this, `${name}DurationAlarm`, {
-        alarmName: `pkgwatch-api-${name.toLowerCase()}-duration`,
-        alarmDescription: `High latency on ${name} Lambda (approaching timeout)`,
-        metric: fn.metricDuration({
-          period: cdk.Duration.minutes(5),
-          statistic: "p99",
-        }),
-        threshold: timeoutMs * 0.8,
-        evaluationPeriods: 2,
-        comparisonOperator:
-          cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
-        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-      });
-      alarms.push(durationAlarm);
+      if (duration) {
+        // Duration alarm (P99 > 80% of timeout)
+        const timeoutMs = fn.timeout?.toMilliseconds() ?? 30000;
+        const durationAlarm = new cloudwatch.Alarm(this, `${name}DurationAlarm`, {
+          alarmName: `pkgwatch-api-${name.toLowerCase()}-duration`,
+          alarmDescription: `High latency on ${name} Lambda (approaching timeout)`,
+          metric: fn.metricDuration({
+            period: cdk.Duration.minutes(5),
+            statistic: "p99",
+          }),
+          threshold: timeoutMs * 0.8,
+          evaluationPeriods: 2,
+          comparisonOperator:
+            cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+          treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+        });
+        alarms.push(durationAlarm);
+      }
 
-      // Throttle alarm (any throttles)
-      const throttleAlarm = new cloudwatch.Alarm(this, `${name}ThrottleAlarm`, {
-        alarmName: `pkgwatch-api-${name.toLowerCase()}-throttles`,
-        alarmDescription: `Throttling detected on ${name} Lambda`,
-        metric: fn.metricThrottles({
-          period: cdk.Duration.minutes(5),
-          statistic: "Sum",
-        }),
-        threshold: 1,
-        evaluationPeriods: 1,
-        comparisonOperator:
-          cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
-        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-      });
-      alarms.push(throttleAlarm);
+      if (throttle) {
+        // Throttle alarm (any throttles)
+        const throttleAlarm = new cloudwatch.Alarm(this, `${name}ThrottleAlarm`, {
+          alarmName: `pkgwatch-api-${name.toLowerCase()}-throttles`,
+          alarmDescription: `Throttling detected on ${name} Lambda`,
+          metric: fn.metricThrottles({
+            period: cdk.Duration.minutes(5),
+            statistic: "Sum",
+          }),
+          threshold: 1,
+          evaluationPeriods: 1,
+          comparisonOperator:
+            cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+          treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+        });
+        alarms.push(throttleAlarm);
+      }
 
       // Wire up to SNS if provided (both alarm and recovery notifications)
       if (alertTopic) {
@@ -1752,48 +1763,50 @@ export class ApiStack extends cdk.Stack {
       return { allAlarms: alarms, errorAlarm };
     };
 
-    // Create alarms for all API endpoints
-    // Store error alarms from critical handlers for CodeDeploy rollback
-    createLambdaAlarms(healthHandler, "Health");
-    createLambdaAlarms(badgeHandler, "Badge");
-    const getPackageAlarms = createLambdaAlarms(getPackageHandler, "GetPackage");
-    const scanAlarms = createLambdaAlarms(scanHandler, "Scan");
-    createLambdaAlarms(getUsageHandler, "GetUsage");
-    const stripeWebhookAlarms = createLambdaAlarms(stripeWebhookHandler, "StripeWebhook");
-    createLambdaAlarms(createCheckoutHandler, "CreateCheckout");
-    createLambdaAlarms(createBillingPortalHandler, "CreateBillingPortal");
-    createLambdaAlarms(upgradePreviewHandler, "UpgradePreview");
-    createLambdaAlarms(upgradeConfirmHandler, "UpgradeConfirm");
-    createLambdaAlarms(resetUsageHandler, "ResetUsage");
+    // Create error alarms for all API endpoints
+    // Duration and throttle alarms removed: duration is redundant with API Gateway P95 latency
+    // alarm; throttle is account-level (not per-function actionable) with hair-trigger threshold
+    const noisy = { duration: false, throttle: false };
+    createLambdaAlarms(healthHandler, "Health", noisy);
+    createLambdaAlarms(badgeHandler, "Badge", noisy);
+    const getPackageAlarms = createLambdaAlarms(getPackageHandler, "GetPackage", noisy);
+    const scanAlarms = createLambdaAlarms(scanHandler, "Scan", noisy);
+    createLambdaAlarms(getUsageHandler, "GetUsage", noisy);
+    const stripeWebhookAlarms = createLambdaAlarms(stripeWebhookHandler, "StripeWebhook", noisy);
+    createLambdaAlarms(createCheckoutHandler, "CreateCheckout", noisy);
+    createLambdaAlarms(createBillingPortalHandler, "CreateBillingPortal", noisy);
+    createLambdaAlarms(upgradePreviewHandler, "UpgradePreview", noisy);
+    createLambdaAlarms(upgradeConfirmHandler, "UpgradeConfirm", noisy);
+    createLambdaAlarms(resetUsageHandler, "ResetUsage", noisy);
 
     // Auth/signup Lambda alarms - critical for user access
-    createLambdaAlarms(signupHandler, "Signup");
-    createLambdaAlarms(verifyHandler, "VerifyEmail");
-    createLambdaAlarms(magicLinkHandler, "MagicLink");
-    createLambdaAlarms(authCallbackHandler, "AuthCallback");
-    createLambdaAlarms(authMeHandler, "AuthMe");
-    createLambdaAlarms(getPendingKeyHandler, "GetPendingKey");
-    createLambdaAlarms(getPendingRecoveryCodesHandler, "GetPendingRecoveryCodes");
-    createLambdaAlarms(resendVerificationHandler, "ResendVerification");
-    createLambdaAlarms(getApiKeysHandler, "GetApiKeys");
-    createLambdaAlarms(createApiKeyHandler, "CreateApiKey");
-    createLambdaAlarms(revokeApiKeyHandler, "RevokeApiKey");
-    createLambdaAlarms(requestPackageHandler, "RequestPackage");
+    createLambdaAlarms(signupHandler, "Signup", noisy);
+    createLambdaAlarms(verifyHandler, "VerifyEmail", noisy);
+    createLambdaAlarms(magicLinkHandler, "MagicLink", noisy);
+    createLambdaAlarms(authCallbackHandler, "AuthCallback", noisy);
+    createLambdaAlarms(authMeHandler, "AuthMe", noisy);
+    createLambdaAlarms(getPendingKeyHandler, "GetPendingKey", noisy);
+    createLambdaAlarms(getPendingRecoveryCodesHandler, "GetPendingRecoveryCodes", noisy);
+    createLambdaAlarms(resendVerificationHandler, "ResendVerification", noisy);
+    createLambdaAlarms(getApiKeysHandler, "GetApiKeys", noisy);
+    createLambdaAlarms(createApiKeyHandler, "CreateApiKey", noisy);
+    createLambdaAlarms(revokeApiKeyHandler, "RevokeApiKey", noisy);
+    createLambdaAlarms(requestPackageHandler, "RequestPackage", noisy);
 
     // Account recovery Lambda alarms
-    createLambdaAlarms(accountRecoveryCodesHandler, "AccountRecoveryCodes");
-    createLambdaAlarms(recoveryInitiateHandler, "RecoveryInitiate");
-    createLambdaAlarms(recoveryVerifyApiKeyHandler, "RecoveryVerifyApiKey");
-    createLambdaAlarms(recoveryVerifyCodeHandler, "RecoveryVerifyCode");
-    createLambdaAlarms(recoveryUpdateEmailHandler, "RecoveryUpdateEmail");
-    createLambdaAlarms(recoveryConfirmEmailHandler, "RecoveryConfirmEmail");
+    createLambdaAlarms(accountRecoveryCodesHandler, "AccountRecoveryCodes", noisy);
+    createLambdaAlarms(recoveryInitiateHandler, "RecoveryInitiate", noisy);
+    createLambdaAlarms(recoveryVerifyApiKeyHandler, "RecoveryVerifyApiKey", noisy);
+    createLambdaAlarms(recoveryVerifyCodeHandler, "RecoveryVerifyCode", noisy);
+    createLambdaAlarms(recoveryUpdateEmailHandler, "RecoveryUpdateEmail", noisy);
+    createLambdaAlarms(recoveryConfirmEmailHandler, "RecoveryConfirmEmail", noisy);
 
     // Referral program Lambda alarms
-    createLambdaAlarms(referralStatusHandler, "ReferralStatus");
-    createLambdaAlarms(referralRedirectHandler, "ReferralRedirect");
-    createLambdaAlarms(addReferralCodeHandler, "AddReferralCode");
-    createLambdaAlarms(referralRetentionHandler, "ReferralRetention");
-    createLambdaAlarms(referralCleanupHandler, "ReferralCleanup");
+    createLambdaAlarms(referralStatusHandler, "ReferralStatus", noisy);
+    createLambdaAlarms(referralRedirectHandler, "ReferralRedirect", noisy);
+    createLambdaAlarms(addReferralCodeHandler, "AddReferralCode", noisy);
+    createLambdaAlarms(referralRetentionHandler, "ReferralRetention", noisy);
+    createLambdaAlarms(referralCleanupHandler, "ReferralCleanup", noisy);
 
     // API Gateway 5XX alarm
     const api5xxAlarm = new cloudwatch.Alarm(this, "Api5xxAlarm", {
