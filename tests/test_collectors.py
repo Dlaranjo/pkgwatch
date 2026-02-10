@@ -7550,6 +7550,51 @@ class TestProcessSinglePackageRetryLogging:
                 assert success is True
                 assert error is None
 
+    def test_dedup_does_not_skip_pending_packages(self):
+        """Pending packages should never be skipped by dedup, even if recently updated."""
+        from package_collector import process_single_package
+
+        message = {
+            "ecosystem": "npm",
+            "name": "new-discovery",
+            "tier": 3,
+        }
+
+        # Graph expander just created this record with last_updated=now
+        existing_data = {
+            "pk": "npm#new-discovery",
+            "sk": "LATEST",
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "data_status": "pending",
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "GITHUB_TOKEN_SECRET_ARN": "",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+                "DEDUP_WINDOW_MINUTES": "30",
+            },
+        ):
+            with (
+                patch(
+                    "package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=existing_data
+                ),
+                patch(
+                    "package_collector.collect_package_data",
+                    new_callable=AsyncMock,
+                    return_value={"latest_version": "1.0.0", "sources": ["deps.dev"]},
+                ),
+                patch("package_collector.store_raw_data"),
+                patch("package_collector.store_package_data", new_callable=AsyncMock),
+            ):
+                success, pkg_name, error = run_async(process_single_package(message))
+                # Should NOT be skipped — pending packages need initial collection
+                assert success is True
+                assert error is None
+
     def test_last_updated_parse_failure_continues(self):
         """If last_updated is unparseable, should continue with collection."""
         from package_collector import process_single_package

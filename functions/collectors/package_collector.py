@@ -1387,7 +1387,8 @@ async def process_single_package(message: dict, bulk_downloads: dict = None) -> 
         await _increment_retry_count(ecosystem, name)
 
     # Check if recently collected (deduplication) - skip if force_refresh
-    if not force_refresh and existing:
+    # Never skip pending packages — they were just discovered and need initial collection
+    if not force_refresh and existing and existing.get("data_status") != "pending":
         last_updated = existing.get("last_updated")
         if last_updated:
             try:
