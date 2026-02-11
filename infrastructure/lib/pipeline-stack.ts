@@ -430,11 +430,11 @@ export class PipelineStack extends cdk.Stack {
       })
     );
 
-    // Schedule: Every 3 hours
+    // Schedule: Every 1 hour (temporary — revert to 3h after PyPI downloads backlog clears)
     new events.Rule(this, "PyPIDownloadsSchedule", {
       ruleName: "pkgwatch-pypi-downloads",
-      schedule: events.Schedule.rate(cdk.Duration.hours(3)),
-      description: "Fetches PyPI download statistics every 3 hours",
+      schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+      description: "Fetches PyPI download statistics every hour (temporary backfill)",
       targets: [new targets.LambdaFunction(pypiDownloadsCollector)],
     });
 
