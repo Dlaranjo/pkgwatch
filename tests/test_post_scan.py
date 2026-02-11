@@ -3235,3 +3235,38 @@ class TestPostScanRiskCountConsistency:
 
         assert body["total"] == 2
         assert len(body["packages"]) + len(body["not_found"]) == body["total"]
+
+
+class TestPostScanPyPINormalization:
+    """Tests for PyPI name normalization in post_scan batch lookups (Fix 5)."""
+
+    @mock_aws
+    def test_pypi_names_normalized_for_batch_lookup(
+        self, seeded_api_keys_table, seeded_packages_table, api_gateway_event
+    ):
+        """PyPI names with underscores/uppercase should be normalized for DB lookup."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.post_scan import handler
+
+        table, test_key = seeded_api_keys_table
+
+        # Request with non-normalized name "Requests" (uppercase R)
+        # DB stores as "requests" (normalized). Should still find it.
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["x-api-key"] = test_key
+        api_gateway_event["body"] = json.dumps(
+            {
+                "ecosystem": "pypi",
+                "dependencies": {"Requests": ">=2.28.0"},
+            }
+        )
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body["total"] == 1
+        # Should find the package despite different casing
+        assert len(body["packages"]) == 1

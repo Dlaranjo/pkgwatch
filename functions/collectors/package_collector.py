@@ -437,6 +437,18 @@ def _has_github_data(data: dict) -> bool:
     )
 
 
+def _has_pypi_data(data: dict) -> bool:
+    """Check if data has real PyPI fields (not just defaults from non-PyPI sources)."""
+    sources = data.get("sources", [])
+    return "pypi" in sources or "pypi_stale" in sources or "pypi_cached" in sources
+
+
+def _has_npm_data(data: dict) -> bool:
+    """Check if data has real npm fields (not just defaults from non-npm sources)."""
+    sources = data.get("sources", [])
+    return "npm" in sources or "npm_stale" in sources or "npm_cached" in sources
+
+
 def _has_openssf_data(data: dict) -> bool:
     """Check if data has valid OpenSSF fields (score is not None)."""
     return data.get("openssf_score") is not None
@@ -688,6 +700,7 @@ async def collect_package_data(
             combined_data["repository_url"] = depsdev_data.get("repository_url")
         else:
             logger.warning(f"Package {ecosystem}/{name} not found in deps.dev")
+            combined_data["depsdev_error"] = "package_not_found"
 
     except CircuitOpenError as e:
         logger.warning(f"deps.dev circuit open for {ecosystem}/{name}: {e}")
@@ -779,7 +792,8 @@ async def collect_package_data(
             logger.warning(f"npm rate limit reached, skipping for {name}")
             combined_data["npm_error"] = "rate_limit_exceeded"
             await _try_stale_fallback(
-                combined_data, ecosystem, name, "npm", "rate_limit_exceeded", _extract_cached_npm_fields, existing
+                combined_data, ecosystem, name, "npm", "rate_limit_exceeded", _extract_cached_npm_fields, existing,
+                has_data_check=_has_npm_data,
             )
         else:
             npm_result = None  # Skipped due to selective retry
@@ -810,41 +824,46 @@ async def collect_package_data(
                 logger.warning(f"npm circuit open for {name}")
                 combined_data["npm_error"] = "circuit_open"
                 await _try_stale_fallback(
-                    combined_data, ecosystem, name, "npm", "circuit_open", _extract_cached_npm_fields, existing
+                    combined_data, ecosystem, name, "npm", "circuit_open", _extract_cached_npm_fields, existing,
+                    has_data_check=_has_npm_data,
                 )
             elif isinstance(npm_result, Exception):
                 logger.error(f"Failed to fetch npm data for {name}: {npm_result}")
                 combined_data["npm_error"] = _sanitize_error(str(npm_result))
                 await _try_stale_fallback(
-                    combined_data, ecosystem, name, "npm", str(npm_result)[:50], _extract_cached_npm_fields, existing
+                    combined_data, ecosystem, name, "npm", str(npm_result)[:50], _extract_cached_npm_fields, existing,
+                    has_data_check=_has_npm_data,
                 )
             else:
                 npm_data = npm_result
-                combined_data["npm"] = npm_data
-                combined_data["sources"].append("npm")
+                if "error" not in npm_data:
+                    combined_data["npm"] = npm_data
+                    combined_data["sources"].append("npm")
 
-                # Supplement with npm-specific data
-                # Use bulk-fetched downloads if available (more efficient API usage)
-                if bulk_downloads and name in bulk_downloads:
-                    combined_data["weekly_downloads"] = bulk_downloads[name]
-                    combined_data["downloads_source"] = "bulk"
+                    # Supplement with npm-specific data
+                    # Use bulk-fetched downloads if available (more efficient API usage)
+                    if bulk_downloads and name in bulk_downloads:
+                        combined_data["weekly_downloads"] = bulk_downloads[name]
+                        combined_data["downloads_source"] = "bulk"
+                    else:
+                        combined_data["weekly_downloads"] = npm_data.get("weekly_downloads", 0)
+                    combined_data["maintainers"] = npm_data.get("maintainers", [])
+                    combined_data["maintainer_count"] = npm_data.get("maintainer_count", 0)
+                    combined_data["is_deprecated"] = npm_data.get("is_deprecated", False)
+                    combined_data["deprecation_message"] = npm_data.get("deprecation_message")
+                    combined_data["created_at"] = npm_data.get("created_at")
+                    combined_data["last_published"] = npm_data.get("last_published")
+                    # TypeScript and module system
+                    combined_data["has_types"] = npm_data.get("has_types", False)
+                    combined_data["module_type"] = npm_data.get("module_type", "commonjs")
+                    combined_data["has_exports"] = npm_data.get("has_exports", False)
+                    combined_data["engines"] = npm_data.get("engines")
+
+                    # Use npm repo URL as fallback
+                    if not combined_data.get("repository_url"):
+                        combined_data["repository_url"] = npm_data.get("repository_url")
                 else:
-                    combined_data["weekly_downloads"] = npm_data.get("weekly_downloads", 0)
-                combined_data["maintainers"] = npm_data.get("maintainers", [])
-                combined_data["maintainer_count"] = npm_data.get("maintainer_count", 0)
-                combined_data["is_deprecated"] = npm_data.get("is_deprecated", False)
-                combined_data["deprecation_message"] = npm_data.get("deprecation_message")
-                combined_data["created_at"] = npm_data.get("created_at")
-                combined_data["last_published"] = npm_data.get("last_published")
-                # TypeScript and module system
-                combined_data["has_types"] = npm_data.get("has_types", False)
-                combined_data["module_type"] = npm_data.get("module_type", "commonjs")
-                combined_data["has_exports"] = npm_data.get("has_exports", False)
-                combined_data["engines"] = npm_data.get("engines")
-
-                # Use npm repo URL as fallback
-                if not combined_data.get("repository_url"):
-                    combined_data["repository_url"] = npm_data.get("repository_url")
+                    combined_data["npm_error"] = npm_data.get("error")
 
         # Process bundlephobia result (if we tried to fetch it)
         if bundle_allowed and bundle_result is not None:
@@ -948,20 +967,23 @@ async def collect_package_data(
                 logger.warning(f"PyPI circuit open for {name}")
                 combined_data["pypi_error"] = "circuit_open"
                 await _try_stale_fallback(
-                    combined_data, ecosystem, name, "pypi", "circuit_open", _extract_cached_pypi_fields, existing
+                    combined_data, ecosystem, name, "pypi", "circuit_open", _extract_cached_pypi_fields, existing,
+                    has_data_check=_has_pypi_data,
                 )
             except Exception as e:
                 logger.error(f"Failed to fetch PyPI data for {name}: {e}")
                 combined_data["pypi_error"] = _sanitize_error(str(e))
                 await _try_stale_fallback(
-                    combined_data, ecosystem, name, "pypi", "exception", _extract_cached_pypi_fields, existing
+                    combined_data, ecosystem, name, "pypi", "exception", _extract_cached_pypi_fields, existing,
+                    has_data_check=_has_pypi_data,
                 )
         elif should_fetch_pypi:
             # Wanted to fetch but rate limited - try stale fallback
             logger.warning(f"PyPI rate limit reached, skipping for {name}")
             combined_data["pypi_error"] = "rate_limit_exceeded"
             await _try_stale_fallback(
-                combined_data, ecosystem, name, "pypi", "rate_limit_exceeded", _extract_cached_pypi_fields, existing
+                combined_data, ecosystem, name, "pypi", "rate_limit_exceeded", _extract_cached_pypi_fields, existing,
+                has_data_check=_has_pypi_data,
             )
         # else: skipped due to selective retry, cached data already applied above
 
@@ -1171,7 +1193,9 @@ def _calculate_data_status(data: dict, ecosystem: str) -> tuple[str, list]:
     """
     missing = []
 
-    if data.get("depsdev_error"):
+    # Only treat deps.dev errors as missing if they're transient (not package_not_found).
+    # Packages that don't exist on deps.dev shouldn't enter futile retry loops.
+    if data.get("depsdev_error") and data.get("depsdev_error") != "package_not_found":
         missing.append("deps.dev")
 
     sources = data.get("sources", [])

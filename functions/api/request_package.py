@@ -15,7 +15,7 @@ import hashlib
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from botocore.exceptions import ClientError
 
@@ -32,7 +32,7 @@ RATE_LIMIT_PER_DAY = 10
 
 def handler(event, context):
     """Handle package request from user."""
-    from shared.package_validation import normalize_npm_name
+    from shared.package_validation import normalize_npm_name, normalize_pypi_name
     from shared.response_utils import error_response, success_response
 
     # Extract origin for CORS headers
@@ -55,9 +55,11 @@ def handler(event, context):
     if ecosystem not in ["npm", "pypi"]:
         return error_response(400, "invalid_ecosystem", "Ecosystem must be 'npm' or 'pypi'", origin=origin)
 
-    # Normalize npm package names to lowercase (npm is case-insensitive)
+    # Normalize package names (both registries are case-insensitive)
     if ecosystem == "npm":
         name = normalize_npm_name(name)
+    elif ecosystem == "pypi":
+        name = normalize_pypi_name(name)
 
     # Check and record rate limit atomically
     client_ip = get_client_ip(event)
@@ -114,6 +116,8 @@ def handler(event, context):
                 "created_at": now,
                 "last_updated": now,
                 "data_status": "pending",
+                "next_retry_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+                "retry_count": 0,
                 "requested_by_ip_hash": hashlib.sha256(
                     (client_ip + os.environ.get("IP_HASH_SALT", "pkgwatch")).encode()
                 ).hexdigest()[:16],

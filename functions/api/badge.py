@@ -13,7 +13,7 @@ from decimal import Decimal
 from urllib.parse import unquote
 
 from shared.dynamo import get_package
-from shared.package_validation import normalize_npm_name
+from shared.package_validation import normalize_npm_name, normalize_pypi_name
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -178,9 +178,11 @@ def handler(event, context):
     # Handle URL-encoded package names (e.g., %40babel%2Fcore -> @babel/core)
     name = unquote(name)
 
-    # Normalize npm package names to lowercase
+    # Normalize package names (both registries are case-insensitive)
     if ecosystem == "npm":
         name = normalize_npm_name(name)
+    elif ecosystem == "pypi":
+        name = normalize_pypi_name(name)
 
     # Validate ecosystem
     if ecosystem not in ("npm", "pypi"):

@@ -15,6 +15,8 @@ from datetime import datetime, timedelta, timezone
 
 import boto3
 
+from shared.package_validation import normalize_pypi_name
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -98,6 +100,10 @@ async def process_package(table, pkg_name: str, ecosystem: str) -> int:
 
         # Check each dependency
         for dep_name in deps:
+            # Normalize PyPI names per PEP 503 before DB operations
+            if ecosystem == "pypi":
+                dep_name = normalize_pypi_name(dep_name)
+
             # Skip if already in DB
             if package_exists(table, ecosystem, dep_name):
                 continue
@@ -127,6 +133,8 @@ async def process_package(table, pkg_name: str, ecosystem: str) -> int:
                         "created_at": now,
                         "last_updated": now,
                         "data_status": "pending",
+                        "next_retry_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+                        "retry_count": 0,
                     },
                     ConditionExpression="attribute_not_exists(pk)",
                 )

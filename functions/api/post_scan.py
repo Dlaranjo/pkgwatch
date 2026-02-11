@@ -24,6 +24,7 @@ MAX_DEPENDENCIES_PER_SCAN = 1000  # Prevent DoS via oversized scan payloads
 # NOTE: Package validation moved to shared/package_validation.py
 from shared.package_validation import (
     normalize_npm_name,
+    normalize_pypi_name,
     validate_npm_package_name,
     validate_pypi_package_name,
 )
@@ -207,11 +208,11 @@ def handler(event, context):
     dep_list = list(dependencies)
     for i in range(0, len(dep_list), 25):
         batch = dep_list[i : i + 25]
-        # Normalize names for DB lookup (npm is case-insensitive, DB stores lowercase)
+        # Normalize names for DB lookup (both registries are case-insensitive)
         if ecosystem == "npm":
             normalized_batch = [normalize_npm_name(name) for name in batch]
         else:
-            normalized_batch = batch
+            normalized_batch = [normalize_pypi_name(name) for name in batch]
         batch_set = set(normalized_batch)  # Track using normalized names
 
         try:

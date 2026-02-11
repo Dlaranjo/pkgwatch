@@ -1570,3 +1570,100 @@ class TestConditionalCheckFailedDirect:
         body = json.loads(result["body"])
         # ConditionalCheckFailedException was caught silently, discovered = 0
         assert body["discovered"] == 0
+
+
+class TestGraphExpanderRetryFields:
+    """Tests for retry fields on newly discovered packages (Fix 4)."""
+
+    @mock_aws
+    def test_discovered_packages_have_retry_fields(self, mock_dynamodb, setup_s3_bucket, setup_sqs_queue):
+        """Newly discovered packages should have next_retry_at and retry_count set."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        setup_s3_bucket
+        setup_sqs_queue
+
+        import importlib
+
+        import discovery.graph_expander_worker as module
+
+        importlib.reload(module)
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+
+        event = {
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "packages": ["test-pkg"],
+                            "ecosystem": "npm",
+                        }
+                    )
+                }
+            ]
+        }
+
+        with patch.object(module, "get_cached_dependencies", return_value=None):
+            with patch("collectors.depsdev_collector.get_dependencies", new_callable=AsyncMock) as mock_deps:
+                mock_deps.return_value = ["new-retry-dep"]
+                with patch("collectors.depsdev_collector.get_package_info", new_callable=AsyncMock) as mock_info:
+                    mock_info.return_value = {"dependents_count": 500}
+
+                    result = module.handler(event, None)
+
+        assert result["statusCode"] == 200
+
+        # Check the newly discovered package has retry fields
+        item = table.get_item(Key={"pk": "npm#new-retry-dep", "sk": "LATEST"}).get("Item")
+        assert item is not None
+        assert item["data_status"] == "pending"
+        assert "next_retry_at" in item
+        assert item["retry_count"] == 0
+
+
+class TestGraphExpanderPyPINormalization:
+    """Tests for PyPI name normalization in graph expander (Fix 5)."""
+
+    @mock_aws
+    def test_pypi_dep_names_normalized(self, mock_dynamodb, setup_s3_bucket, setup_sqs_queue):
+        """PyPI dependency names should be normalized (PEP 503) before storage."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        setup_s3_bucket
+        setup_sqs_queue
+
+        import importlib
+
+        import discovery.graph_expander_worker as module
+
+        importlib.reload(module)
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+
+        event = {
+            "Records": [
+                {
+                    "body": json.dumps(
+                        {
+                            "packages": ["parent-pkg"],
+                            "ecosystem": "pypi",
+                        }
+                    )
+                }
+            ]
+        }
+
+        # deps.dev returns unnormalized PyPI name
+        with patch.object(module, "get_cached_dependencies", return_value=None):
+            with patch("collectors.depsdev_collector.get_dependencies", new_callable=AsyncMock) as mock_deps:
+                mock_deps.return_value = ["My_Package.Name"]
+                with patch("collectors.depsdev_collector.get_package_info", new_callable=AsyncMock) as mock_info:
+                    mock_info.return_value = {"dependents_count": 500}
+
+                    result = module.handler(event, None)
+
+        assert result["statusCode"] == 200
+
+        # Check the package was stored with normalized name
+        item = table.get_item(Key={"pk": "pypi#my-package-name", "sk": "LATEST"}).get("Item")
+        assert item is not None
+        assert item["name"] == "my-package-name"

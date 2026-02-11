@@ -13,7 +13,7 @@ npms.io provides quality-scored package rankings that help find these gaps.
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import boto3
@@ -93,6 +93,8 @@ def handler(event, context):
                     "created_at": now,
                     "last_updated": now,
                     "data_status": "pending",
+                    "next_retry_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+                    "retry_count": 0,
                     "npmsio_score": Decimal(str(score)),
                 },
                 ConditionExpression="attribute_not_exists(pk)",

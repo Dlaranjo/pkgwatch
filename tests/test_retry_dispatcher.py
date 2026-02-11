@@ -842,3 +842,51 @@ class TestRetryDispatcherTimeoutAndEdgeCases:
                 body = json.loads(result["body"])
                 assert body["errors"] >= 1
                 assert body["dispatched"] == 0
+
+
+class TestRetryDispatcherPendingStatus:
+    """Tests for pending status support in retry dispatcher (Fix 4)."""
+
+    @mock_aws
+    def test_queries_pending_status(self, mock_dynamodb):
+        """retry_dispatcher should query for pending packages in addition to partial/minimal."""
+        import importlib
+
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        import collectors.retry_dispatcher as module
+
+        importlib.reload(module)
+
+        now = datetime.now(timezone.utc)
+        past = (now - timedelta(hours=2)).isoformat()
+
+        # Insert a pending package with next_retry_at in the past
+        import boto3
+
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        table = dynamodb.Table("pkgwatch-packages")
+        table.put_item(
+            Item={
+                "pk": "npm#pending-pkg",
+                "sk": "LATEST",
+                "name": "pending-pkg",
+                "ecosystem": "npm",
+                "data_status": "pending",
+                "next_retry_at": past,
+                "retry_count": 0,
+                "last_updated": past,
+            }
+        )
+
+        mock_cb_module = MagicMock()
+        mock_cb_module.GITHUB_CIRCUIT = MagicMock()
+        mock_cb_module.GITHUB_CIRCUIT.can_execute.return_value = True
+
+        with patch.dict(sys.modules, {"shared.circuit_breaker": mock_cb_module}):
+            with patch.object(module, "sqs") as mock_sqs:
+                result = module.handler({}, None)
+
+        body = json.loads(result["body"])
+        assert body["dispatched"] >= 1

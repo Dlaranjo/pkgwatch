@@ -4095,6 +4095,144 @@ class TestStaleDataFallback:
         assert "extra_field" not in result
 
 
+class TestHasEcosystemData:
+    """Tests for _has_pypi_data and _has_npm_data guard functions."""
+
+    def test_has_pypi_data_with_pypi_source(self):
+        from package_collector import _has_pypi_data
+
+        assert _has_pypi_data({"sources": ["deps.dev", "pypi"]}) is True
+
+    def test_has_pypi_data_with_pypi_stale_source(self):
+        from package_collector import _has_pypi_data
+
+        assert _has_pypi_data({"sources": ["deps.dev", "pypi_stale"]}) is True
+
+    def test_has_pypi_data_with_pypi_cached_source(self):
+        from package_collector import _has_pypi_data
+
+        assert _has_pypi_data({"sources": ["deps.dev", "pypi_cached"]}) is True
+
+    def test_has_pypi_data_without_pypi_source(self):
+        from package_collector import _has_pypi_data
+
+        assert _has_pypi_data({"sources": ["deps.dev"]}) is False
+
+    def test_has_pypi_data_no_sources(self):
+        from package_collector import _has_pypi_data
+
+        assert _has_pypi_data({}) is False
+
+    def test_has_npm_data_with_npm_source(self):
+        from package_collector import _has_npm_data
+
+        assert _has_npm_data({"sources": ["deps.dev", "npm"]}) is True
+
+    def test_has_npm_data_with_npm_stale_source(self):
+        from package_collector import _has_npm_data
+
+        assert _has_npm_data({"sources": ["deps.dev", "npm_stale"]}) is True
+
+    def test_has_npm_data_without_npm_source(self):
+        from package_collector import _has_npm_data
+
+        assert _has_npm_data({"sources": ["deps.dev"]}) is False
+
+
+class TestNpmErrorDictHandling:
+    """Tests for npm error dict handling (Fix 2: npm 404 returns error dict not exception)."""
+
+    @pytest.mark.asyncio
+    async def test_npm_404_sets_npm_error_not_sources(self):
+        """When npm returns error dict for 404, should set npm_error and NOT add 'npm' to sources."""
+        from package_collector import collect_package_data
+
+        mock_depsdev = {
+            "latest_version": "1.0.0",
+            "published_at": "2023-01-01",
+            "dependents_count": 0,
+        }
+        mock_npm_error = {"error": "package_not_found", "name": "nonexistent-pkg"}
+
+        with (
+            patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=mock_depsdev),
+            patch("package_collector.get_npm_metadata", new_callable=AsyncMock, return_value=mock_npm_error),
+            patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+            patch("package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=None),
+            patch("package_collector.get_github_token", return_value=None),
+        ):
+            result = await collect_package_data("npm", "nonexistent-pkg")
+
+        assert result.get("npm_error") == "package_not_found"
+        assert "npm" not in result.get("sources", [])
+
+    @pytest.mark.asyncio
+    async def test_npm_invalid_json_sets_npm_error(self):
+        """When npm returns invalid_json_response error dict, should set npm_error."""
+        from package_collector import collect_package_data
+
+        mock_depsdev = {"latest_version": "1.0.0", "published_at": "2023-01-01"}
+        mock_npm_error = {"error": "invalid_json_response", "name": "bad-pkg"}
+
+        with (
+            patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=mock_depsdev),
+            patch("package_collector.get_npm_metadata", new_callable=AsyncMock, return_value=mock_npm_error),
+            patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+            patch("package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=None),
+            patch("package_collector.get_github_token", return_value=None),
+        ):
+            result = await collect_package_data("npm", "bad-pkg")
+
+        assert result.get("npm_error") == "invalid_json_response"
+        assert "npm" not in result.get("sources", [])
+
+
+class TestDepsdevNotFoundError:
+    """Tests for deps.dev returning None sets depsdev_error (Fix 3)."""
+
+    @pytest.mark.asyncio
+    async def test_depsdev_none_sets_error(self):
+        """When deps.dev returns None (404), should set depsdev_error."""
+        from package_collector import collect_package_data
+
+        with (
+            patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=None),
+            patch("package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "package_not_found"}),
+            patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
+            patch("package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=None),
+            patch("package_collector.get_github_token", return_value=None),
+        ):
+            result = await collect_package_data("npm", "ghost-pkg")
+
+        assert result.get("depsdev_error") == "package_not_found"
+
+    def test_depsdev_package_not_found_not_marked_missing(self):
+        """depsdev_error=package_not_found should NOT mark deps.dev as missing (avoids retry loops)."""
+        from package_collector import _calculate_data_status
+
+        data = {
+            "depsdev_error": "package_not_found",
+            "sources": ["npm"],
+        }
+
+        status, missing = _calculate_data_status(data, "npm")
+        assert status == "complete"
+        assert "deps.dev" not in missing
+
+    def test_depsdev_transient_error_still_marked_missing(self):
+        """Transient deps.dev errors should still trigger 'minimal' status."""
+        from package_collector import _calculate_data_status
+
+        data = {
+            "depsdev_error": "API unavailable",
+            "sources": ["npm"],
+        }
+
+        status, missing = _calculate_data_status(data, "npm")
+        assert status == "minimal"
+        assert "deps.dev" in missing
+
+
 class TestPipelineMetrics:
     """Tests for pipeline metrics emission."""
 
@@ -5085,6 +5223,7 @@ class TestPartialCollectionFailures:
                 "maintainer_count": 3,
                 "has_types": True,
                 "last_updated": datetime.now(timezone.utc).isoformat(),
+                "sources": ["deps.dev", "npm"],
             }
 
             def rate_limit_check(service, limit):

@@ -15,7 +15,7 @@ import json
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import boto3
 import httpx
@@ -96,6 +96,8 @@ def handler(event, context):
                     "created_at": now,
                     "last_updated": now,
                     "data_status": "pending",
+                    "next_retry_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+                    "retry_count": 0,
                     "weekly_downloads": int(downloads // 4),
                 },
                 ConditionExpression="attribute_not_exists(pk)",

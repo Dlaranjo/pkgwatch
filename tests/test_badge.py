@@ -769,3 +769,44 @@ class TestBadgeNullPathParameters:
 
         assert result["statusCode"] == 200
         assert "pkgwatch" in result["body"]
+
+
+class TestBadgePyPINormalization:
+    """Tests for PyPI name normalization in badge endpoint (Fix 5)."""
+
+    def _make_event(self, ecosystem="pypi", name="flask"):
+        return {
+            "httpMethod": "GET",
+            "headers": {},
+            "pathParameters": {"ecosystem": ecosystem, "name": name},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+    @patch("api.badge.get_package")
+    def test_pypi_name_normalized_for_lookup(self, mock_get):
+        """Badge endpoint should normalize PyPI names (e.g., Flask -> flask)."""
+        mock_get.return_value = {"health_score": Decimal("80")}
+
+        from api.badge import handler
+
+        event = self._make_event(ecosystem="pypi", name="Flask")
+        result = handler(event, {})
+
+        # Verify get_package was called with normalized name
+        mock_get.assert_called_with("pypi", "flask")
+        assert result["statusCode"] == 200
+
+    @patch("api.badge.get_package")
+    def test_pypi_name_with_underscores_normalized(self, mock_get):
+        """Badge endpoint should normalize underscores in PyPI names."""
+        mock_get.return_value = {"health_score": Decimal("75")}
+
+        from api.badge import handler
+
+        event = self._make_event(ecosystem="pypi", name="scikit_learn")
+        result = handler(event, {})
+
+        mock_get.assert_called_with("pypi", "scikit-learn")
+        assert result["statusCode"] == 200

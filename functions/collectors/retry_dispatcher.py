@@ -60,7 +60,7 @@ def handler(event, context):
     # Note: We intentionally don't paginate here to limit throughput and prevent
     # overwhelming external APIs. Older incomplete packages will be picked up
     # in subsequent runs as newer ones are processed.
-    for status in ["partial", "minimal"]:
+    for status in ["partial", "minimal", "pending"]:
         try:
             # GSI name is "v2" because the original index was replaced in AWS
             # (DynamoDB doesn't support in-place GSI modifications).
@@ -69,7 +69,7 @@ def handler(event, context):
                 IndexName="data-status-index-v2",
                 KeyConditionExpression=(Key("data_status").eq(status) & Key("next_retry_at").lte(now.isoformat())),
                 FilterExpression=(
-                    Attr("retry_count").lt(MAX_RETRY_COUNT)
+                    (Attr("retry_count").not_exists() | Attr("retry_count").lt(MAX_RETRY_COUNT))
                     & (Attr("retry_dispatched_at").not_exists() | Attr("retry_dispatched_at").lt(one_hour_ago))
                 ),
                 Limit=MAX_DISPATCH_PER_RUN // 2,
