@@ -391,6 +391,6 @@ function getStatusLabel(status: string): string {
 
 function escapeMarkdown(text: string): string {
   return text
-    .replace(/[\\`*_{}[\]()#+\-.!|<>]/g, "\\$&")
+    .replace(/[\\`*_[\]|<>]/g, "\\$&")
     .slice(0, 100); // Truncate long values
 }
