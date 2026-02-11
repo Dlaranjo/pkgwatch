@@ -885,7 +885,7 @@ class TestRetryDispatcherPendingStatus:
         mock_cb_module.GITHUB_CIRCUIT.can_execute.return_value = True
 
         with patch.dict(sys.modules, {"shared.circuit_breaker": mock_cb_module}):
-            with patch.object(module, "sqs") as mock_sqs:
+            with patch.object(module, "sqs"):
                 result = module.handler({}, None)
 
         body = json.loads(result["body"])
