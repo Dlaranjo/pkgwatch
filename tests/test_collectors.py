@@ -4197,7 +4197,11 @@ class TestDepsdevNotFoundError:
 
         with (
             patch("package_collector.get_depsdev_info", new_callable=AsyncMock, return_value=None),
-            patch("package_collector.get_npm_metadata", new_callable=AsyncMock, return_value={"error": "package_not_found"}),
+            patch(
+                "package_collector.get_npm_metadata",
+                new_callable=AsyncMock,
+                return_value={"error": "package_not_found"},
+            ),
             patch("package_collector.check_and_increment_external_rate_limit", return_value=True),
             patch("package_collector._get_existing_package_data", new_callable=AsyncMock, return_value=None),
             patch("package_collector.get_github_token", return_value=None),

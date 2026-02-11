@@ -792,7 +792,13 @@ async def collect_package_data(
             logger.warning(f"npm rate limit reached, skipping for {name}")
             combined_data["npm_error"] = "rate_limit_exceeded"
             await _try_stale_fallback(
-                combined_data, ecosystem, name, "npm", "rate_limit_exceeded", _extract_cached_npm_fields, existing,
+                combined_data,
+                ecosystem,
+                name,
+                "npm",
+                "rate_limit_exceeded",
+                _extract_cached_npm_fields,
+                existing,
                 has_data_check=_has_npm_data,
             )
         else:
@@ -824,14 +830,26 @@ async def collect_package_data(
                 logger.warning(f"npm circuit open for {name}")
                 combined_data["npm_error"] = "circuit_open"
                 await _try_stale_fallback(
-                    combined_data, ecosystem, name, "npm", "circuit_open", _extract_cached_npm_fields, existing,
+                    combined_data,
+                    ecosystem,
+                    name,
+                    "npm",
+                    "circuit_open",
+                    _extract_cached_npm_fields,
+                    existing,
                     has_data_check=_has_npm_data,
                 )
             elif isinstance(npm_result, Exception):
                 logger.error(f"Failed to fetch npm data for {name}: {npm_result}")
                 combined_data["npm_error"] = _sanitize_error(str(npm_result))
                 await _try_stale_fallback(
-                    combined_data, ecosystem, name, "npm", str(npm_result)[:50], _extract_cached_npm_fields, existing,
+                    combined_data,
+                    ecosystem,
+                    name,
+                    "npm",
+                    str(npm_result)[:50],
+                    _extract_cached_npm_fields,
+                    existing,
                     has_data_check=_has_npm_data,
                 )
             else:
@@ -967,14 +985,26 @@ async def collect_package_data(
                 logger.warning(f"PyPI circuit open for {name}")
                 combined_data["pypi_error"] = "circuit_open"
                 await _try_stale_fallback(
-                    combined_data, ecosystem, name, "pypi", "circuit_open", _extract_cached_pypi_fields, existing,
+                    combined_data,
+                    ecosystem,
+                    name,
+                    "pypi",
+                    "circuit_open",
+                    _extract_cached_pypi_fields,
+                    existing,
                     has_data_check=_has_pypi_data,
                 )
             except Exception as e:
                 logger.error(f"Failed to fetch PyPI data for {name}: {e}")
                 combined_data["pypi_error"] = _sanitize_error(str(e))
                 await _try_stale_fallback(
-                    combined_data, ecosystem, name, "pypi", "exception", _extract_cached_pypi_fields, existing,
+                    combined_data,
+                    ecosystem,
+                    name,
+                    "pypi",
+                    "exception",
+                    _extract_cached_pypi_fields,
+                    existing,
                     has_data_check=_has_pypi_data,
                 )
         elif should_fetch_pypi:
@@ -982,7 +1012,13 @@ async def collect_package_data(
             logger.warning(f"PyPI rate limit reached, skipping for {name}")
             combined_data["pypi_error"] = "rate_limit_exceeded"
             await _try_stale_fallback(
-                combined_data, ecosystem, name, "pypi", "rate_limit_exceeded", _extract_cached_pypi_fields, existing,
+                combined_data,
+                ecosystem,
+                name,
+                "pypi",
+                "rate_limit_exceeded",
+                _extract_cached_pypi_fields,
+                existing,
                 has_data_check=_has_pypi_data,
             )
         # else: skipped due to selective retry, cached data already applied above
