@@ -1374,6 +1374,12 @@ def store_package_data_sync(ecosystem: str, name: str, data: dict, tier: int):
         data_status = "abandoned_partial"
         logger.info(f"Package {ecosystem}/{name} marked as abandoned_partial after {existing_retry} retries")
 
+    # If all sources were consulted but latest_version is still missing,
+    # the package doesn't exist in any registry
+    if data_status == "complete" and not data.get("latest_version"):
+        data_status = "abandoned_partial"
+        logger.info(f"Package {ecosystem}/{name} marked as abandoned_partial (no version found in any registry)")
+
     item["data_status"] = data_status
     item["missing_sources"] = missing_sources
 

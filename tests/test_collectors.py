@@ -4237,6 +4237,83 @@ class TestDepsdevNotFoundError:
         assert "deps.dev" in missing
 
 
+class TestCompleteWithoutVersion:
+    """Tests for packages that are 'complete' but missing latest_version (Fix 6)."""
+
+    @mock_aws
+    def test_complete_without_latest_version_becomes_abandoned(self):
+        """A package with complete status but no latest_version should become abandoned_partial."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
+            from importlib import reload
+
+            import package_collector
+
+            reload(package_collector)
+
+            data = {
+                "sources": ["pypi_stale"],
+                "pypi_error": "package_not_found",
+                "depsdev_error": "package_not_found",
+                "collected_at": "2026-02-12T00:00:00+00:00",
+            }
+
+            package_collector.store_package_data_sync("pypi", "nonexistent-pkg", data, tier=3)
+
+            table = dynamodb.Table("pkgwatch-packages")
+            result = table.get_item(Key={"pk": "pypi#nonexistent-pkg", "sk": "LATEST"})
+            assert result["Item"]["data_status"] == "abandoned_partial"
+
+    @mock_aws
+    def test_complete_with_latest_version_stays_complete(self):
+        """A package with complete status AND latest_version should stay complete."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
+            from importlib import reload
+
+            import package_collector
+
+            reload(package_collector)
+
+            data = {
+                "sources": ["pypi", "deps.dev"],
+                "latest_version": "1.2.3",
+                "collected_at": "2026-02-12T00:00:00+00:00",
+            }
+
+            package_collector.store_package_data_sync("pypi", "real-pkg", data, tier=3)
+
+            table = dynamodb.Table("pkgwatch-packages")
+            result = table.get_item(Key={"pk": "pypi#real-pkg", "sk": "LATEST"})
+            assert result["Item"]["data_status"] == "complete"
+
+
 class TestPipelineMetrics:
     """Tests for pipeline metrics emission."""
 
