@@ -12,6 +12,7 @@ from http.cookies import SimpleCookie
 import boto3
 from boto3.dynamodb.conditions import Key
 
+from shared.auth import is_api_key_record
 from shared.response_utils import decimal_default, error_response, get_cors_headers
 
 logger = logging.getLogger(__name__)
@@ -68,9 +69,7 @@ def handler(event, context):
         api_keys = []
         for item in items:
             sk = item.get("sk", "")
-            if sk in ("PENDING", "USER_META", "PENDING_DISPLAY", "PENDING_RECOVERY_CODES"):
-                continue
-            if sk.startswith("RECOVERY_"):
+            if not is_api_key_record(sk):
                 continue
 
             key_hash = sk or ""

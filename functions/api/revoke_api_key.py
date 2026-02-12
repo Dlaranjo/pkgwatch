@@ -17,6 +17,7 @@ logger.setLevel(logging.INFO)
 
 # Import session verification
 from api.auth_callback import verify_session_token
+from shared.auth import is_api_key_record
 from shared.response_utils import error_response, get_cors_headers
 
 dynamodb = boto3.resource("dynamodb")
@@ -72,10 +73,10 @@ def handler(event, context):
         # Find the key with matching key_id (first 16 chars of hash)
         target_key = None
         for item in items:
-            if item.get("sk") == "PENDING" or item.get("sk") == "USER_META":
+            sk = item.get("sk", "")
+            if not is_api_key_record(sk):
                 continue
-            key_hash = item.get("sk", "")
-            if key_hash.startswith(key_id):
+            if sk.startswith(key_id):
                 target_key = item
                 break
 
@@ -92,7 +93,7 @@ def handler(event, context):
 
             if "Item" not in meta_response:
                 # USER_META doesn't exist - count existing keys and calculate total usage
-                active_keys = [i for i in items if i.get("sk") not in ("PENDING", "USER_META")]
+                active_keys = [i for i in items if is_api_key_record(i.get("sk", ""))]
                 current_count = len(active_keys)
                 # Sum existing usage across all keys for authoritative count
                 total_usage = sum(int(i.get("requests_this_month", 0)) for i in active_keys)

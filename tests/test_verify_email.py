@@ -853,11 +853,18 @@ class TestFullVerificationFlow:
 
         api_gateway_event["queryStringParameters"] = {"token": pending_user["token"]}
 
-        with patch("api.verify_email.generate_api_key", return_value="pw_test_api_key"):
+        with patch("api.verify_email.generate_api_key", return_value="pw_test_api_key") as mock_gen:
             result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 302
         assert "verified=true" in result["headers"]["Location"]
+
+        # Verify generate_api_key was called with email_verified=True
+        mock_gen.assert_called_once()
+        call_kwargs = mock_gen.call_args
+        assert call_kwargs.kwargs.get("email_verified") is True or (
+            len(call_kwargs.args) > 3 and call_kwargs.args[3] is True
+        )
 
         table = pending_user["table"]
 
@@ -939,3 +946,117 @@ class TestFullVerificationFlow:
         # Should still succeed - just affects logging
         assert result["statusCode"] == 302
         assert "verified=true" in result["headers"]["Location"]
+
+
+# ============================================================================
+# Idempotency Guard Tests
+# ============================================================================
+
+
+class TestIdempotencyGuard:
+    """Tests for the idempotency guard that prevents duplicate key creation."""
+
+    @mock_aws
+    def test_duplicate_verification_skips_key_creation(
+        self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event
+    ):
+        """Should skip key creation when USER_META already exists (returning user)."""
+        import api.auth_callback
+
+        api.auth_callback._session_secret_cache = None
+        api.auth_callback._session_secret_cache_time = 0.0
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        token = secrets.token_urlsafe(32)
+        user_id = f"user_{secrets.token_hex(8)}"
+        expires = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+
+        # Create PENDING record (as if user signed up again)
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "PENDING",
+                "email": "returning@example.com",
+                "verification_token": token,
+                "verification_expires": expires,
+            }
+        )
+
+        # Create existing USER_META (user was already verified before)
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "key_count": 1,
+                "requests_this_month": 50,
+                "referral_code": "EXISTING_CODE",
+                "created_at": "2026-01-01T00:00:00+00:00",
+            }
+        )
+
+        from api.verify_email import handler
+
+        api_gateway_event["queryStringParameters"] = {"token": token}
+
+        with patch("api.verify_email.generate_api_key") as mock_gen:
+            result = handler(api_gateway_event, {})
+
+        # Should redirect to dashboard WITHOUT ?verified=true
+        assert result["statusCode"] == 302
+        assert "dashboard" in result["headers"]["Location"]
+        assert "verified=true" not in result["headers"]["Location"]
+
+        # Should have a session cookie
+        assert "Set-Cookie" in result["headers"]
+
+        # generate_api_key should NOT have been called
+        mock_gen.assert_not_called()
+
+        # USER_META should be unchanged (not overwritten)
+        meta_response = table.get_item(Key={"pk": user_id, "sk": "USER_META"})
+        user_meta = meta_response["Item"]
+        assert user_meta["key_count"] == 1
+        assert user_meta["requests_this_month"] == 50
+        assert user_meta["referral_code"] == "EXISTING_CODE"
+        assert user_meta["created_at"] == "2026-01-01T00:00:00+00:00"
+
+    @mock_aws
+    def test_conditional_user_meta_write_prevents_overwrite(
+        self, mock_dynamodb, mock_secretsmanager, setup_env, api_gateway_event
+    ):
+        """Should not overwrite USER_META even if idempotency guard is bypassed."""
+        import api.auth_callback
+
+        api.auth_callback._session_secret_cache = None
+        api.auth_callback._session_secret_cache_time = 0.0
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        token = secrets.token_urlsafe(32)
+        user_id = f"user_{secrets.token_hex(8)}"
+        expires = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+
+        # Create PENDING record
+        table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "PENDING",
+                "email": "conditional@example.com",
+                "verification_token": token,
+                "verification_expires": expires,
+            }
+        )
+
+        from api.verify_email import handler
+
+        api_gateway_event["queryStringParameters"] = {"token": token}
+
+        # First verification: should create everything
+        with patch("api.verify_email.generate_api_key", return_value="pw_first_key"):
+            result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 302
+        assert "verified=true" in result["headers"]["Location"]
+
+        # Verify USER_META was created with key_count=1
+        meta_response = table.get_item(Key={"pk": user_id, "sk": "USER_META"})
+        assert meta_response["Item"]["key_count"] == 1

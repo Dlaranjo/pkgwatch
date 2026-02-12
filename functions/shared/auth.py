@@ -29,8 +29,19 @@ logger = logging.getLogger(__name__)
 
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
+# Known non-key SK values and prefixes in the api-keys table
+_NON_KEY_SK_VALUES = frozenset({"PENDING", "USER_META", "PENDING_DISPLAY", "PENDING_RECOVERY_CODES"})
+_NON_KEY_SK_PREFIXES = ("RECOVERY_", "EMAIL_CHANGE_")
 
-def generate_api_key(user_id: str, tier: str = "free", email: Optional[str] = None) -> str:
+
+def is_api_key_record(sk: str) -> bool:
+    """Check if a DynamoDB SK represents an actual API key (not metadata/state)."""
+    return sk not in _NON_KEY_SK_VALUES and not any(sk.startswith(p) for p in _NON_KEY_SK_PREFIXES)
+
+
+def generate_api_key(
+    user_id: str, tier: str = "free", email: Optional[str] = None, email_verified: bool = False
+) -> str:
     """
     Generate a new API key for a user.
 
@@ -38,6 +49,7 @@ def generate_api_key(user_id: str, tier: str = "free", email: Optional[str] = No
         user_id: Unique user identifier
         tier: Subscription tier (free, starter, pro, business)
         email: Optional user email for reference
+        email_verified: Whether the user's email has been verified
 
     Returns:
         The generated API key (only returned once, store securely!)
@@ -61,7 +73,7 @@ def generate_api_key(user_id: str, tier: str = "free", email: Optional[str] = No
         "payment_failures": 0,  # Track failed payment attempts
         "requests_this_month": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "email_verified": False,  # For signup email verification
+        "email_verified": email_verified,
     }
 
     # Only include GSI key attributes if they have values

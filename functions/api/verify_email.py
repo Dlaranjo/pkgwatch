@@ -133,9 +133,27 @@ def handler(event, context):
         except (ValueError, TypeError):
             pass
 
+    # Idempotency guard: if user already has USER_META, they've been verified before.
+    # Skip first-time setup (key creation, recovery codes, referral processing) and
+    # just create a session. This prevents duplicate keys and USER_META overwrites
+    # if a second PENDING record somehow gets created and verified.
+    try:
+        existing_meta = table.get_item(
+            Key={"pk": user_id, "sk": "USER_META"},
+            ProjectionExpression="pk",
+        ).get("Item")
+    except Exception:
+        existing_meta = None  # Proceed with first-time setup on error
+
+    if existing_meta:
+        email_prefix = email.split("@")[0][:3] if "@" in email else email[:3]
+        email_domain = email.split("@")[1] if "@" in email else "unknown"
+        logger.warning(f"Duplicate verification for {email_prefix}***@{email_domain}, skipping first-time setup")
+        return _create_session_and_redirect(user_id, email, now, verified=False)
+
     # Generate API key for the user
     try:
-        api_key = generate_api_key(user_id=user_id, tier="free", email=email)
+        api_key = generate_api_key(user_id=user_id, tier="free", email=email, email_verified=True)
     except Exception as e:
         logger.error(f"Error generating API key: {e}")
         return _timed_redirect_with_error(start_time, "internal_error", "Failed to create API key")
@@ -174,9 +192,10 @@ def handler(event, context):
         # Generate a unique referral code for the new user
         user_referral_code = generate_unique_referral_code()
 
-        # Process referral if signup used a referral code
+        # Compute referral data for USER_META (side-effects deferred until after write)
         referral_code_used = pending_user.get("referral_code_used")
         referred_by = None
+        referrer_id = None
         referral_pending = False
         referral_pending_expires = None
         bonus_requests = 0
@@ -199,29 +218,8 @@ def handler(event, context):
                     # Credit referred user with bonus immediately
                     bonus_requests = REFERRED_USER_BONUS
 
-                    # Record pending referral event
-                    record_referral_event(
-                        referrer_id=referrer_id,
-                        referred_id=user_id,
-                        event_type="pending",
-                        referred_email=email,
-                        reward_amount=0,  # Referrer hasn't been credited yet
-                        ttl_days=PENDING_TIMEOUT_DAYS,
-                    )
-
-                    # Update referrer stats (total and pending count)
-                    update_referrer_stats(
-                        referrer_id,
-                        total_delta=1,
-                        pending_delta=1,
-                    )
-
-                    logger.info(
-                        f"Referral processed: {user_id} referred by {referrer_id}, "
-                        f"referred user credited {bonus_requests}"
-                    )
-
         # Create USER_META with recovery codes, referral code, and initial counters
+        # Uses condition to prevent overwriting existing USER_META (defense in depth)
         user_meta_item = {
             "pk": user_id,
             "sk": "USER_META",
@@ -244,7 +242,45 @@ def handler(event, context):
             user_meta_item["referral_pending"] = referral_pending
             user_meta_item["referral_pending_expires"] = referral_pending_expires
 
-        table.put_item(Item=user_meta_item)
+        try:
+            table.put_item(
+                Item=user_meta_item,
+                ConditionExpression="attribute_not_exists(pk) OR attribute_not_exists(sk)",
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                logger.warning(f"USER_META already exists for {user_id}, skipping overwrite")
+                # Don't execute referral side-effects since this is a duplicate
+                referred_by = None
+            else:
+                raise
+
+        # Execute referral side-effects AFTER successful USER_META creation
+        # This prevents double-counting if verification runs twice
+        if referred_by and referrer_id:
+            try:
+                record_referral_event(
+                    referrer_id=referrer_id,
+                    referred_id=user_id,
+                    event_type="pending",
+                    referred_email=email,
+                    reward_amount=0,  # Referrer hasn't been credited yet
+                    ttl_days=PENDING_TIMEOUT_DAYS,
+                )
+
+                update_referrer_stats(
+                    referrer_id,
+                    total_delta=1,
+                    pending_delta=1,
+                )
+
+                logger.info(
+                    f"Referral processed: {user_id} referred by {referrer_id}, "
+                    f"referred user credited {bonus_requests}"
+                )
+            except Exception as ref_err:
+                logger.error(f"Failed to record referral side-effects: {ref_err}")
+                # Continue anyway - USER_META was created successfully
 
         # Store plaintext codes for one-time retrieval (like PENDING_DISPLAY)
         # User will see these after dismissing the API key modal
@@ -260,17 +296,29 @@ def handler(event, context):
 
         logger.info(f"Recovery codes generated for {email_prefix}***@{email_domain}")
     except Exception as e:
-        logger.error(f"Failed to generate recovery codes: {e}")
+        logger.error(f"Failed to set up user account data: {e}")
         # Continue anyway - user can generate codes later from dashboard
 
-    # Create session so user can access dashboard and retrieve their API key
+    return _create_session_and_redirect(user_id, email, now, verified=True)
+
+
+def _create_session_and_redirect(user_id: str, email: str, now: datetime, verified: bool = True) -> dict:
+    """Create a session cookie and redirect to dashboard.
+
+    Args:
+        user_id: The user's partition key
+        email: The user's email
+        now: Current UTC datetime
+        verified: If True, redirect to /dashboard?verified=true (first-time flow).
+                  If False, redirect to /dashboard (returning user).
+    """
     session_secret = _get_session_secret()
     if session_secret:
         session_expires = now + timedelta(days=SESSION_TTL_DAYS)
         session_data = {
             "user_id": user_id,
             "email": email,
-            "tier": "free",  # New users always start on free tier
+            "tier": "free",
             "exp": int(session_expires.timestamp()),
         }
         session_token = _create_session_token(session_data, session_secret)
@@ -281,10 +329,10 @@ def handler(event, context):
         cookie_value = None
         logger.warning("Could not create session - SESSION_SECRET_ARN not configured")
 
+    location = f"{BASE_URL}/dashboard?verified=true" if verified else f"{BASE_URL}/dashboard"
     headers = {
-        "Location": f"{BASE_URL}/dashboard?verified=true",
+        "Location": location,
         "Cache-Control": "no-store",
-        # Security headers to mitigate XSS during redirect
         "Content-Security-Policy": "default-src 'none'",
         "X-Content-Type-Options": "nosniff",
     }

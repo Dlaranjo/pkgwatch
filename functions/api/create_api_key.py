@@ -21,6 +21,7 @@ logger.setLevel(logging.INFO)
 
 # Import session verification and shared utilities
 from api.auth_callback import verify_session_token
+from shared.auth import is_api_key_record
 from shared.response_utils import error_response, get_cors_headers
 
 dynamodb = boto3.resource("dynamodb")
@@ -89,11 +90,9 @@ def handler(event, context):
         user_meta = None
         for item in items:
             sk = item.get("sk", "")
-            if sk == "PENDING":
-                continue
-            elif sk == "USER_META":
+            if sk == "USER_META":
                 user_meta = item
-            else:
+            elif is_api_key_record(sk):
                 active_keys.append(item)
         current_count = len(active_keys)
 
