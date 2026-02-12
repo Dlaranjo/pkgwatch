@@ -38,7 +38,7 @@ export async function generateSummary(
   }
 
   summary.addHeading("PkgWatch Scan Results", 2);
-  summary.addRaw(`Scanned **${result.total}** packages\n\n`);
+  summary.addRaw(`\nScanned **${result.total}** packages\n\n`);
 
   // Summary counts
   const counts = [
@@ -73,11 +73,11 @@ export async function generateSummary(
         const isUnverified = !pkg.data_quality || pkg.data_quality.assessment !== "VERIFIED";
         const dataStatus = isUnverified ? "⚠️" : "✓";
         return [
-          `\`${escapeMarkdown(pkg.package)}\``,
+          `<code>${escapeHtml(pkg.package)}</code>`,
           pkg.risk_level,
           `${pkg.health_score}/100`,
           dataStatus,
-          escapeMarkdown(pkg.abandonment_risk?.risk_factors?.[0] || "-"),
+          escapeHtml(pkg.abandonment_risk?.risk_factors?.[0] || "-"),
         ];
       }),
     ]);
@@ -179,7 +179,7 @@ export async function generateRepoSummary(
 
   summary.addHeading("PkgWatch Repository Scan Results", 2);
   summary.addRaw(
-    `Scanned **${repoSummary.totalManifests}** manifest files with **${repoSummary.uniquePackages}** unique packages\n\n`
+    `\nScanned **${repoSummary.totalManifests}** manifest files with **${repoSummary.uniquePackages}** unique packages\n\n`
   );
 
   // Summary counts
@@ -205,11 +205,11 @@ export async function generateRepoSummary(
     const countsStr = m.counts
       ? `${m.counts.critical}C / ${m.counts.high}H / ${m.counts.medium}M / ${m.counts.low}L`
       : m.error
-        ? escapeMarkdown(m.error.slice(0, 50))
+        ? escapeHtml(m.error.slice(0, 50))
         : "-";
 
     return [
-      `${statusEmoji} \`${escapeMarkdown(m.manifest.relativePath)}\``,
+      `${statusEmoji} <code>${escapeHtml(m.manifest.relativePath)}</code>`,
       ecosystem,
       countsStr,
     ];
@@ -259,12 +259,12 @@ export async function generateRepoSummary(
         const isUnverified = !pkg.data_quality || pkg.data_quality.assessment !== "VERIFIED";
         const dataStatus = isUnverified ? "⚠️" : "✓";
         return [
-          `\`${escapeMarkdown(pkg.package)}\``,
+          `<code>${escapeHtml(pkg.package)}</code>`,
           pkg.risk_level,
           `${pkg.health_score}/100`,
           dataStatus,
-          `\`${escapeMarkdown(manifest)}\``,
-          escapeMarkdown(pkg.abandonment_risk?.risk_factors?.[0] || "-"),
+          `<code>${escapeHtml(manifest)}</code>`,
+          escapeHtml(pkg.abandonment_risk?.risk_factors?.[0] || "-"),
         ];
       }),
     ]);
@@ -389,8 +389,25 @@ function getStatusLabel(status: string): string {
   }
 }
 
+/**
+ * Escape text for use in raw markdown contexts (pipe tables inside <details>, inline text).
+ * Escapes markdown-special characters so they render literally.
+ */
 function escapeMarkdown(text: string): string {
   return text
     .replace(/[\\`*_[\]|<>]/g, "\\$&")
     .slice(0, 100); // Truncate long values
+}
+
+/**
+ * Escape text for use inside HTML elements (e.g. <td> cells from addTable()).
+ * GitHub does NOT render markdown inside HTML blocks, so we need HTML entities instead.
+ */
+function escapeHtml(text: string): string {
+  return text
+    .slice(0, 100) // Truncate before escaping to avoid cutting mid-entity
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
