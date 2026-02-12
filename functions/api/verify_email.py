@@ -275,8 +275,7 @@ def handler(event, context):
                 )
 
                 logger.info(
-                    f"Referral processed: {user_id} referred by {referrer_id}, "
-                    f"referred user credited {bonus_requests}"
+                    f"Referral processed: {user_id} referred by {referrer_id}, referred user credited {bonus_requests}"
                 )
             except Exception as ref_err:
                 logger.error(f"Failed to record referral side-effects: {ref_err}")
