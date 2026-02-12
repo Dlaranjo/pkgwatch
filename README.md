@@ -224,7 +224,7 @@ npm run build
 |------|----------|-----------|
 | Tier 1 | Top 100 | Daily |
 | Tier 2 | Top 500 | Every 3 days |
-| Tier 3 | All 2,500 | Weekly |
+| Tier 3 | All 10000 | Weekly |
 
 ## License
 
