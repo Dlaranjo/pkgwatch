@@ -41,10 +41,6 @@ _is_queryable = is_queryable
 logger = logging.getLogger(__name__)
 
 
-# Defense in depth: skip scoring if package was scored recently
-# This prevents infinite loops if the DynamoDB Streams filter doesn't work as expected
-IDEMPOTENCY_WINDOW_SECONDS = int(os.environ.get("IDEMPOTENCY_WINDOW_SECONDS", "60"))
-
 # Retry configuration for DynamoDB operations
 DYNAMODB_MAX_RETRIES = 3
 DYNAMODB_BASE_DELAY = 0.1
@@ -228,24 +224,38 @@ def _score_single_package(event: dict) -> dict:
     # Convert Decimals to floats for math operations
     item = from_decimal(item)
 
-    # Defense in depth: skip if recently scored (prevents infinite loop)
-    if IDEMPOTENCY_WINDOW_SECONDS > 0:
+    # Skip packages that haven't been collected yet (e.g. discovery-only records)
+    # Scoring empty data produces misleading default scores (health_score=20)
+    if not item.get("collected_at"):
+        logger.debug(f"Skipping {name} - not yet collected")
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"skipped": True, "reason": "not_collected"}),
+        }
+
+    # Defense in depth: skip if already scored after the last collection (prevents infinite loop).
+    # This replaces the old time-based window which caused a race condition: if scoring ran on
+    # stale data and the collector wrote new data within 60s, the re-score was blocked.
+    if not item.get("force_rescore"):
         scored_at = item.get("scored_at")
-        if scored_at:
+        collected_at = item.get("collected_at")
+        if scored_at and collected_at:
             try:
                 scored_time = datetime.fromisoformat(
                     scored_at.replace("Z", "+00:00") if isinstance(scored_at, str) else scored_at
                 )
-                seconds_since_scored = (datetime.now(timezone.utc) - scored_time).total_seconds()
-                if seconds_since_scored < IDEMPOTENCY_WINDOW_SECONDS:
-                    logger.debug(f"Skipping {name} - scored {seconds_since_scored:.1f}s ago")
+                collected_time = datetime.fromisoformat(
+                    collected_at.replace("Z", "+00:00") if isinstance(collected_at, str) else collected_at
+                )
+                if scored_time > collected_time:
+                    logger.debug(f"Skipping {name} - already scored after last collection")
                     return {
                         "statusCode": 200,
-                        "body": json.dumps({"skipped": True, "reason": "recently_scored"}),
+                        "body": json.dumps({"skipped": True, "reason": "already_scored"}),
                     }
             except (ValueError, TypeError) as e:
-                logger.warning(f"Could not parse scored_at for {name}: {e}")
-                # Continue with scoring if we can't parse the timestamp
+                logger.warning(f"Could not parse timestamps for {name}: {e}")
+                # Continue with scoring if we can't parse the timestamps
 
     # Calculate scores
     health_result = calculate_health_score(item)

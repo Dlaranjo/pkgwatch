@@ -251,7 +251,6 @@ export class PipelineStack extends cdk.Stack {
       description: "Calculates health scores for packages",
       environment: {
         ...commonLambdaProps.environment,
-        IDEMPOTENCY_WINDOW_SECONDS: "60", // Defense in depth for infinite loop prevention
       },
     });
 

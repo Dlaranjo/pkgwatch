@@ -353,6 +353,7 @@ def seeded_packages_table(mock_dynamodb, sample_healthy_package):
             "risk_level": "LOW",
             "abandonment_risk": {"probability": 15, "risk_level": "LOW"},
             "last_updated": "2024-01-01T00:00:00Z",
+            "collected_at": "2024-01-01T00:00:00Z",
             "latest_version": "4.17.21",
             "data_status": "complete",
             "queryable": True,  # Required for API to return 200
@@ -371,6 +372,7 @@ def seeded_packages_table(mock_dynamodb, sample_healthy_package):
             "risk_level": "HIGH",
             "abandonment_risk": {"probability": 85, "risk_level": "HIGH"},
             "last_updated": "2024-01-01T00:00:00Z",
+            "collected_at": "2024-01-01T00:00:00Z",
             "days_since_last_commit": 400,
             "active_contributors_90d": 0,
             "weekly_downloads": 50,

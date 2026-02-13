@@ -3586,10 +3586,19 @@ class TestScorePackageStreamEdgeCases:
         assert body["successes"] == 1
 
     def test_handler_stream_modify_null_new_collected_at_skips(self, seeded_packages_table):
-        """MODIFY with same None collected_at should skip."""
+        """MODIFY with no collected_at in stream should skip at package level (not_collected)."""
         import json
 
+        import boto3
+
         from scoring.score_package import handler
+
+        # Remove collected_at from the DynamoDB record to simulate uncollected state
+        table = boto3.resource("dynamodb", region_name="us-east-1").Table("pkgwatch-packages")
+        table.update_item(
+            Key={"pk": "npm#lodash", "sk": "LATEST"},
+            UpdateExpression="REMOVE collected_at",
+        )
 
         event = {
             "Records": [
@@ -3614,11 +3623,9 @@ class TestScorePackageStreamEdgeCases:
         result = handler(event, {})
         assert result["statusCode"] == 200
         body = json.loads(result["body"])
-        # new_collected_at is None (falsy), so the guard condition
-        # `if new_collected_at and new_collected_at == old_collected_at` is False.
-        # This means the record is NOT skipped - it falls through and processes.
-        # The code intentionally avoids None == None being True (see comment line 365).
-        assert body["successes"] == 1
+        # Stream-level check passes (new_collected_at is None/falsy, not skipped).
+        # Package-level check skips because collected_at is missing from the DynamoDB item.
+        assert body["skipped"] == 1
 
 
 class TestScorePackageDecimalConversion:
@@ -3658,13 +3665,26 @@ class TestScorePackageDecimalConversion:
 
 
 class TestScorePackageIdempotency:
-    """Test idempotency window prevents double scoring."""
+    """Test data-aware idempotency prevents double scoring but allows re-scoring on new data."""
 
-    def test_recently_scored_package_is_skipped(self, seeded_packages_table):
-        """Package scored within idempotency window should be skipped."""
+    def test_already_scored_package_is_skipped(self, seeded_packages_table):
+        """Package scored after its last collection should be skipped."""
         import json
+        from datetime import datetime, timedelta, timezone
+
+        import boto3
 
         from scoring.score_package import handler
+
+        # Set collected_at so the package is eligible for scoring
+        table = boto3.resource("dynamodb", region_name="us-east-1").Table("pkgwatch-packages")
+        table.update_item(
+            Key={"pk": "npm#lodash", "sk": "LATEST"},
+            UpdateExpression="SET collected_at = :c",
+            ExpressionAttributeValues={
+                ":c": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+            },
+        )
 
         # First, score the package
         result1 = handler({"ecosystem": "npm", "name": "lodash"}, {})
@@ -3672,12 +3692,121 @@ class TestScorePackageIdempotency:
         body1 = json.loads(result1["body"])
         assert "health_score" in body1
 
-        # Score again immediately - should be skipped due to idempotency
+        # Score again immediately - should be skipped because scored_at > collected_at
         result2 = handler({"ecosystem": "npm", "name": "lodash"}, {})
         assert result2["statusCode"] == 200
         body2 = json.loads(result2["body"])
         assert body2.get("skipped") is True
-        assert body2.get("reason") == "recently_scored"
+        assert body2.get("reason") == "already_scored"
+
+    def test_rescore_after_new_collection(self, seeded_packages_table):
+        """Package should be re-scored when collected_at is updated after scoring."""
+        import json
+        from datetime import datetime, timedelta, timezone
+
+        import boto3
+
+        from scoring.score_package import handler
+
+        # Set collected_at so the package is eligible for scoring
+        table = boto3.resource("dynamodb", region_name="us-east-1").Table("pkgwatch-packages")
+        table.update_item(
+            Key={"pk": "npm#lodash", "sk": "LATEST"},
+            UpdateExpression="SET collected_at = :c",
+            ExpressionAttributeValues={
+                ":c": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+            },
+        )
+
+        # Score the package
+        result1 = handler({"ecosystem": "npm", "name": "lodash"}, {})
+        assert result1["statusCode"] == 200
+        body1 = json.loads(result1["body"])
+        assert "health_score" in body1
+
+        # Simulate a new collection by advancing collected_at past scored_at
+        table.update_item(
+            Key={"pk": "npm#lodash", "sk": "LATEST"},
+            UpdateExpression="SET collected_at = :c",
+            ExpressionAttributeValues={
+                ":c": (datetime.now(timezone.utc)).isoformat(),
+            },
+        )
+
+        # Score again - should NOT be skipped because collected_at > scored_at
+        result2 = handler({"ecosystem": "npm", "name": "lodash"}, {})
+        assert result2["statusCode"] == 200
+        body2 = json.loads(result2["body"])
+        assert "health_score" in body2
+        assert body2.get("skipped") is not True
+
+    def test_uncollected_package_is_skipped(self, seeded_packages_table):
+        """Package without collected_at should not be scored."""
+        import json
+
+        import boto3
+
+        from scoring.score_package import handler
+
+        # Remove collected_at to simulate a discovery-only record
+        table = boto3.resource("dynamodb", region_name="us-east-1").Table("pkgwatch-packages")
+        table.update_item(
+            Key={"pk": "npm#lodash", "sk": "LATEST"},
+            UpdateExpression="REMOVE collected_at",
+        )
+
+        result = handler({"ecosystem": "npm", "name": "lodash"}, {})
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert body.get("skipped") is True
+        assert body.get("reason") == "not_collected"
+
+    def test_force_rescore_bypasses_package_level_check(self, seeded_packages_table):
+        """force_rescore=True should bypass scored_at > collected_at check."""
+        import json
+        from datetime import datetime, timedelta, timezone
+
+        import boto3
+
+        from scoring.score_package import handler
+
+        table = boto3.resource("dynamodb", region_name="us-east-1").Table("pkgwatch-packages")
+
+        # Set collected_at so the package is eligible for scoring
+        table.update_item(
+            Key={"pk": "npm#lodash", "sk": "LATEST"},
+            UpdateExpression="SET collected_at = :c",
+            ExpressionAttributeValues={
+                ":c": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+            },
+        )
+
+        # Score the package first
+        result1 = handler({"ecosystem": "npm", "name": "lodash"}, {})
+        assert result1["statusCode"] == 200
+        assert "health_score" in json.loads(result1["body"])
+
+        # Verify it would normally be skipped
+        result2 = handler({"ecosystem": "npm", "name": "lodash"}, {})
+        assert json.loads(result2["body"]).get("reason") == "already_scored"
+
+        # Set force_rescore on the DynamoDB item
+        table.update_item(
+            Key={"pk": "npm#lodash", "sk": "LATEST"},
+            UpdateExpression="SET force_rescore = :t",
+            ExpressionAttributeValues={":t": True},
+        )
+
+        # Should score despite scored_at > collected_at
+        result3 = handler({"ecosystem": "npm", "name": "lodash"}, {})
+        assert result3["statusCode"] == 200
+        body3 = json.loads(result3["body"])
+        assert "health_score" in body3
+        assert body3.get("skipped") is not True
+
+        # Verify force_rescore was cleared after scoring
+        item = table.get_item(Key={"pk": "npm#lodash", "sk": "LATEST"})["Item"]
+        assert "force_rescore" not in item
 
     def test_handler_defaults_to_npm_ecosystem(self, seeded_packages_table):
         """Missing ecosystem should default to npm."""
