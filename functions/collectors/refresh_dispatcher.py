@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import random
+import zlib
 from datetime import datetime, timezone
 
 import boto3
@@ -100,7 +101,18 @@ def handler(event, context):
         logger.error(f"Error querying packages: {e}")
         raise
 
-    logger.info(f"Found {len(packages_to_refresh)} packages to refresh")
+    # Sub-batch filtering for spreading tier 3 across days
+    sub_batch = event.get("sub_batch")
+    total_sub_batches = event.get("total_sub_batches")
+    if sub_batch is not None and total_sub_batches:
+        packages_to_refresh = [
+            pk for pk in packages_to_refresh if zlib.crc32(pk.encode()) % total_sub_batches == sub_batch
+        ]
+        logger.info(f"Sub-batch {sub_batch}/{total_sub_batches}: filtered to {len(packages_to_refresh)} packages")
+    else:
+        logger.info(f"Found {len(packages_to_refresh)} packages to refresh")
+
+    force_refresh = event.get("force_refresh", False)
 
     if not packages_to_refresh:
         logger.warning("No packages found for refresh")
@@ -140,18 +152,20 @@ def handler(event, context):
             jitter_max = min(JITTER_MAX_SECONDS.get(tier, 60), SQS_MAX_DELAY_SECONDS)
             jitter = random.randint(0, jitter_max)
 
+            message_body = {
+                "ecosystem": ecosystem,
+                "name": name,
+                "tier": tier,
+                "reason": reason,
+                "dispatched_at": datetime.now(timezone.utc).isoformat(),
+            }
+            if force_refresh:
+                message_body["force_refresh"] = True
+
             entries.append(
                 {
                     "Id": str(i + j),
-                    "MessageBody": json.dumps(
-                        {
-                            "ecosystem": ecosystem,
-                            "name": name,
-                            "tier": tier,
-                            "reason": reason,
-                            "dispatched_at": datetime.now(timezone.utc).isoformat(),
-                        }
-                    ),
+                    "MessageBody": json.dumps(message_body),
                     "DelaySeconds": jitter,
                 }
             )

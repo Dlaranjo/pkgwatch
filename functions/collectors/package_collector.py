@@ -69,7 +69,7 @@ STALE_DATA_THRESHOLDS = {
 }
 
 # Semaphore to limit concurrent GitHub API calls per Lambda instance
-# With maxConcurrency=10 Lambdas * 5 = max 50 concurrent GitHub calls
+# With maxConcurrency=5 Lambdas * 5 = max 25 concurrent GitHub calls
 # GitHub allows 5000/hour = ~83/minute, so this keeps us well under the limit
 # NOTE: Lazy initialization to handle Lambda event loop changes
 _github_semaphore: Optional[asyncio.Semaphore] = None
@@ -575,6 +575,8 @@ async def _try_github_stale_fallback(combined_data: dict, ecosystem: str, name: 
 
 def _extract_cached_npm_fields(existing: dict) -> dict:
     """Extract cached npm fields from existing data for selective retry."""
+    if not _has_npm_data(existing):
+        return {}
     # Don't preserve 0 downloads - return None to allow fresh fetch
     downloads = existing.get("weekly_downloads")
     return {
@@ -589,11 +591,14 @@ def _extract_cached_npm_fields(existing: dict) -> dict:
         "module_type": existing.get("module_type", "commonjs"),
         "has_exports": existing.get("has_exports", False),
         "engines": existing.get("engines"),
+        "downloads_source": existing.get("downloads_source"),
     }
 
 
 def _extract_cached_pypi_fields(existing: dict) -> dict:
     """Extract cached PyPI fields from existing data for selective retry."""
+    if not _has_pypi_data(existing):
+        return {}
     # CRITICAL: Don't preserve 0 downloads - return None to trigger fresh fetch
     # This prevents overwriting good data with 0 when pypistats.org was rate limited
     downloads = existing.get("weekly_downloads")
@@ -607,6 +612,7 @@ def _extract_cached_pypi_fields(existing: dict) -> dict:
         "requires_python": existing.get("requires_python"),
         "development_status": existing.get("development_status"),
         "python_versions": existing.get("python_versions", []),
+        "downloads_source": existing.get("downloads_source"),
     }
 
 
@@ -746,10 +752,11 @@ async def collect_package_data(
         if not should_fetch_npm and existing:
             logger.debug(f"Selective retry: using cached npm data for {name}")
             cached_npm = _extract_cached_npm_fields(existing)
-            for key, value in cached_npm.items():
-                if value is not None:
-                    combined_data[key] = value
-            combined_data["sources"].append("npm_cached")
+            if cached_npm:
+                for key, value in cached_npm.items():
+                    if value is not None:
+                        combined_data[key] = value
+                combined_data["sources"].append("npm_cached")
             # Also copy repository_url from existing if we don't have it
             if not combined_data.get("repository_url") and existing.get("repository_url"):
                 combined_data["repository_url"] = existing.get("repository_url")
@@ -865,6 +872,7 @@ async def collect_package_data(
                         combined_data["downloads_source"] = "bulk"
                     else:
                         combined_data["weekly_downloads"] = npm_data.get("weekly_downloads", 0)
+                        combined_data["downloads_source"] = "npm_api"
                     combined_data["maintainers"] = npm_data.get("maintainers", [])
                     combined_data["maintainer_count"] = npm_data.get("maintainer_count", 0)
                     combined_data["is_deprecated"] = npm_data.get("is_deprecated", False)
@@ -929,10 +937,11 @@ async def collect_package_data(
         if not should_fetch_pypi and existing:
             logger.debug(f"Selective retry: using cached PyPI data for {name}")
             cached_pypi = _extract_cached_pypi_fields(existing)
-            for key, value in cached_pypi.items():
-                if value is not None:
-                    combined_data[key] = value
-            combined_data["sources"].append("pypi_cached")
+            if cached_pypi:
+                for key, value in cached_pypi.items():
+                    if value is not None:
+                        combined_data[key] = value
+                combined_data["sources"].append("pypi_cached")
             # Also copy repository_url from existing if we don't have it
             if not combined_data.get("repository_url") and existing.get("repository_url"):
                 combined_data["repository_url"] = existing.get("repository_url")

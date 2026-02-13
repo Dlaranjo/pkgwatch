@@ -226,13 +226,12 @@ export class PipelineStack extends cdk.Stack {
     );
 
     // Connect collector to SQS queue
-    // Increased from maxConcurrency=2 to improve throughput
-    // With semaphore of 5 per Lambda: 10 * 5 = max 50 concurrent GitHub calls
-    // GitHub allows 5000/hour = ~83/minute, so 50 concurrent is safe
+    // With semaphore of 5 per Lambda: 5 * 5 = max 25 concurrent GitHub calls
+    // Reduced from 10 to avoid GitHub secondary rate limits on concurrent requests
     packageCollector.addEventSource(
       new lambdaEventSources.SqsEventSource(packageQueue, {
-        batchSize: 10, // Increased from 5
-        maxConcurrency: 10, // Increased from 2 (conservative to avoid GitHub rate limits)
+        batchSize: 10,
+        maxConcurrency: 5,
         maxBatchingWindow: cdk.Duration.seconds(30), // Allow batching for efficiency
         reportBatchItemFailures: true, // Enable partial batch failure handling
       })
@@ -379,23 +378,30 @@ export class PipelineStack extends cdk.Stack {
       ],
     });
 
-    // Weekly refresh (Tier 3) - runs at 4:00 AM on Sundays
-    new events.Rule(this, "WeeklyRefreshRule", {
-      ruleName: "pkgwatch-weekly-refresh",
-      schedule: events.Schedule.cron({
-        hour: "4",
-        minute: "0",
-        weekDay: "SUN",
-      }),
-      description: "Triggers weekly package refresh for Tier 3 packages",
-      targets: [
-        new targets.LambdaFunction(refreshDispatcher, {
-          event: events.RuleTargetInput.fromObject({
-            tier: 3,
-            reason: "weekly_refresh",
-          }),
+    // Daily tier 3 refresh - spread across 7 days using sub-batches
+    // Each day processes ~1/7 of tier 3 packages (~1,405 per day)
+    // Uses CRC32 hash for deterministic sub-batch assignment
+    const dayNames = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+    dayNames.forEach((day, index) => {
+      new events.Rule(this, `DailyTier3Refresh${day}`, {
+        ruleName: `pkgwatch-daily-tier3-${day.toLowerCase()}`,
+        schedule: events.Schedule.cron({
+          hour: "4",
+          minute: "0",
+          weekDay: day,
         }),
-      ],
+        description: `Tier 3 sub-batch ${index}/7 (${day})`,
+        targets: [
+          new targets.LambdaFunction(refreshDispatcher, {
+            event: events.RuleTargetInput.fromObject({
+              tier: 3,
+              reason: "daily_tier3_refresh",
+              sub_batch: index,
+              total_sub_batches: 7,
+            }),
+          }),
+        ],
+      });
     });
 
     // ===========================================

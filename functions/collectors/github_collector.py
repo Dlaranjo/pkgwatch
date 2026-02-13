@@ -27,6 +27,13 @@ from http_client import get_github_client
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
+class GitHubRateLimitExhausted(Exception):
+    """Raised when GitHub API rate limit retries are exhausted."""
+
+    pass
+
+
 GITHUB_API = "https://api.github.com"
 DEFAULT_TIMEOUT = 30.0
 
@@ -119,7 +126,9 @@ class GitHubCollector:
         Returns:
             Response JSON or None if not found
         """
+        last_was_rate_limit = False
         for attempt in range(max_retries):
+            last_was_rate_limit = False
             try:
                 resp = await client.get(url, params=params, headers=self.headers)
 
@@ -179,6 +188,7 @@ class GitHubCollector:
                         wait_time = min(wait_time, 60)
                         logger.warning(f"GitHub rate limited (403). Waiting {wait_time}s")
                         await asyncio.sleep(wait_time)
+                        last_was_rate_limit = True
                         continue
                     else:
                         logger.warning(f"Access forbidden (not rate limit): {url}")
@@ -194,6 +204,7 @@ class GitHubCollector:
                     wait_time = min(wait_time, 60)
                     logger.warning(f"Rate limited (429). Waiting {wait_time}s")
                     await asyncio.sleep(wait_time)
+                    last_was_rate_limit = True
                     continue
 
                 elif resp.status_code == 409:
@@ -216,6 +227,8 @@ class GitHubCollector:
             delay = 2**attempt
             await asyncio.sleep(delay)
 
+        if last_was_rate_limit:
+            raise GitHubRateLimitExhausted(f"GitHub rate limit exhausted after {max_retries} retries for {url}")
         return None
 
     async def get_repo_metrics(self, owner: str, repo: str) -> dict:
@@ -236,53 +249,62 @@ class GitHubCollector:
         """
         # Use cached HTTP client for connection pooling (keyed by token hash)
         client = get_github_client(self.headers)
-        # 1. Repository metadata (1 call)
-        repo_url = f"{GITHUB_API}/repos/{owner}/{repo}"
-        repo_data = await self._request_with_retry(client, repo_url)
 
-        if repo_data is None:
+        try:
+            # 1. Repository metadata (1 call)
+            repo_url = f"{GITHUB_API}/repos/{owner}/{repo}"
+            repo_data = await self._request_with_retry(client, repo_url)
+
+            if repo_data is None:
+                return {
+                    "error": "repository_not_found",
+                    "owner": owner,
+                    "repo": repo,
+                }
+
+            # 2. Recent commits (1 call - last 90 days)
+            since = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+            commits_url = f"{GITHUB_API}/repos/{owner}/{repo}/commits"
+            commits = await self._request_with_retry(
+                client,
+                commits_url,
+                params={"since": since, "per_page": 100},
+            )
+            commits = commits or []
+
+            # 3. Contributors (1 call)
+            contributors_url = f"{GITHUB_API}/repos/{owner}/{repo}/contributors"
+            contributors = await self._request_with_retry(
+                client,
+                contributors_url,
+                params={"per_page": 100},
+            )
+            contributors = contributors or []
+
+            # 4. Issues (for response time calculation) (1 call)
+            issues_url = f"{GITHUB_API}/repos/{owner}/{repo}/issues"
+            issues = await self._request_with_retry(
+                client,
+                issues_url,
+                params={"state": "all", "since": since, "per_page": 100, "sort": "created", "direction": "desc"},
+            )
+            issues = issues or []
+
+            # 5. Pull Requests (for merge velocity) (1 call)
+            prs_url = f"{GITHUB_API}/repos/{owner}/{repo}/pulls"
+            prs = await self._request_with_retry(
+                client,
+                prs_url,
+                params={"state": "all", "since": since, "per_page": 100, "sort": "created", "direction": "desc"},
+            )
+            prs = prs or []
+        except GitHubRateLimitExhausted:
+            logger.warning(f"Rate limit exhausted during collection for {owner}/{repo}")
             return {
-                "error": "repository_not_found",
+                "error": "rate_limit_exhausted",
                 "owner": owner,
                 "repo": repo,
             }
-
-        # 2. Recent commits (1 call - last 90 days)
-        since = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
-        commits_url = f"{GITHUB_API}/repos/{owner}/{repo}/commits"
-        commits = await self._request_with_retry(
-            client,
-            commits_url,
-            params={"since": since, "per_page": 100},
-        )
-        commits = commits or []
-
-        # 3. Contributors (1 call)
-        contributors_url = f"{GITHUB_API}/repos/{owner}/{repo}/contributors"
-        contributors = await self._request_with_retry(
-            client,
-            contributors_url,
-            params={"per_page": 100},
-        )
-        contributors = contributors or []
-
-        # 4. Issues (for response time calculation) (1 call)
-        issues_url = f"{GITHUB_API}/repos/{owner}/{repo}/issues"
-        issues = await self._request_with_retry(
-            client,
-            issues_url,
-            params={"state": "all", "since": since, "per_page": 100, "sort": "created", "direction": "desc"},
-        )
-        issues = issues or []
-
-        # 5. Pull Requests (for merge velocity) (1 call)
-        prs_url = f"{GITHUB_API}/repos/{owner}/{repo}/pulls"
-        prs = await self._request_with_retry(
-            client,
-            prs_url,
-            params={"state": "all", "since": since, "per_page": 100, "sort": "created", "direction": "desc"},
-        )
-        prs = prs or []
 
         # Calculate derived metrics
         unique_committers_90d = 0

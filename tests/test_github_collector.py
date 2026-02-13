@@ -1810,3 +1810,143 @@ class TestPRDateEdgeCases:
             result = run_async(collector.get_repo_metrics("issuedate", "repo"))
             # Should not crash, avg_issue_response_hours should be None (no valid data)
             assert result["avg_issue_response_hours"] is None
+
+
+# =============================================================================
+# RATE LIMIT EXHAUSTION TESTS
+# =============================================================================
+
+
+class TestRateLimitExhaustion:
+    """Tests for GitHubRateLimitExhausted exception handling."""
+
+    def _create_repo_response(self):
+        return {
+            "stargazers_count": 1000,
+            "forks_count": 100,
+            "open_issues_count": 5,
+            "watchers_count": 1000,
+            "pushed_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": "2020-01-01T00:00:00Z",
+            "archived": False,
+            "disabled": False,
+            "default_branch": "main",
+        }
+
+    def test_rate_limit_exhausted_on_repo_metadata(self):
+        """Rate limit exhaustion on first call should return rate_limit_exhausted error."""
+        from github_collector import GitHubCollector
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            # All calls return 403 rate limit
+            return httpx.Response(
+                403,
+                json={"message": "API rate limit exceeded"},
+                headers={"X-RateLimit-Remaining": "0"},
+            )
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            with patch.object(httpx.AsyncClient, "__init__", patched_init):
+                collector = GitHubCollector(token="ghp_test")
+                result = run_async(collector.get_repo_metrics("test", "repo"))
+
+                assert result["error"] == "rate_limit_exhausted"
+                assert result["owner"] == "test"
+                assert result["repo"] == "repo"
+
+    def test_rate_limit_exhausted_mid_collection(self):
+        """Rate limit exhaustion after repo metadata succeeds should still return rate_limit_exhausted."""
+        from github_collector import GitHubCollector
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if (
+                "/repos/test/repo" in url
+                and "/commits" not in url
+                and "/contributors" not in url
+                and "/issues" not in url
+                and "/pulls" not in url
+            ):
+                # Repo metadata succeeds
+                return httpx.Response(200, json=self._create_repo_response())
+            else:
+                # All subsequent calls hit rate limit
+                return httpx.Response(
+                    403,
+                    json={"message": "API rate limit exceeded"},
+                    headers={"X-RateLimit-Remaining": "0"},
+                )
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            with patch.object(httpx.AsyncClient, "__init__", patched_init):
+                collector = GitHubCollector(token="ghp_test")
+                result = run_async(collector.get_repo_metrics("test", "repo"))
+
+                # Mid-collection rate limit should still produce clean error
+                assert result["error"] == "rate_limit_exhausted"
+                assert result["owner"] == "test"
+                assert result["repo"] == "repo"
+
+    def test_rate_limit_exhausted_429(self):
+        """429 rate limit exhaustion should raise GitHubRateLimitExhausted."""
+        from github_collector import GitHubCollector, GitHubRateLimitExhausted
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(429, headers={"Retry-After": "1"})
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            with patch.object(httpx.AsyncClient, "__init__", patched_init):
+                collector = GitHubCollector(token="ghp_test")
+                client = httpx.AsyncClient()
+                with pytest.raises(GitHubRateLimitExhausted):
+                    run_async(collector._request_with_retry(client, "https://api.github.com/test", max_retries=2))
+
+    def test_rate_limit_then_server_error_does_not_raise(self):
+        """Rate limit on attempt 1 then server error on final attempt should return None, not raise."""
+        from github_collector import GitHubCollector
+
+        call_count = [0]
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # First attempt: rate limited
+                return httpx.Response(
+                    403,
+                    json={"message": "API rate limit exceeded"},
+                    headers={"X-RateLimit-Remaining": "0"},
+                )
+            # Subsequent attempts: server error (not rate limit)
+            return httpx.Response(500)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            with patch.object(httpx.AsyncClient, "__init__", patched_init):
+                collector = GitHubCollector(token="ghp_test")
+                client = httpx.AsyncClient()
+                # Should return None (server error), NOT raise GitHubRateLimitExhausted
+                result = run_async(collector._request_with_retry(client, "https://api.github.com/test", max_retries=2))
+                assert result is None

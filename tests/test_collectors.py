@@ -6483,6 +6483,7 @@ class TestSelectiveRetry:
             "module_type": "commonjs",
             "has_exports": False,
             "last_updated": datetime.now(timezone.utc).isoformat(),
+            "sources": ["npm"],
         }
 
         from package_collector import _extract_cached_npm_fields, _should_run_collector
@@ -6528,6 +6529,7 @@ class TestSelectiveRetry:
             "requires_python": ">=3.7",
             "development_status": "5 - Production/Stable",
             "python_versions": ["3.8", "3.9", "3.10", "3.11", "3.12"],
+            "sources": ["pypi"],
         }
 
         from package_collector import _extract_cached_pypi_fields, _should_run_collector
@@ -6652,6 +6654,7 @@ class TestRateLimitFallback:
         existing = {
             "weekly_downloads": 50000000,
             "last_updated": (now - timedelta(days=3)).isoformat(),
+            "sources": ["npm"],
         }
 
         with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
@@ -6713,6 +6716,7 @@ class TestRateLimitFallback:
         existing = {
             "weekly_downloads": 50000000,
             "last_updated": (now - timedelta(days=30)).isoformat(),  # 30 days old
+            "sources": ["npm"],
         }
 
         with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
@@ -7060,6 +7064,7 @@ class TestCachedFieldsZeroDownloads:
             "weekly_downloads": 0,
             "maintainers": [{"name": "dev"}],
             "maintainer_count": 1,
+            "sources": ["npm"],
         }
         cached = _extract_cached_npm_fields(existing)
         # Zero downloads returns None to allow fresh fetch
@@ -7070,7 +7075,7 @@ class TestCachedFieldsZeroDownloads:
         """Non-zero weekly_downloads should be preserved."""
         from package_collector import _extract_cached_npm_fields
 
-        existing = {"weekly_downloads": 50000}
+        existing = {"weekly_downloads": 50000, "sources": ["npm"]}
         cached = _extract_cached_npm_fields(existing)
         assert cached["weekly_downloads"] == 50000
 
@@ -7082,6 +7087,7 @@ class TestCachedFieldsZeroDownloads:
             "weekly_downloads": 0,
             "maintainers": [{"name": "dev"}],
             "maintainer_count": 1,
+            "sources": ["pypi"],
         }
         cached = _extract_cached_pypi_fields(existing)
         assert cached["weekly_downloads"] is None
@@ -7091,9 +7097,70 @@ class TestCachedFieldsZeroDownloads:
         """Non-zero weekly_downloads should be preserved for PyPI."""
         from package_collector import _extract_cached_pypi_fields
 
-        existing = {"weekly_downloads": 5000000}
+        existing = {"weekly_downloads": 5000000, "sources": ["pypi"]}
         cached = _extract_cached_pypi_fields(existing)
         assert cached["weekly_downloads"] == 5000000
+
+    def test_extract_cached_npm_fields_no_source_returns_empty(self):
+        """No npm source in existing data should return empty dict."""
+        from package_collector import _extract_cached_npm_fields
+
+        existing = {
+            "weekly_downloads": 0,
+            "maintainer_count": 0,
+            "sources": ["deps.dev"],
+        }
+        cached = _extract_cached_npm_fields(existing)
+        assert cached == {}
+
+    def test_extract_cached_pypi_fields_no_source_returns_empty(self):
+        """No pypi source in existing data should return empty dict."""
+        from package_collector import _extract_cached_pypi_fields
+
+        existing = {
+            "weekly_downloads": 0,
+            "maintainer_count": 0,
+            "sources": ["deps.dev"],
+        }
+        cached = _extract_cached_pypi_fields(existing)
+        assert cached == {}
+
+    def test_extract_cached_npm_fields_stale_source_returns_data(self):
+        """npm_stale source should still return cached data."""
+        from package_collector import _extract_cached_npm_fields
+
+        existing = {
+            "weekly_downloads": 1000,
+            "maintainer_count": 3,
+            "sources": ["npm_stale"],
+        }
+        cached = _extract_cached_npm_fields(existing)
+        assert cached["weekly_downloads"] == 1000
+        assert cached["maintainer_count"] == 3
+
+    def test_extract_cached_npm_fields_preserves_downloads_source(self):
+        """Cached npm fields should preserve downloads_source."""
+        from package_collector import _extract_cached_npm_fields
+
+        existing = {
+            "weekly_downloads": 5000,
+            "downloads_source": "bulk",
+            "sources": ["npm"],
+        }
+        cached = _extract_cached_npm_fields(existing)
+        assert cached["downloads_source"] == "bulk"
+
+    def test_extract_cached_pypi_fields_preserves_downloads_source(self):
+        """Cached pypi fields should preserve downloads_source."""
+        from package_collector import _extract_cached_pypi_fields
+
+        existing = {
+            "weekly_downloads": 100000,
+            "downloads_source": "bigquery",
+            "sources": ["pypi"],
+        }
+        cached = _extract_cached_pypi_fields(existing)
+        assert cached["downloads_source"] == "bigquery"
 
 
 # =============================================================================
@@ -7178,6 +7245,7 @@ class TestPyPIBatchDownloadLogic:
             "python_versions": ["3.8", "3.9"],
             "repository_url": "https://github.com/owner/repo",
             "last_updated": datetime.now(timezone.utc).isoformat(),
+            "sources": ["pypi"],
         }
 
         with patch.dict(
@@ -7963,6 +8031,7 @@ class TestSelectiveRetryNpmCached:
             "has_exports": True,
             "engines": {"node": ">=14"},
             "repository_url": "https://github.com/owner/repo",
+            "sources": ["npm"],
         }
 
         with (
@@ -8010,6 +8079,7 @@ class TestSelectiveRetryNpmCached:
             "maintainer_count": 1,
             "is_deprecated": False,
             "repository_url": "https://github.com/owner/repo",
+            "sources": ["npm"],
         }
 
         with (
@@ -8858,3 +8928,236 @@ class TestDynamoWriteFailureInPipeline:
             assert error_reason == "Exception"
             # Error should be stored for DLQ processor
             mock_store_error.assert_called_once()
+
+
+# =============================================================================
+# REFRESH DISPATCHER: SUB-BATCH AND FORCE REFRESH TESTS
+# =============================================================================
+
+
+class TestRefreshDispatcherSubBatch:
+    """Tests for sub-batch filtering and force_refresh pass-through."""
+
+    @mock_aws
+    def test_sub_batch_filters_packages(self):
+        """Sub-batch should only include packages matching CRC32 modulo."""
+        import zlib
+
+        dynamodb_resource = boto3.resource("dynamodb", region_name="us-east-1")
+        table = dynamodb_resource.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+                {"AttributeName": "tier", "AttributeType": "N"},
+            ],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": "tier-index",
+                    "KeySchema": [{"AttributeName": "tier", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "KEYS_ONLY"},
+                    "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5},
+                }
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        # Seed 21 packages
+        packages = [f"npm#pkg-{i}" for i in range(21)]
+        for pk in packages:
+            table.put_item(Item={"pk": pk, "sk": "METADATA", "tier": 3})
+
+        sqs_client = boto3.client("sqs", region_name="us-east-1")
+        queue = sqs_client.create_queue(QueueName="test-queue")
+        queue_url = queue["QueueUrl"]
+
+        with patch.dict(
+            os.environ,
+            {"PACKAGES_TABLE": "pkgwatch-packages", "PACKAGE_QUEUE_URL": queue_url},
+        ):
+            from importlib import reload
+
+            import refresh_dispatcher
+
+            reload(refresh_dispatcher)
+
+            # Request sub_batch=0 of 7
+            event = {"tier": 3, "reason": "test", "sub_batch": 0, "total_sub_batches": 7}
+            result = refresh_dispatcher.handler(event, None)
+            body = json.loads(result["body"])
+
+            # Should only dispatch packages where crc32(pk) % 7 == 0
+            expected_count = sum(1 for pk in packages if zlib.crc32(pk.encode()) % 7 == 0)
+            assert body["messages_sent"] == expected_count
+            assert expected_count < len(packages)  # Should be a subset
+
+    @mock_aws
+    def test_no_sub_batch_processes_all(self):
+        """Without sub_batch, all packages should be processed."""
+        dynamodb_resource = boto3.resource("dynamodb", region_name="us-east-1")
+        table = dynamodb_resource.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+                {"AttributeName": "tier", "AttributeType": "N"},
+            ],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": "tier-index",
+                    "KeySchema": [{"AttributeName": "tier", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "KEYS_ONLY"},
+                    "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5},
+                }
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        for i in range(5):
+            table.put_item(Item={"pk": f"npm#pkg-{i}", "sk": "METADATA", "tier": 3})
+
+        sqs_client = boto3.client("sqs", region_name="us-east-1")
+        queue = sqs_client.create_queue(QueueName="test-queue")
+        queue_url = queue["QueueUrl"]
+
+        with patch.dict(
+            os.environ,
+            {"PACKAGES_TABLE": "pkgwatch-packages", "PACKAGE_QUEUE_URL": queue_url},
+        ):
+            from importlib import reload
+
+            import refresh_dispatcher
+
+            reload(refresh_dispatcher)
+
+            # No sub_batch — process all
+            event = {"tier": 3, "reason": "test"}
+            result = refresh_dispatcher.handler(event, None)
+            body = json.loads(result["body"])
+            assert body["messages_sent"] == 5
+
+    @mock_aws
+    def test_force_refresh_passes_through_to_sqs(self):
+        """force_refresh=True should appear in SQS message body."""
+        dynamodb_resource = boto3.resource("dynamodb", region_name="us-east-1")
+        table = dynamodb_resource.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+                {"AttributeName": "tier", "AttributeType": "N"},
+            ],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": "tier-index",
+                    "KeySchema": [{"AttributeName": "tier", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "KEYS_ONLY"},
+                    "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5},
+                }
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        table.put_item(Item={"pk": "npm#lodash", "sk": "METADATA", "tier": 1})
+
+        sqs_client = boto3.client("sqs", region_name="us-east-1")
+        queue = sqs_client.create_queue(QueueName="test-queue")
+        queue_url = queue["QueueUrl"]
+
+        with patch.dict(
+            os.environ,
+            {"PACKAGES_TABLE": "pkgwatch-packages", "PACKAGE_QUEUE_URL": queue_url},
+        ):
+            from importlib import reload
+
+            import refresh_dispatcher
+
+            reload(refresh_dispatcher)
+
+            # Patch jitter to 0 so messages are immediately visible
+            with patch("refresh_dispatcher.random.randint", return_value=0):
+                event = {"tier": 1, "reason": "launch_refresh", "force_refresh": True}
+                refresh_dispatcher.handler(event, None)
+
+            # Read back from SQS
+            messages = sqs_client.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10)
+            assert len(messages.get("Messages", [])) == 1
+            body = json.loads(messages["Messages"][0]["Body"])
+            assert body["force_refresh"] is True
+            assert body["ecosystem"] == "npm"
+            assert body["name"] == "lodash"
+
+    @mock_aws
+    def test_force_refresh_false_not_in_message(self):
+        """force_refresh not set should NOT appear in SQS message body."""
+        dynamodb_resource = boto3.resource("dynamodb", region_name="us-east-1")
+        table = dynamodb_resource.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+                {"AttributeName": "tier", "AttributeType": "N"},
+            ],
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": "tier-index",
+                    "KeySchema": [{"AttributeName": "tier", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "KEYS_ONLY"},
+                    "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5},
+                }
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        table.put_item(Item={"pk": "npm#lodash", "sk": "METADATA", "tier": 1})
+
+        sqs_client = boto3.client("sqs", region_name="us-east-1")
+        queue = sqs_client.create_queue(QueueName="test-queue")
+        queue_url = queue["QueueUrl"]
+
+        with patch.dict(
+            os.environ,
+            {"PACKAGES_TABLE": "pkgwatch-packages", "PACKAGE_QUEUE_URL": queue_url},
+        ):
+            from importlib import reload
+
+            import refresh_dispatcher
+
+            reload(refresh_dispatcher)
+
+            with patch("refresh_dispatcher.random.randint", return_value=0):
+                event = {"tier": 1, "reason": "daily_refresh"}
+                refresh_dispatcher.handler(event, None)
+
+            messages = sqs_client.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10)
+            body = json.loads(messages["Messages"][0]["Body"])
+            assert "force_refresh" not in body
+
+    def test_sub_batch_distributes_evenly(self):
+        """CRC32 sub-batching should distribute ~evenly across 7 buckets."""
+        import zlib
+
+        packages = [f"npm#package-{i}" for i in range(700)]
+        buckets = [0] * 7
+        for pk in packages:
+            buckets[zlib.crc32(pk.encode()) % 7] += 1
+
+        # Each bucket should be roughly 100 (700/7)
+        for count in buckets:
+            assert 70 < count < 130, f"Bucket has {count} packages, expected ~100"
