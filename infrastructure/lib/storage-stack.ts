@@ -212,10 +212,17 @@ export class StorageStack extends cdk.Stack {
       nonKeyAttributes: ["email", "ttl", "verified", "recovery_method"],
     });
 
-    // NOTE: change-token-index must be deployed in a separate stack update
-    // due to DynamoDB's one-GSI-per-update limit. Deploy this GSI after
-    // recovery-token-index is active. Lambda code has scan fallback until then.
-    // See: recovery_confirm_email.py
+    // GSI for looking up email change records by change token
+    // Replaces O(n) table scan with O(1) query in recovery_confirm_email.py
+    this.apiKeysTable.addGlobalSecondaryIndex({
+      indexName: "change-token-index",
+      partitionKey: {
+        name: "change_token",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: ["old_email", "new_email", "ttl", "recovery_session_sk"],
+    });
 
     // ===========================================
     // DynamoDB: Billing Events Table
