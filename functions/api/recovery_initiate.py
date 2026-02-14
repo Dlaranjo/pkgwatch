@@ -185,6 +185,9 @@ def handler(event, context):
 
     try:
         # Store recovery session record
+        # Note: recovery_method and recovery_token are omitted (not set to None)
+        # because the recovery-token-index GSI requires String type when present.
+        # They are set via update_item after code verification.
         table.put_item(
             Item={
                 "pk": user_id,
@@ -192,8 +195,6 @@ def handler(event, context):
                 "email": email,
                 "recovery_session_id": session_id,
                 "verified": False,
-                "recovery_method": None,  # Set when user chooses method
-                "recovery_token": None,  # Generated after code verification
                 "created_at": now.isoformat(),
                 "ttl": ttl_timestamp,
             }

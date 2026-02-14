@@ -27,7 +27,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import boto3
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Attr, Key
 from botocore.exceptions import ClientError
 
 from shared.recovery_utils import mask_email
@@ -112,21 +112,31 @@ def handler(event, context):
     table = dynamodb.Table(API_KEYS_TABLE)
     now = datetime.now(timezone.utc)
 
-    # Find the recovery session with this token
-    # We need to scan since we don't have the user_id yet
+    # Find the recovery session with this token using GSI query
     try:
-        scan_response = table.scan(
-            FilterExpression="recovery_token = :token AND recovery_method = :method",
-            ExpressionAttributeValues={
-                ":token": recovery_token,
-                ":method": "recovery_code",
-            },
-            ProjectionExpression="pk, sk, email, #ttl_attr, verified",
-            ExpressionAttributeNames={"#ttl_attr": "ttl"},
-        )
+        try:
+            scan_response = table.query(
+                IndexName="recovery-token-index",
+                KeyConditionExpression=Key("recovery_token").eq(recovery_token),
+                FilterExpression=Attr("recovery_method").eq("recovery_code"),
+            )
+        except ClientError as e:
+            if "ValidationException" in str(e):
+                # GSI not deployed yet — fall back to scan
+                scan_response = table.scan(
+                    FilterExpression="recovery_token = :token AND recovery_method = :method",
+                    ExpressionAttributeValues={
+                        ":token": recovery_token,
+                        ":method": "recovery_code",
+                    },
+                    ProjectionExpression="pk, sk, email, #ttl_attr, verified",
+                    ExpressionAttributeNames={"#ttl_attr": "ttl"},
+                )
+            else:
+                raise
         sessions = scan_response.get("Items", [])
     except ClientError as e:
-        logger.error(f"Error scanning for recovery token: {e}")
+        logger.error(f"Error querying for recovery token: {e}")
         return _timed_response(
             start_time,
             error_response(500, "internal_error", "Failed to verify token", origin=origin),

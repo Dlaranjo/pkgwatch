@@ -200,6 +200,30 @@ export class StorageStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // GSI for looking up recovery sessions by recovery token
+    // Replaces O(n) table scan with O(1) query in recovery_update_email.py
+    this.apiKeysTable.addGlobalSecondaryIndex({
+      indexName: "recovery-token-index",
+      partitionKey: {
+        name: "recovery_token",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: ["email", "ttl", "verified", "recovery_method"],
+    });
+
+    // GSI for looking up email change records by change token
+    // Replaces O(n) table scan with O(1) query in recovery_confirm_email.py
+    this.apiKeysTable.addGlobalSecondaryIndex({
+      indexName: "change-token-index",
+      partitionKey: {
+        name: "change_token",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: ["old_email", "new_email", "ttl", "recovery_session_sk"],
+    });
+
     // ===========================================
     // DynamoDB: Billing Events Table
     // ===========================================

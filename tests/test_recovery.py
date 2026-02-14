@@ -1038,8 +1038,8 @@ class TestRecoveryUpdateEmailErrors:
         with patch("time.sleep"), patch("api.recovery_update_email.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
-            mock_table.scan.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "Scan"
+            mock_table.query.side_effect = ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "Query"
             )
             response = handler(event, None)
 
@@ -1338,8 +1338,8 @@ class TestRecoveryConfirmEmailErrors:
         ):
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
-            mock_table.scan.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "Scan"
+            mock_table.query.side_effect = ClientError(
+                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "Query"
             )
             response = handler(event, None)
 
@@ -1430,28 +1430,30 @@ class TestRecoveryConfirmEmailErrors:
         ):
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
-            mock_table.scan.return_value = {
-                "Items": [
-                    {
-                        "pk": "user_test123",
-                        "sk": f"EMAIL_CHANGE_{change_token}",
-                        "old_email": "test@example.com",
-                        "new_email": "new@example.com",
-                        "change_token": change_token,
-                        "ttl": int((now + timedelta(hours=24)).timestamp()),
-                    }
-                ]
-            }
-            mock_table.query.return_value = {
-                "Items": [
-                    {
-                        "pk": "user_test123",
-                        "sk": key_hash,
-                        "key_hash": key_hash,
-                        "email": "test@example.com",
-                    }
-                ]
-            }
+            mock_table.query.side_effect = [
+                {
+                    "Items": [
+                        {
+                            "pk": "user_test123",
+                            "sk": f"EMAIL_CHANGE_{change_token}",
+                            "old_email": "test@example.com",
+                            "new_email": "new@example.com",
+                            "change_token": change_token,
+                            "ttl": int((now + timedelta(hours=24)).timestamp()),
+                        }
+                    ]
+                },
+                {
+                    "Items": [
+                        {
+                            "pk": "user_test123",
+                            "sk": key_hash,
+                            "key_hash": key_hash,
+                            "email": "test@example.com",
+                        }
+                    ]
+                },
+            ]
             mock_table.delete_item.side_effect = ClientError(
                 {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Already deleted"}}, "DeleteItem"
             )
@@ -1563,29 +1565,31 @@ class TestRecoveryConfirmEmailDeleteTokenError:
         ):
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
-            mock_table.scan.return_value = {
-                "Items": [
-                    {
-                        "pk": "user_test123",
-                        "sk": f"EMAIL_CHANGE_{change_token}",
-                        "old_email": "test@example.com",
-                        "new_email": "new@example.com",
-                        "change_token": change_token,
-                        "ttl": int((now + timedelta(hours=24)).timestamp()),
-                    }
-                ]
-            }
-            mock_table.query.return_value = {
-                "Items": [
-                    {
-                        "pk": "user_test123",
-                        "sk": key_hash,
-                        "key_hash": key_hash,
-                        "email": "test@example.com",
-                        "tier": "free",
-                    }
-                ]
-            }
+            mock_table.query.side_effect = [
+                {
+                    "Items": [
+                        {
+                            "pk": "user_test123",
+                            "sk": f"EMAIL_CHANGE_{change_token}",
+                            "old_email": "test@example.com",
+                            "new_email": "new@example.com",
+                            "change_token": change_token,
+                            "ttl": int((now + timedelta(hours=24)).timestamp()),
+                        }
+                    ]
+                },
+                {
+                    "Items": [
+                        {
+                            "pk": "user_test123",
+                            "sk": key_hash,
+                            "key_hash": key_hash,
+                            "email": "test@example.com",
+                            "tier": "free",
+                        }
+                    ]
+                },
+            ]
             # Non-conditional ClientError (not ConditionalCheckFailedException)
             mock_table.delete_item.side_effect = ClientError(
                 {"Error": {"Code": "InternalServerError", "Message": "DynamoDB failure"}}, "DeleteItem"
@@ -1624,29 +1628,31 @@ class TestRecoveryConfirmEmailUpdateErrors:
         ):
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
-            mock_table.scan.return_value = {
-                "Items": [
-                    {
-                        "pk": "user_test123",
-                        "sk": f"EMAIL_CHANGE_{change_token}",
-                        "old_email": "test@example.com",
-                        "new_email": "new@example.com",
-                        "change_token": change_token,
-                        "ttl": int((now + timedelta(hours=24)).timestamp()),
-                    }
-                ]
-            }
-            mock_table.query.return_value = {
-                "Items": [
-                    {
-                        "pk": "user_test123",
-                        "sk": key_hash,
-                        "key_hash": key_hash,
-                        "email": "test@example.com",
-                        "tier": "free",
-                    }
-                ]
-            }
+            mock_table.query.side_effect = [
+                {
+                    "Items": [
+                        {
+                            "pk": "user_test123",
+                            "sk": f"EMAIL_CHANGE_{change_token}",
+                            "old_email": "test@example.com",
+                            "new_email": "new@example.com",
+                            "change_token": change_token,
+                            "ttl": int((now + timedelta(hours=24)).timestamp()),
+                        }
+                    ]
+                },
+                {
+                    "Items": [
+                        {
+                            "pk": "user_test123",
+                            "sk": key_hash,
+                            "key_hash": key_hash,
+                            "email": "test@example.com",
+                            "tier": "free",
+                        }
+                    ]
+                },
+            ]
             # delete_item succeeds (token consumed)
             mock_table.delete_item.return_value = {}
             # update_item fails (user record updates)
@@ -1742,33 +1748,35 @@ class TestRecoveryConfirmEmailUpdateErrors:
         ):
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
-            mock_table.scan.return_value = {
-                "Items": [
-                    {
-                        "pk": "user_test123",
-                        "sk": f"EMAIL_CHANGE_{change_token}",
-                        "old_email": "test@example.com",
-                        "new_email": "new@example.com",
-                        "change_token": change_token,
-                        "ttl": int((now + timedelta(hours=24)).timestamp()),
-                    }
-                ]
-            }
-            mock_table.query.return_value = {
-                "Items": [
-                    {
-                        "pk": "user_test123",
-                        "sk": key_hash,
-                        "key_hash": key_hash,
-                        "email": "test@example.com",
-                        "tier": "free",
-                    },
-                    {
-                        "pk": "user_test123",
-                        "sk": "USER_META",
-                    },
-                ]
-            }
+            mock_table.query.side_effect = [
+                {
+                    "Items": [
+                        {
+                            "pk": "user_test123",
+                            "sk": f"EMAIL_CHANGE_{change_token}",
+                            "old_email": "test@example.com",
+                            "new_email": "new@example.com",
+                            "change_token": change_token,
+                            "ttl": int((now + timedelta(hours=24)).timestamp()),
+                        }
+                    ]
+                },
+                {
+                    "Items": [
+                        {
+                            "pk": "user_test123",
+                            "sk": key_hash,
+                            "key_hash": key_hash,
+                            "email": "test@example.com",
+                            "tier": "free",
+                        },
+                        {
+                            "pk": "user_test123",
+                            "sk": "USER_META",
+                        },
+                    ]
+                },
+            ]
             mock_table.delete_item.return_value = {}
             mock_table.update_item.side_effect = selective_update
             response = handler(event, None)
@@ -1864,8 +1872,20 @@ class TestRecoveryUpdateEmailInternalErrors:
         }
 
         def selective_query(**kwargs):
-            """email-index query fails."""
+            """recovery-token-index query succeeds, email-index query fails."""
             index_name = kwargs.get("IndexName", "")
+            if index_name == "recovery-token-index":
+                return {
+                    "Items": [
+                        {
+                            "pk": "user_test123",
+                            "sk": f"RECOVERY_{session_id}",
+                            "email": "test@example.com",
+                            "ttl": int((now + timedelta(hours=1)).timestamp()),
+                            "verified": True,
+                        }
+                    ]
+                }
             if index_name == "email-index":
                 raise ClientError({"Error": {"Code": "InternalServerError", "Message": "Query failed"}}, "Query")
             return {"Items": []}
@@ -1873,17 +1893,6 @@ class TestRecoveryUpdateEmailInternalErrors:
         with patch("time.sleep"), patch("api.recovery_update_email.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
-            mock_table.scan.return_value = {
-                "Items": [
-                    {
-                        "pk": "user_test123",
-                        "sk": f"RECOVERY_{session_id}",
-                        "email": "test@example.com",
-                        "ttl": int((now + timedelta(hours=1)).timestamp()),
-                        "verified": True,
-                    }
-                ]
-            }
             mock_table.query.side_effect = selective_query
             response = handler(event, None)
 
@@ -1915,19 +1924,21 @@ class TestRecoveryUpdateEmailInternalErrors:
         with patch("time.sleep"), patch("api.recovery_update_email.dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.Table.return_value = mock_table
-            mock_table.scan.return_value = {
-                "Items": [
-                    {
-                        "pk": "user_test123",
-                        "sk": f"RECOVERY_{session_id}",
-                        "email": "test@example.com",
-                        "ttl": int((now + timedelta(hours=1)).timestamp()),
-                        "verified": True,
-                    }
-                ]
-            }
-            # Email check succeeds (no other user with this email)
-            mock_table.query.return_value = {"Items": []}
+            mock_table.query.side_effect = [
+                {
+                    "Items": [
+                        {
+                            "pk": "user_test123",
+                            "sk": f"RECOVERY_{session_id}",
+                            "email": "test@example.com",
+                            "ttl": int((now + timedelta(hours=1)).timestamp()),
+                            "verified": True,
+                        }
+                    ]
+                },
+                # Email check succeeds (no other user with this email)
+                {"Items": []},
+            ]
             # Creating EMAIL_CHANGE record fails
             mock_table.put_item.side_effect = ClientError(
                 {"Error": {"Code": "InternalServerError", "Message": "Put failed"}}, "PutItem"

@@ -139,6 +139,8 @@ def create_dynamodb_tables(dynamodb):
             {"AttributeName": "magic_token", "AttributeType": "S"},
             {"AttributeName": "referral_code", "AttributeType": "S"},
             {"AttributeName": "recovery_session_id", "AttributeType": "S"},
+            {"AttributeName": "recovery_token", "AttributeType": "S"},
+            {"AttributeName": "change_token", "AttributeType": "S"},
         ],
         GlobalSecondaryIndexes=[
             {
@@ -178,6 +180,22 @@ def create_dynamodb_tables(dynamodb):
                 "IndexName": "recovery-session-index",
                 "KeySchema": [{"AttributeName": "recovery_session_id", "KeyType": "HASH"}],
                 "Projection": {"ProjectionType": "ALL"},
+            },
+            {
+                "IndexName": "recovery-token-index",
+                "KeySchema": [{"AttributeName": "recovery_token", "KeyType": "HASH"}],
+                "Projection": {
+                    "ProjectionType": "INCLUDE",
+                    "NonKeyAttributes": ["email", "ttl", "verified", "recovery_method"],
+                },
+            },
+            {
+                "IndexName": "change-token-index",
+                "KeySchema": [{"AttributeName": "change_token", "KeyType": "HASH"}],
+                "Projection": {
+                    "ProjectionType": "INCLUDE",
+                    "NonKeyAttributes": ["old_email", "new_email", "ttl", "recovery_session_sk"],
+                },
             },
         ],
         BillingMode="PAY_PER_REQUEST",

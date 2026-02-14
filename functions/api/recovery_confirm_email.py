@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import boto3
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Key  # noqa: F401 - used in GSI query
 from botocore.exceptions import ClientError
 
 from api.auth_callback import _create_session_token, _get_session_secret
@@ -68,17 +68,27 @@ def handler(event, context):
     table = dynamodb.Table(API_KEYS_TABLE)
     now = datetime.now(timezone.utc)
 
-    # Find the EMAIL_CHANGE record with this token
+    # Find the EMAIL_CHANGE record with this token using GSI query
     try:
-        scan_response = table.scan(
-            FilterExpression="change_token = :token",
-            ExpressionAttributeValues={":token": token},
-            ProjectionExpression="pk, sk, old_email, new_email, #ttl_attr, recovery_session_sk",
-            ExpressionAttributeNames={"#ttl_attr": "ttl"},
-        )
+        try:
+            scan_response = table.query(
+                IndexName="change-token-index",
+                KeyConditionExpression=Key("change_token").eq(token),
+            )
+        except ClientError as e:
+            if "ValidationException" in str(e):
+                # GSI not deployed yet — fall back to scan
+                scan_response = table.scan(
+                    FilterExpression="change_token = :token",
+                    ExpressionAttributeValues={":token": token},
+                    ProjectionExpression="pk, sk, old_email, new_email, #ttl_attr, recovery_session_sk",
+                    ExpressionAttributeNames={"#ttl_attr": "ttl"},
+                )
+            else:
+                raise
         records = scan_response.get("Items", [])
     except ClientError as e:
-        logger.error(f"Error scanning for change token: {e}")
+        logger.error(f"Error querying for change token: {e}")
         return _timed_redirect(start_time, _redirect_with_error("internal_error", "Failed to verify token"))
 
     if not records:
