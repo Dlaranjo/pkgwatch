@@ -201,10 +201,16 @@ export class StorageStack extends cdk.Stack {
     });
 
     // GSI for looking up recovery sessions by recovery token
-    // STEP 1 of 2: GSI removed for projection change (adding email_change_initiated).
-    // DynamoDB doesn't support in-place projection updates.
-    // Scan fallback in recovery_update_email.py handles queries during recreation.
-    // Re-add in next commit.
+    // Replaces O(n) table scan with O(1) query in recovery_update_email.py
+    this.apiKeysTable.addGlobalSecondaryIndex({
+      indexName: "recovery-token-index",
+      partitionKey: {
+        name: "recovery_token",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: ["email", "ttl", "verified", "recovery_method", "email_change_initiated"],
+    });
 
     // GSI for looking up email change records by change token
     // Replaces O(n) table scan with O(1) query in recovery_confirm_email.py
