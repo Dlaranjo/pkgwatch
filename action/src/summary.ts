@@ -94,7 +94,7 @@ export async function generateSummary(
   // All packages in collapsible
   if (result.packages.length > 0) {
     const allTable = result.packages
-      .sort((a, b) => a.health_score - b.health_score)
+      .sort((a, b) => (a.health_score ?? -1) - (b.health_score ?? -1))
       .map(
         (p) =>
           `| \`${escapeMarkdown(p.package)}\` | ${p.risk_level} | ${p.health_score}/100 |`
@@ -293,7 +293,7 @@ export async function generateRepoSummary(
       summary.addRaw(`\n#### \`${escapeMarkdown(m.manifest.relativePath)}\` (${m.manifest.ecosystem})\n\n`);
 
       const packageTable = m.packages
-        .sort((a, b) => a.health_score - b.health_score)
+        .sort((a, b) => (a.health_score ?? -1) - (b.health_score ?? -1))
         .map(
           (p) =>
             `| \`${escapeMarkdown(p.package)}\` | ${p.risk_level} | ${p.health_score}/100 |`

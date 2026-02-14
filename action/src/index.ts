@@ -12,6 +12,7 @@ import {
 type ScanMode = "single" | "recursive";
 
 async function run(): Promise<void> {
+  const softFail = ["true", "yes", "1"].includes(core.getInput("soft-fail")?.toLowerCase() || "");
   try {
     // Get and mask API key immediately (security)
     const apiKey = core.getInput("api-key", { required: true });
@@ -23,7 +24,6 @@ async function run(): Promise<void> {
     const maxManifests = parseInt(core.getInput("max-manifests") || "100", 10);
     const failOn = core.getInput("fail-on")?.toUpperCase() || "";
     const includeDev = !["false", "no", "0"].includes(core.getInput("include-dev")?.toLowerCase() || "");
-    const softFail = ["true", "yes", "1"].includes(core.getInput("soft-fail")?.toLowerCase() || "");
 
     // Validate scan-mode
     if (!["single", "recursive"].includes(scanMode)) {
@@ -73,26 +73,28 @@ async function run(): Promise<void> {
       await runSingleScan({
         apiKey,
         resolvedPath,
+        relativePath,
         includeDev,
         failOn,
         softFail,
       });
     }
   } catch (error) {
-    handleError(error);
+    handleError(error, softFail);
   }
 }
 
 interface SingleScanOptions {
   apiKey: string;
   resolvedPath: string;
+  relativePath: string;
   includeDev: boolean;
   failOn: string;
   softFail: boolean;
 }
 
 async function runSingleScan(options: SingleScanOptions): Promise<void> {
-  const { apiKey, resolvedPath, includeDev, failOn, softFail } = options;
+  const { apiKey, resolvedPath, relativePath, includeDev, failOn, softFail } = options;
 
   core.info(`Scanning dependencies in ${resolvedPath}`);
 
@@ -163,7 +165,7 @@ async function runSingleScan(options: SingleScanOptions): Promise<void> {
         `${safeName}: ${pkg.risk_level} risk (score: ${pkg.health_score}/100)${reason}`,
         {
           title: pkg.risk_level === "CRITICAL" ? "Critical Dependency Risk" : "High Dependency Risk",
-          file: result.format,
+          file: path.join(relativePath, result.format),
         }
       );
     }
@@ -355,57 +357,66 @@ function sanitizeForAnnotation(text: string): string {
     .slice(0, 100); // Limit length
 }
 
-function handleError(error: unknown): void {
+function handleError(error: unknown, softFail: boolean = false): void {
+  const fail = softFail ? core.warning : core.setFailed;
+
   if (error instanceof ApiClientError) {
     switch (error.code) {
       case "unauthorized":
-        core.setFailed(
+        fail(
           `Authentication failed (401)\n\nYour API key appears to be invalid or expired.\nVerify at https://pkgwatch.dev/dashboard`
         );
         break;
       case "forbidden":
-        core.setFailed(
+        fail(
           `Access forbidden (403)\n\nYour account may have exceeded plan limits or been disabled.\nCheck https://pkgwatch.dev/dashboard`
         );
         break;
       case "rate_limited":
-        core.setFailed(
+        fail(
           `Rate limit exceeded (429)\n\nYour API quota has been exhausted.\nUpgrade at https://pkgwatch.dev/pricing`
         );
         break;
       case "timeout":
-        core.setFailed(
+        fail(
           `Request timed out\n\nThe PkgWatch API did not respond in time.\nCheck https://status.pkgwatch.dev`
         );
         break;
       case "network_error":
-        core.setFailed(
+        fail(
           `Network error\n\nUnable to reach PkgWatch API.\nCheck https://status.pkgwatch.dev`
         );
         break;
       default:
-        core.setFailed(`API error: ${error.message}`);
+        fail(`API error: ${error.message}`);
     }
   } else if (error instanceof Error) {
     // Handle specific error messages with better guidance
     if (error.message.includes("Invalid API key format")) {
-      core.setFailed(
+      fail(
         `Invalid API key format\n\nAPI keys should start with 'pw_'.\nGet your key at https://pkgwatch.dev/dashboard`
       );
     } else if (error.message.includes("API key is required")) {
-      core.setFailed(
+      fail(
         `API key is required\n\nPlease provide your API key via the 'api-key' input.\nGet your key at https://pkgwatch.dev/dashboard`
       );
     } else {
-      core.setFailed(`Action failed: ${error.message}`);
+      fail(`Action failed: ${error.message}`);
     }
   } else {
-    core.setFailed("An unknown error occurred");
+    fail("An unknown error occurred");
   }
 }
 
 run().catch((error) => {
   // Catch any unhandled errors (e.g., bugs in handleError itself)
-  core.setFailed(`Unhandled error: ${error instanceof Error ? error.message : String(error)}`);
-  process.exit(1);
+  const sf = ["true", "yes", "1"].includes(
+    (process.env["INPUT_SOFT-FAIL"] || "").toLowerCase()
+  );
+  if (sf) {
+    core.warning(`Unhandled error: ${error instanceof Error ? error.message : String(error)}`);
+  } else {
+    core.setFailed(`Unhandled error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
 });
