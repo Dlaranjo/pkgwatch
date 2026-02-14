@@ -13,6 +13,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import boto3
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -100,22 +101,32 @@ def handler(event, context):
                 next_period_start = current_period_end
                 next_period_end = current_period_end + (30 * 24 * 60 * 60)
 
-                table.update_item(
-                    Key={"pk": item["pk"], "sk": item["sk"]},
-                    UpdateExpression=(
-                        "SET requests_this_month = :zero, "
-                        "current_period_start = :new_start, "
-                        "current_period_end = :new_end, "
-                        "last_reset_period_start = :new_start, "
-                        "last_usage_reset = :now"
-                    ),
-                    ExpressionAttributeValues={
-                        ":zero": 0,
-                        ":new_start": next_period_start,
-                        ":new_end": next_period_end,
-                        ":now": reset_time,
-                    },
-                )
+                try:
+                    table.update_item(
+                        Key={"pk": item["pk"], "sk": item["sk"]},
+                        UpdateExpression=(
+                            "SET requests_this_month = :zero, "
+                            "current_period_start = :new_start, "
+                            "current_period_end = :new_end, "
+                            "last_reset_period_start = :new_start, "
+                            "last_usage_reset = :now"
+                        ),
+                        ConditionExpression=(
+                            "attribute_not_exists(last_reset_period_start) OR last_reset_period_start < :new_start"
+                        ),
+                        ExpressionAttributeValues={
+                            ":zero": 0,
+                            ":new_start": next_period_start,
+                            ":new_end": next_period_end,
+                            ":now": reset_time,
+                        },
+                    )
+                except ClientError as e:
+                    if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                        logger.info(f"Skipping backup reset for {item['pk']} - already reset by webhook")
+                        items_already_reset += 1
+                        continue
+                    raise
                 items_reset += 1
 
                 # Also try to reset USER_META if it exists
@@ -135,10 +146,14 @@ def handler(event, context):
                             ":new_end": next_period_end,
                             ":now": reset_time,
                         },
-                        ConditionExpression="attribute_exists(pk)",
+                        ConditionExpression=(
+                            "attribute_exists(pk) AND ("
+                            "attribute_not_exists(last_reset_period_start) OR "
+                            "last_reset_period_start < :new_start)"
+                        ),
                     )
-                except Exception:
-                    pass  # USER_META may not exist
+                except ClientError:
+                    pass  # USER_META may not exist or already reset
 
             except Exception as e:
                 logger.error(f"Error in backup reset for {item['pk']}: {e}")

@@ -493,6 +493,7 @@ def _handle_checkout_completed(session: dict):
             tier,
             current_period_start=current_period_start,
             current_period_end=current_period_end,
+            subscription_id=subscription_id,
         )
     else:
         logger.warning("No customer email or customer ID in checkout session")
@@ -704,6 +705,7 @@ def _handle_payment_failed(invoice: dict):
 
     now = datetime.now(timezone.utc)
 
+    downgraded = False
     for item in items:
         first_failure = item.get("first_payment_failure_at")
 
@@ -747,7 +749,7 @@ def _handle_payment_failed(invoice: dict):
                     table.update_item(
                         Key={"pk": item["pk"], "sk": item["sk"]},
                         UpdateExpression=(
-                            "SET tier = :tier, payment_failures = :fails, tier_updated_at = :now "
+                            "SET tier = :tier, payment_failures = :fails, tier_updated_at = :now, monthly_limit = :limit "
                             "REMOVE first_payment_failure_at"
                         ),
                         ConditionExpression="attribute_exists(first_payment_failure_at)",
@@ -755,8 +757,10 @@ def _handle_payment_failed(invoice: dict):
                             ":tier": "free",
                             ":fails": attempt_count,
                             ":now": now.isoformat(),
+                            ":limit": TIER_LIMITS["free"],
                         },
                     )
+                    downgraded = True
                     logger.warning(
                         f"Downgraded {item['pk']} to free after {days_since_first} days "
                         f"grace period and {attempt_count} failed payments"
@@ -784,6 +788,19 @@ def _handle_payment_failed(invoice: dict):
                 ExpressionAttributeValues={":fails": attempt_count},
             )
             logger.info(f"Recorded payment failure {attempt_count} for {item['pk']}")
+
+    # Update USER_META tier/limit if downgrade occurred (once, after loop)
+    if downgraded and items:
+        user_id = items[0]["pk"]
+        try:
+            table.update_item(
+                Key={"pk": user_id, "sk": "USER_META"},
+                UpdateExpression="SET tier = :tier, monthly_limit = :limit",
+                ConditionExpression="attribute_exists(pk)",
+                ExpressionAttributeValues={":tier": "free", ":limit": TIER_LIMITS["free"]},
+            )
+        except ClientError:
+            pass  # USER_META may not exist for legacy accounts
 
 
 def _send_payment_failed_email(email: str, tier: str, grace_period_days: int):
@@ -1168,6 +1185,7 @@ def _update_user_tier_by_customer_id(
     tier: str,
     current_period_start: int = None,
     current_period_end: int = None,
+    subscription_id: str = None,
 ):
     """Update tier by Stripe customer ID (for upgrades/downgrades).
 
@@ -1231,6 +1249,10 @@ def _update_user_tier_by_customer_id(
         if current_period_end:
             update_expr += ", current_period_end = :period_end"
             expr_values[":period_end"] = current_period_end
+
+        if subscription_id:
+            update_expr += ", stripe_subscription_id = :sub_id"
+            expr_values[":sub_id"] = subscription_id
 
         # Reset usage on upgrade to give fresh start with new limit
         if is_upgrade:
