@@ -4037,3 +4037,83 @@ class TestConfidenceIntervalPrecise:
         # (approximate, since the score is multiplied by 100)
         diff_01 = result_0["score"] - result_1["score"]
         assert diff_01 == pytest.approx(10.0, abs=1.0)
+
+
+class TestSecurityHealthExtremeVulnerabilities:
+    """Test C1 fix: math.exp() overflow with extreme vulnerability counts."""
+
+    def test_extreme_vulnerabilities_no_crash(self):
+        """1000 CRITICAL advisories should not crash with OverflowError."""
+        from scoring.health_score import _security_health
+
+        data = {
+            "openssf_score": 5.0,
+            "advisories": [{"severity": "CRITICAL"} for _ in range(1000)],
+            "openssf_checks": [],
+        }
+        score = _security_health(data)
+        assert 0 <= score <= 1
+        # With 1000 CRITICAL, vulnerability component is near 0
+        # Overall score includes openssf and security_policy components
+        assert score < 0.5
+
+    def test_zero_vulnerabilities_still_works(self):
+        """Zero vulnerabilities should still produce a valid score."""
+        from scoring.health_score import _security_health
+
+        data = {
+            "openssf_score": 8.0,
+            "advisories": [],
+            "openssf_checks": [],
+        }
+        score = _security_health(data)
+        assert 0 <= score <= 1
+        assert score > 0.5
+
+
+class TestToDecimalInfNan:
+    """Test C2 fix: to_decimal handles Inf/NaN gracefully."""
+
+    def test_to_decimal_with_inf(self):
+        from decimal import Decimal
+
+        from scoring.score_package import to_decimal
+
+        result = to_decimal(float("inf"))
+        assert result == Decimal("0")
+
+    def test_to_decimal_with_neg_inf(self):
+        from decimal import Decimal
+
+        from scoring.score_package import to_decimal
+
+        result = to_decimal(float("-inf"))
+        assert result == Decimal("0")
+
+    def test_to_decimal_with_nan(self):
+        from decimal import Decimal
+
+        from scoring.score_package import to_decimal
+
+        result = to_decimal(float("nan"))
+        assert result == Decimal("0")
+
+    def test_to_decimal_normal_float_unchanged(self):
+        from decimal import Decimal
+
+        from scoring.score_package import to_decimal
+
+        result = to_decimal(3.14)
+        assert isinstance(result, Decimal)
+        assert float(result) == 3.14
+
+    def test_to_decimal_nested_with_inf(self):
+        from decimal import Decimal
+
+        from scoring.score_package import to_decimal
+
+        data = {"score": float("inf"), "items": [float("-inf"), 1.5]}
+        result = to_decimal(data)
+        assert result["score"] == Decimal("0")
+        assert result["items"][0] == Decimal("0")
+        assert result["items"][1] == Decimal("1.5")

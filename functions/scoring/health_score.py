@@ -381,7 +381,8 @@ def _security_health(data: dict) -> float:
     vuln_score = critical * 3 + high * 2 + medium * 1
 
     # Sigmoid decay: 0 vulns ~= 0.79, 2 = 0.5, 5+ weighted vulns ~= 0.12
-    vulnerability_score = 1 / (1 + math.exp((vuln_score - 2) / 1.5))
+    exp_arg = min((vuln_score - 2) / 1.5, 700)
+    vulnerability_score = 1 / (1 + math.exp(exp_arg))
 
     # Security policy check (from OpenSSF checks if available)
     # Limit to first 100 checks to prevent DoS from malformed data

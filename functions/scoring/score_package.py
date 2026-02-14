@@ -9,6 +9,7 @@ Can be triggered:
 
 import json
 import logging
+import math
 import os
 import random
 import threading
@@ -109,6 +110,8 @@ def _retry_sync(
 def to_decimal(obj):
     """Convert floats to Decimal for DynamoDB compatibility."""
     if isinstance(obj, float):
+        if math.isinf(obj) or math.isnan(obj):
+            return Decimal("0")
         return Decimal(str(obj))
     elif isinstance(obj, dict):
         return {k: to_decimal(v) for k, v in obj.items()}
