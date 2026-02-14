@@ -359,15 +359,15 @@ class TestNewUserSignupFlow:
         api_key = pending_display["Item"]["api_key"]
         assert api_key.startswith("pw_")
 
-        # Verify PENDING record was deleted
+        # Verify PENDING record was deleted and API key record exists
         response = table.query(
             IndexName="email-index",
             KeyConditionExpression=Key("email").eq("newuser@example.com"),
         )
-        # Now we should have an API key record (not PENDING)
-        assert len(response["Items"]) == 1
-        user_record = response["Items"][0]
-        assert user_record["sk"] != "PENDING"
+        # Filter to API key records (email-index now also returns USER_META)
+        api_key_records = [i for i in response["Items"] if i["sk"] not in ("PENDING", "USER_META")]
+        assert len(api_key_records) == 1
+        user_record = api_key_records[0]
         user_id = user_record["pk"]
 
         # Step 3: Validate the generated API key works
