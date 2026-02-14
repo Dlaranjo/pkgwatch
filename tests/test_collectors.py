@@ -9161,3 +9161,339 @@ class TestRefreshDispatcherSubBatch:
         # Each bucket should be roughly 100 (700/7)
         for count in buckets:
             assert 70 < count < 130, f"Bucket has {count} packages, expected ~100"
+
+
+class TestAbandonedPackageSkip:
+    """Tests for skipping abandoned packages in process_single_package."""
+
+    @mock_aws
+    def test_abandoned_package_skipped_on_scheduled_refresh(self):
+        """Abandoned packages should be skipped during scheduled refreshes."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        table = dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket="pkgwatch-raw-data")
+
+        table.put_item(
+            Item={
+                "pk": "npm#abandoned-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "abandoned-pkg",
+                "data_status": "abandoned_partial",
+                "retry_count": 5,
+            }
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
+            from importlib import reload
+
+            import package_collector
+
+            reload(package_collector)
+
+            message = {
+                "ecosystem": "npm",
+                "name": "abandoned-pkg",
+                "tier": 3,
+                "reason": "daily_tier3_refresh",
+            }
+
+            with patch("package_collector.collect_package_data") as mock_collect:
+                success, pkg_name, error = run_async(package_collector.process_single_package(message))
+
+                assert success is True
+                assert pkg_name == "npm/abandoned-pkg"
+                # Collection should NOT have been called
+                mock_collect.assert_not_called()
+
+    @mock_aws
+    def test_abandoned_package_processed_with_force_refresh(self):
+        """Abandoned packages should be processed when force_refresh=True."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        table = dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket="pkgwatch-raw-data")
+
+        table.put_item(
+            Item={
+                "pk": "npm#abandoned-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "abandoned-pkg",
+                "data_status": "abandoned_minimal",
+                "retry_count": 5,
+            }
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
+            from importlib import reload
+
+            import package_collector
+
+            reload(package_collector)
+
+            mock_depsdev_data = {"latest_version": "1.0.0"}
+
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=False),
+            ):
+                message = {
+                    "ecosystem": "npm",
+                    "name": "abandoned-pkg",
+                    "tier": 3,
+                    "reason": "daily_tier3_refresh",
+                    "force_refresh": True,
+                }
+
+                success, pkg_name, error = run_async(package_collector.process_single_package(message))
+
+                assert success is True
+
+    @mock_aws
+    def test_abandoned_package_processed_with_user_request(self):
+        """Abandoned packages should be processed when reason=user_request."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        table = dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket="pkgwatch-raw-data")
+
+        table.put_item(
+            Item={
+                "pk": "npm#abandoned-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "abandoned-pkg",
+                "data_status": "abandoned_partial",
+                "retry_count": 5,
+            }
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
+            from importlib import reload
+
+            import package_collector
+
+            reload(package_collector)
+
+            mock_depsdev_data = {"latest_version": "1.0.0"}
+
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=False),
+            ):
+                message = {
+                    "ecosystem": "npm",
+                    "name": "abandoned-pkg",
+                    "tier": 3,
+                    "reason": "user_request",
+                }
+
+                success, pkg_name, error = run_async(package_collector.process_single_package(message))
+
+                assert success is True
+
+    @mock_aws
+    def test_non_abandoned_package_not_skipped(self):
+        """Non-abandoned packages (partial, complete) should not be skipped."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        table = dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket="pkgwatch-raw-data")
+
+        table.put_item(
+            Item={
+                "pk": "npm#partial-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "partial-pkg",
+                "data_status": "partial",
+                "retry_count": 2,
+            }
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "PACKAGES_TABLE": "pkgwatch-packages",
+                "RAW_DATA_BUCKET": "pkgwatch-raw-data",
+                "API_KEYS_TABLE": "pkgwatch-api-keys",
+            },
+        ):
+            from importlib import reload
+
+            import package_collector
+
+            reload(package_collector)
+
+            mock_depsdev_data = {"latest_version": "1.0.0"}
+
+            with (
+                patch("package_collector.get_depsdev_info", return_value=mock_depsdev_data),
+                patch("package_collector.check_and_increment_external_rate_limit", return_value=False),
+            ):
+                message = {
+                    "ecosystem": "npm",
+                    "name": "partial-pkg",
+                    "tier": 3,
+                    "reason": "daily_tier3_refresh",
+                }
+
+                with patch("package_collector.collect_package_data") as mock_collect:
+                    mock_collect.return_value = {"latest_version": "1.0.0", "sources": ["deps.dev"]}
+                    success, pkg_name, error = run_async(package_collector.process_single_package(message))
+
+                    assert success is True
+                    # Collection SHOULD have been called
+                    mock_collect.assert_called_once()
+
+
+class TestDeprecationMessagePersistence:
+    """Tests for deprecation_message persistence in store_package_data_sync."""
+
+    @mock_aws
+    def test_deprecation_message_stored_when_present(self):
+        """deprecation_message should be persisted to DynamoDB when present."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
+            from importlib import reload
+
+            import package_collector
+
+            reload(package_collector)
+
+            data = {
+                "latest_version": "1.0.0",
+                "is_deprecated": True,
+                "deprecation_message": "Use better-pkg instead",
+                "sources": ["deps.dev", "npm"],
+            }
+
+            package_collector.store_package_data_sync("npm", "deprecated-pkg", data, tier=3)
+
+            table = dynamodb.Table("pkgwatch-packages")
+            response = table.get_item(Key={"pk": "npm#deprecated-pkg", "sk": "LATEST"})
+
+            assert response["Item"]["is_deprecated"] is True
+            assert response["Item"]["deprecation_message"] == "Use better-pkg instead"
+
+    @mock_aws
+    def test_deprecation_message_not_stored_when_none(self):
+        """deprecation_message should not be stored when None (filtered by None-stripping)."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
+            from importlib import reload
+
+            import package_collector
+
+            reload(package_collector)
+
+            data = {
+                "latest_version": "1.0.0",
+                "is_deprecated": False,
+                "deprecation_message": None,
+                "sources": ["deps.dev", "npm"],
+            }
+
+            package_collector.store_package_data_sync("npm", "normal-pkg", data, tier=3)
+
+            table = dynamodb.Table("pkgwatch-packages")
+            response = table.get_item(Key={"pk": "npm#normal-pkg", "sk": "LATEST"})
+
+            assert "deprecation_message" not in response["Item"]

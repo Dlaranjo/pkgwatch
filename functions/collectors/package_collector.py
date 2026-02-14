@@ -1334,6 +1334,7 @@ def store_package_data_sync(ecosystem: str, name: str, data: dict, tier: int):
         "bundlephobia_stale_reason": data.get("bundlephobia_stale_reason"),
         # Status flags
         "is_deprecated": data.get("is_deprecated", False),
+        "deprecation_message": data.get("deprecation_message"),
         "archived": data.get("archived", False),
         # TypeScript and module system (DX signals)
         "has_types": data.get("has_types", False),
@@ -1450,11 +1451,23 @@ async def process_single_package(message: dict, bulk_downloads: dict = None) -> 
     name = message["name"]
     tier = message.get("tier", 3)
     force_refresh = message.get("force_refresh", False)
-    is_retry = message.get("reason") == "incomplete_data_retry"
+    reason = message.get("reason", "manual")
+    is_retry = reason == "incomplete_data_retry"
     retry_sources = message.get("retry_sources", [])
 
     # Get existing package data
     existing = await _get_existing_package_data(ecosystem, name)
+
+    # Skip abandoned packages unless force_refresh or user/scan-initiated.
+    # They've exhausted retries and will just fail again, wasting rate limit budget.
+    if (
+        not force_refresh
+        and reason not in ("user_request", "scan_discovery")
+        and existing
+        and existing.get("data_status") in ("abandoned_partial", "abandoned_minimal")
+    ):
+        logger.info(f"Skipping {ecosystem}/{name} - abandoned ({existing.get('data_status')})")
+        return (True, f"{ecosystem}/{name}", None)
 
     # For incomplete data retries, increment retry_count BEFORE collection
     # This prevents infinite loops if the Lambda crashes before storing
