@@ -178,6 +178,10 @@ def handler(event, context):
     # Handle URL-encoded package names (e.g., %40babel%2Fcore -> @babel/core)
     name = unquote(name)
 
+    # Reject excessively long names (npm max is 214, PyPI max is 128)
+    if len(name) > 214:
+        return _error_badge("name too long", style)
+
     # Normalize package names (both registries are case-insensitive)
     if ecosystem == "npm":
         name = normalize_npm_name(name)

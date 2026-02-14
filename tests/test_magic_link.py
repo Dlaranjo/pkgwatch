@@ -604,6 +604,7 @@ class TestMagicTokenStorage:
     """Tests for magic token storage and overwrite behavior."""
 
     @mock_aws
+    @patch("api.magic_link.MAGIC_LINK_COOLDOWN_SECONDS", 0)
     def test_new_magic_link_overwrites_existing(
         self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user
     ):
@@ -636,6 +637,7 @@ class TestMagicTokenStorage:
         assert first_token != second_token
 
     @mock_aws
+    @patch("api.magic_link.MAGIC_LINK_COOLDOWN_SECONDS", 0)
     def test_magic_token_is_cryptographically_secure(
         self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user
     ):
@@ -793,3 +795,58 @@ class TestNullHeadersHandling:
 
         # Returns success (enumeration prevention for non-existent user)
         assert result["statusCode"] == 200
+
+
+class TestMagicLinkCooldown:
+    """Tests for magic link 60-second cooldown."""
+
+    @mock_aws
+    def test_cooldown_blocks_rapid_requests(self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user):
+        """Should return same success response without sending email when within cooldown."""
+        from api.magic_link import handler
+
+        # Set magic_link_sent_at to 30 seconds ago (within cooldown)
+        recent_time = (datetime.now(timezone.utc) - timedelta(seconds=30)).isoformat()
+        api_keys_table.update_item(
+            Key={"pk": verified_user["user_id"], "sk": verified_user["key_hash"]},
+            UpdateExpression="SET magic_link_sent_at = :t",
+            ExpressionAttributeValues={":t": recent_time},
+        )
+
+        base_event["body"] = json.dumps({"email": "verified@example.com"})
+        result = handler(base_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert "login link has been sent" in body["message"]
+
+        # Verify no magic token was stored (cooldown prevented it)
+        item = api_keys_table.get_item(
+            Key={"pk": verified_user["user_id"], "sk": verified_user["key_hash"]}
+        ).get("Item", {})
+        assert "magic_token" not in item  # Token should NOT have been generated
+
+    @mock_aws
+    def test_cooldown_allows_after_expiry(self, mock_dynamodb, base_event, ses_client, api_keys_table, verified_user):
+        """Should send magic link when cooldown has expired."""
+        from api.magic_link import handler
+
+        # Set magic_link_sent_at to 90 seconds ago (cooldown expired)
+        old_time = (datetime.now(timezone.utc) - timedelta(seconds=90)).isoformat()
+        api_keys_table.update_item(
+            Key={"pk": verified_user["user_id"], "sk": verified_user["key_hash"]},
+            UpdateExpression="SET magic_link_sent_at = :t",
+            ExpressionAttributeValues={":t": old_time},
+        )
+
+        base_event["body"] = json.dumps({"email": "verified@example.com"})
+        result = handler(base_event, {})
+
+        assert result["statusCode"] == 200
+
+        # Verify magic token WAS stored (cooldown expired, link was sent)
+        item = api_keys_table.get_item(
+            Key={"pk": verified_user["user_id"], "sk": verified_user["key_hash"]}
+        ).get("Item", {})
+        assert "magic_token" in item
+        assert "magic_link_sent_at" in item

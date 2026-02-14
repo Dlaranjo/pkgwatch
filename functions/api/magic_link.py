@@ -33,6 +33,9 @@ EMAIL_REGEX = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
 # Magic link TTL (15 minutes)
 MAGIC_LINK_TTL_MINUTES = 15
 
+# Cooldown between magic link requests (prevents abuse)
+MAGIC_LINK_COOLDOWN_SECONDS = 60
+
 # Minimum response time to normalize timing and prevent email enumeration
 # Set to 1.5s to absorb SES latency variance and prevent timing attacks
 MIN_RESPONSE_TIME_SECONDS = 1.5
@@ -110,6 +113,21 @@ def handler(event, context):
             error_response(500, "internal_error", "Failed to process request", origin=origin),
         )
 
+    # Cooldown check — prevent rapid-fire magic link requests
+    cooldown_now = datetime.now(timezone.utc)
+    last_sent = verified_user.get("magic_link_sent_at")
+    if last_sent:
+        try:
+            last_sent_dt = datetime.fromisoformat(last_sent.replace("Z", "+00:00"))
+            if (cooldown_now - last_sent_dt).total_seconds() < MAGIC_LINK_COOLDOWN_SECONDS:
+                # Return identical success response to maintain anti-enumeration
+                return _timed_response(
+                    start_time,
+                    success_response({"message": success_message}, origin=origin),
+                )
+        except (ValueError, TypeError):
+            pass
+
     user_id = verified_user["pk"]
     now = datetime.now(timezone.utc)
 
@@ -121,10 +139,11 @@ def handler(event, context):
     try:
         table.update_item(
             Key={"pk": user_id, "sk": verified_user["sk"]},
-            UpdateExpression="SET magic_token = :token, magic_expires = :expires",
+            UpdateExpression="SET magic_token = :token, magic_expires = :expires, magic_link_sent_at = :sent_at",
             ExpressionAttributeValues={
                 ":token": magic_token,
                 ":expires": magic_expires,
+                ":sent_at": now.isoformat(),
             },
         )
     except Exception as e:

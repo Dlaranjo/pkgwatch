@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
@@ -30,6 +31,9 @@ API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
 # Max keys per user
 MAX_KEYS_PER_USER = 5
+
+# Allowlist for key names: letters, numbers, spaces, hyphens, underscores, dots
+KEY_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9 \-_\.]+$")
 
 # Import tier limits from shared constants
 
@@ -76,6 +80,23 @@ def handler(event, context):
             key_name = body_data.get("name")
         except (json.JSONDecodeError, AttributeError):
             pass
+
+    # Validate key name (allowlist: letters, numbers, spaces, hyphens, underscores, dots)
+    if key_name is not None:
+        key_name = str(key_name).strip()
+        if len(key_name) > 100:
+            return error_response(
+                400, "invalid_key_name", "Key name must be 100 characters or fewer", origin=origin
+            )
+        if key_name and not KEY_NAME_PATTERN.match(key_name):
+            return error_response(
+                400,
+                "invalid_key_name",
+                "Key name may only contain letters, numbers, spaces, hyphens, underscores, and dots",
+                origin=origin,
+            )
+        if not key_name:
+            key_name = None  # empty after strip → use default
 
     # Check existing key count
     table = dynamodb.Table(API_KEYS_TABLE)

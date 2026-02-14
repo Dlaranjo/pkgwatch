@@ -1281,9 +1281,14 @@ import Layout from '../layouts/Layout.astro';
     try {
       const portalUrl = await createBillingPortalSession();
       // Validate and redirect to Stripe Billing Portal (defense-in-depth)
-      if (portalUrl?.startsWith('https://billing.stripe.com/')) {
-        window.location.href = portalUrl;
-      } else {
+      try {
+        const portalUrlObj = new URL(portalUrl);
+        if (portalUrlObj.protocol === 'https:' && portalUrlObj.hostname === 'billing.stripe.com') {
+          window.location.href = portalUrl;
+        } else {
+          showInlineError('Invalid billing portal URL received. Please try again.');
+        }
+      } catch {
         showInlineError('Invalid billing portal URL received. Please try again.');
       }
     } catch (error: any) {

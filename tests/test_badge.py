@@ -810,3 +810,42 @@ class TestBadgePyPINormalization:
 
         mock_get.assert_called_with("pypi", "scikit-learn")
         assert result["statusCode"] == 200
+
+
+class TestBadgeNameLengthValidation:
+    """Tests for name length validation."""
+
+    def _make_event(self, ecosystem="npm", name="lodash"):
+        return {
+            "httpMethod": "GET",
+            "headers": {},
+            "pathParameters": {"ecosystem": ecosystem, "name": name},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+    def test_rejects_name_over_214_chars(self):
+        """Should return error badge for excessively long names."""
+        from api.badge import handler
+
+        long_name = "a" * 300
+        event = self._make_event(name=long_name)
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200  # Badges always return 200 with SVG
+        assert "name too long" in result["body"]
+
+    @patch("api.badge.get_package")
+    def test_allows_name_at_214_chars(self, mock_get):
+        """Should accept names up to 214 characters."""
+        mock_get.return_value = {"health_score": Decimal("75")}
+
+        from api.badge import handler
+
+        name = "a" * 214
+        event = self._make_event(name=name)
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        assert "name too long" not in result["body"]

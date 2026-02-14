@@ -79,6 +79,7 @@ def handler(event, context):
                 {
                     "key_id": key_hash[:16],  # First 16 chars of hash as identifier
                     "key_prefix": f"pw_....{key_suffix}",  # Show actual key suffix
+                    "key_name": item.get("key_name"),
                     "tier": item.get("tier", "free"),
                     "requests_this_month": item.get("requests_this_month", 0),
                     "created_at": item.get("created_at"),

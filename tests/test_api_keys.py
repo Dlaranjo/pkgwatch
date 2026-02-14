@@ -2216,8 +2216,8 @@ class TestKeyNameInjection:
     """Security: injection attacks in key names are handled safely."""
 
     @mock_aws
-    def test_html_injection_in_key_name(self, mock_dynamodb, api_gateway_event):
-        """HTML/script tags in key names should be stored as-is (no execution risk in API)."""
+    def test_html_injection_in_key_name_rejected(self, mock_dynamodb, api_gateway_event):
+        """HTML/script tags in key names should be rejected by allowlist validation."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         _setup_secrets_manager()
         _reset_auth_cache()
@@ -2231,12 +2231,13 @@ class TestKeyNameInjection:
 
         result = handler(api_gateway_event, {})
 
-        # Should still create the key (API stores raw, frontend must escape)
-        assert result["statusCode"] == 201
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_key_name"
 
     @mock_aws
-    def test_dynamodb_injection_in_key_name(self, mock_dynamodb, api_gateway_event):
-        """DynamoDB expression-like strings in key names should be stored harmlessly."""
+    def test_dynamodb_injection_in_key_name_rejected(self, mock_dynamodb, api_gateway_event):
+        """DynamoDB expression-like strings in key names should be rejected by allowlist."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         _setup_secrets_manager()
         _reset_auth_cache()
@@ -2250,11 +2251,13 @@ class TestKeyNameInjection:
 
         result = handler(api_gateway_event, {})
 
-        assert result["statusCode"] == 201
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_key_name"
 
     @mock_aws
-    def test_very_long_key_name(self, mock_dynamodb, api_gateway_event):
-        """Very long key names should be accepted (DynamoDB handles item size limits)."""
+    def test_very_long_key_name_rejected(self, mock_dynamodb, api_gateway_event):
+        """Key names over 100 characters should be rejected."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
         _setup_secrets_manager()
         _reset_auth_cache()
@@ -2268,7 +2271,9 @@ class TestKeyNameInjection:
 
         result = handler(api_gateway_event, {})
 
-        assert result["statusCode"] == 201
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_key_name"
 
     @mock_aws
     def test_empty_string_key_name(self, mock_dynamodb, api_gateway_event):
@@ -2599,3 +2604,83 @@ class TestCreateApiKeyWithNullHeaders:
         result = handler(api_gateway_event, {})
 
         assert result["statusCode"] == 401
+
+
+class TestKeyNameInGetResponse:
+    """Tests for key_name being returned in GET /api-keys."""
+
+    @mock_aws
+    def test_key_name_returned_in_response(self, mock_dynamodb, api_gateway_event):
+        """GET /api-keys should include key_name in response."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["SESSION_SECRET_ARN"] = "test-secret"
+        _setup_secrets_manager()
+        _reset_auth_cache()
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_namedkey").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_keyname_test",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "keyname@example.com",
+                "tier": "pro",
+                "key_name": "Production Server",
+                "email_verified": True,
+            }
+        )
+
+        from api.get_api_keys import handler
+
+        session_token = _create_test_session_token("user_keyname_test", "keyname@example.com", "pro")
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+        assert len(body["api_keys"]) == 1
+        assert body["api_keys"][0]["key_name"] == "Production Server"
+
+
+class TestKeyNameValidation:
+    """Tests for key_name allowlist validation in POST /api-keys."""
+
+    @mock_aws
+    def test_valid_key_name_accepted(self, mock_dynamodb, api_gateway_event):
+        """Should accept key names with letters, numbers, spaces, hyphens, underscores, dots."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        _setup_secrets_manager()
+        _reset_auth_cache()
+
+        from api.create_api_key import handler
+
+        session_token = _create_test_session_token("user_valid_name", "valid@example.com")
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+        api_gateway_event["body"] = json.dumps({"name": "My-Key_1.prod"})
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 201
+
+    @mock_aws
+    def test_unicode_rtl_in_key_name_rejected(self, mock_dynamodb, api_gateway_event):
+        """Should reject key names with Unicode RTL override characters."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        _setup_secrets_manager()
+        _reset_auth_cache()
+
+        from api.create_api_key import handler
+
+        session_token = _create_test_session_token("user_unicode", "unicode@example.com")
+        api_gateway_event["httpMethod"] = "POST"
+        api_gateway_event["headers"]["Cookie"] = f"session={session_token}"
+        api_gateway_event["body"] = json.dumps({"name": "test\u202eevil"})
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_key_name"

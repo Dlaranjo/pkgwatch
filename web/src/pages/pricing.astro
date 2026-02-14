@@ -530,9 +530,16 @@ const faqSchema = {
 
       if (response.ok && data.checkout_url) {
         // Validate and redirect to Stripe Checkout (defense-in-depth)
-        if (data.checkout_url.startsWith('https://checkout.stripe.com/')) {
-          window.location.href = data.checkout_url;
-        } else {
+        try {
+          const checkoutUrl = new URL(data.checkout_url);
+          if (checkoutUrl.protocol === 'https:' && checkoutUrl.hostname === 'checkout.stripe.com') {
+            window.location.href = data.checkout_url;
+          } else {
+            showToast('Invalid checkout URL received. Please try again.');
+            button.disabled = false;
+            button.textContent = originalText;
+          }
+        } catch {
           showToast('Invalid checkout URL received. Please try again.');
           button.disabled = false;
           button.textContent = originalText;
