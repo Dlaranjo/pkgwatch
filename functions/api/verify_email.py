@@ -223,6 +223,7 @@ def handler(event, context):
         user_meta_item = {
             "pk": user_id,
             "sk": "USER_META",
+            "email": email,
             "recovery_codes_hash": hashed_codes,
             "recovery_codes_count": 4,
             "recovery_codes_generated_at": now.isoformat(),

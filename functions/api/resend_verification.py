@@ -106,15 +106,10 @@ def handler(event, context):
                 last_sent_dt = datetime.fromisoformat(last_sent.replace("Z", "+00:00"))
                 seconds_since_last = (now - last_sent_dt).total_seconds()
                 if seconds_since_last < RESEND_COOLDOWN_SECONDS:
-                    remaining = int(RESEND_COOLDOWN_SECONDS - seconds_since_last)
+                    logger.info(f"Resend cooldown active ({int(seconds_since_last)}s since last send)")
                     return _timed_response(
                         start_time,
-                        error_response(
-                            429,
-                            "cooldown",
-                            f"Please wait {remaining} seconds before requesting another email.",
-                            origin=origin,
-                        ),
+                        success_response({"message": success_message}, origin=origin),
                     )
             except (ValueError, TypeError):
                 pass
@@ -123,15 +118,19 @@ def handler(event, context):
         verification_token = secrets.token_urlsafe(32)
         verification_expires = (now + timedelta(hours=24)).isoformat()
 
-        # Update PENDING record with new token and timestamp
+        # Update PENDING record with new token, timestamp, and TTL
         user_id = pending_item["pk"]
+        verification_expires_dt = now + timedelta(hours=24)
+        ttl_timestamp = int((verification_expires_dt + timedelta(hours=1)).timestamp())
         table.update_item(
             Key={"pk": user_id, "sk": "PENDING"},
-            UpdateExpression="SET verification_token = :token, verification_expires = :expires, last_verification_sent = :sent",
+            UpdateExpression="SET verification_token = :token, verification_expires = :expires, last_verification_sent = :sent, #ttl_attr = :ttl",
+            ExpressionAttributeNames={"#ttl_attr": "ttl"},
             ExpressionAttributeValues={
                 ":token": verification_token,
                 ":expires": verification_expires,
                 ":sent": now.isoformat(),
+                ":ttl": ttl_timestamp,
             },
         )
 

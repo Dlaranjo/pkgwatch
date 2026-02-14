@@ -15,6 +15,7 @@ from http.cookies import SimpleCookie
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
+from shared.auth import is_api_key_record
 from shared.aws_clients import get_dynamodb
 from shared.billing_utils import get_stripe_api_key
 from shared.constants import TIER_LIMITS
@@ -88,11 +89,9 @@ def handler(event, context):
         user_meta = None
         for item in items:
             sk = item.get("sk", "")
-            if sk == "PENDING":
-                continue
-            elif sk == "USER_META":
+            if sk == "USER_META":
                 user_meta = item
-            else:
+            elif is_api_key_record(sk):
                 api_keys.append(item)
 
         if not api_keys:

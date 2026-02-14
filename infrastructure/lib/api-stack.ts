@@ -524,10 +524,17 @@ export class ApiStack extends cdk.Stack {
       handler: "api.auth_me.handler",
       code: apiCodeWithShared,
       description: "Get current authenticated user info",
+      environment: {
+        ...authLambdaProps.environment,
+        STRIPE_PRICE_STARTER: process.env.STRIPE_PRICE_STARTER || "",
+        STRIPE_PRICE_PRO: process.env.STRIPE_PRICE_PRO || "",
+        STRIPE_PRICE_BUSINESS: process.env.STRIPE_PRICE_BUSINESS || "",
+      },
     });
 
-    apiKeysTable.grantReadData(authMeHandler);
+    apiKeysTable.grantReadWriteData(authMeHandler);
     authMeHandler.addToRolePolicy(sessionSecretPolicy);
+    authMeHandler.addToRolePolicy(stripeSecretPolicy);
 
     // POST /auth/logout - Clear session cookie
     const logoutHandler = new lambda.Function(this, "LogoutHandler", {

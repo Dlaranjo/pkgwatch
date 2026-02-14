@@ -639,11 +639,9 @@ class TestResendVerification:
         result1 = handler(api_gateway_event, {})
         assert result1["statusCode"] == 200
 
-        # Second request within cooldown should fail with 429
+        # Second request within cooldown returns 200 (same as success for enumeration prevention)
         result2 = handler(api_gateway_event, {})
-        assert result2["statusCode"] == 429
-        body = json.loads(result2["body"])
-        assert body["error"]["code"] == "cooldown"
+        assert result2["statusCode"] == 200
 
     @mock_aws
     def test_ses_failure_returns_success(self, mock_dynamodb, pending_user, setup_env, api_gateway_event):
