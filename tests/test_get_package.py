@@ -4,6 +4,7 @@ Tests for GET /packages/{ecosystem}/{name} endpoint.
 
 import json
 import os
+from unittest.mock import patch
 
 from moto import mock_aws
 
@@ -1696,7 +1697,7 @@ class TestGetPackageSecurityInputValidation:
             api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": name}
             api_gateway_event["headers"]["x-api-key"] = test_key
             result = handler(api_gateway_event, {})
-            assert result["statusCode"] == 404, f"Injection attempt should return 404: {name}"
+            assert result["statusCode"] in (400, 404), f"Injection attempt should return 400 or 404: {name}"
 
     @mock_aws
     def test_path_traversal_in_package_name(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
@@ -1717,7 +1718,7 @@ class TestGetPackageSecurityInputValidation:
             api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": name}
             api_gateway_event["headers"]["x-api-key"] = test_key
             result = handler(api_gateway_event, {})
-            assert result["statusCode"] == 404, f"Path traversal should return 404: {name}"
+            assert result["statusCode"] in (400, 404), f"Path traversal should return 400 or 404: {name}"
             body = json.loads(result["body"])
             # Must not leak file content
             assert "root:" not in body.get("error", {}).get("message", "")
@@ -1738,11 +1739,11 @@ class TestGetPackageSecurityInputValidation:
         api_gateway_event["headers"]["x-api-key"] = test_key
 
         result = handler(api_gateway_event, {})
-        assert result["statusCode"] == 404
+        assert result["statusCode"] in (400, 404)
         # Response must be valid JSON (Content-Type: application/json protects against XSS)
         body = json.loads(result["body"])
         assert result["headers"]["Content-Type"] == "application/json"
-        assert body["error"]["code"] == "package_not_found"
+        assert body["error"]["code"] in ("invalid_package_name", "package_not_found")
 
     @mock_aws
     def test_null_byte_in_package_name(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
@@ -1775,7 +1776,7 @@ class TestGetPackageSecurityInputValidation:
         api_gateway_event["headers"]["x-api-key"] = test_key
 
         result = handler(api_gateway_event, {})
-        assert result["statusCode"] == 404
+        assert result["statusCode"] in (400, 404)
 
     @mock_aws
     def test_unicode_emoji_package_name(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
@@ -2115,3 +2116,96 @@ class TestAuthWarningHeader:
 
         assert result["statusCode"] == 200
         assert "X-Auth-Warning" not in result["headers"]
+
+
+class TestUsageBillingFairness:
+    """Tests for C3: usage is NOT billed for 202 responses."""
+
+    @mock_aws
+    def test_202_does_not_bill_usage(self, seeded_api_keys_table, mock_dynamodb, api_gateway_event):
+        """Non-queryable package should NOT call check_and_increment_usage."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        # Insert a non-queryable package (missing queryable=True)
+        packages_table = mock_dynamodb.Table("pkgwatch-packages")
+        packages_table.put_item(
+            Item={
+                "pk": "npm#collecting-pkg",
+                "sk": "LATEST",
+                "ecosystem": "npm",
+                "name": "collecting-pkg",
+                "data_status": "pending",
+                "queryable": False,
+            }
+        )
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "collecting-pkg"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        with patch("api.get_package.check_and_increment_usage_with_bonus") as mock_increment:
+            result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 202
+        mock_increment.assert_not_called()
+
+    @mock_aws
+    def test_200_does_bill_usage(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
+        """Queryable package should call check_and_increment_usage."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        table, test_key = seeded_api_keys_table
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "lodash"}
+        api_gateway_event["headers"]["x-api-key"] = test_key
+
+        with patch(
+            "api.get_package.check_and_increment_usage_with_bonus",
+            return_value=(True, 1, 0),
+        ) as mock_increment:
+            result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 200
+        mock_increment.assert_called_once()
+
+
+class TestPackageNameValidation:
+    """Tests for C4: package name validation in get_package."""
+
+    @mock_aws
+    def test_rejects_invalid_npm_name(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
+        """Path traversal in package name should be rejected."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": "../traversal"}
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_package_name"
+
+    @mock_aws
+    def test_rejects_too_long_name(self, seeded_api_keys_table, seeded_packages_table, api_gateway_event):
+        """Excessively long package name should be rejected."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        from api.get_package import handler
+
+        long_name = "a" * 300
+        api_gateway_event["pathParameters"] = {"ecosystem": "npm", "name": long_name}
+
+        result = handler(api_gateway_event, {})
+
+        assert result["statusCode"] == 400
+        body = json.loads(result["body"])
+        assert body["error"]["code"] == "invalid_package_name"

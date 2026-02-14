@@ -21,7 +21,12 @@ from shared.auth import check_and_increment_usage_with_bonus, validate_api_key
 from shared.aws_clients import get_dynamodb
 from shared.constants import DEMO_REQUESTS_PER_HOUR
 from shared.data_quality import build_data_quality_full, is_queryable
-from shared.package_validation import normalize_npm_name, normalize_pypi_name
+from shared.package_validation import (
+    normalize_npm_name,
+    normalize_pypi_name,
+    validate_npm_package_name,
+    validate_pypi_package_name,
+)
 from shared.rate_limit_utils import check_usage_alerts
 from shared.response_utils import decimal_default, error_response, get_cors_headers
 
@@ -162,14 +167,8 @@ def handler(event, context):
     authenticated_usage_count = 0
 
     if user:
-        # Authenticated request - atomically check limit and increment
-        # This prevents race conditions where concurrent requests exceed the limit
-        # Uses bonus-aware function to track total_packages_scanned and trigger referral activity gate
-        allowed, authenticated_usage_count, _bonus = check_and_increment_usage_with_bonus(
-            user["user_id"], user["key_hash"], user["monthly_limit"]
-        )
-        if not allowed:
-            return _rate_limit_response(user, cors_headers)
+        # Usage counted after data quality gate — avoids billing for 202 responses
+        pass
     else:
         # No valid API key - try demo mode
         demo_warning = key_was_provided
@@ -203,6 +202,17 @@ def handler(event, context):
         name = normalize_npm_name(name)
     elif ecosystem == "pypi":
         name = normalize_pypi_name(name)
+
+    # Validate package name
+    if ecosystem == "npm":
+        is_valid, error_msg, _ = validate_npm_package_name(name)
+    elif ecosystem == "pypi":
+        is_valid, error_msg, _ = validate_pypi_package_name(name)
+    else:
+        is_valid, error_msg = True, None
+
+    if not is_valid:
+        return error_response(400, "invalid_package_name", error_msg, headers=cors_headers)
 
     # Validate ecosystem
     if ecosystem not in ["npm", "pypi"]:
@@ -269,7 +279,14 @@ def handler(event, context):
             ),
         }
 
-    # Note: Usage counter already incremented atomically in check_and_increment_usage
+    # Bill authenticated users only for complete (200) responses
+    # Moved after 202 gate to avoid billing for incomplete data
+    if user:
+        allowed, authenticated_usage_count, _bonus = check_and_increment_usage_with_bonus(
+            user["user_id"], user["key_hash"], user["monthly_limit"]
+        )
+        if not allowed:
+            return _rate_limit_response(user, cors_headers)
 
     # Format response
     response_data = {

@@ -621,8 +621,8 @@ class TestGetPackageEdgeCases:
 
         result = handler(api_gateway_event, {})
 
-        # Should return 404 (not found) not crash
-        assert result["statusCode"] == 404
+        # Should return 400 (invalid) or 404 (not found), not crash
+        assert result["statusCode"] in (400, 404)
 
     @mock_aws
     def test_package_name_with_special_chars(self, mock_dynamodb, api_gateway_event):
