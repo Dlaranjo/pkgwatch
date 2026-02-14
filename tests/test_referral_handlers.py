@@ -2024,9 +2024,7 @@ class TestRetentionIdempotency:
 
     @patch("api.referral_retention_check.stripe")
     @patch("api.referral_retention_check.get_stripe_api_key")
-    def test_retention_check_skips_already_credited(
-        self, mock_stripe_key, mock_stripe, mock_dynamodb
-    ):
+    def test_retention_check_skips_already_credited(self, mock_stripe_key, mock_stripe, mock_dynamodb):
         """Should skip crediting when a 'retained' event already exists."""
         mock_stripe_key.return_value = "sk_test_fake"
 
@@ -2097,9 +2095,7 @@ class TestRetentionIdempotency:
         )
 
         # Record bonus before
-        meta_before = api_table.get_item(
-            Key={"pk": referrer_id, "sk": "USER_META"}
-        )["Item"]
+        meta_before = api_table.get_item(Key={"pk": referrer_id, "sk": "USER_META"})["Item"]
         bonus_before = int(meta_before.get("bonus_requests", 0))
 
         from api.referral_retention_check import handler
@@ -2111,8 +2107,6 @@ class TestRetentionIdempotency:
         assert result["credited"] == 0
 
         # Bonus should NOT have increased
-        meta_after = api_table.get_item(
-            Key={"pk": referrer_id, "sk": "USER_META"}
-        )["Item"]
+        meta_after = api_table.get_item(Key={"pk": referrer_id, "sk": "USER_META"})["Item"]
         bonus_after = int(meta_after.get("bonus_requests", 0))
         assert bonus_after == bonus_before

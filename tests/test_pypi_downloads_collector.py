@@ -1202,9 +1202,7 @@ class TestTimeoutGuardFlush:
         # Verify the processed packages had their updates flushed to DynamoDB
         flushed = 0
         for i in range(3):
-            item = table.get_item(
-                Key={"pk": f"pypi#timeout-pkg-{i}", "sk": "LATEST"}
-            ).get("Item", {})
+            item = table.get_item(Key={"pk": f"pypi#timeout-pkg-{i}", "sk": "LATEST"}).get("Item", {})
             if item.get("downloads_fetched_at"):
                 flushed += 1
 

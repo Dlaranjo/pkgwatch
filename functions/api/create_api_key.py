@@ -85,9 +85,7 @@ def handler(event, context):
     if key_name is not None:
         key_name = str(key_name).strip()
         if len(key_name) > 100:
-            return error_response(
-                400, "invalid_key_name", "Key name must be 100 characters or fewer", origin=origin
-            )
+            return error_response(400, "invalid_key_name", "Key name must be 100 characters or fewer", origin=origin)
         if key_name and not KEY_NAME_PATTERN.match(key_name):
             return error_response(
                 400,

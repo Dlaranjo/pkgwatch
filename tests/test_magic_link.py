@@ -821,9 +821,9 @@ class TestMagicLinkCooldown:
         assert "login link has been sent" in body["message"]
 
         # Verify no magic token was stored (cooldown prevented it)
-        item = api_keys_table.get_item(
-            Key={"pk": verified_user["user_id"], "sk": verified_user["key_hash"]}
-        ).get("Item", {})
+        item = api_keys_table.get_item(Key={"pk": verified_user["user_id"], "sk": verified_user["key_hash"]}).get(
+            "Item", {}
+        )
         assert "magic_token" not in item  # Token should NOT have been generated
 
     @mock_aws
@@ -845,8 +845,8 @@ class TestMagicLinkCooldown:
         assert result["statusCode"] == 200
 
         # Verify magic token WAS stored (cooldown expired, link was sent)
-        item = api_keys_table.get_item(
-            Key={"pk": verified_user["user_id"], "sk": verified_user["key_hash"]}
-        ).get("Item", {})
+        item = api_keys_table.get_item(Key={"pk": verified_user["user_id"], "sk": verified_user["key_hash"]}).get(
+            "Item", {}
+        )
         assert "magic_token" in item
         assert "magic_link_sent_at" in item
