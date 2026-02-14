@@ -104,6 +104,15 @@ def handler(event, context):
                         logger.warning(f"Error checking subscription {stripe_subscription_id}: {e}")
 
                 if has_active_subscription:
+                    # Idempotency: check if "retained" event already exists (exact key lookup)
+                    existing = events_table.get_item(
+                        Key={"pk": referrer_id, "sk": f"{referred_id}#retained"}
+                    )
+                    if existing.get("Item"):
+                        logger.info(f"Retention already processed for {referred_id}, skipping")
+                        mark_retention_checked(referrer_id, referred_id)
+                        continue
+
                     # Credit referrer with retention bonus
                     reward_amount = REFERRAL_REWARDS["retained"]
                     actual_reward = add_bonus_with_cap(referrer_id, reward_amount)

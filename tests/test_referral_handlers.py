@@ -2017,3 +2017,102 @@ class TestRetentionCheckErrorRecovery:
         assert result["processed"] == 1
         assert result["credited"] == 0
         assert result["errors"] == 1
+
+
+class TestRetentionIdempotency:
+    """Tests for C9: retention check skips already-credited referrals."""
+
+    @patch("api.referral_retention_check.stripe")
+    @patch("api.referral_retention_check.get_stripe_api_key")
+    def test_retention_check_skips_already_credited(
+        self, mock_stripe_key, mock_stripe, mock_dynamodb
+    ):
+        """Should skip crediting when a 'retained' event already exists."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        # Mock active subscription (must be MagicMock for dot-access: subscription.status)
+        mock_sub = MagicMock()
+        mock_sub.status = "active"
+        mock_stripe.Subscription.retrieve.return_value = mock_sub
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+
+        referrer_id = "user_referrer_idemp"
+        referred_id = "user_referred_idemp"
+
+        # Create referrer USER_META
+        api_table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": "USER_META",
+                "bonus_requests": 100,
+                "bonus_requests_lifetime": 100,
+                "referral_paid": 1,
+                "referral_retained": 0,
+            }
+        )
+
+        # Create referred user metadata
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "USER_META",
+                "tier": "pro",
+            }
+        )
+
+        # Create referred user's API key record with subscription
+        # (handler skips USER_META and PENDING when looking for stripe_subscription_id)
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key_hash_idemp",
+                "stripe_subscription_id": "sub_idemp123",
+            }
+        )
+
+        # Create retention-due event (paid event with retention check due)
+        past_date = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        events_table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": f"{referred_id}#paid",
+                "referred_id": referred_id,
+                "event_type": "paid",
+                "needs_retention_check": "true",
+                "retention_check_date": past_date,
+            }
+        )
+
+        # PRE-INSERT a "retained" event — this is what makes it a duplicate
+        events_table.put_item(
+            Item={
+                "pk": referrer_id,
+                "sk": f"{referred_id}#retained",
+                "referred_id": referred_id,
+                "event_type": "retained",
+                "reward_amount": 25000,
+            }
+        )
+
+        # Record bonus before
+        meta_before = api_table.get_item(
+            Key={"pk": referrer_id, "sk": "USER_META"}
+        )["Item"]
+        bonus_before = int(meta_before.get("bonus_requests", 0))
+
+        from api.referral_retention_check import handler
+
+        result = handler({}, {})
+
+        # Should process the item but NOT credit (already retained)
+        assert result["processed"] == 1
+        assert result["credited"] == 0
+
+        # Bonus should NOT have increased
+        meta_after = api_table.get_item(
+            Key={"pk": referrer_id, "sk": "USER_META"}
+        )["Item"]
+        bonus_after = int(meta_after.get("bonus_requests", 0))
+        assert bonus_after == bonus_before
