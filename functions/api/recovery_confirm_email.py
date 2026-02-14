@@ -10,6 +10,7 @@ Security:
 - Creates session so user is logged in to new email
 """
 
+import html
 import logging
 import os
 import time
@@ -272,10 +273,10 @@ def _send_email_change_complete_notification(old_email: str, new_email: str):
                         <h1 style="color: #1e293b;">Email Change Complete</h1>
                         <p style="color: #475569; font-size: 16px;">
                             Your PkgWatch account email has been changed to
-                            <strong>{mask_email(new_email)}</strong>.
+                            <strong>{html.escape(mask_email(new_email))}</strong>.
                         </p>
                         <p style="color: #475569; font-size: 16px;">
-                            This email address ({old_email}) will no longer receive PkgWatch notifications
+                            This email address ({html.escape(old_email)}) will no longer receive PkgWatch notifications
                             or be able to log in to the account.
                         </p>
                         <p style="color: #dc2626; font-size: 16px; font-weight: 500;">

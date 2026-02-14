@@ -13,6 +13,7 @@ Security:
 """
 
 import hashlib
+import html
 import json
 import logging
 import os
@@ -253,13 +254,13 @@ def _send_recovery_magic_link_email(email: str, magic_url: str):
                         <p style="color: #475569; font-size: 16px;">
                             You've verified your identity using your API key. Click the button below to sign in:
                         </p>
-                        <a href="{magic_url}"
+                        <a href="{html.escape(magic_url)}"
                            style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px;
                                   text-decoration: none; border-radius: 6px; margin: 20px 0;">
                             Sign In
                         </a>
                         <p style="color: #64748b; font-size: 14px;">
-                            Or copy this link: <a href="{magic_url}">{magic_url}</a>
+                            Or copy this link: <a href="{html.escape(magic_url)}">{html.escape(magic_url)}</a>
                         </p>
                         <p style="color: #dc2626; font-size: 14px; font-weight: 500;">
                             <strong>Important:</strong> This link expires in {MAGIC_LINK_TTL_MINUTES} minutes.

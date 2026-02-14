@@ -209,7 +209,7 @@ export class StorageStack extends cdk.Stack {
         type: dynamodb.AttributeType.STRING,
       },
       projectionType: dynamodb.ProjectionType.INCLUDE,
-      nonKeyAttributes: ["email", "ttl", "verified", "recovery_method"],
+      nonKeyAttributes: ["email", "ttl", "verified", "recovery_method", "email_change_initiated"],
     });
 
     // GSI for looking up email change records by change token

@@ -130,6 +130,18 @@ def handler(event, context):
     session_item = sessions[0]
     user_id = session_item["pk"]
 
+    # Fetch from main table for strongly consistent verify_attempts
+    # (GSI is eventually consistent — a concurrent request could increment
+    # verify_attempts but the GSI query might return the stale value)
+    session_key = {"pk": user_id, "sk": session_item["sk"]}
+    full_session = table.get_item(Key=session_key, ConsistentRead=True).get("Item")
+    if not full_session:
+        return _timed_response(
+            start_time,
+            error_response(400, "invalid_session", generic_error, origin=origin),
+        )
+    session_item = full_session
+
     # Check session hasn't expired
     session_ttl = session_item.get("ttl", 0)
     if session_ttl < now.timestamp():
@@ -162,10 +174,35 @@ def handler(event, context):
             error_response(400, "no_recovery_codes", "No recovery codes set up for this account", origin=origin),
         )
 
+    # Check for lockout (max 5 failed attempts per session)
+    MAX_VERIFY_ATTEMPTS = 5
+    current_attempts = session_item.get("verify_attempts", 0)
+    if isinstance(current_attempts, (int, float)) and current_attempts >= MAX_VERIFY_ATTEMPTS:
+        logger.warning(f"Recovery code verification locked out for user {user_id} ({current_attempts} attempts)")
+        return _timed_response(
+            start_time,
+            error_response(
+                429,
+                "too_many_attempts",
+                "Too many failed attempts. Please start a new recovery session.",
+                origin=origin,
+            ),
+        )
+
     # Verify the recovery code
     is_valid, code_index = verify_recovery_code(recovery_code, recovery_codes_hash)
 
     if not is_valid:
+        # Increment failed attempt counter (best effort)
+        try:
+            table.update_item(
+                Key={"pk": user_id, "sk": session_item["sk"]},
+                UpdateExpression="SET verify_attempts = if_not_exists(verify_attempts, :zero) + :one",
+                ExpressionAttributeValues={":one": 1, ":zero": 0},
+            )
+        except ClientError:
+            pass  # Best effort — don't block the error response
+
         logger.warning(f"Invalid recovery code attempt for user {user_id}")
         return _timed_response(
             start_time,

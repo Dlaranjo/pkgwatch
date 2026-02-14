@@ -18,6 +18,7 @@ Security:
 - Old email receives notification of the change
 """
 
+import html
 import json
 import logging
 import os
@@ -129,7 +130,7 @@ def handler(event, context):
                         ":token": recovery_token,
                         ":method": "recovery_code",
                     },
-                    ProjectionExpression="pk, sk, email, #ttl_attr, verified",
+                    ProjectionExpression="pk, sk, email, #ttl_attr, verified, email_change_initiated",
                     ExpressionAttributeNames={"#ttl_attr": "ttl"},
                 )
             else:
@@ -168,6 +169,19 @@ def handler(event, context):
         return _timed_response(
             start_time,
             error_response(400, "session_not_verified", "Recovery session not verified", origin=origin),
+        )
+
+    # Check if email change was already initiated for this session
+    if session_item.get("email_change_initiated"):
+        logger.warning(f"Email change already initiated for session {user_id}")
+        return _timed_response(
+            start_time,
+            error_response(
+                400,
+                "change_already_initiated",
+                "Email change already initiated. Check your new email for the verification link.",
+                origin=origin,
+            ),
         )
 
     # Check new email isn't already in use by another user
@@ -219,14 +233,30 @@ def handler(event, context):
         )
 
         # Mark the recovery session as having initiated email change
-        table.update_item(
-            Key={"pk": user_id, "sk": session_item["sk"]},
-            UpdateExpression="SET email_change_initiated = :initiated, new_email = :new_email",
-            ExpressionAttributeValues={
-                ":initiated": now.isoformat(),
-                ":new_email": new_email,
-            },
-        )
+        # ConditionExpression prevents race condition where concurrent requests both pass the check above
+        try:
+            table.update_item(
+                Key={"pk": user_id, "sk": session_item["sk"]},
+                UpdateExpression="SET email_change_initiated = :initiated, new_email = :new_email",
+                ConditionExpression="attribute_not_exists(email_change_initiated)",
+                ExpressionAttributeValues={
+                    ":initiated": now.isoformat(),
+                    ":new_email": new_email,
+                },
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                logger.warning(f"Concurrent email change for session {user_id}")
+                return _timed_response(
+                    start_time,
+                    error_response(
+                        400,
+                        "change_already_initiated",
+                        "Email change already initiated. Check your new email for the verification link.",
+                        origin=origin,
+                    ),
+                )
+            raise  # Re-raise other ClientError for outer handler
 
     except ClientError as e:
         logger.error(f"Error creating email change record: {e}")
@@ -256,7 +286,7 @@ def handler(event, context):
         start_time,
         success_response(
             {
-                "message": f"A verification link has been sent to {new_email}. Please check your inbox to complete the email change.",
+                "message": f"A verification link has been sent to {mask_email(new_email)}. Please check your inbox to complete the email change.",
                 "masked_new_email": mask_email(new_email),
             },
             origin=origin,
@@ -279,18 +309,18 @@ def _send_email_change_verification(new_email: str, verify_url: str, old_email: 
                         <h1 style="color: #1e293b;">Verify Your New Email</h1>
                         <p style="color: #475569; font-size: 16px;">
                             You've requested to change your PkgWatch account email from
-                            <strong>{mask_email(old_email)}</strong> to this address.
+                            <strong>{html.escape(mask_email(old_email))}</strong> to this address.
                         </p>
                         <p style="color: #475569; font-size: 16px;">
                             Click the button below to confirm this change:
                         </p>
-                        <a href="{verify_url}"
+                        <a href="{html.escape(verify_url)}"
                            style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px;
                                   text-decoration: none; border-radius: 6px; margin: 20px 0;">
                             Verify Email
                         </a>
                         <p style="color: #64748b; font-size: 14px;">
-                            Or copy this link: <a href="{verify_url}">{verify_url}</a>
+                            Or copy this link: <a href="{html.escape(verify_url)}">{html.escape(verify_url)}</a>
                         </p>
                         <p style="color: #dc2626; font-size: 14px; font-weight: 500;">
                             <strong>Important:</strong> This link expires in {EMAIL_CHANGE_TTL_HOURS} hours.
@@ -338,7 +368,7 @@ def _send_email_change_notification(old_email: str, new_email: str):
                         <h1 style="color: #1e293b;">Email Change Requested</h1>
                         <p style="color: #475569; font-size: 16px;">
                             Someone has requested to change your PkgWatch account email to
-                            <strong>{mask_email(new_email)}</strong>.
+                            <strong>{html.escape(mask_email(new_email))}</strong>.
                         </p>
                         <p style="color: #475569; font-size: 16px;">
                             This change was initiated using an account recovery code. The change will only

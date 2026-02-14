@@ -186,7 +186,7 @@ def create_dynamodb_tables(dynamodb):
                 "KeySchema": [{"AttributeName": "recovery_token", "KeyType": "HASH"}],
                 "Projection": {
                     "ProjectionType": "INCLUDE",
-                    "NonKeyAttributes": ["email", "ttl", "verified", "recovery_method"],
+                    "NonKeyAttributes": ["email", "ttl", "verified", "recovery_method", "email_change_initiated"],
                 },
             },
             {

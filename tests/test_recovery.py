@@ -763,7 +763,7 @@ class TestRecoveryVerifyCodeErrors:
             "headers": {"origin": "https://pkgwatch.dev"},
         }
 
-        # Mock scan to work but get_item to fail
+        # Mock query to work but get_item to fail on USER_META (second call)
         with patch("time.sleep"), patch("api.recovery_verify_code.get_dynamodb") as mock_ddb:
             mock_table = MagicMock()
             mock_ddb.return_value.Table.return_value = mock_table
@@ -778,9 +778,23 @@ class TestRecoveryVerifyCodeErrors:
                     }
                 ]
             }
-            mock_table.get_item.side_effect = ClientError(
-                {"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "GetItem"
-            )
+
+            def mock_get_item(**kwargs):
+                key = kwargs.get("Key", {})
+                if key.get("sk") == "USER_META":
+                    raise ClientError({"Error": {"Code": "InternalServerError", "Message": "Test error"}}, "GetItem")
+                # ConsistentRead for recovery session
+                return {
+                    "Item": {
+                        "pk": "user_test123",
+                        "sk": f"RECOVERY_{session_id}",
+                        "email": "test@example.com",
+                        "ttl": int((now + timedelta(hours=1)).timestamp()),
+                        "verified": False,
+                    }
+                }
+
+            mock_table.get_item.side_effect = mock_get_item
             response = handler(event, None)
 
         assert response["statusCode"] == 500
@@ -848,13 +862,29 @@ class TestRecoveryVerifyCodeErrors:
                     }
                 ]
             }
-            mock_table.get_item.return_value = {
-                "Item": {
-                    "pk": "user_test123",
-                    "sk": "USER_META",
-                    "recovery_codes_hash": hashed_codes,
+
+            def mock_get_item(**kwargs):
+                key = kwargs.get("Key", {})
+                if key.get("sk") == "USER_META":
+                    return {
+                        "Item": {
+                            "pk": "user_test123",
+                            "sk": "USER_META",
+                            "recovery_codes_hash": hashed_codes,
+                        }
+                    }
+                # ConsistentRead for recovery session
+                return {
+                    "Item": {
+                        "pk": "user_test123",
+                        "sk": f"RECOVERY_{session_id}",
+                        "email": "test@example.com",
+                        "ttl": int((now + timedelta(hours=1)).timestamp()),
+                        "verified": False,
+                    }
                 }
-            }
+
+            mock_table.get_item.side_effect = mock_get_item
             mock_table.update_item.side_effect = ClientError(
                 {"Error": {"Code": "ConditionalCheckFailedException", "Message": "Condition failed"}}, "UpdateItem"
             )
@@ -1828,13 +1858,29 @@ class TestRecoveryVerifyCodeInternalError:
                     }
                 ]
             }
-            mock_table.get_item.return_value = {
-                "Item": {
-                    "pk": "user_test123",
-                    "sk": "USER_META",
-                    "recovery_codes_hash": hashed_codes,
+
+            def mock_get_item(**kwargs):
+                key = kwargs.get("Key", {})
+                if key.get("sk") == "USER_META":
+                    return {
+                        "Item": {
+                            "pk": "user_test123",
+                            "sk": "USER_META",
+                            "recovery_codes_hash": hashed_codes,
+                        }
+                    }
+                # ConsistentRead for recovery session
+                return {
+                    "Item": {
+                        "pk": "user_test123",
+                        "sk": f"RECOVERY_{session_id}",
+                        "email": "test@example.com",
+                        "ttl": int((now + timedelta(hours=1)).timestamp()),
+                        "verified": False,
+                    }
                 }
-            }
+
+            mock_table.get_item.side_effect = mock_get_item
             # Non-conditional error (InternalServerError, not ConditionalCheckFailedException)
             mock_table.update_item.side_effect = ClientError(
                 {"Error": {"Code": "InternalServerError", "Message": "DB error"}}, "UpdateItem"
