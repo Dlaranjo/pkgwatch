@@ -78,6 +78,12 @@ def handler(event, context):
                     f"Breaking from loop — {context.get_remaining_time_in_millis()}ms remaining "
                     f"(processed {processed} packages)"
                 )
+                # Flush pending updates before breaking (defensive — the post-loop
+                # flush at line 227 would also catch these, but this protects against
+                # future refactoring that might skip it)
+                if pending_updates:
+                    _write_updates(packages_table, pending_updates)
+                    pending_updates = []
                 break
 
             try:

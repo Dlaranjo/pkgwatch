@@ -7,7 +7,7 @@ and adaptive backoff on rate limiting.
 
 import os
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import boto3
 import httpx
@@ -1128,3 +1128,85 @@ class TestWriteUpdatesClientError:
         assert item["downloads_status"] == "rate_limited"
         assert item["downloads_source"] == "pypistats_429"
         assert "downloads_fetched_at" in item
+
+
+class TestTimeoutGuardFlush:
+    """Test C6: timeout guard flushes pending updates before breaking."""
+
+    @mock_aws
+    def test_timeout_guard_flushes_pending_updates(self):
+        """Pending updates should be written when Lambda timeout guard triggers mid-batch."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        table = dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        # Seed 3 packages that need refresh (no downloads_fetched_at)
+        for i in range(3):
+            table.put_item(
+                Item={
+                    "pk": f"pypi#timeout-pkg-{i}",
+                    "sk": "LATEST",
+                    "ecosystem": "pypi",
+                    "name": f"timeout-pkg-{i}",
+                }
+            )
+
+        # Context that allows 2 iterations then reports low remaining time
+        call_count = 0
+
+        class FakeContext:
+            def get_remaining_time_in_millis(self):
+                nonlocal call_count
+                call_count += 1
+                # First 2 checks (scan phase + first 2 loop iterations): enough time
+                # Third check: timeout
+                if call_count <= 4:
+                    return 300_000  # 5 min — plenty of time
+                return 10_000  # 10s — below MIN_REMAINING_MS (45s)
+
+        from collectors.pypi_downloads_collector import handler
+
+        # Mock HTTP responses so packages get processed and generate pending_updates
+        mock_response = MagicMock()
+        mock_response.status_code = 404  # 404 = package not in pypistats, still creates update
+
+        with (
+            patch("collectors.pypi_downloads_collector.PYPISTATS_CIRCUIT") as mock_circuit,
+            patch("collectors.pypi_downloads_collector.httpx.Client") as mock_client_cls,
+            patch("collectors.pypi_downloads_collector.time.sleep"),
+        ):
+            mock_circuit.can_execute.return_value = True
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.get.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            result = handler({}, FakeContext())
+
+        # Should have processed some packages before the timeout guard fired
+        assert result["total_processed"] >= 1
+
+        # Verify the processed packages had their updates flushed to DynamoDB
+        flushed = 0
+        for i in range(3):
+            item = table.get_item(
+                Key={"pk": f"pypi#timeout-pkg-{i}", "sk": "LATEST"}
+            ).get("Item", {})
+            if item.get("downloads_fetched_at"):
+                flushed += 1
+
+        # At least 1 package should have been flushed before the break
+        assert flushed >= 1, f"Expected flushed updates but found {flushed}"
