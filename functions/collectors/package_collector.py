@@ -361,15 +361,21 @@ async def _store_collection_error(ecosystem: str, name: str, error_msg: str) -> 
 
 
 def _increment_retry_count_sync(ecosystem: str, name: str) -> None:
-    """Increment retry_count for a package (synchronous)."""
+    """Increment retry_count for a package (synchronous), capped at MAX_RETRY_COUNT."""
     table = get_dynamodb().Table(PACKAGES_TABLE)
     try:
         table.update_item(
             Key={"pk": f"{ecosystem}#{name}", "sk": "LATEST"},
             UpdateExpression="SET retry_count = if_not_exists(retry_count, :zero) + :one",
-            ExpressionAttributeValues={":zero": 0, ":one": 1},
+            ConditionExpression="attribute_not_exists(retry_count) OR retry_count < :max",
+            ExpressionAttributeValues={":zero": 0, ":one": 1, ":max": MAX_RETRY_COUNT},
         )
         logger.debug(f"Incremented retry_count for {ecosystem}/{name}")
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            logger.info(f"retry_count already at max for {ecosystem}/{name}, skipping increment")
+        else:
+            logger.warning(f"Failed to increment retry_count: {e}")
     except Exception as e:
         logger.warning(f"Failed to increment retry_count: {e}")
 
@@ -1103,7 +1109,11 @@ async def collect_package_data(
                                 error_type = github_data.get("error", "")
                                 # Non-transient errors: 404 (not found), invalid URL, etc.
                                 # These shouldn't trip the circuit breaker
-                                non_transient_errors = ["repository_not_found", "invalid_github_url"]
+                                non_transient_errors = [
+                                    "repository_not_found",
+                                    "invalid_github_url",
+                                    "rate_limit_exhausted",
+                                ]
                                 if error_type not in non_transient_errors:
                                     # Transient error - record failure for circuit breaker
                                     await GITHUB_CIRCUIT.record_failure_async()
@@ -1205,6 +1215,9 @@ async def collect_package_data(
             if existing.get(field) and not combined_data.get(field):
                 combined_data[field] = existing[field]
 
+    # Compute aggregate freshness from per-source signals
+    combined_data["data_freshness"] = _compute_aggregate_freshness(combined_data, ecosystem)
+
     return combined_data
 
 
@@ -1268,6 +1281,43 @@ def _calculate_data_status(data: dict, ecosystem: str) -> tuple[str, list]:
     return ("partial", missing)
 
 
+def _compute_aggregate_freshness(data: dict, ecosystem: str) -> str:
+    """
+    Compute aggregate data freshness from per-source freshness fields.
+
+    Returns:
+        "fresh" if no source-level staleness
+        "stale" if deps.dev is stale or all applicable sources are stale
+        "mixed" if some sources are stale
+    """
+    # Check deps.dev staleness (set via FallbackMode.GLOBAL at line 533)
+    if data.get("stale_reason"):
+        return "stale"
+
+    # Collect per-source freshness signals
+    source_freshness = []
+    if ecosystem == "npm":
+        source_freshness.append(data.get("npm_freshness"))
+    elif ecosystem == "pypi":
+        source_freshness.append(data.get("pypi_freshness"))
+    if data.get("repository_url"):
+        source_freshness.append(data.get("github_freshness"))
+    source_freshness.append(data.get("openssf_freshness"))
+
+    # Filter to only sources that have a freshness value (None = not applicable or not fetched)
+    stale_sources = [f for f in source_freshness if f == "stale"]
+
+    if not stale_sources:
+        return "fresh"
+
+    # Check if ALL applicable sources are stale
+    applicable = [f for f in source_freshness if f is not None]
+    if applicable and len(stale_sources) == len(applicable):
+        return "stale"
+
+    return "mixed"
+
+
 def _calculate_next_retry_at(retry_count: int) -> str | None:
     """
     Calculate next retry time with exponential backoff.
@@ -1289,6 +1339,9 @@ def store_package_data_sync(ecosystem: str, name: str, data: dict, tier: int):
 
     now = datetime.now(timezone.utc).isoformat()
 
+    # data_updated_at only advances when data is actually fresh (not all stale)
+    data_updated_at = now if data.get("data_freshness") != "stale" else data.get("_existing_data_updated_at")
+
     item = {
         "pk": f"{ecosystem}#{name}",
         "sk": "LATEST",
@@ -1296,6 +1349,7 @@ def store_package_data_sync(ecosystem: str, name: str, data: dict, tier: int):
         "name": name,
         "tier": tier,
         "last_updated": now,
+        "data_updated_at": data_updated_at,
         # Core data
         "latest_version": data.get("latest_version"),
         "created_at": data.get("created_at"),
@@ -1499,7 +1553,7 @@ async def process_single_package(message: dict, bulk_downloads: dict = None) -> 
         # Collect data from all sources (or selectively for retries)
         data = await collect_package_data(ecosystem, name, existing, retry_sources, bulk_downloads)
 
-        # Preserve scoring fields from existing record.
+        # Preserve scoring fields and data_updated_at from existing record.
         # score_package.py writes these via update_item, but store_package_data_sync
         # uses put_item which replaces the full record, wiping scores every cycle.
         if existing:
@@ -1511,9 +1565,13 @@ async def process_single_package(message: dict, bulk_downloads: dict = None) -> 
                 "confidence_interval",
                 "abandonment_risk",
                 "scored_at",
+                "data_updated_at",
             ):
                 if existing.get(field) is not None and field not in data:
                     data[field] = existing[field]
+            # Pass existing data_updated_at for conditional update in store_package_data_sync
+            if existing.get("data_updated_at"):
+                data["_existing_data_updated_at"] = existing["data_updated_at"]
 
         # Pass existing retry_count to store_package_data for retry tracking
         # (used to calculate next_retry_at if collection is still incomplete)

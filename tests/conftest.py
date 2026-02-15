@@ -79,12 +79,14 @@ def _reset_circuits():
             DYNAMODB_CIRCUIT,
             GITHUB_CIRCUIT,
             NPM_CIRCUIT,
+            NPM_DOWNLOADS_CIRCUIT,
             PYPI_CIRCUIT,
             CircuitBreakerState,
         )
 
         GITHUB_CIRCUIT._state = CircuitBreakerState()
         NPM_CIRCUIT._state = CircuitBreakerState()
+        NPM_DOWNLOADS_CIRCUIT._state = CircuitBreakerState()
         DEPSDEV_CIRCUIT._state = CircuitBreakerState()
         BUNDLEPHOBIA_CIRCUIT._state = CircuitBreakerState()
         PYPI_CIRCUIT._state = CircuitBreakerState()

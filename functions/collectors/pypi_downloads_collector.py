@@ -363,8 +363,18 @@ def _write_updates(table, updates: list):
             # Normalize name per PEP 503 to match canonical DynamoDB keys
             normalized_name = re.sub(r"[-_.]+", "-", update["name"].lower())
 
-            # For rate_limited or error status, only update status fields (preserve existing downloads)
-            if downloads_status in ("rate_limited", "error"):
+            # For rate_limited: only update status (preserve downloads AND fetched_at so package stays in queue)
+            if downloads_status == "rate_limited":
+                table.update_item(
+                    Key={"pk": f"pypi#{normalized_name}", "sk": "LATEST"},
+                    UpdateExpression="SET downloads_status = :ds, downloads_source = :s",
+                    ExpressionAttributeValues={
+                        ":ds": downloads_status,
+                        ":s": update.get("downloads_source", "unknown"),
+                    },
+                )
+            # For error: update status and fetched_at (prevent rapid retry loops)
+            elif downloads_status == "error":
                 table.update_item(
                     Key={"pk": f"pypi#{normalized_name}", "sk": "LATEST"},
                     UpdateExpression="SET downloads_status = :ds, downloads_source = :s, downloads_fetched_at = :t",

@@ -40,14 +40,14 @@ def handler(event, context):
         logger.error("PACKAGE_QUEUE_URL not configured")
         return {"statusCode": 500, "error": "PACKAGE_QUEUE_URL not configured"}
 
-    # Check circuit breakers before dispatching
-    # (Prevents cascading failures during API outages)
+    # Check circuit breakers (used for source-aware skip in dispatch loop)
+    github_circuit_open = False
     try:
         from shared.circuit_breaker import GITHUB_CIRCUIT
 
         if not GITHUB_CIRCUIT.can_execute():
-            logger.warning("Skipping retry dispatch - GitHub circuit open")
-            return {"statusCode": 200, "body": json.dumps({"skipped": "circuit_open"})}
+            logger.warning("GitHub circuit open - will skip GitHub-only retries")
+            github_circuit_open = True
     except ImportError:
         pass  # Circuit breaker not available in test environment
 
@@ -88,6 +88,7 @@ def handler(event, context):
 
     dispatched = 0
     errors = 0
+    github_skipped = 0
 
     for pkg in packages:
         if dispatched >= MAX_DISPATCH_PER_RUN:
@@ -105,6 +106,13 @@ def handler(event, context):
             continue
 
         ecosystem, name = pk.split("#", 1)
+
+        # Skip packages that only need GitHub retries when GitHub circuit is open
+        missing_sources = pkg.get("missing_sources", [])
+        if github_circuit_open and missing_sources and all(s == "github" for s in missing_sources):
+            logger.debug(f"Skipping {ecosystem}/{name} - GitHub-only retry while circuit open")
+            github_skipped += 1
+            continue
 
         # Mark as dispatched (prevents duplicate dispatch on Lambda timeout)
         try:
@@ -148,12 +156,13 @@ def handler(event, context):
                 {"metric_name": "RetryDispatcherFound", "value": len(packages)},
                 {"metric_name": "RetryDispatcherDispatched", "value": dispatched},
                 {"metric_name": "RetryDispatcherErrors", "value": errors},
+                {"metric_name": "RetryDispatcherGitHubSkipped", "value": github_skipped},
             ]
         )
     except ImportError:
         pass  # Metrics not available in test environment
 
-    logger.info(f"Dispatched {dispatched} packages for retry ({errors} errors)")
+    logger.info(f"Dispatched {dispatched} packages for retry ({errors} errors, {github_skipped} github-skipped)")
 
     return {
         "statusCode": 200,
@@ -162,6 +171,7 @@ def handler(event, context):
                 "found": len(packages),
                 "dispatched": dispatched,
                 "errors": errors,
+                "github_skipped": github_skipped,
             }
         ),
     }

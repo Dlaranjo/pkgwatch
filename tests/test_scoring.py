@@ -14,6 +14,7 @@ from scoring.abandonment_risk import (
 )
 from scoring.health_score import (
     _calculate_confidence,
+    _calculate_gated_maturity_factor,
     _calculate_maturity_factor,
     _community_health,
     _evolution_health,
@@ -1075,6 +1076,235 @@ class TestRealPackageFixtures:
             f"Lodash maturity factor is {factor}, expected >= 0.5. "
             f"High adoption + low activity should trigger maturity bonus."
         )
+
+
+# =============================================================================
+# Gated Maturity Factor Tests
+# =============================================================================
+
+
+class TestGatedMaturityFactor:
+    """Tests for _calculate_gated_maturity_factor bus-factor gating."""
+
+    @freeze_time("2026-01-07")
+    def test_bus_factor_1_gets_33_percent(self):
+        """Single-maintainer package gets only 33% of maturity benefit."""
+        data = {
+            "weekly_downloads": 20_000_000,
+            "dependents_count": 18_000,
+            "commits_90d": 2,
+            "true_bus_factor": 1,
+        }
+        base = _calculate_maturity_factor(data)
+        gated = _calculate_gated_maturity_factor(data)
+
+        assert base > 0, "Base maturity should be positive for high-adoption low-activity"
+        assert gated == pytest.approx(base * (1 / 3.0), abs=0.01)
+
+    @freeze_time("2026-01-07")
+    def test_bus_factor_2_gets_67_percent(self):
+        """Two-maintainer package gets 67% of maturity benefit."""
+        data = {
+            "weekly_downloads": 20_000_000,
+            "dependents_count": 18_000,
+            "commits_90d": 2,
+            "true_bus_factor": 2,
+        }
+        base = _calculate_maturity_factor(data)
+        gated = _calculate_gated_maturity_factor(data)
+
+        assert base > 0, "Base maturity should be positive for high-adoption low-activity"
+        assert gated == pytest.approx(base * (2 / 3.0), abs=0.01)
+
+    @freeze_time("2026-01-07")
+    def test_bus_factor_3_gets_full(self):
+        """Package with 3+ maintainers gets full maturity benefit."""
+        data = {
+            "weekly_downloads": 20_000_000,
+            "dependents_count": 18_000,
+            "commits_90d": 2,
+            "true_bus_factor": 3,
+        }
+        base = _calculate_maturity_factor(data)
+        gated = _calculate_gated_maturity_factor(data)
+
+        assert base > 0, "Base maturity should be positive for high-adoption low-activity"
+        assert gated == pytest.approx(base * 1.0, abs=0.01)
+
+    @freeze_time("2026-01-07")
+    def test_falls_back_to_active_contributors(self):
+        """Without true_bus_factor, falls back to active_contributors_90d."""
+        data = {
+            "weekly_downloads": 20_000_000,
+            "dependents_count": 18_000,
+            "commits_90d": 2,
+            "active_contributors_90d": 2,
+        }
+        base = _calculate_maturity_factor(data)
+        gated = _calculate_gated_maturity_factor(data)
+
+        # active_contributors_90d=2 → bf=2 → bus_gate = 2/3 ≈ 0.67
+        assert gated == pytest.approx(base * (2 / 3.0), abs=0.01)
+
+    @freeze_time("2026-01-07")
+    def test_negative_contributors_clamped(self):
+        """Negative active_contributors_90d is clamped, no negative output."""
+        data = {
+            "weekly_downloads": 20_000_000,
+            "dependents_count": 18_000,
+            "commits_90d": 2,
+            "active_contributors_90d": -5,
+        }
+        gated = _calculate_gated_maturity_factor(data)
+
+        # bf = max(1, -5) = 1 → bus_gate = 1/3, result must be non-negative
+        assert gated >= 0, "Gated maturity should never be negative"
+        base = _calculate_maturity_factor(data)
+        assert gated == pytest.approx(base * (1 / 3.0), abs=0.01)
+
+    @freeze_time("2026-01-07")
+    def test_zero_adoption_returns_zero(self):
+        """Package with zero adoption → base maturity ~0 → gated maturity ~0."""
+        data = {
+            "weekly_downloads": 0,
+            "dependents_count": 0,
+            "commits_90d": 2,
+            "true_bus_factor": 3,
+        }
+        gated = _calculate_gated_maturity_factor(data)
+
+        # No adoption means the sigmoid adoption signals are near 0
+        assert gated < 0.01, f"Expected near-zero gated maturity, got {gated}"
+
+
+# =============================================================================
+# Adoption Dampening Tests
+# =============================================================================
+
+
+class TestAdoptionDampening:
+    """Tests for adoption-based dampening in calculate_abandonment_risk."""
+
+    @freeze_time("2026-01-07")
+    def test_high_adoption_reduces_risk(self):
+        """High-adoption package with inactivity should have lower risk than low-adoption."""
+        base_data = {
+            "days_since_last_commit": 400,
+            "active_contributors_90d": 1,
+            "commits_90d": 0,
+            "true_bus_factor": 1,
+            "last_published": "2024-06-01T00:00:00Z",
+        }
+
+        # High adoption variant
+        high_adoption = {
+            **base_data,
+            "weekly_downloads": 20_000_000,
+            "dependents_count": 18_000,
+        }
+
+        # Low adoption variant (same inactivity signals)
+        low_adoption = {
+            **base_data,
+            "weekly_downloads": 50,
+            "dependents_count": 5,
+        }
+
+        high_result = calculate_abandonment_risk(high_adoption)
+        low_result = calculate_abandonment_risk(low_adoption)
+
+        assert high_result["probability"] < low_result["probability"], (
+            f"High-adoption risk ({high_result['probability']}%) should be lower "
+            f"than low-adoption risk ({low_result['probability']}%)"
+        )
+
+    @freeze_time("2026-01-07")
+    def test_low_adoption_no_dampening(self):
+        """Low-adoption packages get negligible dampening."""
+        base_data = {
+            "days_since_last_commit": 200,
+            "active_contributors_90d": 1,
+            "commits_90d": 0,
+            "true_bus_factor": 1,
+            "last_published": "2024-06-01T00:00:00Z",
+        }
+
+        # Very low adoption
+        low_adoption = {
+            **base_data,
+            "weekly_downloads": 50,
+            "dependents_count": 5,
+        }
+
+        # Zero adoption
+        zero_adoption = {
+            **base_data,
+            "weekly_downloads": 0,
+            "dependents_count": 0,
+        }
+
+        low_result = calculate_abandonment_risk(low_adoption)
+        zero_result = calculate_abandonment_risk(zero_adoption)
+
+        # The difference should be small since neither triggers meaningful dampening
+        # Note: adoption_risk component (20% weight) also differs between 50 and 0 downloads
+        diff = abs(low_result["probability"] - zero_result["probability"])
+        assert diff < 10.0, (
+            f"Low vs zero adoption difference ({diff}%) should be small; "
+            f"low={low_result['probability']}%, zero={zero_result['probability']}%"
+        )
+
+    @freeze_time("2026-01-07")
+    def test_dampening_bounded_at_30_percent(self):
+        """Even maximum adoption should reduce risk by at most ~30%."""
+        base_data = {
+            "days_since_last_commit": 400,
+            "active_contributors_90d": 1,
+            "commits_90d": 0,
+            "true_bus_factor": 1,
+            "last_published": "2024-06-01T00:00:00Z",
+        }
+
+        # Maximum adoption (extremely high downloads + dependents)
+        max_adoption = {
+            **base_data,
+            "weekly_downloads": 100_000_000,
+            "dependents_count": 100_000,
+        }
+
+        # Zero adoption baseline
+        zero_adoption = {
+            **base_data,
+            "weekly_downloads": 0,
+            "dependents_count": 0,
+        }
+
+        max_result = calculate_abandonment_risk(max_adoption)
+        zero_result = calculate_abandonment_risk(zero_adoption)
+
+        # Dampening applies 30% max reduction to inactivity_risk and release_risk
+        # (50% combined weight), plus the adoption_risk component (20% weight)
+        # also changes with downloads, so total reduction can exceed 30%.
+        # Verify overall risk reduction stays within a reasonable bound (~40%)
+        if zero_result["probability"] > 0:
+            reduction_pct = (
+                (zero_result["probability"] - max_result["probability"]) / zero_result["probability"]
+            ) * 100
+            assert reduction_pct <= 45, (
+                f"Risk reduction ({reduction_pct:.1f}%) exceeds expected bound; "
+                f"max_adoption={max_result['probability']}%, "
+                f"zero_adoption={zero_result['probability']}%"
+            )
+            # But dampening alone (excluding adoption_risk component change)
+            # should be bounded: verify inactivity and release components
+            max_components = max_result["components"]
+            zero_components = zero_result["components"]
+            if zero_components["inactivity_risk"] > 0:
+                inactivity_reduction = (
+                    (zero_components["inactivity_risk"] - max_components["inactivity_risk"])
+                    / zero_components["inactivity_risk"]
+                ) * 100
+                assert inactivity_reduction <= 32, f"Inactivity dampening ({inactivity_reduction:.1f}%) exceeds 30% cap"
 
 
 # =============================================================================

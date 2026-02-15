@@ -36,8 +36,8 @@ class TestRetryDispatcherHandler:
         assert "PACKAGE_QUEUE_URL not configured" in result.get("error", "")
 
     @mock_aws
-    def test_skips_dispatch_when_github_circuit_open(self, mock_dynamodb):
-        """Should skip dispatch when GitHub circuit breaker is open."""
+    def test_skips_github_only_retries_when_circuit_open(self, mock_dynamodb):
+        """Should proceed when GitHub circuit is open (source-aware skip, not blanket block)."""
         os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
         os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
 
@@ -55,11 +55,14 @@ class TestRetryDispatcherHandler:
         mock_cb_module.GITHUB_CIRCUIT = mock_circuit
 
         with patch.dict(sys.modules, {"shared.circuit_breaker": mock_cb_module}):
+            # With no packages in the table, handler should proceed but find nothing
             result = module.handler({}, None)
 
             assert result["statusCode"] == 200
             body = json.loads(result["body"])
-            assert body.get("skipped") == "circuit_open"
+            # Should NOT return "skipped: circuit_open" — now uses source-aware skip per-package
+            assert "skipped" not in body
+            assert body.get("found") == 0
 
     @mock_aws
     def test_returns_zero_when_no_packages_found(self, mock_dynamodb):
@@ -890,3 +893,65 @@ class TestRetryDispatcherPendingStatus:
 
         body = json.loads(result["body"])
         assert body["dispatched"] >= 1
+
+    @mock_aws
+    def test_github_only_skip_with_mixed_sources(self, mock_dynamodb):
+        """Should skip GitHub-only packages but dispatch mixed-source packages when circuit is open."""
+        os.environ["PACKAGES_TABLE"] = "pkgwatch-packages"
+        os.environ["PACKAGE_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123/queue"
+
+        table = mock_dynamodb.Table("pkgwatch-packages")
+        now = datetime.now(timezone.utc)
+        past = (now - timedelta(hours=2)).isoformat()
+
+        # Package A: GitHub-only retry (should be skipped)
+        table.put_item(
+            Item={
+                "pk": "npm#github-only-pkg",
+                "sk": "LATEST",
+                "data_status": "partial",
+                "next_retry_at": past,
+                "retry_count": 1,
+                "missing_sources": ["github"],
+                "tier": 2,
+            }
+        )
+        # Package B: Mixed sources (should be dispatched)
+        table.put_item(
+            Item={
+                "pk": "npm#mixed-sources-pkg",
+                "sk": "LATEST",
+                "data_status": "partial",
+                "next_retry_at": past,
+                "retry_count": 1,
+                "missing_sources": ["github", "bundlephobia"],
+                "tier": 2,
+            }
+        )
+
+        import importlib
+
+        import collectors.retry_dispatcher as module
+
+        importlib.reload(module)
+
+        mock_circuit = MagicMock()
+        mock_circuit.can_execute.return_value = False  # GitHub circuit open
+        mock_cb_module = MagicMock()
+        mock_cb_module.GITHUB_CIRCUIT = mock_circuit
+
+        with patch.dict(sys.modules, {"shared.circuit_breaker": mock_cb_module}):
+            with patch.object(module, "sqs") as mock_sqs:
+                result = module.handler({}, None)
+
+                assert result["statusCode"] == 200
+                body = json.loads(result["body"])
+
+                # mixed-sources-pkg should be dispatched, github-only-pkg should be skipped
+                assert body["dispatched"] >= 1
+                assert body.get("github_skipped", 0) >= 1
+
+                # Verify the dispatched package is the mixed-source one
+                call_args = mock_sqs.send_message.call_args
+                msg_body = json.loads(call_args.kwargs["MessageBody"])
+                assert msg_body["name"] == "mixed-sources-pkg"

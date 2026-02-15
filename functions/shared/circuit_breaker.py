@@ -797,6 +797,17 @@ NPM_CIRCUIT = _create_circuit_breaker(
     ),
 )
 
+# npm downloads API is separate from the npm registry
+# Needs independent circuit breaker to prevent downloads outages from blocking npm metadata
+NPM_DOWNLOADS_CIRCUIT = _create_circuit_breaker(
+    "npm_downloads",
+    CircuitBreakerConfig(
+        failure_threshold=5,
+        timeout_seconds=120,
+        success_threshold=2,
+    ),
+)
+
 BUNDLEPHOBIA_CIRCUIT = _create_circuit_breaker(
     "bundlephobia",
     CircuitBreakerConfig(

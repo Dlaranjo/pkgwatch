@@ -1122,12 +1122,13 @@ class TestWriteUpdatesClientError:
 
         _write_updates(table, updates)
 
-        # Verify existing weekly_downloads was preserved
+        # Verify existing weekly_downloads was preserved and downloads_fetched_at NOT updated
+        # (rate-limited packages should stay near front of refresh queue)
         item = table.get_item(Key={"pk": "pypi#ratepkg", "sk": "LATEST"})["Item"]
         assert item["weekly_downloads"] == 50000
         assert item["downloads_status"] == "rate_limited"
         assert item["downloads_source"] == "pypistats_429"
-        assert "downloads_fetched_at" in item
+        assert "downloads_fetched_at" not in item
 
 
 class TestTimeoutGuardFlush:

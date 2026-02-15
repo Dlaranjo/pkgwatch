@@ -149,6 +149,16 @@ def calculate_abandonment_risk(data: dict, months: int = 12) -> dict:
 
     release_risk = 1 - math.exp(-days_since_release / 365)
 
+    # Adoption-based dampening for widely-used packages
+    # High-adoption packages are less likely to be truly abandoned even with inactivity
+    dependents = max(0, data.get("dependents_count", 0) or 0)
+    download_signal = 1 / (1 + math.exp(-(math.log10(downloads + 1) - 6) / 0.5))
+    dependent_signal = 1 / (1 + math.exp(-(math.log10(dependents + 1) - 3.7) / 0.5))
+    adoption = max(download_signal, dependent_signal)
+    dampening = 1.0 - (adoption * 0.3)  # Max 30% reduction for high-adoption packages
+    inactivity_risk *= dampening
+    release_risk *= dampening
+
     # Weighted combination
     risk_score = inactivity_risk * 0.35 + bus_factor_risk * 0.30 + adoption_risk * 0.20 + release_risk * 0.15
 

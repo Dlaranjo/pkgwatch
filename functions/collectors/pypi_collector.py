@@ -301,7 +301,7 @@ async def get_pypi_metadata(name: str) -> dict:
     if pypistats_circuit_open:
         downloads_error = "circuit_open"
         logger.debug(f"pypistats circuit open, skipping downloads for {name}")
-    elif check_and_increment_external_rate_limit("pypistats", 100):
+    elif check_and_increment_external_rate_limit("pypistats", 200):
         try:
             stats_url = f"{PYPISTATS_API}/packages/{normalized_name}/recent?period=week"
             stats_resp = await retry_with_backoff(client.get, stats_url)

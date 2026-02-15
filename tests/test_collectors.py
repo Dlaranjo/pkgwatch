@@ -9497,3 +9497,82 @@ class TestDeprecationMessagePersistence:
             response = table.get_item(Key={"pk": "npm#normal-pkg", "sk": "LATEST"})
 
             assert "deprecation_message" not in response["Item"]
+
+
+class TestComputeAggregateFreshness:
+    """Tests for _compute_aggregate_freshness function."""
+
+    def test_fresh_when_no_stale_sources(self):
+        """All sources fresh or not set → 'fresh'."""
+        from collectors.package_collector import _compute_aggregate_freshness
+
+        data = {
+            "npm_freshness": "fresh",
+            "github_freshness": "fresh",
+            "openssf_freshness": "fresh",
+            "repository_url": "https://github.com/org/repo",
+        }
+        assert _compute_aggregate_freshness(data, "npm") == "fresh"
+
+    def test_stale_when_depsdev_stale(self):
+        """deps.dev stale (stale_reason set) → 'stale' regardless of others."""
+        from collectors.package_collector import _compute_aggregate_freshness
+
+        data = {
+            "stale_reason": "depsdev_timeout",
+            "npm_freshness": "fresh",
+            "github_freshness": "fresh",
+        }
+        assert _compute_aggregate_freshness(data, "npm") == "stale"
+
+    def test_stale_when_all_applicable_sources_stale(self):
+        """All applicable sources stale → 'stale'."""
+        from collectors.package_collector import _compute_aggregate_freshness
+
+        data = {
+            "npm_freshness": "stale",
+            "github_freshness": "stale",
+            "openssf_freshness": "stale",
+            "repository_url": "https://github.com/org/repo",
+        }
+        assert _compute_aggregate_freshness(data, "npm") == "stale"
+
+    def test_mixed_when_some_sources_stale(self):
+        """Some sources stale, others fresh → 'mixed'."""
+        from collectors.package_collector import _compute_aggregate_freshness
+
+        data = {
+            "npm_freshness": "fresh",
+            "github_freshness": "stale",
+            "openssf_freshness": "fresh",
+            "repository_url": "https://github.com/org/repo",
+        }
+        assert _compute_aggregate_freshness(data, "npm") == "mixed"
+
+    def test_pypi_ecosystem_checks_pypi_freshness(self):
+        """PyPI ecosystem uses pypi_freshness, not npm_freshness."""
+        from collectors.package_collector import _compute_aggregate_freshness
+
+        data = {
+            "pypi_freshness": "stale",
+            "openssf_freshness": "fresh",
+        }
+        assert _compute_aggregate_freshness(data, "pypi") == "mixed"
+
+    def test_no_repo_skips_github_freshness(self):
+        """Without repository_url, github_freshness is not checked."""
+        from collectors.package_collector import _compute_aggregate_freshness
+
+        data = {
+            "npm_freshness": "fresh",
+            "github_freshness": "stale",  # should be ignored (no repo)
+            "openssf_freshness": "fresh",
+        }
+        assert _compute_aggregate_freshness(data, "npm") == "fresh"
+
+    def test_fresh_when_no_freshness_fields_set(self):
+        """When no freshness fields are set at all → 'fresh' (no stale sources)."""
+        from collectors.package_collector import _compute_aggregate_freshness
+
+        data = {}
+        assert _compute_aggregate_freshness(data, "npm") == "fresh"

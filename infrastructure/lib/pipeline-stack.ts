@@ -481,6 +481,80 @@ export class PipelineStack extends cdk.Stack {
     );
 
     // ===========================================
+    // Lambda: npm Downloads Collector
+    // ===========================================
+    // Batch fetches download stats from npm API
+    // Fixes data quality issue where 1,339 npm packages had missing download data
+    const npmDownloadsCollector = new lambda.Function(
+      this,
+      "NpmDownloadsCollector",
+      {
+        ...commonLambdaProps,
+        functionName: "pkgwatch-npm-downloads-collector",
+        handler: "npm_downloads_collector.handler",
+        code: collectorsCode,
+        timeout: cdk.Duration.minutes(10),
+        memorySize: 512,
+        description: "Fetches npm download statistics",
+      }
+    );
+
+    // Permissions - read packages list, write download stats
+    packagesTable.grantReadWriteData(npmDownloadsCollector);
+    npmDownloadsCollector.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cloudwatch:PutMetricData"],
+        resources: ["*"],
+        conditions: { StringEquals: { "cloudwatch:namespace": "PkgWatch" } },
+      })
+    );
+
+    // Schedule: Every 1 hour (temporary — revert to 3h after npm downloads backlog clears)
+    new events.Rule(this, "NpmDownloadsSchedule", {
+      ruleName: "pkgwatch-npm-downloads",
+      schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+      description: "Fetches npm download statistics every hour (temporary backfill)",
+      targets: [new targets.LambdaFunction(npmDownloadsCollector)],
+    });
+
+    // CloudWatch alarm for failures
+    const npmDownloadsErrorAlarm = new cloudwatch.Alarm(
+      this,
+      "NpmDownloadsErrorAlarm",
+      {
+        alarmName: "pkgwatch-npm-downloads-errors",
+        alarmDescription: "npm downloads collector failing",
+        metric: npmDownloadsCollector.metricErrors({
+          period: cdk.Duration.minutes(5),
+        }),
+        threshold: 1,
+        evaluationPeriods: 2,
+        comparisonOperator:
+          cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }
+    );
+
+    // Duration alarm - detect executions approaching timeout
+    const npmDownloadsDurationAlarm = new cloudwatch.Alarm(
+      this,
+      "NpmDownloadsDurationAlarm",
+      {
+        alarmName: "pkgwatch-npm-downloads-duration",
+        alarmDescription: "npm downloads collector approaching timeout",
+        metric: npmDownloadsCollector.metricDuration({
+          statistic: "p95",
+          period: cdk.Duration.hours(6),
+        }),
+        threshold: 540000, // 9 minutes (90% of 10-minute timeout)
+        evaluationPeriods: 1,
+        comparisonOperator:
+          cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }
+    );
+
+    // ===========================================
     // Lambda: PyPI Downloads BigQuery Collector
     // ===========================================
     // Fetches weekly downloads from Google BigQuery (official PyPI data source)
@@ -962,6 +1036,14 @@ export class PipelineStack extends cdk.Stack {
       new cloudwatchActions.SnsAction(this.alertTopic)
     );
     pypiDownloadsDurationAlarm.addAlarmAction(
+      new cloudwatchActions.SnsAction(this.alertTopic)
+    );
+
+    // npm Downloads alarm (defined earlier, action added here after alertTopic exists)
+    npmDownloadsErrorAlarm.addAlarmAction(
+      new cloudwatchActions.SnsAction(this.alertTopic)
+    );
+    npmDownloadsDurationAlarm.addAlarmAction(
       new cloudwatchActions.SnsAction(this.alertTopic)
     );
 
