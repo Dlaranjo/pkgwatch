@@ -834,6 +834,12 @@ export class ApiStack extends cdk.Stack {
             minLength: 5,
             maxLength: 254,
           },
+          referral_code: {
+            type: apigateway.JsonSchemaType.STRING,
+            minLength: 6,
+            maxLength: 12,
+            pattern: "^[a-zA-Z0-9_-]+$",
+          },
         },
         additionalProperties: false,
       },

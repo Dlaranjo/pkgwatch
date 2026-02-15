@@ -56,13 +56,12 @@ const {
     <!-- Content Security Policy -->
     <meta http-equiv="Content-Security-Policy" content="
       default-src 'self';
-      script-src 'self' https://plausible.io https://js.stripe.com 'unsafe-inline';
+      script-src 'self' https://plausible.io https://js.stripe.com https://static.cloudflareinsights.com 'unsafe-inline';
       style-src 'self' https://fonts.googleapis.com 'unsafe-inline';
       font-src 'self' https://fonts.gstatic.com;
       img-src 'self' data: https://pkgwatch.dev https://*.stripe.com;
       frame-src https://js.stripe.com https://hooks.stripe.com;
-      connect-src 'self' https://api.pkgwatch.dev https://plausible.io https://api.stripe.com;
-      frame-ancestors 'none';
+      connect-src 'self' https://api.pkgwatch.dev https://plausible.io https://api.stripe.com https://cloudflareinsights.com;
       form-action 'self';
       base-uri 'self';
       upgrade-insecure-requests;
