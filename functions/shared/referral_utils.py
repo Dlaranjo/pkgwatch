@@ -14,12 +14,20 @@ import os
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import NamedTuple, Optional
 
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
-from .aws_clients import get_dynamodb
+from .aws_clients import get_dynamodb, get_dynamodb_client
+
+
+class TransitionResult(NamedTuple):
+    """Result of a referral event state transition."""
+
+    created: bool
+    previous_item: dict | None = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -528,20 +536,24 @@ def update_referral_event_to_credited(
         reward_amount: Amount of bonus credited
 
     Returns:
-        True if updated successfully
+        True if the signup event was created successfully
     """
-    try:
-        transition_referral_event(
-            referrer_id=referrer_id,
-            referred_id=referred_id,
-            from_states=["pending"],
-            to_state="signup",
-            reward_amount=reward_amount,
-        )
-        return True
-    except ClientError as e:
-        logger.error(f"Error updating referral event: {e}")
-        return False
+    result = transition_referral_event(
+        referrer_id=referrer_id,
+        referred_id=referred_id,
+        from_states=["pending"],
+        to_state="signup",
+        reward_amount=reward_amount,
+    )
+    return result.created
+
+
+def _serialize_item(item: dict) -> dict:
+    """Convert Python dict to DynamoDB-typed format for transact_write_items."""
+    from boto3.dynamodb.types import TypeSerializer
+
+    serializer = TypeSerializer()
+    return {k: serializer.serialize(v) for k, v in item.items()}
 
 
 def transition_referral_event(
@@ -552,15 +564,14 @@ def transition_referral_event(
     reward_amount: int = 0,
     referred_email: str | None = None,
     extra_attrs: dict | None = None,
-) -> dict | None:
+) -> TransitionResult:
     """
     Atomically transition a referral event from one state to another.
 
-    Deletes previous state event(s), guards against race conditions where a
-    higher-priority event already exists, and creates the new state event.
-
-    Each referred user should have exactly one event per referrer at any time.
-    Callers are responsible for stats updates and USER_META flag management.
+    Uses Read → Transact(Create+Guard) → Delete to ensure:
+    - No data loss (new event created before old events deleted)
+    - No TOCTOU race (atomic ConditionCheck prevents lower-priority overwrites)
+    - Worst case: temporary duplicate handled by reader dedup
 
     Args:
         referrer_id: Referrer user ID (pk in referral-events table)
@@ -572,49 +583,32 @@ def transition_referral_event(
         extra_attrs: Additional attributes for the new event (e.g. retention fields)
 
     Returns:
-        The deleted item (ALL_OLD) if a previous event existed, None otherwise.
-        If multiple from_states had items, returns the first one found.
+        TransitionResult with created=True if transition succeeded,
+        created=False if race was lost or event already existed.
+        previous_item contains data from the old event (for stats adjustment).
     """
     table = get_dynamodb().Table(REFERRAL_EVENTS_TABLE)
+    client = get_dynamodb_client()
+    table_name = REFERRAL_EVENTS_TABLE
     now = datetime.now(timezone.utc)
 
-    deleted_item = None
-
-    # Phase 1: Delete previous state events
+    # Phase 1: Read previous state events (non-destructive)
+    previous_item = None
     for state in from_states:
         try:
-            response = table.delete_item(
+            response = table.get_item(
                 Key={"pk": referrer_id, "sk": f"{referred_id}#{state}"},
-                ReturnValues="ALL_OLD",
             )
-            old = response.get("Attributes")
-            if old and deleted_item is None:
-                deleted_item = old
+            old = response.get("Item")
+            if old and previous_item is None:
+                previous_item = old
         except ClientError as e:
-            logger.error(f"Error deleting #{state} event for {referred_id}: {e}")
+            logger.warning(f"Error reading #{state} event for {referred_id}: {e}")
 
-    # Phase 2: Race guard — check if a higher-priority event already exists
-    to_priority = REFERRAL_EVENT_PRIORITY.get(to_state, 0)
-    for state, priority in REFERRAL_EVENT_PRIORITY.items():
-        if priority > to_priority:
-            try:
-                existing = table.get_item(
-                    Key={"pk": referrer_id, "sk": f"{referred_id}#{state}"},
-                )
-                if existing.get("Item"):
-                    logger.info(
-                        f"Higher-priority event #{state} already exists for "
-                        f"{referred_id}, skipping #{to_state} creation"
-                    )
-                    return deleted_item
-            except ClientError:
-                pass  # If we can't check, proceed with creation
-
-    # Phase 3: Create new state event
-    # Email handling: inherit masked email from deleted item, or mask raw email
+    # Build new event item
     masked_email = None
-    if deleted_item:
-        masked_email = deleted_item.get("referred_email_masked")
+    if previous_item:
+        masked_email = previous_item.get("referred_email_masked")
     if not masked_email and referred_email:
         masked_email = mask_email(referred_email)
 
@@ -633,12 +627,63 @@ def transition_referral_event(
     if extra_attrs:
         item.update(extra_attrs)
 
-    try:
-        table.put_item(Item=item)
-    except ClientError as e:
-        logger.error(f"Error creating #{to_state} event for {referred_id}: {e}")
+    # Phase 2: Atomic Create + Guard via transact_write_items
+    transact_items = [
+        {
+            "Put": {
+                "TableName": table_name,
+                "Item": _serialize_item(item),
+                "ConditionExpression": "attribute_not_exists(pk)",
+            }
+        }
+    ]
 
-    return deleted_item
+    # Add ConditionCheck for each higher-priority state
+    to_priority = REFERRAL_EVENT_PRIORITY.get(to_state, 0)
+    for state, priority in REFERRAL_EVENT_PRIORITY.items():
+        if priority > to_priority:
+            transact_items.append(
+                {
+                    "ConditionCheck": {
+                        "TableName": table_name,
+                        "Key": _serialize_item({"pk": referrer_id, "sk": f"{referred_id}#{state}"}),
+                        "ConditionExpression": "attribute_not_exists(pk)",
+                    }
+                }
+            )
+
+    try:
+        client.transact_write_items(TransactItems=transact_items)
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "TransactionCanceledException":
+            reasons = e.response.get("CancellationReasons", [])
+            reason_codes = [r.get("Code", "None") for r in reasons]
+            logger.info(
+                f"Transition to #{to_state} for {referred_id} skipped (transaction cancelled, reasons={reason_codes})"
+            )
+            return TransitionResult(created=False, previous_item=previous_item)
+        logger.error(f"Error in transact_write_items for #{to_state}: {e}")
+        raise
+
+    # Phase 3: Best-effort delete of old state events
+    # New event already exists (Phase 2 succeeded), so delete failure
+    # only means temporary duplicate — reader dedup handles it.
+    for state in from_states:
+        try:
+            response = table.delete_item(
+                Key={"pk": referrer_id, "sk": f"{referred_id}#{state}"},
+                ReturnValues="ALL_OLD",
+            )
+            old = response.get("Attributes")
+            if old and previous_item is None:
+                previous_item = old
+        except ClientError as e:
+            logger.warning(
+                f"Best-effort delete of #{state} for {referred_id} failed: {e}. "
+                f"Temporary duplicate will be resolved by reader dedup."
+            )
+
+    return TransitionResult(created=True, previous_item=previous_item)
 
 
 def mark_retention_checked(referrer_id: str, referred_id: str) -> bool:
@@ -658,6 +703,7 @@ def mark_retention_checked(referrer_id: str, referred_id: str) -> bool:
         table.update_item(
             Key={"pk": referrer_id, "sk": f"{referred_id}#paid"},
             UpdateExpression="REMOVE needs_retention_check, retention_check_date",
+            ConditionExpression="attribute_exists(pk)",
         )
         return True
     except ClientError as e:

@@ -379,7 +379,7 @@ def _process_paid_referral_reward(user_id: str, referred_email: str):
         retention_check_date = (datetime.now(timezone.utc) + timedelta(days=30 * RETENTION_MONTHS)).isoformat()
 
         # Transition: delete pending/signup event, create paid event
-        deleted = transition_referral_event(
+        result = transition_referral_event(
             referrer_id=referrer_id,
             referred_id=user_id,
             from_states=["pending", "signup"],
@@ -392,10 +392,16 @@ def _process_paid_referral_reward(user_id: str, referred_email: str):
             },
         )
 
-        # Adjust stats: only decrement pending if we deleted a non-expired pending event
+        if not result.created:
+            # Race lost — a higher-priority event already exists
+            # or #paid was already created by a concurrent webhook.
+            logger.info(f"Paid referral transition skipped for {user_id} (race lost or already exists)")
+            return
+
+        # Adjust stats: only decrement pending if we read a non-expired pending event
         pending_delta = 0
-        if deleted and deleted.get("event_type") == "pending":
-            ttl = deleted.get("ttl")
+        if result.previous_item and result.previous_item.get("event_type") == "pending":
+            ttl = result.previous_item.get("ttl")
             if not ttl or int(ttl) > int(time.time()):
                 pending_delta = -1  # Pending not yet expired → we own the decrement
 

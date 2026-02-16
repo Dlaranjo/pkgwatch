@@ -11,12 +11,14 @@ Returns the current user's referral program status including:
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 
-import boto3
-
+from shared.aws_clients import get_dynamodb
 from shared.referral_utils import (
     BONUS_CAP,
+    REFERRAL_EVENT_PRIORITY,
+    generate_unique_referral_code,
     get_referral_events,
 )
 from shared.response_utils import decimal_default, error_response, get_cors_headers
@@ -27,7 +29,6 @@ logger.setLevel(logging.INFO)
 # Import session verification
 from api.auth_callback import verify_session_token
 
-dynamodb = boto3.resource("dynamodb")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 BASE_URL = os.environ.get("BASE_URL", "https://pkgwatch.dev")
 
@@ -67,7 +68,7 @@ def handler(event, context):
         return error_response(401, "invalid_session", "Invalid session data", origin=origin)
 
     try:
-        table = dynamodb.Table(API_KEYS_TABLE)
+        table = get_dynamodb().Table(API_KEYS_TABLE)
 
         # Get USER_META for referral code and basic info
         response = table.get_item(
@@ -85,8 +86,6 @@ def handler(event, context):
         if not referral_code:
             # User doesn't have a referral code yet (legacy account)
             # Generate one for them
-            from shared.referral_utils import generate_unique_referral_code
-
             referral_code = generate_unique_referral_code()
             table.update_item(
                 Key={"pk": user_id, "sk": "USER_META"},
@@ -112,13 +111,12 @@ def handler(event, context):
         referrals = []
 
         # Priority-based dedup: always show the most advanced state per referred user
-        STATE_PRIORITY = {"pending": 0, "signup": 1, "paid": 2, "retained": 3}
         best_events = {}  # referred_id -> (priority, event_item)
 
         for event_item in events:
             referred_id = event_item.get("referred_id")
             event_type = event_item.get("event_type", "pending")
-            priority = STATE_PRIORITY.get(event_type, -1)
+            priority = REFERRAL_EVENT_PRIORITY.get(event_type, -1)
             current = best_events.get(referred_id)
             if current is None:
                 best_events[referred_id] = (priority, event_item)
@@ -142,8 +140,6 @@ def handler(event, context):
 
             # Add expiry for pending referrals
             if status == "pending" and event_item.get("ttl"):
-                from datetime import datetime, timezone
-
                 ttl_timestamp = int(event_item.get("ttl"))
                 expires = datetime.fromtimestamp(ttl_timestamp, tz=timezone.utc)
                 referral["expires"] = expires.strftime("%Y-%m-%d")

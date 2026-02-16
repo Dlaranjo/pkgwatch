@@ -337,7 +337,11 @@ class TestUpdateReferralEventToCredited:
 
         assert result is True
 
-        # Verify event was updated
+        # Verify #pending was deleted
+        old = table.get_item(Key={"pk": referrer_id, "sk": f"{referred_id}#pending"})
+        assert "Item" not in old
+
+        # Verify #signup event was created
         response = table.get_item(Key={"pk": referrer_id, "sk": f"{referred_id}#signup"})
         assert "Item" in response
         assert response["Item"]["event_type"] == "signup"
@@ -381,6 +385,24 @@ class TestMarkRetentionChecked:
         response = table.get_item(Key={"pk": referrer_id, "sk": f"{referred_id}#paid"})
         item = response.get("Item", {})
         assert item.get("needs_retention_check") is None
+
+    def test_no_ghost_when_paid_already_deleted(self, mock_dynamodb):
+        """Should not create ghost #paid record when event is already deleted."""
+        from shared.referral_utils import mark_retention_checked
+
+        table = mock_dynamodb.Table("pkgwatch-referral-events")
+        referrer_id = "user_referrer_ghost"
+        referred_id = "user_referred_ghost"
+
+        # No #paid event exists (already deleted by transition)
+        result = mark_retention_checked(referrer_id, referred_id)
+
+        # Should return False (ConditionExpression prevents ghost creation)
+        assert result is False
+
+        # Verify no ghost record was created
+        response = table.get_item(Key={"pk": referrer_id, "sk": f"{referred_id}#paid"})
+        assert "Item" not in response
 
 
 class TestGetBonusBalance:
@@ -1034,23 +1056,64 @@ class TestRecordReferralEventClientError:
 class TestUpdateReferralEventToCreditedClientError:
     """Test update_referral_event_to_credited ClientError handling."""
 
+    @patch("shared.referral_utils.get_dynamodb_client")
     @patch("shared.referral_utils.get_dynamodb")
-    def test_returns_false_when_put_fails(self, mock_get_dynamodb):
-        """Should return False when DynamoDB put_item raises ClientError."""
+    def test_returns_false_when_transaction_cancelled(self, mock_get_dynamodb, mock_get_client):
+        """Should return False when transaction is cancelled (race lost)."""
         from botocore.exceptions import ClientError
 
         from shared.referral_utils import update_referral_event_to_credited
 
         mock_table = MagicMock()
+        mock_table.get_item.return_value = {}  # No previous event
+        mock_dynamodb_resource = MagicMock()
+        mock_dynamodb_resource.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        mock_client = MagicMock()
+        mock_client.transact_write_items.side_effect = ClientError(
+            {
+                "Error": {
+                    "Code": "TransactionCanceledException",
+                    "Message": "Transaction cancelled",
+                },
+                "CancellationReasons": [{"Code": "ConditionalCheckFailed"}],
+            },
+            "TransactWriteItems",
+        )
+        mock_get_client.return_value = mock_client
+
+        result = update_referral_event_to_credited(
+            referrer_id="user_ref",
+            referred_id="user_new",
+            reward_amount=5000,
+        )
+
+        assert result is False  # Transaction cancelled = race lost
+
+    @patch("shared.referral_utils.get_dynamodb_client")
+    @patch("shared.referral_utils.get_dynamodb")
+    def test_continues_when_read_fails(self, mock_get_dynamodb, mock_get_client):
+        """Read failure in Phase 1 should not prevent transition."""
+        from botocore.exceptions import ClientError
+
+        from shared.referral_utils import update_referral_event_to_credited
+
+        mock_table = MagicMock()
+        # Phase 1 read fails
+        mock_table.get_item.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "Service unavailable"}},
+            "GetItem",
+        )
+        # Phase 3 delete succeeds
         mock_table.delete_item.return_value = {"Attributes": {}}
-        mock_table.get_item.return_value = {}  # No higher-priority event
-        mock_table.put_item.side_effect = ClientError(
-            {"Error": {"Code": "InternalServerError", "Message": "Service unavailable"}},
-            "PutItem",
-        )
         mock_dynamodb_resource = MagicMock()
         mock_dynamodb_resource.Table.return_value = mock_table
         mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        mock_client = MagicMock()
+        mock_client.transact_write_items.return_value = {}  # Transaction succeeds
+        mock_get_client.return_value = mock_client
 
         result = update_referral_event_to_credited(
             referrer_id="user_ref",
@@ -1058,37 +1121,8 @@ class TestUpdateReferralEventToCreditedClientError:
             reward_amount=5000,
         )
 
-        # put_item error is caught inside transition_referral_event, but
-        # the wrapper's try/except also handles ClientError propagation
-        assert result is True  # No ClientError propagated
-
-    @patch("shared.referral_utils.get_dynamodb")
-    def test_continues_when_delete_fails(self, mock_get_dynamodb):
-        """Delete failure in transition should not prevent new event creation."""
-        from botocore.exceptions import ClientError
-
-        from shared.referral_utils import update_referral_event_to_credited
-
-        mock_table = MagicMock()
-        mock_table.delete_item.side_effect = ClientError(
-            {"Error": {"Code": "InternalServerError", "Message": "Service unavailable"}},
-            "DeleteItem",
-        )
-        mock_table.get_item.return_value = {}  # No higher-priority event
-        mock_table.put_item.return_value = {}  # put succeeds
-        mock_dynamodb_resource = MagicMock()
-        mock_dynamodb_resource.Table.return_value = mock_table
-        mock_get_dynamodb.return_value = mock_dynamodb_resource
-
-        result = update_referral_event_to_credited(
-            referrer_id="user_ref",
-            referred_id="user_new",
-            reward_amount=5000,
-        )
-
-        # Delete failed but put succeeded — transition still created the new event
         assert result is True
-        mock_table.put_item.assert_called_once()
+        mock_client.transact_write_items.assert_called_once()
 
 
 class TestMarkRetentionCheckedClientError:
@@ -1799,6 +1833,67 @@ class TestReferralCleanupConditionalCheckFailed:
         assert "ExclusiveStartKey" in second_call_kwargs
 
 
+class TestMotoTransactWriteCanary:
+    """Canary test to verify moto supports transact_write_items with ConditionCheck."""
+
+    def test_transact_write_with_condition_check(self, mock_dynamodb):
+        """Validate moto supports Put + ConditionCheck in a single transaction."""
+        import boto3
+
+        client = boto3.client("dynamodb", region_name="us-east-1")
+        table_name = os.environ.get("REFERRAL_EVENTS_TABLE", "pkgwatch-referral-events")
+
+        # Transaction should succeed: Put a new item + ConditionCheck that another item doesn't exist
+        client.transact_write_items(
+            TransactItems=[
+                {
+                    "Put": {
+                        "TableName": table_name,
+                        "Item": {
+                            "pk": {"S": "canary_user"},
+                            "sk": {"S": "canary#signup"},
+                            "event_type": {"S": "signup"},
+                        },
+                        "ConditionExpression": "attribute_not_exists(pk)",
+                    }
+                },
+                {
+                    "ConditionCheck": {
+                        "TableName": table_name,
+                        "Key": {
+                            "pk": {"S": "canary_user"},
+                            "sk": {"S": "canary#retained"},
+                        },
+                        "ConditionExpression": "attribute_not_exists(pk)",
+                    }
+                },
+            ]
+        )
+
+        # Verify the item was created
+        events_table = mock_dynamodb.Table(table_name)
+        resp = events_table.get_item(Key={"pk": "canary_user", "sk": "canary#signup"})
+        assert resp["Item"]["event_type"] == "signup"
+
+        # Now transaction should FAIL: Put same item (attribute_not_exists fails)
+        with pytest.raises(client.exceptions.TransactionCanceledException):
+            client.transact_write_items(
+                TransactItems=[
+                    {
+                        "Put": {
+                            "TableName": table_name,
+                            "Item": {
+                                "pk": {"S": "canary_user"},
+                                "sk": {"S": "canary#signup"},
+                                "event_type": {"S": "signup"},
+                            },
+                            "ConditionExpression": "attribute_not_exists(pk)",
+                        }
+                    },
+                ]
+            )
+
+
 class TestTransitionReferralEvent:
     """Tests for the transition_referral_event() helper."""
 
@@ -1827,13 +1922,15 @@ class TestTransitionReferralEvent:
         )
 
         # Transition pending → paid
-        deleted = transition_referral_event(
+        result = transition_referral_event(
             referrer_id=referrer,
             referred_id=referred,
             from_states=["pending", "signup"],
             to_state="paid",
             reward_amount=25000,
         )
+
+        assert result.created is True
 
         # Verify old event deleted
         old = events_table.get_item(Key={"pk": referrer, "sk": f"{referred}#pending"})
@@ -1845,12 +1942,12 @@ class TestTransitionReferralEvent:
         assert new["Item"]["event_type"] == "paid"
         assert new["Item"]["reward_amount"] == 25000
 
-        # Verify deleted item returned
-        assert deleted is not None
-        assert deleted["event_type"] == "pending"
+        # Verify previous item returned
+        assert result.previous_item is not None
+        assert result.previous_item["event_type"] == "pending"
 
-    def test_returns_deleted_item(self, events_table):
-        """Should return ALL_OLD attributes from the deleted event."""
+    def test_returns_previous_item(self, events_table):
+        """Should return previous event data for stats adjustment."""
         from shared.referral_utils import transition_referral_event
 
         referrer = "user_referrer_ret"
@@ -1868,7 +1965,7 @@ class TestTransitionReferralEvent:
             }
         )
 
-        deleted = transition_referral_event(
+        result = transition_referral_event(
             referrer_id=referrer,
             referred_id=referred,
             from_states=["pending"],
@@ -1876,13 +1973,14 @@ class TestTransitionReferralEvent:
             reward_amount=5000,
         )
 
-        assert deleted is not None
-        assert deleted["event_type"] == "pending"
-        assert deleted["ttl"] == 9999999999
-        assert deleted["referred_email_masked"] == "jo**@test.com"
+        assert result.created is True
+        assert result.previous_item is not None
+        assert result.previous_item["event_type"] == "pending"
+        assert result.previous_item["ttl"] == 9999999999
+        assert result.previous_item["referred_email_masked"] == "jo**@test.com"
 
     def test_preserves_masked_email(self, events_table):
-        """Should inherit referred_email_masked from the deleted event."""
+        """Should inherit referred_email_masked from the old event."""
         from shared.referral_utils import transition_referral_event
 
         referrer = "user_referrer_email"
@@ -1917,7 +2015,7 @@ class TestTransitionReferralEvent:
         referrer = "user_referrer_missing"
         referred = "user_referred_missing"
 
-        deleted = transition_referral_event(
+        result = transition_referral_event(
             referrer_id=referrer,
             referred_id=referred,
             from_states=["pending"],
@@ -1926,7 +2024,8 @@ class TestTransitionReferralEvent:
             referred_email="test@example.com",
         )
 
-        assert deleted is None
+        assert result.created is True
+        assert result.previous_item is None
 
         new = events_table.get_item(Key={"pk": referrer, "sk": f"{referred}#paid"})
         assert "Item" in new
@@ -1999,13 +2098,15 @@ class TestTransitionReferralEvent:
         )
 
         # Activity gate tries to create #signup (lower priority)
-        transition_referral_event(
+        result = transition_referral_event(
             referrer_id=referrer,
             referred_id=referred,
             from_states=["pending"],
             to_state="signup",
             reward_amount=5000,
         )
+
+        assert result.created is False
 
         # #paid should still be there (not overwritten)
         paid = events_table.get_item(Key={"pk": referrer, "sk": f"{referred}#paid"})
@@ -2015,3 +2116,120 @@ class TestTransitionReferralEvent:
         # #signup should NOT have been created
         signup = events_table.get_item(Key={"pk": referrer, "sk": f"{referred}#signup"})
         assert "Item" not in signup
+
+    def test_returns_created_false_when_same_state_exists(self, events_table):
+        """Should return created=False when same-state event already exists."""
+        from shared.referral_utils import transition_referral_event
+
+        referrer = "user_dup_r"
+        referred = "user_dup_d"
+
+        # Pre-create a #paid event
+        events_table.put_item(
+            Item={
+                "pk": referrer,
+                "sk": f"{referred}#paid",
+                "referred_id": referred,
+                "event_type": "paid",
+                "reward_amount": 25000,
+            }
+        )
+
+        # Try to transition to #paid again (idempotent)
+        result = transition_referral_event(
+            referrer_id=referrer,
+            referred_id=referred,
+            from_states=["pending", "signup"],
+            to_state="paid",
+            reward_amount=25000,
+        )
+
+        assert result.created is False
+
+    def test_extra_attrs_applied_to_event(self, events_table):
+        """extra_attrs should be merged into the new event item."""
+        from shared.referral_utils import transition_referral_event
+
+        referrer = "user_extra_r"
+        referred = "user_extra_d"
+
+        result = transition_referral_event(
+            referrer_id=referrer,
+            referred_id=referred,
+            from_states=["pending"],
+            to_state="paid",
+            reward_amount=25000,
+            extra_attrs={
+                "needs_retention_check": "true",
+                "retention_check_date": "2026-04-16T00:00:00+00:00",
+            },
+        )
+
+        assert result.created is True
+
+        item = events_table.get_item(Key={"pk": referrer, "sk": f"{referred}#paid"})["Item"]
+        assert item["needs_retention_check"] == "true"
+        assert item["retention_check_date"] == "2026-04-16T00:00:00+00:00"
+
+    @patch("shared.referral_utils.get_dynamodb_client")
+    @patch("shared.referral_utils.get_dynamodb")
+    def test_non_transaction_error_propagates(self, mock_get_dynamodb, mock_get_client):
+        """Non-TransactionCanceledException should propagate to caller."""
+        from botocore.exceptions import ClientError
+
+        from shared.referral_utils import transition_referral_event
+
+        mock_table = MagicMock()
+        mock_table.get_item.return_value = {}
+        mock_dynamodb_resource = MagicMock()
+        mock_dynamodb_resource.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        mock_client = MagicMock()
+        mock_client.transact_write_items.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "DynamoDB down"}},
+            "TransactWriteItems",
+        )
+        mock_get_client.return_value = mock_client
+
+        with pytest.raises(ClientError) as exc_info:
+            transition_referral_event(
+                referrer_id="user_r",
+                referred_id="user_d",
+                from_states=["pending"],
+                to_state="signup",
+                reward_amount=5000,
+            )
+
+        assert exc_info.value.response["Error"]["Code"] == "InternalServerError"
+
+    def test_returns_false_when_retained_exists(self, events_table):
+        """Should not create #paid if #retained already exists."""
+        from shared.referral_utils import transition_referral_event
+
+        referrer = "user_ret_guard_r"
+        referred = "user_ret_guard_d"
+
+        events_table.put_item(
+            Item={
+                "pk": referrer,
+                "sk": f"{referred}#retained",
+                "referred_id": referred,
+                "event_type": "retained",
+                "reward_amount": 25000,
+            }
+        )
+
+        result = transition_referral_event(
+            referrer_id=referrer,
+            referred_id=referred,
+            from_states=["pending", "signup"],
+            to_state="paid",
+            reward_amount=25000,
+        )
+
+        assert result.created is False
+
+        # #paid should not exist
+        paid = events_table.get_item(Key={"pk": referrer, "sk": f"{referred}#paid"})
+        assert "Item" not in paid

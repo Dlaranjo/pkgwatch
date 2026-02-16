@@ -6,6 +6,7 @@ until first use. All Lambdas share the same pattern.
 """
 
 _dynamodb = None
+_dynamodb_client = None
 _sqs = None
 _secretsmanager = None
 _s3 = None
@@ -20,6 +21,16 @@ def get_dynamodb():
 
         _dynamodb = boto3.resource("dynamodb")
     return _dynamodb
+
+
+def get_dynamodb_client():
+    """Get low-level DynamoDB client for transact_write_items."""
+    global _dynamodb_client
+    if _dynamodb_client is None:
+        import boto3
+
+        _dynamodb_client = boto3.client("dynamodb")
+    return _dynamodb_client
 
 
 def get_sqs():
@@ -64,8 +75,9 @@ def get_sns():
 
 def reset_clients():
     """Reset all cached clients. Used in tests for clean state."""
-    global _dynamodb, _sqs, _secretsmanager, _s3, _sns
+    global _dynamodb, _dynamodb_client, _sqs, _secretsmanager, _s3, _sns
     _dynamodb = None
+    _dynamodb_client = None
     _sqs = None
     _secretsmanager = None
     _s3 = None

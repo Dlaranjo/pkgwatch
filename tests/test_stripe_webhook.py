@@ -4654,6 +4654,104 @@ class TestProcessPaidReferralReward:
         item = response["Item"]
         assert int(item.get("referral_pending_count", 0)) == 0
 
+    @mock_aws
+    def test_paid_event_has_retention_fields(self, mock_dynamodb):
+        """Should create #paid event with needs_retention_check and retention_check_date."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+        os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+
+        api_table.put_item(
+            Item={
+                "pk": "user_ref_ret",
+                "sk": "USER_META",
+                "key_count": 1,
+                "bonus_requests": 0,
+                "bonus_requests_lifetime": 0,
+            }
+        )
+
+        api_table.put_item(
+            Item={
+                "pk": "user_refd_ret",
+                "sk": "USER_META",
+                "referred_by": "user_ref_ret",
+            }
+        )
+
+        from api.stripe_webhook import _process_paid_referral_reward
+
+        _process_paid_referral_reward("user_refd_ret", "ret@example.com")
+
+        # Check #paid event has retention fields
+        paid = events_table.get_item(Key={"pk": "user_ref_ret", "sk": "user_refd_ret#paid"})
+        assert "Item" in paid
+        item = paid["Item"]
+        assert item["needs_retention_check"] == "true"
+        assert "retention_check_date" in item
+        # retention_check_date should be an ISO datetime string
+        assert "T" in item["retention_check_date"]
+
+    @mock_aws
+    def test_skips_stats_when_transition_race_lost(self, mock_dynamodb):
+        """Should skip stats update when transition race is lost (higher-priority event exists)."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+        os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+
+        api_table.put_item(
+            Item={
+                "pk": "user_ref_race",
+                "sk": "USER_META",
+                "key_count": 1,
+                "bonus_requests": 25000,
+                "bonus_requests_lifetime": 25000,
+                "referral_total": 1,
+                "referral_paid": 1,
+                "referral_retained": 0,
+            }
+        )
+
+        api_table.put_item(
+            Item={
+                "pk": "user_refd_race",
+                "sk": "USER_META",
+                "referred_by": "user_ref_race",
+            }
+        )
+
+        # Pre-create #retained event (higher priority than #paid)
+        events_table.put_item(
+            Item={
+                "pk": "user_ref_race",
+                "sk": "user_refd_race#retained",
+                "referred_id": "user_refd_race",
+                "event_type": "retained",
+                "reward_amount": 25000,
+            }
+        )
+
+        from api.stripe_webhook import _process_paid_referral_reward
+
+        _process_paid_referral_reward("user_refd_race", "race@example.com")
+
+        # Stats should be unchanged — transition was skipped
+        response = api_table.get_item(Key={"pk": "user_ref_race", "sk": "USER_META"})
+        item = response["Item"]
+        assert int(item.get("referral_paid", 0)) == 1  # Not incremented
+        assert int(item.get("referral_retained", 0)) == 0  # Not changed
+
+        # No idempotency record written
+        billing_table = mock_dynamodb.Table("pkgwatch-billing-events")
+        idem = billing_table.get_item(Key={"pk": "referral_paid:user_ref_race:user_refd_race", "sk": "paid"})
+        assert "Item" not in idem
+
 
 class TestPaymentFailedRaceConditions:
     """Tests for payment failure race condition branches."""

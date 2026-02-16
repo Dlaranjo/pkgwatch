@@ -840,10 +840,8 @@ class TestReferralStatusErrorPaths:
             "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
         }
 
-        # Patch dynamodb.Table to raise an exception
-        import api.referral_status as status_module
-
-        with patch.object(status_module.dynamodb, "Table", side_effect=Exception("DB connection failed")):
+        # Patch get_dynamodb to raise an exception
+        with patch("api.referral_status.get_dynamodb", side_effect=Exception("DB connection failed")):
             result = handler(event, {})
 
         assert result["statusCode"] == 500
@@ -1004,6 +1002,79 @@ class TestReferralStatusErrorPaths:
         body = json.loads(result["body"])
 
         # Should show 1 referral with credited status and 25K reward
+        assert len(body["referrals"]) == 1
+        assert body["referrals"][0]["status"] == "credited"
+        assert body["referrals"][0]["reward"] == 25000
+
+    @patch("api.auth_callback._get_session_secret")
+    def test_shows_retained_over_paid_when_both_exist(self, mock_secret, mock_dynamodb):
+        """Should pick #retained over #paid when both exist for the same referred user."""
+        mock_secret.return_value = "test-secret-key-for-signing-sessions-1234567890"
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+        user_id = "user_retained_dedup"
+
+        api_table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "referral_code": "retdup01",
+                "email": "retdup@example.com",
+                "bonus_requests": 50000,
+                "bonus_requests_lifetime": 50000,
+                "referral_total": 1,
+                "referral_pending_count": 0,
+                "referral_paid": 0,
+                "referral_retained": 1,
+                "referral_rewards_earned": 50000,
+            }
+        )
+
+        # Stale #paid event (should have been deleted but wasn't)
+        events_table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "user_ret_dup#paid",
+                "event_type": "paid",
+                "referred_id": "user_ret_dup",
+                "referred_email_masked": "rd**@example.com",
+                "created_at": "2024-01-15T10:00:00Z",
+                "reward_amount": 25000,
+            }
+        )
+        # Higher-priority #retained event
+        events_table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "user_ret_dup#retained",
+                "event_type": "retained",
+                "referred_id": "user_ret_dup",
+                "referred_email_masked": "rd**@example.com",
+                "created_at": "2024-03-15T10:00:00Z",
+                "reward_amount": 25000,
+            }
+        )
+
+        from api.referral_status import handler
+
+        session_token = create_session_token(user_id, "retdup@example.com")
+
+        event = {
+            "httpMethod": "GET",
+            "headers": {"cookie": f"session={session_token}"},
+            "pathParameters": {},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+
+        # Should show 1 referral (deduped), with retained priority
         assert len(body["referrals"]) == 1
         assert body["referrals"][0]["status"] == "credited"
         assert body["referrals"][0]["reward"] == 25000

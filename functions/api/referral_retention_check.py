@@ -115,13 +115,17 @@ def handler(event, context):
                     actual_reward = add_bonus_with_cap(referrer_id, reward_amount)
 
                     # Transition: delete #paid event, create #retained event
-                    transition_referral_event(
+                    result = transition_referral_event(
                         referrer_id=referrer_id,
                         referred_id=referred_id,
                         from_states=["paid"],
                         to_state="retained",
                         reward_amount=actual_reward,
                     )
+
+                    if not result.created:
+                        logger.info(f"Retention transition skipped for {referred_id} (race lost or already exists)")
+                        continue
 
                     # Update referrer stats
                     update_referrer_stats(
