@@ -2657,6 +2657,12 @@ class TestCollectPackageData:
                 assert result["openssf_score"] == 7.5
                 assert result["bundle_size"] == 71420
 
+                # Per-source freshness fields should be set on success
+                assert result.get("npm_freshness") == "fresh"
+                assert result.get("github_freshness") == "fresh"
+                assert result.get("bundlephobia_freshness") == "fresh"
+                assert result.get("data_freshness") == "fresh"
+
     def test_collect_package_data_partial_failure(self):
         """Test graceful handling when some sources fail."""
 

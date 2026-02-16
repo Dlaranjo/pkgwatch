@@ -870,6 +870,7 @@ async def collect_package_data(
                 if "error" not in npm_data:
                     combined_data["npm"] = npm_data
                     combined_data["sources"].append("npm")
+                    combined_data["npm_freshness"] = "fresh"
 
                     # Supplement with npm-specific data
                     # Use bulk-fetched downloads if available (more efficient API usage)
@@ -928,6 +929,7 @@ async def collect_package_data(
             elif "error" not in bundle_result:
                 combined_data["bundlephobia"] = bundle_result
                 combined_data["sources"].append("bundlephobia")
+                combined_data["bundlephobia_freshness"] = "fresh"
                 combined_data["bundle_size"] = bundle_result.get("size", 0)
                 combined_data["bundle_size_gzip"] = bundle_result.get("gzip", 0)
                 combined_data["bundle_size_category"] = bundle_result.get("size_category")
@@ -960,6 +962,7 @@ async def collect_package_data(
                 if "error" not in pypi_data:
                     combined_data["pypi"] = pypi_data
                     combined_data["sources"].append("pypi")
+                    combined_data["pypi_freshness"] = "fresh"
 
                     # Map PyPI data to common fields
                     # Check if batch collector has fresh downloads (prefer over inline pypistats)
@@ -1088,6 +1091,7 @@ async def collect_package_data(
 
                                 combined_data["github"] = github_data
                                 combined_data["sources"].append("github")
+                                combined_data["github_freshness"] = "fresh"
 
                                 # Supplement with GitHub-specific data
                                 combined_data["stars"] = github_data.get("stars", 0)
@@ -1153,6 +1157,7 @@ async def collect_package_data(
                 if value is not None:
                     combined_data[key] = value
             combined_data["openssf_source"] = "cached_fresh"
+            combined_data["openssf_freshness"] = "fresh"
         else:
             # Need to fetch from OpenSSF API
             parsed = parse_github_url(repo_url)  # Reuse existing parser from github_collector
