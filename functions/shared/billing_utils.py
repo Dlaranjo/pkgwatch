@@ -9,12 +9,12 @@ from datetime import datetime, timezone
 from botocore.exceptions import ClientError
 
 from shared.aws_clients import get_dynamodb, get_secretsmanager
-from shared.constants import TIER_LIMITS
+from shared.constants import THROTTLING_ERRORS, TIER_LIMITS
 
 logger = logging.getLogger(__name__)
 
 # Sentinel for distinguishing "not provided" from None/False/0
-_UNSET = object()
+UNSET = object()
 
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
@@ -57,16 +57,16 @@ def update_billing_state(
     user_id: str,
     api_key_records: list[dict],
     *,
-    tier: str = _UNSET,
-    cancellation_pending: bool = _UNSET,
-    cancellation_date: int | None = _UNSET,
-    current_period_start: int = _UNSET,
-    current_period_end: int | None = _UNSET,
-    payment_failures: int = _UNSET,
-    stripe_customer_id: str = _UNSET,
-    stripe_subscription_id: str = _UNSET,
+    tier: str = UNSET,
+    cancellation_pending: bool = UNSET,
+    cancellation_date: int | None = UNSET,
+    current_period_start: int = UNSET,
+    current_period_end: int | None = UNSET,
+    payment_failures: int = UNSET,
+    stripe_customer_id: str = UNSET,
+    stripe_subscription_id: str = UNSET,
     remove_subscription_id: bool = False,
-    email_verified: bool = _UNSET,
+    email_verified: bool = UNSET,
     table=None,
 ) -> None:
     """Centralized billing state writer.
@@ -100,7 +100,7 @@ def update_billing_state(
     common_set_parts = []
     common_values = {}
 
-    if tier is not _UNSET:
+    if tier is not UNSET:
         new_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
         common_set_parts.extend([
             "tier = :tier",
@@ -111,27 +111,28 @@ def update_billing_state(
         common_values[":now"] = now_iso
         common_values[":limit"] = new_limit
 
-    if cancellation_pending is not _UNSET:
+    if cancellation_pending is not UNSET:
         common_set_parts.append("cancellation_pending = :cancel_pending")
         common_values[":cancel_pending"] = cancellation_pending
 
-    if cancellation_date is not _UNSET:
+    if cancellation_date is not UNSET:
         common_set_parts.append("cancellation_date = :cancel_date")
         common_values[":cancel_date"] = cancellation_date
 
-    if current_period_start is not _UNSET:
+    if current_period_start is not UNSET:
         common_set_parts.append("current_period_start = :period_start")
         common_values[":period_start"] = current_period_start
 
-    if current_period_end is not _UNSET:
+    if current_period_end is not UNSET:
         common_set_parts.append("current_period_end = :period_end")
         common_values[":period_end"] = current_period_end
 
-    if payment_failures is not _UNSET:
+    if payment_failures is not UNSET:
         common_set_parts.append("payment_failures = :pay_fail")
         common_values[":pay_fail"] = payment_failures
 
     # -- Phase 1: Write to USER_META (authoritative) --
+    meta_updated = False
     if common_set_parts:
         meta_expr = "SET " + ", ".join(common_set_parts)
         try:
@@ -141,11 +142,14 @@ def update_billing_state(
                 ConditionExpression="attribute_exists(pk)",
                 ExpressionAttributeValues=common_values,
             )
+            meta_updated = True
         except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                logger.debug(f"USER_META not found for {user_id}, skipping")
+            error_code = e.response["Error"]["Code"]
+            if error_code == "ConditionalCheckFailedException":
+                logger.info(f"USER_META not found for {user_id}, skipping")
+            elif error_code in THROTTLING_ERRORS:
+                raise  # Let caller handle retry (e.g. webhook releases event claim)
             else:
-                # Log but don't raise — API key updates should still proceed
                 logger.error(f"Failed to update USER_META billing state for {user_id}: {e}")
 
     # -- Phase 2: Write to API key records (cache + Stripe IDs) --
@@ -155,32 +159,33 @@ def update_billing_state(
     key_remove_parts = []
 
     # last_reset_period_start mirrors current_period_start on API key records
-    if current_period_start is not _UNSET:
+    if current_period_start is not UNSET:
         key_set_parts.append("last_reset_period_start = :period_start")
 
-    if stripe_customer_id is not _UNSET:
+    if stripe_customer_id is not UNSET:
         key_set_parts.append("stripe_customer_id = :cust_id")
         key_values[":cust_id"] = stripe_customer_id
 
-    if stripe_subscription_id is not _UNSET:
+    if stripe_subscription_id is not UNSET:
         key_set_parts.append("stripe_subscription_id = :sub_id")
         key_values[":sub_id"] = stripe_subscription_id
 
     if remove_subscription_id:
         key_remove_parts.append("stripe_subscription_id")
 
-    if email_verified is not _UNSET:
+    if email_verified is not UNSET:
         key_set_parts.append("email_verified = :verified")
         key_values[":verified"] = email_verified
 
     if not key_set_parts and not key_remove_parts:
         return
 
-    key_expr = ""
+    expr_parts = []
     if key_set_parts:
-        key_expr = "SET " + ", ".join(key_set_parts)
+        expr_parts.append("SET " + ", ".join(key_set_parts))
     if key_remove_parts:
-        key_expr += " REMOVE " + ", ".join(key_remove_parts)
+        expr_parts.append("REMOVE " + ", ".join(key_remove_parts))
+    key_expr = " ".join(expr_parts)
 
     updated_count = 0
     failed_count = 0
@@ -203,8 +208,9 @@ def update_billing_state(
     changed_fields = [p.split(" = ")[0].strip() for p in key_set_parts]
     if key_remove_parts:
         changed_fields.extend([f"-{r}" for r in key_remove_parts])
+    meta_status = "USER_META" if meta_updated else "USER_META(skipped)"
     logger.info(
         f"Billing state updated for {user_id}: "
-        f"{', '.join(changed_fields)} across {updated_count} records + USER_META"
+        f"{', '.join(changed_fields)} across {updated_count} records + {meta_status}"
         + (f" ({failed_count} failed)" if failed_count else "")
     )

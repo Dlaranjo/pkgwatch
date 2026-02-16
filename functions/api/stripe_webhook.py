@@ -670,6 +670,10 @@ def _handle_payment_failed(invoice: dict):
     1. First failure: Set first_payment_failure_at, start grace period
     2. Subsequent failures within grace period: Update failure count, no downgrade
     3. After grace period expires AND 3+ failures: Downgrade to free tier
+
+    Grace period tracking (first_payment_failure_at, payment_failures) uses
+    per-key conditional writes for race safety. The downgrade-to-free path
+    delegates to update_billing_state() for consistency.
     """
     customer_id = invoice.get("customer")
     customer_email = invoice.get("customer_email")
@@ -698,6 +702,10 @@ def _handle_payment_failed(invoice: dict):
 
     downgraded = False
     for item in items:
+        sk = item.get("sk", "")
+        if sk == "PENDING" or sk == "USER_META":
+            continue
+
         first_failure = item.get("first_payment_failure_at")
 
         if attempt_count == 1 or not first_failure:
@@ -705,7 +713,7 @@ def _handle_payment_failed(invoice: dict):
             # Use conditional write to prevent race with successful payment
             try:
                 table.update_item(
-                    Key={"pk": item["pk"], "sk": item["sk"]},
+                    Key={"pk": item["pk"], "sk": sk},
                     UpdateExpression="SET payment_failures = :fails, first_payment_failure_at = :now",
                     ConditionExpression="attribute_not_exists(first_payment_failure_at)",
                     ExpressionAttributeValues={
@@ -722,7 +730,7 @@ def _handle_payment_failed(invoice: dict):
                 if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
                     # Grace period already started by concurrent request - just update count
                     table.update_item(
-                        Key={"pk": item["pk"], "sk": item["sk"]},
+                        Key={"pk": item["pk"], "sk": sk},
                         UpdateExpression="SET payment_failures = :fails",
                         ExpressionAttributeValues={":fails": attempt_count},
                     )
@@ -738,18 +746,9 @@ def _handle_payment_failed(invoice: dict):
                 # Use conditional write to prevent race with successful payment
                 try:
                     table.update_item(
-                        Key={"pk": item["pk"], "sk": item["sk"]},
-                        UpdateExpression=(
-                            "SET tier = :tier, payment_failures = :fails, tier_updated_at = :now, monthly_limit = :limit "
-                            "REMOVE first_payment_failure_at"
-                        ),
+                        Key={"pk": item["pk"], "sk": sk},
+                        UpdateExpression="REMOVE first_payment_failure_at",
                         ConditionExpression="attribute_exists(first_payment_failure_at)",
-                        ExpressionAttributeValues={
-                            ":tier": "free",
-                            ":fails": attempt_count,
-                            ":now": now.isoformat(),
-                            ":limit": TIER_LIMITS["free"],
-                        },
                     )
                     downgraded = True
                     logger.warning(
@@ -766,7 +765,7 @@ def _handle_payment_failed(invoice: dict):
                 # Still in grace period - update failure count only
                 days_remaining = GRACE_PERIOD_DAYS - days_since_first
                 table.update_item(
-                    Key={"pk": item["pk"], "sk": item["sk"]},
+                    Key={"pk": item["pk"], "sk": sk},
                     UpdateExpression="SET payment_failures = :fails",
                     ExpressionAttributeValues={":fails": attempt_count},
                 )
@@ -774,24 +773,26 @@ def _handle_payment_failed(invoice: dict):
         else:
             # 2nd failure - just track the failure count
             table.update_item(
-                Key={"pk": item["pk"], "sk": item["sk"]},
+                Key={"pk": item["pk"], "sk": sk},
                 UpdateExpression="SET payment_failures = :fails",
                 ExpressionAttributeValues={":fails": attempt_count},
             )
             logger.info(f"Recorded payment failure {attempt_count} for {item['pk']}")
 
-    # Update USER_META tier/limit if downgrade occurred (once, after loop)
+    # Downgrade via centralized helper (writes tier, cancellation, payment_failures
+    # to both USER_META and all API key records consistently)
     if downgraded and items:
-        user_id = items[0]["pk"]
-        try:
-            table.update_item(
-                Key={"pk": user_id, "sk": "USER_META"},
-                UpdateExpression="SET tier = :tier, monthly_limit = :limit",
-                ConditionExpression="attribute_exists(pk)",
-                ExpressionAttributeValues={":tier": "free", ":limit": TIER_LIMITS["free"]},
-            )
-        except ClientError:
-            pass  # USER_META may not exist for legacy accounts
+        from shared.billing_utils import update_billing_state
+
+        update_billing_state(
+            user_id=items[0]["pk"],
+            api_key_records=items,
+            tier="free",
+            payment_failures=attempt_count,
+            cancellation_pending=False,
+            cancellation_date=None,
+            table=table,
+        )
 
 
 def _send_payment_failed_email(email: str, tier: str, grace_period_days: int):
@@ -1108,17 +1109,17 @@ def _update_user_tier(
         logger.error(f"No user found for email {email} during tier update")
         return
 
-    from shared.billing_utils import _UNSET, update_billing_state
+    from shared.billing_utils import UNSET, update_billing_state
 
     update_billing_state(
         user_id=items[0]["pk"],
         api_key_records=items,
         tier=tier,
-        stripe_customer_id=customer_id if customer_id else _UNSET,
-        stripe_subscription_id=subscription_id if subscription_id else _UNSET,
-        email_verified=True if subscription_id else _UNSET,
-        current_period_start=current_period_start if current_period_start else _UNSET,
-        current_period_end=current_period_end if current_period_end else _UNSET,
+        stripe_customer_id=customer_id if customer_id is not None else UNSET,
+        stripe_subscription_id=subscription_id if subscription_id is not None else UNSET,
+        email_verified=True if subscription_id else UNSET,
+        current_period_start=current_period_start if current_period_start is not None else UNSET,
+        current_period_end=current_period_end if current_period_end is not None else UNSET,
         payment_failures=0,
         cancellation_pending=False,
         cancellation_date=None,
@@ -1173,15 +1174,15 @@ def _update_user_tier_by_customer_id(
                 f"requests (limit: {new_limit}). User is over limit until reset."
             )
 
-    from shared.billing_utils import _UNSET, update_billing_state
+    from shared.billing_utils import UNSET, update_billing_state
 
     update_billing_state(
         user_id=items[0]["pk"],
         api_key_records=items,
         tier=tier,
-        stripe_subscription_id=subscription_id if subscription_id else _UNSET,
-        current_period_start=current_period_start if current_period_start else _UNSET,
-        current_period_end=current_period_end if current_period_end else _UNSET,
+        stripe_subscription_id=subscription_id if subscription_id is not None else UNSET,
+        current_period_start=current_period_start if current_period_start is not None else UNSET,
+        current_period_end=current_period_end if current_period_end is not None else UNSET,
         payment_failures=0,
         email_verified=True,
         cancellation_pending=False,
@@ -1246,17 +1247,17 @@ def _update_user_subscription_state(
     if cancellation_pending and cancellation_date:
         logger.info(f"User {items[0]['pk']} subscription set to cancel at {cancellation_date}")
 
-    from shared.billing_utils import _UNSET, update_billing_state
+    from shared.billing_utils import UNSET, update_billing_state
 
     update_billing_state(
         user_id=items[0]["pk"],
         api_key_records=items,
-        tier=tier if tier else _UNSET,
+        tier=tier if tier is not None else UNSET,
         cancellation_pending=cancellation_pending,
         cancellation_date=cancellation_date if cancellation_pending else None,
-        current_period_start=current_period_start if current_period_start else _UNSET,
-        current_period_end=current_period_end if current_period_end else _UNSET,
-        payment_failures=0 if tier else _UNSET,
+        current_period_start=current_period_start if current_period_start is not None else UNSET,
+        current_period_end=current_period_end if current_period_end is not None else UNSET,
+        payment_failures=0 if tier else UNSET,
         remove_subscription_id=bool(remove_attributes and "stripe_subscription_id" in remove_attributes),
         table=table,
     )

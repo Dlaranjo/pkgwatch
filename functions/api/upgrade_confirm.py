@@ -9,7 +9,6 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 
 import stripe
@@ -21,15 +20,10 @@ logger.setLevel(logging.INFO)
 
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
-# Import shared utilities
-import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../shared"))
-from billing_utils import get_stripe_api_key
-from constants import TIER_LIMITS, TIER_ORDER
-from response_utils import error_response, success_response
-
 from shared.aws_clients import get_dynamodb
+from shared.billing_utils import get_stripe_api_key
+from shared.constants import TIER_ORDER
+from shared.response_utils import error_response, success_response
 
 # Price ID to tier mapping (configured via environment)
 TIER_TO_PRICE = {
@@ -262,15 +256,20 @@ def handler(event, context):
         # This ensures immediate UI consistency; webhook will also update (idempotent)
         from shared.billing_utils import update_billing_state
 
-        update_billing_state(
-            user_id=user_id,
-            api_key_records=user_items,
-            tier=tier,
-            cancellation_pending=False,
-            cancellation_date=None,
-            payment_failures=0,
-            table=table,
-        )
+        try:
+            update_billing_state(
+                user_id=user_id,
+                api_key_records=user_items,
+                tier=tier,
+                cancellation_pending=False,
+                cancellation_date=None,
+                payment_failures=0,
+                table=table,
+            )
+        except ClientError as e:
+            # Stripe modify already succeeded — log but don't fail the response.
+            # Webhook will sync DynamoDB state eventually.
+            logger.warning(f"DynamoDB error during post-upgrade state sync for {user_id}: {e}")
 
         return success_response(
             {

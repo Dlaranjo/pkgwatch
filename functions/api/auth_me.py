@@ -13,7 +13,6 @@ import os
 from http.cookies import SimpleCookie
 
 from boto3.dynamodb.conditions import Key
-from botocore.exceptions import ClientError
 
 from shared.auth import is_api_key_record
 from shared.aws_clients import get_dynamodb
@@ -267,18 +266,21 @@ def _refresh_from_stripe(table, user_id: str, primary_key: dict, api_keys: list,
 
         new_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
 
-        # Update DynamoDB via centralized helper
+        # Update DynamoDB via centralized helper (best-effort — still return fresh data on failure)
         from shared.billing_utils import update_billing_state
 
-        update_billing_state(
-            user_id=user_id,
-            api_key_records=api_keys,
-            tier=tier,
-            cancellation_pending=cancel_at_period_end,
-            cancellation_date=cancellation_date,
-            current_period_end=current_period_end,
-            table=table,
-        )
+        try:
+            update_billing_state(
+                user_id=user_id,
+                api_key_records=api_keys,
+                tier=tier,
+                cancellation_pending=cancel_at_period_end,
+                cancellation_date=cancellation_date,
+                current_period_end=current_period_end,
+                table=table,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to persist Stripe refresh for {user_id}: {e}")
 
         # Return updated data for caller to use as primary_key
         return {
