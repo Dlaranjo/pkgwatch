@@ -700,7 +700,7 @@ def _handle_payment_failed(invoice: dict):
 
     now = datetime.now(timezone.utc)
 
-    downgraded = False
+    downgraded_items = []
     for item in items:
         sk = item.get("sk", "")
         if sk == "PENDING" or sk == "USER_META":
@@ -750,7 +750,7 @@ def _handle_payment_failed(invoice: dict):
                         UpdateExpression="REMOVE first_payment_failure_at",
                         ConditionExpression="attribute_exists(first_payment_failure_at)",
                     )
-                    downgraded = True
+                    downgraded_items.append(item)
                     logger.warning(
                         f"Downgraded {item['pk']} to free after {days_since_first} days "
                         f"grace period and {attempt_count} failed payments"
@@ -779,14 +779,15 @@ def _handle_payment_failed(invoice: dict):
             )
             logger.info(f"Recorded payment failure {attempt_count} for {item['pk']}")
 
-    # Downgrade via centralized helper (writes tier, cancellation, payment_failures
-    # to both USER_META and all API key records consistently)
-    if downgraded and items:
+    # Downgrade via centralized helper — only keys that passed the conditional
+    # check are included. Keys where payment succeeded concurrently (conditional
+    # write failed) are excluded to preserve their active subscription state.
+    if downgraded_items:
         from shared.billing_utils import update_billing_state
 
         update_billing_state(
-            user_id=items[0]["pk"],
-            api_key_records=items,
+            user_id=downgraded_items[0]["pk"],
+            api_key_records=downgraded_items,
             tier="free",
             payment_failures=attempt_count,
             cancellation_pending=False,
