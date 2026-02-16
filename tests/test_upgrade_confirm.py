@@ -1126,11 +1126,11 @@ class TestUpgradeConfirmHandler:
                         assert mock_table.update_item.call_count == 2
 
     @mock_aws
-    def test_reraises_non_conditional_dynamodb_error(self, mock_dynamodb, api_gateway_event):
-        """Should re-raise ClientError that is not ConditionalCheckFailedException (line 331).
+    def test_handles_dynamodb_throttle_gracefully(self, mock_dynamodb, api_gateway_event):
+        """DynamoDB throttling during billing state update should not fail the upgrade.
 
-        Non-conditional DynamoDB errors (throttling, service unavailable) should
-        propagate up and be caught by the generic Exception handler.
+        The Stripe subscription modify already succeeded, so the upgrade should
+        return success. The webhook will eventually sync the DynamoDB state.
         """
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
@@ -1203,10 +1203,12 @@ class TestUpgradeConfirmHandler:
 
                         result = handler(api_gateway_event, {})
 
-                        # The ClientError should re-raise and be caught by generic handler
-                        assert result["statusCode"] == 500
+                        # Stripe modify succeeded, so upgrade returns 200 even if DynamoDB is throttled
+                        # The webhook will eventually sync DynamoDB state
+                        assert result["statusCode"] == 200
                         body = json.loads(result["body"])
-                        assert body["error"]["code"] == "internal_error"
+                        assert body["success"] is True
+                        assert body["new_tier"] == "pro"
 
     @mock_aws
     def test_returns_400_for_invalid_stripe_request(self, mock_dynamodb, api_gateway_event):

@@ -129,12 +129,25 @@ def handler(event, context):
         }
         response_headers.update(get_cors_headers(origin))
 
-        # Get cancellation state if present
-        cancellation_pending = primary_key.get("cancellation_pending", False)
-        cancellation_date = primary_key.get("cancellation_date")
-
-        # Get billing cycle end for reset date calculation
-        current_period_end = primary_key.get("current_period_end")
+        # Get billing display fields.
+        # After a Stripe refresh, primary_key has fresh data (returned by _refresh_from_stripe).
+        # Otherwise, USER_META is authoritative; fall back to API key for backward compat.
+        if data_source == "live":
+            # primary_key was replaced by _refresh_from_stripe with fresh Stripe data
+            cancellation_pending = primary_key.get("cancellation_pending", False)
+            cancellation_date = primary_key.get("cancellation_date")
+            current_period_end = primary_key.get("current_period_end")
+            display_tier = primary_key.get("tier", "free")
+        elif user_meta:
+            cancellation_pending = user_meta.get("cancellation_pending", False)
+            cancellation_date = user_meta.get("cancellation_date")
+            current_period_end = user_meta.get("current_period_end") or primary_key.get("current_period_end")
+            display_tier = user_meta.get("tier") or primary_key.get("tier", "free")
+        else:
+            cancellation_pending = primary_key.get("cancellation_pending", False)
+            cancellation_date = primary_key.get("cancellation_date")
+            current_period_end = primary_key.get("current_period_end")
+            display_tier = primary_key.get("tier", "free")
 
         # Get bonus credits and referral info from USER_META
         bonus_requests = 0
@@ -165,7 +178,7 @@ def handler(event, context):
                         pass
 
         # Calculate effective limit (monthly + bonus)
-        monthly_limit = TIER_LIMITS.get(primary_key.get("tier", "free"), TIER_LIMITS["free"])
+        monthly_limit = TIER_LIMITS.get(display_tier, TIER_LIMITS["free"])
         effective_limit = monthly_limit + bonus_requests
 
         return {
@@ -175,7 +188,7 @@ def handler(event, context):
                 {
                     "user_id": user_id,
                     "email": email,
-                    "tier": primary_key.get("tier", "free"),
+                    "tier": display_tier,
                     "requests_this_month": total_requests,
                     "monthly_limit": monthly_limit,
                     "bonus_requests": bonus_requests,
@@ -254,51 +267,20 @@ def _refresh_from_stripe(table, user_id: str, primary_key: dict, api_keys: list,
 
         new_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
 
-        # Update all API key records in DynamoDB
-        for key in api_keys:
-            table.update_item(
-                Key={"pk": key["pk"], "sk": key["sk"]},
-                UpdateExpression=(
-                    "SET tier = :tier, "
-                    "monthly_limit = :limit, "
-                    "cancellation_pending = :cancel_pending, "
-                    "cancellation_date = :cancel_date, "
-                    "current_period_end = :period_end"
-                ),
-                ExpressionAttributeValues={
-                    ":tier": tier,
-                    ":limit": new_limit,
-                    ":cancel_pending": cancel_at_period_end,
-                    ":cancel_date": cancellation_date,
-                    ":period_end": current_period_end,
-                },
-            )
+        # Update DynamoDB via centralized helper
+        from shared.billing_utils import update_billing_state
 
-        # Also update USER_META
-        try:
-            table.update_item(
-                Key={"pk": user_id, "sk": "USER_META"},
-                UpdateExpression=(
-                    "SET tier = :tier, "
-                    "monthly_limit = :limit, "
-                    "cancellation_pending = :cancel_pending, "
-                    "cancellation_date = :cancel_date, "
-                    "current_period_end = :period_end"
-                ),
-                ConditionExpression="attribute_exists(pk)",
-                ExpressionAttributeValues={
-                    ":tier": tier,
-                    ":limit": new_limit,
-                    ":cancel_pending": cancel_at_period_end,
-                    ":cancel_date": cancellation_date,
-                    ":period_end": current_period_end,
-                },
-            )
-        except ClientError as e:
-            if e.response["Error"]["Code"] != "ConditionalCheckFailedException":
-                logger.error(f"Failed to update USER_META during refresh: {e}")
+        update_billing_state(
+            user_id=user_id,
+            api_key_records=api_keys,
+            tier=tier,
+            cancellation_pending=cancel_at_period_end,
+            cancellation_date=cancellation_date,
+            current_period_end=current_period_end,
+            table=table,
+        )
 
-        # Return updated data
+        # Return updated data for caller to use as primary_key
         return {
             **primary_key,
             "tier": tier,

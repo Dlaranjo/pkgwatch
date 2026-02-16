@@ -4,10 +4,19 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timezone
 
-from shared.aws_clients import get_secretsmanager
+from botocore.exceptions import ClientError
+
+from shared.aws_clients import get_dynamodb, get_secretsmanager
+from shared.constants import TIER_LIMITS
 
 logger = logging.getLogger(__name__)
+
+# Sentinel for distinguishing "not provided" from None/False/0
+_UNSET = object()
+
+API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
 
 STRIPE_SECRET_ARN = os.environ.get("STRIPE_SECRET_ARN")
 
@@ -42,3 +51,160 @@ def get_stripe_api_key():
     except Exception as e:
         logger.error(f"Failed to retrieve Stripe API key: {e}")
         return None
+
+
+def update_billing_state(
+    user_id: str,
+    api_key_records: list[dict],
+    *,
+    tier: str = _UNSET,
+    cancellation_pending: bool = _UNSET,
+    cancellation_date: int | None = _UNSET,
+    current_period_start: int = _UNSET,
+    current_period_end: int | None = _UNSET,
+    payment_failures: int = _UNSET,
+    stripe_customer_id: str = _UNSET,
+    stripe_subscription_id: str = _UNSET,
+    remove_subscription_id: bool = False,
+    email_verified: bool = _UNSET,
+    table=None,
+) -> None:
+    """Centralized billing state writer.
+
+    Writes to USER_META (authoritative) first, then updates API key records
+    (cache). All callers that modify billing/subscription state should use
+    this function to ensure consistency.
+
+    Args:
+        user_id: The user's pk (e.g. "user_abc123")
+        api_key_records: Pre-queried API key record items. PENDING records
+            are filtered internally.
+        tier: New tier name. Also derives monthly_limit and tier_updated_at.
+        cancellation_pending: Whether subscription cancels at period end.
+        cancellation_date: Unix timestamp of cancellation, or None to clear.
+        current_period_start: Also sets last_reset_period_start on API key records.
+        current_period_end: End of current billing period.
+        payment_failures: Payment failure count (0 to clear).
+        stripe_customer_id: Stripe customer ID (API key records only).
+        stripe_subscription_id: Stripe subscription ID (API key records only).
+        remove_subscription_id: If True, REMOVE stripe_subscription_id (API key records only).
+        email_verified: Mark email verified (API key records only).
+        table: DynamoDB table resource. Fetched if not provided.
+    """
+    if table is None:
+        table = get_dynamodb().Table(API_KEYS_TABLE)
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Build common billing fields (written to both USER_META and API key records)
+    common_set_parts = []
+    common_values = {}
+
+    if tier is not _UNSET:
+        new_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+        common_set_parts.extend([
+            "tier = :tier",
+            "tier_updated_at = :now",
+            "monthly_limit = :limit",
+        ])
+        common_values[":tier"] = tier
+        common_values[":now"] = now_iso
+        common_values[":limit"] = new_limit
+
+    if cancellation_pending is not _UNSET:
+        common_set_parts.append("cancellation_pending = :cancel_pending")
+        common_values[":cancel_pending"] = cancellation_pending
+
+    if cancellation_date is not _UNSET:
+        common_set_parts.append("cancellation_date = :cancel_date")
+        common_values[":cancel_date"] = cancellation_date
+
+    if current_period_start is not _UNSET:
+        common_set_parts.append("current_period_start = :period_start")
+        common_values[":period_start"] = current_period_start
+
+    if current_period_end is not _UNSET:
+        common_set_parts.append("current_period_end = :period_end")
+        common_values[":period_end"] = current_period_end
+
+    if payment_failures is not _UNSET:
+        common_set_parts.append("payment_failures = :pay_fail")
+        common_values[":pay_fail"] = payment_failures
+
+    # -- Phase 1: Write to USER_META (authoritative) --
+    if common_set_parts:
+        meta_expr = "SET " + ", ".join(common_set_parts)
+        try:
+            table.update_item(
+                Key={"pk": user_id, "sk": "USER_META"},
+                UpdateExpression=meta_expr,
+                ConditionExpression="attribute_exists(pk)",
+                ExpressionAttributeValues=common_values,
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                logger.debug(f"USER_META not found for {user_id}, skipping")
+            else:
+                # Log but don't raise — API key updates should still proceed
+                logger.error(f"Failed to update USER_META billing state for {user_id}: {e}")
+
+    # -- Phase 2: Write to API key records (cache + Stripe IDs) --
+    # Build API-key-specific fields on top of common fields
+    key_set_parts = list(common_set_parts)
+    key_values = dict(common_values)
+    key_remove_parts = []
+
+    # last_reset_period_start mirrors current_period_start on API key records
+    if current_period_start is not _UNSET:
+        key_set_parts.append("last_reset_period_start = :period_start")
+
+    if stripe_customer_id is not _UNSET:
+        key_set_parts.append("stripe_customer_id = :cust_id")
+        key_values[":cust_id"] = stripe_customer_id
+
+    if stripe_subscription_id is not _UNSET:
+        key_set_parts.append("stripe_subscription_id = :sub_id")
+        key_values[":sub_id"] = stripe_subscription_id
+
+    if remove_subscription_id:
+        key_remove_parts.append("stripe_subscription_id")
+
+    if email_verified is not _UNSET:
+        key_set_parts.append("email_verified = :verified")
+        key_values[":verified"] = email_verified
+
+    if not key_set_parts and not key_remove_parts:
+        return
+
+    key_expr = ""
+    if key_set_parts:
+        key_expr = "SET " + ", ".join(key_set_parts)
+    if key_remove_parts:
+        key_expr += " REMOVE " + ", ".join(key_remove_parts)
+
+    updated_count = 0
+    failed_count = 0
+    for item in api_key_records:
+        sk = item.get("sk", "")
+        if sk == "PENDING" or sk == "USER_META":
+            continue
+
+        try:
+            table.update_item(
+                Key={"pk": item["pk"], "sk": sk},
+                UpdateExpression=key_expr,
+                ExpressionAttributeValues=key_values if key_values else None,
+            )
+            updated_count += 1
+        except ClientError as e:
+            failed_count += 1
+            logger.warning(f"Failed to update API key record {sk} for {user_id}: {e}")
+
+    changed_fields = [p.split(" = ")[0].strip() for p in key_set_parts]
+    if key_remove_parts:
+        changed_fields.extend([f"-{r}" for r in key_remove_parts])
+    logger.info(
+        f"Billing state updated for {user_id}: "
+        f"{', '.join(changed_fields)} across {updated_count} records + USER_META"
+        + (f" ({failed_count} failed)" if failed_count else "")
+    )

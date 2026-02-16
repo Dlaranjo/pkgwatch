@@ -1308,14 +1308,16 @@ import Layout from '../layouts/Layout.astro';
   // Initialize
   async function init(): Promise<void> {
     try {
-      // Check for portal_return param (returning from Stripe billing portal)
+      // Check for portal_return or upgraded param (returning from Stripe)
       const params = new URLSearchParams(window.location.search);
       const portalReturn = params.has('portal_return');
+      const justUpgraded = params.has('upgraded');
+      const needsStripeRefresh = portalReturn || justUpgraded;
 
       // Load user data and API keys in parallel
-      // If returning from billing portal, refresh subscription data from Stripe
+      // If returning from billing portal or upgrade, refresh subscription data from Stripe
       const [userData, keysData] = await Promise.all([
-        loadUserData(portalReturn),
+        loadUserData(needsStripeRefresh),
         loadApiKeys(),
       ]);
 
@@ -1324,9 +1326,10 @@ import Layout from '../layouts/Layout.astro';
         return;
       }
 
-      // Clean up portal_return param from URL
-      if (portalReturn) {
+      // Clean up portal_return/upgraded params from URL
+      if (needsStripeRefresh) {
         params.delete('portal_return');
+        params.delete('upgraded');
         const newUrl = params.toString()
           ? `/dashboard?${params.toString()}`
           : '/dashboard';

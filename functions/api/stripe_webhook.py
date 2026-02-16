@@ -1081,6 +1081,7 @@ def _update_user_tier(
     """Update user tier in DynamoDB after successful payment.
 
     Uses email-index GSI to find user by email address.
+    Delegates writes to centralized update_billing_state().
 
     Args:
         email: User email
@@ -1107,84 +1108,22 @@ def _update_user_tier(
         logger.error(f"No user found for email {email} during tier update")
         return
 
-    new_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+    from shared.billing_utils import _UNSET, update_billing_state
 
-    # Update all API keys for this user (skip PENDING signups)
-    updated_count = 0
-    for item in items:
-        # Skip PENDING records - they will be deleted upon email verification
-        # and a new API key record will be created
-        if item.get("sk") == "PENDING":
-            logger.debug(f"Skipping PENDING record for {email}")
-            continue
-
-        update_expr = "SET tier = :tier, tier_updated_at = :now, monthly_limit = :limit"
-        expr_values = {
-            ":tier": tier,
-            ":now": datetime.now(timezone.utc).isoformat(),
-            ":limit": new_limit,
-        }
-
-        # Also set Stripe IDs if provided
-        if customer_id:
-            update_expr += ", stripe_customer_id = :cust"
-            expr_values[":cust"] = customer_id
-        if subscription_id:
-            update_expr += ", stripe_subscription_id = :sub"
-            expr_values[":sub"] = subscription_id
-            # If user has a subscription, they're verified (Stripe verified via payment)
-            update_expr += ", email_verified = :verified"
-            expr_values[":verified"] = True
-
-        # Store billing cycle fields for per-user reset tracking
-        if current_period_start:
-            update_expr += ", current_period_start = :period_start"
-            expr_values[":period_start"] = current_period_start
-            # Set last_reset_period_start on initial signup (idempotency key)
-            update_expr += ", last_reset_period_start = :period_start"
-        if current_period_end:
-            update_expr += ", current_period_end = :period_end"
-            expr_values[":period_end"] = current_period_end
-
-        # Reset payment failures on successful tier update
-        update_expr += ", payment_failures = :zero"
-        expr_values[":zero"] = 0
-
-        table.update_item(
-            Key={"pk": item["pk"], "sk": item["sk"]},
-            UpdateExpression=update_expr,
-            ExpressionAttributeValues=expr_values,
-        )
-        updated_count += 1
-
-    if updated_count == 0:
-        logger.warning(f"No verified API keys found for {email} - user may not have completed signup")
-    else:
-        logger.info(f"Updated {updated_count} API keys for {email} to tier {tier}")
-
-    # Also update USER_META for consistency
-    if items:
-        user_id = items[0]["pk"]
-        try:
-            meta_update_parts = ["tier = :tier", "monthly_limit = :limit"]
-            meta_values = {":tier": tier, ":limit": new_limit}
-
-            if current_period_end:
-                meta_update_parts.append("current_period_end = :period_end")
-                meta_values[":period_end"] = current_period_end
-
-            table.update_item(
-                Key={"pk": user_id, "sk": "USER_META"},
-                UpdateExpression="SET " + ", ".join(meta_update_parts),
-                ConditionExpression="attribute_exists(pk)",
-                ExpressionAttributeValues=meta_values,
-            )
-            logger.info(f"Updated USER_META for {user_id}: tier={tier}")
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                logger.debug(f"USER_META not found for {user_id}, skipping sync")
-            else:
-                logger.error(f"Failed to update USER_META for {user_id}: {e}")
+    update_billing_state(
+        user_id=items[0]["pk"],
+        api_key_records=items,
+        tier=tier,
+        stripe_customer_id=customer_id if customer_id else _UNSET,
+        stripe_subscription_id=subscription_id if subscription_id else _UNSET,
+        email_verified=True if subscription_id else _UNSET,
+        current_period_start=current_period_start if current_period_start else _UNSET,
+        current_period_end=current_period_end if current_period_end else _UNSET,
+        payment_failures=0,
+        cancellation_pending=False,
+        cancellation_date=None,
+        table=table,
+    )
 
 
 def _update_user_tier_by_customer_id(
@@ -1197,6 +1136,7 @@ def _update_user_tier_by_customer_id(
     """Update tier by Stripe customer ID (for upgrades/downgrades).
 
     Uses stripe-customer-index GSI to find user by Stripe customer ID.
+    Delegates writes to centralized update_billing_state().
 
     Args:
         customer_id: Stripe customer ID
@@ -1221,77 +1161,33 @@ def _update_user_tier_by_customer_id(
         logger.warning(f"No user found for Stripe customer {customer_id}")
         return
 
+    # Log over-limit warning before write
     new_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
-
     for item in items:
         current_tier = item.get("tier", "free")
         current_usage = item.get("requests_this_month", 0)
-
-        # Check if this is an upgrade
         is_upgrade = TIER_ORDER.get(tier, 0) > TIER_ORDER.get(current_tier, 0)
-
-        # Warn if downgrading and user is over new limit
         if current_usage > new_limit and not is_upgrade:
             logger.warning(
                 f"User {item['pk']} downgraded to {tier} but has {current_usage} "
                 f"requests (limit: {new_limit}). User is over limit until reset."
             )
 
-        # Users with Stripe customer ID are verified (Stripe verified via payment)
-        update_expr = "SET tier = :tier, tier_updated_at = :now, payment_failures = :zero, monthly_limit = :limit, email_verified = :verified"
-        expr_values = {
-            ":tier": tier,
-            ":now": datetime.now(timezone.utc).isoformat(),
-            ":zero": 0,
-            ":limit": new_limit,
-            ":verified": True,
-        }
+    from shared.billing_utils import _UNSET, update_billing_state
 
-        # Store billing cycle fields for per-user reset tracking
-        if current_period_start:
-            update_expr += ", current_period_start = :period_start"
-            expr_values[":period_start"] = current_period_start
-            # Set last_reset_period_start on initial signup (idempotency key)
-            update_expr += ", last_reset_period_start = :period_start"
-        if current_period_end:
-            update_expr += ", current_period_end = :period_end"
-            expr_values[":period_end"] = current_period_end
-
-        if subscription_id:
-            update_expr += ", stripe_subscription_id = :sub_id"
-            expr_values[":sub_id"] = subscription_id
-
-        table.update_item(
-            Key={"pk": item["pk"], "sk": item["sk"]},
-            UpdateExpression=update_expr,
-            ExpressionAttributeValues=expr_values,
-        )
-
-    logger.info(f"Updated {len(items)} API keys for customer {customer_id} to tier {tier}")
-
-    # Also update USER_META for consistency
-    if items:
-        user_id = items[0]["pk"]
-        try:
-            meta_update_parts = ["tier = :tier", "monthly_limit = :limit"]
-            meta_values = {":tier": tier, ":limit": new_limit}
-
-            if current_period_end:
-                meta_update_parts.append("current_period_end = :period_end")
-                meta_values[":period_end"] = current_period_end
-
-            table.update_item(
-                Key={"pk": user_id, "sk": "USER_META"},
-                UpdateExpression="SET " + ", ".join(meta_update_parts),
-                ConditionExpression="attribute_exists(pk)",
-                ExpressionAttributeValues=meta_values,
-            )
-            logger.info(f"Updated USER_META for {user_id}: tier={tier}")
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                logger.debug(f"USER_META not found for {user_id}, skipping sync")
-            else:
-                logger.error(f"Failed to update USER_META for {user_id}: {e}")
+    update_billing_state(
+        user_id=items[0]["pk"],
+        api_key_records=items,
+        tier=tier,
+        stripe_subscription_id=subscription_id if subscription_id else _UNSET,
+        current_period_start=current_period_start if current_period_start else _UNSET,
+        current_period_end=current_period_end if current_period_end else _UNSET,
+        payment_failures=0,
+        email_verified=True,
+        cancellation_pending=False,
+        cancellation_date=None,
+        table=table,
+    )
 
 
 def _update_user_subscription_state(
@@ -1306,6 +1202,7 @@ def _update_user_subscription_state(
     """Update user subscription state including tier and cancellation status.
 
     Uses stripe-customer-index GSI to find user by Stripe customer ID.
+    Delegates writes to centralized update_billing_state().
 
     Args:
         customer_id: Stripe customer ID
@@ -1333,116 +1230,39 @@ def _update_user_subscription_state(
         logger.warning(f"No user found for Stripe customer {customer_id}")
         return
 
-    for item in items:
-        update_expr_parts = []
-        expr_values = {}
-
-        # Update tier if provided
-        if tier:
+    # Log over-limit warning before write (only when tier is changing)
+    if tier:
+        new_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+        for item in items:
             current_tier = item.get("tier", "free")
-            new_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
             current_usage = item.get("requests_this_month", 0)
-
             is_upgrade = TIER_ORDER.get(tier, 0) > TIER_ORDER.get(current_tier, 0)
-
-            # Warn if downgrading and user is over new limit
             if current_usage > new_limit and not is_upgrade:
                 logger.warning(
                     f"User {item['pk']} downgraded to {tier} but has {current_usage} "
                     f"requests (limit: {new_limit}). User is over limit until reset."
                 )
 
-            update_expr_parts.extend(
-                [
-                    "tier = :tier",
-                    "tier_updated_at = :now",
-                    "payment_failures = :zero",
-                    "monthly_limit = :limit",
-                ]
-            )
-            expr_values.update(
-                {
-                    ":tier": tier,
-                    ":now": datetime.now(timezone.utc).isoformat(),
-                    ":zero": 0,
-                    ":limit": new_limit,
-                }
-            )
+    if cancellation_pending and cancellation_date:
+        logger.info(f"User {items[0]['pk']} subscription set to cancel at {cancellation_date}")
 
-        # Store billing cycle fields for per-user reset tracking
-        if current_period_start:
-            update_expr_parts.append("current_period_start = :period_start")
-            expr_values[":period_start"] = current_period_start
-        if current_period_end:
-            update_expr_parts.append("current_period_end = :period_end")
-            expr_values[":period_end"] = current_period_end
+    from shared.billing_utils import _UNSET, update_billing_state
 
-        # Update cancellation state
-        update_expr_parts.append("cancellation_pending = :cancel_pending")
-        expr_values[":cancel_pending"] = cancellation_pending
-
-        if cancellation_pending and cancellation_date:
-            update_expr_parts.append("cancellation_date = :cancel_date")
-            expr_values[":cancel_date"] = cancellation_date
-            logger.info(f"User {item['pk']} subscription set to cancel at {cancellation_date}")
-        else:
-            # Clear cancellation date if not canceling
-            update_expr_parts.append("cancellation_date = :null_date")
-            expr_values[":null_date"] = None
-
-        if update_expr_parts:
-            update_expr = "SET " + ", ".join(update_expr_parts)
-            if remove_attributes:
-                update_expr += " REMOVE " + ", ".join(remove_attributes)
-            table.update_item(
-                Key={"pk": item["pk"], "sk": item["sk"]},
-                UpdateExpression=update_expr,
-                ExpressionAttributeValues=expr_values,
-            )
+    update_billing_state(
+        user_id=items[0]["pk"],
+        api_key_records=items,
+        tier=tier if tier else _UNSET,
+        cancellation_pending=cancellation_pending,
+        cancellation_date=cancellation_date if cancellation_pending else None,
+        current_period_start=current_period_start if current_period_start else _UNSET,
+        current_period_end=current_period_end if current_period_end else _UNSET,
+        payment_failures=0 if tier else _UNSET,
+        remove_subscription_id=bool(remove_attributes and "stripe_subscription_id" in remove_attributes),
+        table=table,
+    )
 
     action = f"tier={tier}" if tier else "cancellation state"
     logger.info(
-        f"Updated {len(items)} records for customer {customer_id}: {action}, "
+        f"Updated records for customer {customer_id}: {action}, "
         f"cancellation_pending={cancellation_pending}"
     )
-
-    # Also update USER_META for consistency
-    # This ensures dashboard reads consistent billing/cancellation state
-    if items:
-        user_id = items[0]["pk"]
-        try:
-            meta_update_parts = [
-                "cancellation_pending = :cancel_pending",
-                "cancellation_date = :cancel_date",
-            ]
-            meta_values = {
-                ":cancel_pending": cancellation_pending,
-                ":cancel_date": cancellation_date,
-            }
-
-            # Add tier and monthly_limit if provided
-            if tier:
-                meta_update_parts.append("tier = :tier")
-                meta_update_parts.append("monthly_limit = :limit")
-                meta_values[":tier"] = tier
-                meta_values[":limit"] = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
-
-            # Add billing cycle fields if provided
-            if current_period_end:
-                meta_update_parts.append("current_period_end = :period_end")
-                meta_values[":period_end"] = current_period_end
-
-            table.update_item(
-                Key={"pk": user_id, "sk": "USER_META"},
-                UpdateExpression="SET " + ", ".join(meta_update_parts),
-                ConditionExpression="attribute_exists(pk)",
-                ExpressionAttributeValues=meta_values,
-            )
-            logger.info(f"Updated USER_META for {user_id}: {action}")
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                # USER_META doesn't exist yet - this is OK for legacy accounts
-                logger.debug(f"USER_META not found for {user_id}, skipping sync")
-            else:
-                # Log error but don't fail - API key updates already succeeded
-                logger.error(f"Failed to update USER_META for {user_id}: {e}")

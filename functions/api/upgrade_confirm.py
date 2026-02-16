@@ -260,56 +260,17 @@ def handler(event, context):
 
         # CRITICAL: Update DynamoDB synchronously (don't rely solely on webhook)
         # This ensures immediate UI consistency; webhook will also update (idempotent)
-        new_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
-        now_iso = datetime.now(timezone.utc).isoformat()
+        from shared.billing_utils import update_billing_state
 
-        for item in user_items:
-            try:
-                table.update_item(
-                    Key={"pk": item["pk"], "sk": item["sk"]},
-                    UpdateExpression=(
-                        "SET tier = :tier, tier_updated_at = :now, monthly_limit = :limit, payment_failures = :zero"
-                    ),
-                    ExpressionAttributeValues={
-                        ":tier": tier,
-                        ":now": now_iso,
-                        ":limit": new_limit,
-                        ":zero": 0,
-                        ":current_tier": current_tier,
-                    },
-                    # Prevent overwriting a higher tier set by concurrent upgrade
-                    ConditionExpression="tier = :current_tier OR attribute_not_exists(tier)",
-                )
-            except ClientError as e:
-                if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                    logger.warning(f"Tier changed during upgrade for {user_id}, skipping item {item['sk']}")
-                    continue
-                raise
-
-        logger.info(f"Updated {len(user_items)} DynamoDB records for user {user_id}")
-
-        # Also update USER_META for dashboard consistency
-        try:
-            table.update_item(
-                Key={"pk": user_id, "sk": "USER_META"},
-                UpdateExpression=(
-                    "SET tier = :tier, monthly_limit = :limit, "
-                    "cancellation_pending = :cancel_pending, cancellation_date = :cancel_date"
-                ),
-                ConditionExpression="attribute_exists(pk)",
-                ExpressionAttributeValues={
-                    ":tier": tier,
-                    ":limit": new_limit,
-                    ":cancel_pending": False,
-                    ":cancel_date": None,
-                },
-            )
-            logger.info(f"Updated USER_META for {user_id}: tier={tier}")
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-                logger.debug(f"USER_META not found for {user_id}, skipping sync")
-            else:
-                logger.error(f"Failed to update USER_META for {user_id}: {e}")
+        update_billing_state(
+            user_id=user_id,
+            api_key_records=user_items,
+            tier=tier,
+            cancellation_pending=False,
+            cancellation_date=None,
+            payment_failures=0,
+            table=table,
+        )
 
         return success_response(
             {
