@@ -441,7 +441,12 @@ def _handle_checkout_completed(session: dict):
     subscription = stripe.Subscription.retrieve(subscription_id)
     subscription_item = subscription["items"]["data"][0]
     price_id = subscription_item["price"]["id"]
-    tier = PRICE_TO_TIER.get(price_id, "starter")
+    tier = PRICE_TO_TIER.get(price_id)
+    if not tier:
+        logger.error(
+            f"Unknown price_id {price_id} in checkout for {customer_email or customer_id}. Skipping tier update."
+        )
+        return
 
     # Extract billing cycle fields for per-user reset tracking
     # Note: These are on the subscription item, not the subscription itself
@@ -542,7 +547,13 @@ def _handle_subscription_updated(subscription: dict):
     if items:
         item = items[0]
         price_id = item.get("price", {}).get("id")
-        tier = PRICE_TO_TIER.get(price_id, "starter")
+        tier = PRICE_TO_TIER.get(price_id)
+        if not tier:
+            logger.error(
+                f"Unknown price_id {price_id} in subscription.updated for {customer_id}. Skipping tier update."
+            )
+            # Don't return — still update cancellation state and billing period.
+            # _update_user_subscription_state skips tier update when tier is None.
         current_period_start = item.get("current_period_start")
         current_period_end = item.get("current_period_end")
 
@@ -632,7 +643,10 @@ def _handle_subscription_created(subscription: dict):
 
     item = items[0]
     price_id = item.get("price", {}).get("id")
-    tier = PRICE_TO_TIER.get(price_id, "starter")
+    tier = PRICE_TO_TIER.get(price_id)
+    if not tier:
+        logger.error(f"Unknown price_id {price_id} in subscription.created for {customer_id}. Skipping tier update.")
+        return
     current_period_start = item.get("current_period_start")
     current_period_end = item.get("current_period_end")
 
@@ -1148,6 +1162,30 @@ def _update_user_tier(
     else:
         logger.info(f"Updated {updated_count} API keys for {email} to tier {tier}")
 
+    # Also update USER_META for consistency
+    if items:
+        user_id = items[0]["pk"]
+        try:
+            meta_update_parts = ["tier = :tier", "monthly_limit = :limit"]
+            meta_values = {":tier": tier, ":limit": new_limit}
+
+            if current_period_end:
+                meta_update_parts.append("current_period_end = :period_end")
+                meta_values[":period_end"] = current_period_end
+
+            table.update_item(
+                Key={"pk": user_id, "sk": "USER_META"},
+                UpdateExpression="SET " + ", ".join(meta_update_parts),
+                ConditionExpression="attribute_exists(pk)",
+                ExpressionAttributeValues=meta_values,
+            )
+            logger.info(f"Updated USER_META for {user_id}: tier={tier}")
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                logger.debug(f"USER_META not found for {user_id}, skipping sync")
+            else:
+                logger.error(f"Failed to update USER_META for {user_id}: {e}")
+
 
 def _update_user_tier_by_customer_id(
     customer_id: str,
@@ -1230,6 +1268,30 @@ def _update_user_tier_by_customer_id(
         )
 
     logger.info(f"Updated {len(items)} API keys for customer {customer_id} to tier {tier}")
+
+    # Also update USER_META for consistency
+    if items:
+        user_id = items[0]["pk"]
+        try:
+            meta_update_parts = ["tier = :tier", "monthly_limit = :limit"]
+            meta_values = {":tier": tier, ":limit": new_limit}
+
+            if current_period_end:
+                meta_update_parts.append("current_period_end = :period_end")
+                meta_values[":period_end"] = current_period_end
+
+            table.update_item(
+                Key={"pk": user_id, "sk": "USER_META"},
+                UpdateExpression="SET " + ", ".join(meta_update_parts),
+                ConditionExpression="attribute_exists(pk)",
+                ExpressionAttributeValues=meta_values,
+            )
+            logger.info(f"Updated USER_META for {user_id}: tier={tier}")
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                logger.debug(f"USER_META not found for {user_id}, skipping sync")
+            else:
+                logger.error(f"Failed to update USER_META for {user_id}: {e}")
 
 
 def _update_user_subscription_state(

@@ -336,6 +336,17 @@ class TestUpgradeConfirmHandler:
                 "requests_this_month": 5000,
             }
         )
+        # Create USER_META record
+        table.put_item(
+            Item={
+                "pk": "user_starter",
+                "sk": "USER_META",
+                "key_count": 1,
+                "tier": "starter",
+                "monthly_limit": 25000,
+                "cancellation_pending": True,
+            }
+        )
 
         import stripe as stripe_module
 
@@ -398,6 +409,14 @@ class TestUpgradeConfirmHandler:
                     assert item["tier"] == "pro"
                     assert item["monthly_limit"] == 100000  # Pro limit
                     assert item["requests_this_month"] == 5000  # Preserved on upgrade
+
+                    # Verify USER_META was updated
+                    meta_response = table.get_item(Key={"pk": "user_starter", "sk": "USER_META"})
+                    meta = meta_response["Item"]
+                    assert meta["tier"] == "pro"
+                    assert meta["monthly_limit"] == 100000
+                    assert meta["cancellation_pending"] is False
+                    assert meta["cancellation_date"] is None
 
     @mock_aws
     def test_updates_all_user_api_keys(self, mock_dynamodb, api_gateway_event):
@@ -1102,8 +1121,9 @@ class TestUpgradeConfirmHandler:
                         assert body["success"] is True
                         assert body["new_tier"] == "pro"
 
-                        # update_item was called but raised ConditionalCheckFailedException
-                        mock_table.update_item.assert_called_once()
+                        # update_item was called for per-key update + USER_META sync
+                        # Both raised ConditionalCheckFailedException (handled gracefully)
+                        assert mock_table.update_item.call_count == 2
 
     @mock_aws
     def test_reraises_non_conditional_dynamodb_error(self, mock_dynamodb, api_gateway_event):
@@ -1491,6 +1511,78 @@ class TestUpgradeConfirmHandler:
                     assert body["success"] is True
                     assert body["amount_charged_cents"] == 0
                     assert body["invoice_id"] is None
+
+    @mock_aws
+    def test_handles_missing_user_meta(self, mock_dynamodb, api_gateway_event):
+        """Should handle upgrade gracefully when USER_META doesn't exist."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+        key_hash = hashlib.sha256(b"pw_test").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_no_meta",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "nometa@example.com",
+                "tier": "starter",
+                "email_verified": True,
+                "stripe_customer_id": "cus_no_meta",
+                "stripe_subscription_id": "sub_no_meta",
+                "monthly_limit": 25000,
+                "requests_this_month": 1000,
+            }
+        )
+        # No USER_META record
+
+        import stripe as stripe_module
+
+        import api.upgrade_confirm as confirm_module
+
+        billing_utils._stripe_api_key_cache = None
+        billing_utils._stripe_api_key_cache_time = 0.0
+        confirm_module.TIER_TO_PRICE["pro"] = "price_pro_123"
+
+        with patch("api.upgrade_confirm.get_stripe_api_key", return_value="sk_test_123"):
+            with patch("api.auth_callback.verify_session_token") as mock_verify:
+                mock_verify.return_value = {"user_id": "user_no_meta", "email": "nometa@example.com"}
+
+                with patch.object(confirm_module, "stripe") as mock_stripe:
+                    mock_stripe.CardError = stripe_module.CardError
+                    mock_stripe.StripeError = stripe_module.StripeError
+
+                    mock_stripe.Subscription.retrieve.return_value = {
+                        "status": "active",
+                        "items": {"data": [{"id": "si_no_meta", "price": {"id": "price_starter_123"}}]},
+                    }
+
+                    mock_stripe.Subscription.modify.return_value = {
+                        "id": "sub_no_meta",
+                        "status": "active",
+                        "latest_invoice": "in_no_meta",
+                    }
+
+                    mock_stripe.Invoice.retrieve.return_value = {
+                        "id": "in_no_meta",
+                        "amount_paid": 4400,
+                    }
+
+                    from api.upgrade_confirm import handler
+
+                    api_gateway_event["httpMethod"] = "POST"
+                    api_gateway_event["headers"]["cookie"] = "session=valid"
+                    api_gateway_event["body"] = json.dumps({"tier": "pro", "proration_date": int(time.time())})
+
+                    # Should not raise despite missing USER_META
+                    result = handler(api_gateway_event, {})
+
+                    assert result["statusCode"] == 200
+
+                    # Per-key record should still be updated
+                    response = table.get_item(Key={"pk": "user_no_meta", "sk": key_hash})
+                    item = response["Item"]
+                    assert item["tier"] == "pro"
+                    assert item["monthly_limit"] == 100000
 
 
 class TestGetStripeApiKey:

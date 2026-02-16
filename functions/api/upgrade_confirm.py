@@ -288,6 +288,29 @@ def handler(event, context):
 
         logger.info(f"Updated {len(user_items)} DynamoDB records for user {user_id}")
 
+        # Also update USER_META for dashboard consistency
+        try:
+            table.update_item(
+                Key={"pk": user_id, "sk": "USER_META"},
+                UpdateExpression=(
+                    "SET tier = :tier, monthly_limit = :limit, "
+                    "cancellation_pending = :cancel_pending, cancellation_date = :cancel_date"
+                ),
+                ConditionExpression="attribute_exists(pk)",
+                ExpressionAttributeValues={
+                    ":tier": tier,
+                    ":limit": new_limit,
+                    ":cancel_pending": False,
+                    ":cancel_date": None,
+                },
+            )
+            logger.info(f"Updated USER_META for {user_id}: tier={tier}")
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                logger.debug(f"USER_META not found for {user_id}, skipping sync")
+            else:
+                logger.error(f"Failed to update USER_META for {user_id}: {e}")
+
         return success_response(
             {
                 "success": True,

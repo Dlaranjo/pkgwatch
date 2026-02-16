@@ -175,6 +175,78 @@ class TestUpdateUserTier:
         # Should not raise, just log warning
         _update_user_tier("onlypending@example.com", "pro", "cus_789", "sub_789")
 
+    @mock_aws
+    def test_updates_user_meta(self, mock_dynamodb):
+        """Should update USER_META with tier and monthly_limit."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_meta_tier").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_meta_tier",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "metatier@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+        table.put_item(
+            Item={
+                "pk": "user_meta_tier",
+                "sk": "USER_META",
+                "key_count": 1,
+            }
+        )
+
+        from api.stripe_webhook import _update_user_tier
+
+        _update_user_tier(
+            "metatier@example.com",
+            "pro",
+            "cus_meta",
+            "sub_meta",
+            current_period_end=1709424000,
+        )
+
+        # Check USER_META was updated
+        response = table.get_item(Key={"pk": "user_meta_tier", "sk": "USER_META"})
+        item = response.get("Item")
+        assert item["tier"] == "pro"
+        assert item["monthly_limit"] == 100000
+        assert item["current_period_end"] == 1709424000
+
+    @mock_aws
+    def test_handles_missing_user_meta(self, mock_dynamodb):
+        """Should handle missing USER_META gracefully (legacy accounts)."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_no_meta_tier").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_no_meta_tier",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "nometatier@example.com",
+                "tier": "free",
+                "email_verified": True,
+            }
+        )
+
+        from api.stripe_webhook import _update_user_tier
+
+        # Should not raise
+        _update_user_tier("nometatier@example.com", "pro", "cus_123", "sub_123")
+
+        # API key should still be updated
+        response = table.get_item(Key={"pk": "user_no_meta_tier", "sk": key_hash})
+        item = response.get("Item")
+        assert item["tier"] == "pro"
+
 
 class TestHandleCheckoutCompleted:
     """Tests for _handle_checkout_completed function."""
@@ -1157,6 +1229,81 @@ class TestUpdateUserTierByCustomerId:
         assert item["tier"] == "starter"
         # Usage NOT reset on downgrade
         assert item["requests_this_month"] == 15000
+
+    @mock_aws
+    def test_updates_user_meta(self, mock_dynamodb):
+        """Should update USER_META with tier and monthly_limit."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_meta_custid").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_meta_custid",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "metacustid@example.com",
+                "tier": "free",
+                "stripe_customer_id": "cus_meta_custid",
+                "email_verified": True,
+            }
+        )
+        table.put_item(
+            Item={
+                "pk": "user_meta_custid",
+                "sk": "USER_META",
+                "key_count": 1,
+            }
+        )
+
+        from api.stripe_webhook import _update_user_tier_by_customer_id
+
+        _update_user_tier_by_customer_id(
+            customer_id="cus_meta_custid",
+            tier="pro",
+            current_period_end=1709424000,
+        )
+
+        # Check USER_META was updated
+        response = table.get_item(Key={"pk": "user_meta_custid", "sk": "USER_META"})
+        item = response.get("Item")
+        assert item["tier"] == "pro"
+        assert item["monthly_limit"] == 100000
+        assert item["current_period_end"] == 1709424000
+
+    @mock_aws
+    def test_handles_missing_user_meta(self, mock_dynamodb):
+        """Should handle missing USER_META gracefully (legacy accounts)."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_no_meta_custid").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_no_meta_custid",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "nometacustid@example.com",
+                "tier": "free",
+                "stripe_customer_id": "cus_no_meta_custid",
+                "email_verified": True,
+            }
+        )
+
+        from api.stripe_webhook import _update_user_tier_by_customer_id
+
+        # Should not raise
+        _update_user_tier_by_customer_id(
+            customer_id="cus_no_meta_custid",
+            tier="pro",
+        )
+
+        # API key should still be updated
+        response = table.get_item(Key={"pk": "user_no_meta_custid", "sk": key_hash})
+        item = response.get("Item")
+        assert item["tier"] == "pro"
 
 
 class TestUpdateUserSubscriptionStateEdgeCases:
@@ -2945,6 +3092,149 @@ class TestUserMetaSyncEdgeCases:
         response = table.get_item(Key={"pk": "user_no_meta", "sk": key_hash})
         item = response.get("Item")
         assert item["tier"] == "pro"
+
+
+class TestUnknownPriceId:
+    """Tests for handling unknown price IDs in PRICE_TO_TIER mapping."""
+
+    @mock_aws
+    def test_checkout_completed_skips_unknown_price(self, mock_dynamodb):
+        """checkout.session.completed should return early on unknown price ID."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_unknown_price").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_unknown_price",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "unknown@example.com",
+                "tier": "starter",
+                "email_verified": True,
+            }
+        )
+
+        from unittest.mock import MagicMock, patch
+
+        import api.stripe_webhook as webhook_module
+
+        mock_subscription = MagicMock()
+        mock_subscription.__getitem__ = lambda self, key: {
+            "items": {
+                "data": [{"price": {"id": "price_unknown_xyz"}, "current_period_start": 100, "current_period_end": 200}]
+            },
+        }[key]
+        mock_subscription.get = lambda key, default=None: {
+            "items": {
+                "data": [{"price": {"id": "price_unknown_xyz"}, "current_period_start": 100, "current_period_end": 200}]
+            },
+        }.get(key, default)
+
+        session = {
+            "customer_email": "unknown@example.com",
+            "customer": "cus_unknown",
+            "subscription": "sub_unknown",
+        }
+
+        with patch("stripe.Subscription.retrieve", return_value=mock_subscription):
+            # Ensure PRICE_TO_TIER has no mapping for this price
+            with patch.dict(webhook_module.PRICE_TO_TIER, {}, clear=True):
+                webhook_module._handle_checkout_completed(session)
+
+        # Tier should remain unchanged
+        response = table.get_item(Key={"pk": "user_unknown_price", "sk": key_hash})
+        item = response.get("Item")
+        assert item["tier"] == "starter"
+
+    @mock_aws
+    def test_subscription_updated_skips_tier_on_unknown_price(self, mock_dynamodb):
+        """subscription.updated should skip tier update but still update cancellation state."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_unknown_sub_upd").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_unknown_sub_upd",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "unknownupd@example.com",
+                "tier": "pro",
+                "stripe_customer_id": "cus_unknown_upd",
+                "email_verified": True,
+            }
+        )
+
+        import api.stripe_webhook as webhook_module
+
+        subscription = {
+            "customer": "cus_unknown_upd",
+            "status": "active",
+            "cancel_at_period_end": True,
+            "items": {
+                "data": [
+                    {
+                        "price": {"id": "price_unknown_xyz"},
+                        "current_period_end": 1707955200,
+                    }
+                ]
+            },
+        }
+
+        from unittest.mock import patch
+
+        with patch.dict(webhook_module.PRICE_TO_TIER, {}, clear=True):
+            webhook_module._handle_subscription_updated(subscription)
+
+        response = table.get_item(Key={"pk": "user_unknown_sub_upd", "sk": key_hash})
+        item = response.get("Item")
+        # Tier should NOT be changed (unknown price → tier=None → skipped)
+        assert item["tier"] == "pro"
+        # Cancellation state SHOULD still be updated
+        assert item["cancellation_pending"] is True
+
+    @mock_aws
+    def test_subscription_created_skips_unknown_price(self, mock_dynamodb):
+        """subscription.created should return early on unknown price ID."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+
+        table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        key_hash = hashlib.sha256(b"pw_unknown_sub_crt").hexdigest()
+        table.put_item(
+            Item={
+                "pk": "user_unknown_sub_crt",
+                "sk": key_hash,
+                "key_hash": key_hash,
+                "email": "unknowncrt@example.com",
+                "tier": "starter",
+                "stripe_customer_id": "cus_unknown_crt",
+                "email_verified": True,
+            }
+        )
+
+        import api.stripe_webhook as webhook_module
+
+        subscription = {
+            "customer": "cus_unknown_crt",
+            "status": "active",
+            "items": {"data": [{"price": {"id": "price_unknown_xyz"}}]},
+            "current_period_start": 1704067200,
+            "current_period_end": 1706745600,
+        }
+
+        from unittest.mock import patch
+
+        with patch.dict(webhook_module.PRICE_TO_TIER, {}, clear=True):
+            webhook_module._handle_subscription_created(subscription)
+
+        # Tier should remain unchanged
+        response = table.get_item(Key={"pk": "user_unknown_sub_crt", "sk": key_hash})
+        item = response.get("Item")
+        assert item["tier"] == "starter"
 
 
 class TestWebhookSignatureTampering:

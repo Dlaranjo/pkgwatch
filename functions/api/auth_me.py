@@ -252,18 +252,22 @@ def _refresh_from_stripe(table, user_id: str, primary_key: dict, api_keys: list,
             cancellation_date = None
             current_period_end = None
 
+        new_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+
         # Update all API key records in DynamoDB
         for key in api_keys:
             table.update_item(
                 Key={"pk": key["pk"], "sk": key["sk"]},
                 UpdateExpression=(
                     "SET tier = :tier, "
+                    "monthly_limit = :limit, "
                     "cancellation_pending = :cancel_pending, "
                     "cancellation_date = :cancel_date, "
                     "current_period_end = :period_end"
                 ),
                 ExpressionAttributeValues={
                     ":tier": tier,
+                    ":limit": new_limit,
                     ":cancel_pending": cancel_at_period_end,
                     ":cancel_date": cancellation_date,
                     ":period_end": current_period_end,
@@ -276,6 +280,7 @@ def _refresh_from_stripe(table, user_id: str, primary_key: dict, api_keys: list,
                 Key={"pk": user_id, "sk": "USER_META"},
                 UpdateExpression=(
                     "SET tier = :tier, "
+                    "monthly_limit = :limit, "
                     "cancellation_pending = :cancel_pending, "
                     "cancellation_date = :cancel_date, "
                     "current_period_end = :period_end"
@@ -283,6 +288,7 @@ def _refresh_from_stripe(table, user_id: str, primary_key: dict, api_keys: list,
                 ConditionExpression="attribute_exists(pk)",
                 ExpressionAttributeValues={
                     ":tier": tier,
+                    ":limit": new_limit,
                     ":cancel_pending": cancel_at_period_end,
                     ":cancel_date": cancellation_date,
                     ":period_end": current_period_end,
@@ -296,6 +302,7 @@ def _refresh_from_stripe(table, user_id: str, primary_key: dict, api_keys: list,
         return {
             **primary_key,
             "tier": tier,
+            "monthly_limit": new_limit,
             "cancellation_pending": cancel_at_period_end,
             "cancellation_date": cancellation_date,
             "current_period_end": current_period_end,

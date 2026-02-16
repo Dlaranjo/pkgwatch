@@ -530,6 +530,18 @@ class TestAuthMeStripeRefresh:
         assert body["tier"] == "pro"  # Updated from Stripe
         assert body["data_source"] == "live"
 
+        # Verify monthly_limit was updated in DynamoDB per-key record
+        key_hash = hashlib.sha256(b"pw_test_user_stripe").hexdigest()
+        response = table.get_item(Key={"pk": "user_stripe", "sk": key_hash})
+        item = response.get("Item")
+        assert item["monthly_limit"] == 100000  # Pro tier limit
+
+        # Verify monthly_limit was updated in USER_META
+        meta_response = table.get_item(Key={"pk": "user_stripe", "sk": "USER_META"})
+        meta = meta_response.get("Item")
+        assert meta["monthly_limit"] == 100000  # Pro tier limit
+        assert meta["tier"] == "pro"
+
     @mock_aws
     def test_no_refresh_without_subscription(
         self, aws_credentials, mock_dynamodb, setup_session_secret, setup_stripe_secret
