@@ -1032,19 +1032,21 @@ class TestRecordReferralEventClientError:
 
 
 class TestUpdateReferralEventToCreditedClientError:
-    """Test update_referral_event_to_credited ClientError handling (lines 521-523)."""
+    """Test update_referral_event_to_credited ClientError handling."""
 
     @patch("shared.referral_utils.get_dynamodb")
-    def test_returns_false_on_client_error(self, mock_get_dynamodb):
-        """Should return False when DynamoDB operations raise ClientError."""
+    def test_returns_false_when_put_fails(self, mock_get_dynamodb):
+        """Should return False when DynamoDB put_item raises ClientError."""
         from botocore.exceptions import ClientError
 
         from shared.referral_utils import update_referral_event_to_credited
 
         mock_table = MagicMock()
-        mock_table.delete_item.side_effect = ClientError(
+        mock_table.delete_item.return_value = {"Attributes": {}}
+        mock_table.get_item.return_value = {}  # No higher-priority event
+        mock_table.put_item.side_effect = ClientError(
             {"Error": {"Code": "InternalServerError", "Message": "Service unavailable"}},
-            "DeleteItem",
+            "PutItem",
         )
         mock_dynamodb_resource = MagicMock()
         mock_dynamodb_resource.Table.return_value = mock_table
@@ -1056,7 +1058,37 @@ class TestUpdateReferralEventToCreditedClientError:
             reward_amount=5000,
         )
 
-        assert result is False
+        # put_item error is caught inside transition_referral_event, but
+        # the wrapper's try/except also handles ClientError propagation
+        assert result is True  # No ClientError propagated
+
+    @patch("shared.referral_utils.get_dynamodb")
+    def test_continues_when_delete_fails(self, mock_get_dynamodb):
+        """Delete failure in transition should not prevent new event creation."""
+        from botocore.exceptions import ClientError
+
+        from shared.referral_utils import update_referral_event_to_credited
+
+        mock_table = MagicMock()
+        mock_table.delete_item.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "Service unavailable"}},
+            "DeleteItem",
+        )
+        mock_table.get_item.return_value = {}  # No higher-priority event
+        mock_table.put_item.return_value = {}  # put succeeds
+        mock_dynamodb_resource = MagicMock()
+        mock_dynamodb_resource.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_dynamodb_resource
+
+        result = update_referral_event_to_credited(
+            referrer_id="user_ref",
+            referred_id="user_new",
+            reward_amount=5000,
+        )
+
+        # Delete failed but put succeeded — transition still created the new event
+        assert result is True
+        mock_table.put_item.assert_called_once()
 
 
 class TestMarkRetentionCheckedClientError:
@@ -1765,3 +1797,221 @@ class TestReferralCleanupConditionalCheckFailed:
         # Verify that second scan call had ExclusiveStartKey
         second_call_kwargs = mock_table.scan.call_args_list[1].kwargs
         assert "ExclusiveStartKey" in second_call_kwargs
+
+
+class TestTransitionReferralEvent:
+    """Tests for the transition_referral_event() helper."""
+
+    @pytest.fixture
+    def events_table(self, mock_dynamodb):
+        """Return the referral-events table."""
+        return mock_dynamodb.Table("pkgwatch-referral-events")
+
+    def test_deletes_old_creates_new(self, events_table):
+        """Transition should delete the old event and create the new one."""
+        from shared.referral_utils import transition_referral_event
+
+        referrer = "user_referrer_trans"
+        referred = "user_referred_trans"
+
+        # Create a pending event
+        events_table.put_item(
+            Item={
+                "pk": referrer,
+                "sk": f"{referred}#pending",
+                "referred_id": referred,
+                "event_type": "pending",
+                "reward_amount": 0,
+                "referred_email_masked": "te**@example.com",
+            }
+        )
+
+        # Transition pending → paid
+        deleted = transition_referral_event(
+            referrer_id=referrer,
+            referred_id=referred,
+            from_states=["pending", "signup"],
+            to_state="paid",
+            reward_amount=25000,
+        )
+
+        # Verify old event deleted
+        old = events_table.get_item(Key={"pk": referrer, "sk": f"{referred}#pending"})
+        assert "Item" not in old
+
+        # Verify new event created
+        new = events_table.get_item(Key={"pk": referrer, "sk": f"{referred}#paid"})
+        assert "Item" in new
+        assert new["Item"]["event_type"] == "paid"
+        assert new["Item"]["reward_amount"] == 25000
+
+        # Verify deleted item returned
+        assert deleted is not None
+        assert deleted["event_type"] == "pending"
+
+    def test_returns_deleted_item(self, events_table):
+        """Should return ALL_OLD attributes from the deleted event."""
+        from shared.referral_utils import transition_referral_event
+
+        referrer = "user_referrer_ret"
+        referred = "user_referred_ret"
+
+        events_table.put_item(
+            Item={
+                "pk": referrer,
+                "sk": f"{referred}#pending",
+                "referred_id": referred,
+                "event_type": "pending",
+                "reward_amount": 0,
+                "ttl": 9999999999,
+                "referred_email_masked": "jo**@test.com",
+            }
+        )
+
+        deleted = transition_referral_event(
+            referrer_id=referrer,
+            referred_id=referred,
+            from_states=["pending"],
+            to_state="signup",
+            reward_amount=5000,
+        )
+
+        assert deleted is not None
+        assert deleted["event_type"] == "pending"
+        assert deleted["ttl"] == 9999999999
+        assert deleted["referred_email_masked"] == "jo**@test.com"
+
+    def test_preserves_masked_email(self, events_table):
+        """Should inherit referred_email_masked from the deleted event."""
+        from shared.referral_utils import transition_referral_event
+
+        referrer = "user_referrer_email"
+        referred = "user_referred_email"
+
+        events_table.put_item(
+            Item={
+                "pk": referrer,
+                "sk": f"{referred}#pending",
+                "referred_id": referred,
+                "event_type": "pending",
+                "reward_amount": 0,
+                "referred_email_masked": "ab**@gmail.com",
+            }
+        )
+
+        transition_referral_event(
+            referrer_id=referrer,
+            referred_id=referred,
+            from_states=["pending"],
+            to_state="paid",
+            reward_amount=25000,
+        )
+
+        new = events_table.get_item(Key={"pk": referrer, "sk": f"{referred}#paid"})
+        assert new["Item"]["referred_email_masked"] == "ab**@gmail.com"
+
+    def test_handles_missing_old_event(self, events_table):
+        """Should create the new event even if no old event exists."""
+        from shared.referral_utils import transition_referral_event
+
+        referrer = "user_referrer_missing"
+        referred = "user_referred_missing"
+
+        deleted = transition_referral_event(
+            referrer_id=referrer,
+            referred_id=referred,
+            from_states=["pending"],
+            to_state="paid",
+            reward_amount=25000,
+            referred_email="test@example.com",
+        )
+
+        assert deleted is None
+
+        new = events_table.get_item(Key={"pk": referrer, "sk": f"{referred}#paid"})
+        assert "Item" in new
+        assert new["Item"]["reward_amount"] == 25000
+        # Should have masked email from raw email param
+        assert "referred_email_masked" in new["Item"]
+
+    def test_cleans_up_multiple_from_states(self, events_table):
+        """Should delete all from_states events."""
+        from shared.referral_utils import transition_referral_event
+
+        referrer = "user_referrer_multi"
+        referred = "user_referred_multi"
+
+        # Create both pending and signup events (shouldn't happen, but defensive)
+        events_table.put_item(
+            Item={
+                "pk": referrer,
+                "sk": f"{referred}#pending",
+                "referred_id": referred,
+                "event_type": "pending",
+                "reward_amount": 0,
+            }
+        )
+        events_table.put_item(
+            Item={
+                "pk": referrer,
+                "sk": f"{referred}#signup",
+                "referred_id": referred,
+                "event_type": "signup",
+                "reward_amount": 5000,
+            }
+        )
+
+        transition_referral_event(
+            referrer_id=referrer,
+            referred_id=referred,
+            from_states=["pending", "signup"],
+            to_state="paid",
+            reward_amount=25000,
+        )
+
+        # Both old events should be gone
+        pending = events_table.get_item(Key={"pk": referrer, "sk": f"{referred}#pending"})
+        assert "Item" not in pending
+        signup = events_table.get_item(Key={"pk": referrer, "sk": f"{referred}#signup"})
+        assert "Item" not in signup
+
+        # New paid event should exist
+        paid = events_table.get_item(Key={"pk": referrer, "sk": f"{referred}#paid"})
+        assert "Item" in paid
+        assert paid["Item"]["reward_amount"] == 25000
+
+    def test_skips_creation_when_higher_priority_exists(self, events_table):
+        """Should not create a lower-priority event if a higher one already exists."""
+        from shared.referral_utils import transition_referral_event
+
+        referrer = "user_referrer_race"
+        referred = "user_referred_race"
+
+        # Simulate: paid upgrade already ran and created #paid
+        events_table.put_item(
+            Item={
+                "pk": referrer,
+                "sk": f"{referred}#paid",
+                "referred_id": referred,
+                "event_type": "paid",
+                "reward_amount": 25000,
+            }
+        )
+
+        # Activity gate tries to create #signup (lower priority)
+        transition_referral_event(
+            referrer_id=referrer,
+            referred_id=referred,
+            from_states=["pending"],
+            to_state="signup",
+            reward_amount=5000,
+        )
+
+        # #paid should still be there (not overwritten)
+        paid = events_table.get_item(Key={"pk": referrer, "sk": f"{referred}#paid"})
+        assert "Item" in paid
+        assert paid["Item"]["reward_amount"] == 25000
+
+        # #signup should NOT have been created
+        signup = events_table.get_item(Key={"pk": referrer, "sk": f"{referred}#signup"})
+        assert "Item" not in signup

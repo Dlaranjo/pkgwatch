@@ -4350,6 +4350,310 @@ class TestProcessPaidReferralReward:
         _process_paid_referral_reward("user_nonexistent", "test@example.com")
         # Should not raise - gracefully returns
 
+    @mock_aws
+    def test_cleans_up_pending_event_on_direct_upgrade(self, mock_dynamodb):
+        """Should delete #pending event when creating #paid (direct upgrade path)."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+        os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+
+        # Set up referrer
+        api_table.put_item(
+            Item={
+                "pk": "user_referrer_cleanup",
+                "sk": "USER_META",
+                "key_count": 1,
+                "bonus_requests": 0,
+                "bonus_requests_lifetime": 0,
+            }
+        )
+
+        # Set up referred user
+        api_table.put_item(
+            Item={
+                "pk": "user_referred_cleanup",
+                "sk": "USER_META",
+                "referred_by": "user_referrer_cleanup",
+                "referral_pending": True,
+                "referral_pending_expires": "2025-06-01T00:00:00Z",
+            }
+        )
+
+        # Create a pending referral event
+        events_table.put_item(
+            Item={
+                "pk": "user_referrer_cleanup",
+                "sk": "user_referred_cleanup#pending",
+                "referred_id": "user_referred_cleanup",
+                "event_type": "pending",
+                "reward_amount": 0,
+                "referred_email_masked": "te**@example.com",
+                "ttl": int((datetime.now(timezone.utc) + timedelta(days=60)).timestamp()),
+            }
+        )
+
+        from api.stripe_webhook import _process_paid_referral_reward
+
+        _process_paid_referral_reward("user_referred_cleanup", "test@example.com")
+
+        # Pending event should be gone
+        pending = events_table.get_item(Key={"pk": "user_referrer_cleanup", "sk": "user_referred_cleanup#pending"})
+        assert "Item" not in pending
+
+        # Paid event should exist with inherited masked email
+        paid = events_table.get_item(Key={"pk": "user_referrer_cleanup", "sk": "user_referred_cleanup#paid"})
+        assert "Item" in paid
+        assert paid["Item"]["event_type"] == "paid"
+        assert paid["Item"]["reward_amount"] == 25000
+        assert paid["Item"]["referred_email_masked"] == "te**@example.com"
+
+    @mock_aws
+    def test_cleans_up_signup_event_after_activity_gate(self, mock_dynamodb):
+        """Should delete #signup event when creating #paid (activity gate then upgrade)."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+        os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+
+        api_table.put_item(
+            Item={
+                "pk": "user_referrer_ag",
+                "sk": "USER_META",
+                "key_count": 1,
+                "bonus_requests": 5000,
+                "bonus_requests_lifetime": 5000,
+            }
+        )
+
+        api_table.put_item(
+            Item={
+                "pk": "user_referred_ag",
+                "sk": "USER_META",
+                "referred_by": "user_referrer_ag",
+            }
+        )
+
+        # Signup event (from activity gate)
+        events_table.put_item(
+            Item={
+                "pk": "user_referrer_ag",
+                "sk": "user_referred_ag#signup",
+                "referred_id": "user_referred_ag",
+                "event_type": "signup",
+                "reward_amount": 5000,
+                "referred_email_masked": "te**@test.com",
+            }
+        )
+
+        from api.stripe_webhook import _process_paid_referral_reward
+
+        _process_paid_referral_reward("user_referred_ag", "test@test.com")
+
+        # Signup should be gone
+        signup = events_table.get_item(Key={"pk": "user_referrer_ag", "sk": "user_referred_ag#signup"})
+        assert "Item" not in signup
+
+        # Paid should exist with 25K reward
+        paid = events_table.get_item(Key={"pk": "user_referrer_ag", "sk": "user_referred_ag#paid"})
+        assert "Item" in paid
+        assert paid["Item"]["reward_amount"] == 25000
+
+    @mock_aws
+    def test_decrements_pending_count_on_direct_upgrade(self, mock_dynamodb):
+        """Should decrement referral_pending_count when transitioning from pending."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+        os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+
+        api_table.put_item(
+            Item={
+                "pk": "user_ref_dec",
+                "sk": "USER_META",
+                "key_count": 1,
+                "bonus_requests": 0,
+                "bonus_requests_lifetime": 0,
+                "referral_total": 1,
+                "referral_pending_count": 1,
+            }
+        )
+
+        api_table.put_item(
+            Item={
+                "pk": "user_refd_dec",
+                "sk": "USER_META",
+                "referred_by": "user_ref_dec",
+                "referral_pending": True,
+            }
+        )
+
+        events_table.put_item(
+            Item={
+                "pk": "user_ref_dec",
+                "sk": "user_refd_dec#pending",
+                "referred_id": "user_refd_dec",
+                "event_type": "pending",
+                "reward_amount": 0,
+                "ttl": int((datetime.now(timezone.utc) + timedelta(days=60)).timestamp()),
+            }
+        )
+
+        from api.stripe_webhook import _process_paid_referral_reward
+
+        _process_paid_referral_reward("user_refd_dec", "dec@example.com")
+
+        # Check referrer stats
+        response = api_table.get_item(Key={"pk": "user_ref_dec", "sk": "USER_META"})
+        item = response["Item"]
+        assert int(item.get("referral_pending_count", 0)) == 0
+        assert int(item.get("referral_paid", 0)) == 1
+
+    @mock_aws
+    def test_clears_referral_pending_flag(self, mock_dynamodb):
+        """Should clear referral_pending on referred user's USER_META."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+        os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+
+        api_table.put_item(
+            Item={
+                "pk": "user_ref_flag",
+                "sk": "USER_META",
+                "key_count": 1,
+                "bonus_requests": 0,
+                "bonus_requests_lifetime": 0,
+            }
+        )
+
+        api_table.put_item(
+            Item={
+                "pk": "user_refd_flag",
+                "sk": "USER_META",
+                "referred_by": "user_ref_flag",
+                "referral_pending": True,
+                "referral_pending_expires": "2025-06-01T00:00:00Z",
+            }
+        )
+
+        from api.stripe_webhook import _process_paid_referral_reward
+
+        _process_paid_referral_reward("user_refd_flag", "flag@example.com")
+
+        # Check referred user's USER_META — flags should be cleared
+        response = api_table.get_item(Key={"pk": "user_refd_flag", "sk": "USER_META"})
+        item = response["Item"]
+        assert "referral_pending" not in item
+        assert "referral_pending_expires" not in item
+
+    @mock_aws
+    def test_no_pending_decrement_when_ttl_expired(self, mock_dynamodb):
+        """Should NOT decrement pending_count if the pending event's TTL already expired."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+        os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+
+        api_table.put_item(
+            Item={
+                "pk": "user_ref_ttl",
+                "sk": "USER_META",
+                "key_count": 1,
+                "bonus_requests": 0,
+                "bonus_requests_lifetime": 0,
+                "referral_total": 1,
+                "referral_pending_count": 0,  # Already decremented by cleanup Lambda
+            }
+        )
+
+        api_table.put_item(
+            Item={
+                "pk": "user_refd_ttl",
+                "sk": "USER_META",
+                "referred_by": "user_ref_ttl",
+            }
+        )
+
+        # Pending event with EXPIRED TTL (cleanup Lambda ran but DynamoDB TTL hasn't purged yet)
+        events_table.put_item(
+            Item={
+                "pk": "user_ref_ttl",
+                "sk": "user_refd_ttl#pending",
+                "referred_id": "user_refd_ttl",
+                "event_type": "pending",
+                "reward_amount": 0,
+                "ttl": int((datetime.now(timezone.utc) - timedelta(days=1)).timestamp()),
+            }
+        )
+
+        from api.stripe_webhook import _process_paid_referral_reward
+
+        _process_paid_referral_reward("user_refd_ttl", "ttl@example.com")
+
+        # pending_count should NOT have gone negative
+        response = api_table.get_item(Key={"pk": "user_ref_ttl", "sk": "USER_META"})
+        item = response["Item"]
+        assert int(item.get("referral_pending_count", 0)) == 0
+
+    @mock_aws
+    def test_no_pending_decrement_from_signup(self, mock_dynamodb):
+        """Should NOT decrement pending_count when transitioning from signup (already decremented)."""
+        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
+        os.environ["BILLING_EVENTS_TABLE"] = "pkgwatch-billing-events"
+        os.environ["REFERRAL_EVENTS_TABLE"] = "pkgwatch-referral-events"
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+
+        api_table.put_item(
+            Item={
+                "pk": "user_ref_nosub",
+                "sk": "USER_META",
+                "key_count": 1,
+                "bonus_requests": 5000,
+                "bonus_requests_lifetime": 5000,
+                "referral_total": 1,
+                "referral_pending_count": 0,  # Already decremented at signup
+            }
+        )
+
+        api_table.put_item(
+            Item={
+                "pk": "user_refd_nosub",
+                "sk": "USER_META",
+                "referred_by": "user_ref_nosub",
+            }
+        )
+
+        events_table.put_item(
+            Item={
+                "pk": "user_ref_nosub",
+                "sk": "user_refd_nosub#signup",
+                "referred_id": "user_refd_nosub",
+                "event_type": "signup",
+                "reward_amount": 5000,
+            }
+        )
+
+        from api.stripe_webhook import _process_paid_referral_reward
+
+        _process_paid_referral_reward("user_refd_nosub", "nosub@example.com")
+
+        # pending_count should stay 0 (not decremented again)
+        response = api_table.get_item(Key={"pk": "user_ref_nosub", "sk": "USER_META"})
+        item = response["Item"]
+        assert int(item.get("referral_pending_count", 0)) == 0
+
 
 class TestPaymentFailedRaceConditions:
     """Tests for payment failure race condition branches."""

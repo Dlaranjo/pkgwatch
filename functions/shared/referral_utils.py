@@ -51,6 +51,9 @@ LATE_ENTRY_DAYS = 14  # Days after signup to add referral code
 PENDING_TIMEOUT_DAYS = 90  # Days before pending referral expires
 RETENTION_MONTHS = 2  # Months before retention bonus triggers
 
+# State machine priority (higher = more advanced state)
+REFERRAL_EVENT_PRIORITY = {"pending": 0, "signup": 1, "paid": 2, "retained": 3}
+
 # Referral code format (allows alphanumeric plus _ and - for backwards compatibility)
 REFERRAL_CODE_REGEX = re.compile(r"^[a-zA-Z0-9_-]{6,12}$")
 
@@ -517,7 +520,7 @@ def update_referral_event_to_credited(
     """
     Update a pending referral event to credited status.
 
-    Removes TTL since credited events should persist.
+    Delegates to transition_referral_event() for the pending → signup transition.
 
     Args:
         referrer_id: Referrer user ID
@@ -527,29 +530,115 @@ def update_referral_event_to_credited(
     Returns:
         True if updated successfully
     """
-    table = get_dynamodb().Table(REFERRAL_EVENTS_TABLE)
-    now = datetime.now(timezone.utc)
-
     try:
-        # Delete the pending event
-        table.delete_item(Key={"pk": referrer_id, "sk": f"{referred_id}#pending"})
-
-        # Create the signup event (no TTL)
-        table.put_item(
-            Item={
-                "pk": referrer_id,
-                "sk": f"{referred_id}#signup",
-                "referred_id": referred_id,
-                "event_type": "signup",
-                "created_at": now.isoformat(),
-                "reward_amount": reward_amount,
-            }
+        transition_referral_event(
+            referrer_id=referrer_id,
+            referred_id=referred_id,
+            from_states=["pending"],
+            to_state="signup",
+            reward_amount=reward_amount,
         )
-
         return True
     except ClientError as e:
         logger.error(f"Error updating referral event: {e}")
         return False
+
+
+def transition_referral_event(
+    referrer_id: str,
+    referred_id: str,
+    from_states: list[str],
+    to_state: str,
+    reward_amount: int = 0,
+    referred_email: str | None = None,
+    extra_attrs: dict | None = None,
+) -> dict | None:
+    """
+    Atomically transition a referral event from one state to another.
+
+    Deletes previous state event(s), guards against race conditions where a
+    higher-priority event already exists, and creates the new state event.
+
+    Each referred user should have exactly one event per referrer at any time.
+    Callers are responsible for stats updates and USER_META flag management.
+
+    Args:
+        referrer_id: Referrer user ID (pk in referral-events table)
+        referred_id: Referred user ID
+        from_states: Previous states to clean up (e.g. ["pending", "signup"])
+        to_state: New state (e.g. "paid", "retained")
+        reward_amount: Reward amount to record on the new event
+        referred_email: Raw email (will be masked). Falls back to inherited mask.
+        extra_attrs: Additional attributes for the new event (e.g. retention fields)
+
+    Returns:
+        The deleted item (ALL_OLD) if a previous event existed, None otherwise.
+        If multiple from_states had items, returns the first one found.
+    """
+    table = get_dynamodb().Table(REFERRAL_EVENTS_TABLE)
+    now = datetime.now(timezone.utc)
+
+    deleted_item = None
+
+    # Phase 1: Delete previous state events
+    for state in from_states:
+        try:
+            response = table.delete_item(
+                Key={"pk": referrer_id, "sk": f"{referred_id}#{state}"},
+                ReturnValues="ALL_OLD",
+            )
+            old = response.get("Attributes")
+            if old and deleted_item is None:
+                deleted_item = old
+        except ClientError as e:
+            logger.error(f"Error deleting #{state} event for {referred_id}: {e}")
+
+    # Phase 2: Race guard — check if a higher-priority event already exists
+    to_priority = REFERRAL_EVENT_PRIORITY.get(to_state, 0)
+    for state, priority in REFERRAL_EVENT_PRIORITY.items():
+        if priority > to_priority:
+            try:
+                existing = table.get_item(
+                    Key={"pk": referrer_id, "sk": f"{referred_id}#{state}"},
+                )
+                if existing.get("Item"):
+                    logger.info(
+                        f"Higher-priority event #{state} already exists for "
+                        f"{referred_id}, skipping #{to_state} creation"
+                    )
+                    return deleted_item
+            except ClientError:
+                pass  # If we can't check, proceed with creation
+
+    # Phase 3: Create new state event
+    # Email handling: inherit masked email from deleted item, or mask raw email
+    masked_email = None
+    if deleted_item:
+        masked_email = deleted_item.get("referred_email_masked")
+    if not masked_email and referred_email:
+        masked_email = mask_email(referred_email)
+
+    item = {
+        "pk": referrer_id,
+        "sk": f"{referred_id}#{to_state}",
+        "referred_id": referred_id,
+        "event_type": to_state,
+        "created_at": now.isoformat(),
+        "reward_amount": reward_amount,
+    }
+
+    if masked_email:
+        item["referred_email_masked"] = masked_email
+
+    if extra_attrs:
+        item.update(extra_attrs)
+
+    try:
+        table.put_item(Item=item)
+    except ClientError as e:
+        logger.error(f"Error creating #{to_state} event for {referred_id}: {e}")
+
+    return deleted_item
 
 
 def mark_retention_checked(referrer_id: str, referred_id: str) -> bool:

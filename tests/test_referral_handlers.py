@@ -930,6 +930,83 @@ class TestReferralStatusErrorPaths:
 
         # Should only have 1 referral entry despite 3 events for same user
         assert len(body["referrals"]) == 1
+        # Priority dedup should pick the highest-priority event (#paid, 25K reward)
+        assert body["referrals"][0]["status"] == "credited"
+        assert body["referrals"][0]["reward"] == 25000
+
+    @patch("api.auth_callback._get_session_secret")
+    def test_shows_paid_not_pending_when_both_exist(self, mock_secret, mock_dynamodb):
+        """Priority dedup should show 'credited' even if stale #pending event exists."""
+        mock_secret.return_value = "test-secret-key-for-signing-sessions-1234567890"
+
+        api_table = mock_dynamodb.Table("pkgwatch-api-keys")
+        events_table = mock_dynamodb.Table("pkgwatch-referral-events")
+        user_id = "user_priority_test"
+
+        api_table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "USER_META",
+                "referral_code": "priocd01",
+                "email": "prio@example.com",
+                "bonus_requests": 25000,
+                "bonus_requests_lifetime": 25000,
+                "referral_total": 1,
+                "referral_pending_count": 0,
+                "referral_paid": 1,
+                "referral_retained": 0,
+                "referral_rewards_earned": 25000,
+            }
+        )
+
+        # Stale #pending event (should have been deleted but wasn't)
+        events_table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "user_stale#pending",
+                "event_type": "pending",
+                "referred_id": "user_stale",
+                "referred_email_masked": "st**@example.com",
+                "created_at": "2024-01-10T10:00:00Z",
+                "reward_amount": 0,
+                "ttl": 1800000000,
+            }
+        )
+        # Correct #paid event
+        events_table.put_item(
+            Item={
+                "pk": user_id,
+                "sk": "user_stale#paid",
+                "event_type": "paid",
+                "referred_id": "user_stale",
+                "referred_email_masked": "st**@example.com",
+                "created_at": "2024-01-15T10:00:00Z",
+                "reward_amount": 25000,
+            }
+        )
+
+        from api.referral_status import handler
+
+        session_token = create_session_token(user_id, "prio@example.com")
+
+        event = {
+            "httpMethod": "GET",
+            "headers": {"cookie": f"session={session_token}"},
+            "pathParameters": {},
+            "queryStringParameters": {},
+            "body": None,
+            "requestContext": {"identity": {"sourceIp": "127.0.0.1"}},
+        }
+
+        result = handler(event, {})
+
+        assert result["statusCode"] == 200
+        body = json.loads(result["body"])
+
+        # Should show 1 referral with credited status and 25K reward
+        assert len(body["referrals"]) == 1
+        assert body["referrals"][0]["status"] == "credited"
+        assert body["referrals"][0]["reward"] == 25000
 
 
 class TestReferralRetentionCheckHandler:
@@ -1219,10 +1296,10 @@ class TestReferralRetentionCheckHandler:
 
     @patch("api.referral_retention_check.get_stripe_api_key")
     @patch("stripe.Subscription.retrieve")
-    def test_clears_retention_flag_regardless_of_outcome(
+    def test_clears_retention_flag_for_churned_user(
         self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
     ):
-        """Should clear retention check flag even if user churned."""
+        """Should clear retention check flag when user churned (not retained)."""
         mock_stripe_key.return_value = "sk_test_fake"
 
         # Mock canceled subscription (churned user)
@@ -1251,7 +1328,7 @@ class TestReferralRetentionCheckHandler:
 
         handler({}, {})
 
-        # Verify retention check flag was cleared
+        # For churned users, #paid event should still exist but with flags cleared
         response = events_table.get_item(Key={"pk": referrer_id, "sk": f"{referred_id}#paid"})
         item = response.get("Item", {})
         assert item.get("needs_retention_check") is None
@@ -1793,6 +1870,86 @@ class TestReferralRetentionCheckHandler:
         # Verify the actual subscription was found
         mock_stripe_retrieve.assert_called_once_with("sub_actual")
         assert result["credited"] == 1
+
+    @patch("api.referral_retention_check.get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_retention_deletes_paid_creates_retained(
+        self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals
+    ):
+        """Successful retention should delete #paid and create #retained event."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        mock_subscription = MagicMock()
+        mock_subscription.status = "active"
+        mock_stripe_retrieve.return_value = mock_subscription
+
+        import api.referral_retention_check as retention_module
+
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+
+        referral_utils_module._dynamodb = None
+
+        from api.referral_retention_check import handler
+
+        api_table, events_table, referrer_id, referred_id = retention_due_referrals
+
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key_hash_ret",
+                "stripe_subscription_id": "sub_test123",
+            }
+        )
+
+        result = handler({}, {})
+        assert result["credited"] == 1
+
+        # #paid event should be GONE (deleted by transition)
+        paid = events_table.get_item(Key={"pk": referrer_id, "sk": f"{referred_id}#paid"})
+        assert "Item" not in paid
+
+        # #retained event should exist
+        retained = events_table.get_item(Key={"pk": referrer_id, "sk": f"{referred_id}#retained"})
+        assert "Item" in retained
+        assert retained["Item"]["event_type"] == "retained"
+        assert retained["Item"]["reward_amount"] == 25000
+
+    @patch("api.referral_retention_check.get_stripe_api_key")
+    @patch("stripe.Subscription.retrieve")
+    def test_no_ghost_paid_after_retention(self, mock_stripe_retrieve, mock_stripe_key, retention_due_referrals):
+        """After retention, mark_retention_checked should NOT create a ghost #paid item."""
+        mock_stripe_key.return_value = "sk_test_fake"
+
+        mock_subscription = MagicMock()
+        mock_subscription.status = "active"
+        mock_stripe_retrieve.return_value = mock_subscription
+
+        import api.referral_retention_check as retention_module
+
+        retention_module._dynamodb = None
+        import shared.referral_utils as referral_utils_module
+
+        referral_utils_module._dynamodb = None
+
+        from api.referral_retention_check import handler
+
+        api_table, events_table, referrer_id, referred_id = retention_due_referrals
+
+        api_table.put_item(
+            Item={
+                "pk": referred_id,
+                "sk": "api_key_hash_ghost",
+                "stripe_subscription_id": "sub_test123",
+            }
+        )
+
+        handler({}, {})
+
+        # Verify no ghost #paid record exists
+        paid = events_table.get_item(Key={"pk": referrer_id, "sk": f"{referred_id}#paid"})
+        # Should not exist at all (no ghost from update_item on deleted key)
+        assert "Item" not in paid
 
 
 class TestGetStripeApiKey:

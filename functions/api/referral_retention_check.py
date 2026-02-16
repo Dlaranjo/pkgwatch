@@ -19,7 +19,7 @@ from shared.referral_utils import (
     REFERRAL_REWARDS,
     add_bonus_with_cap,
     mark_retention_checked,
-    record_referral_event,
+    transition_referral_event,
     update_referrer_stats,
 )
 
@@ -108,18 +108,18 @@ def handler(event, context):
                     existing = events_table.get_item(Key={"pk": referrer_id, "sk": f"{referred_id}#retained"})
                     if existing.get("Item"):
                         logger.info(f"Retention already processed for {referred_id}, skipping")
-                        mark_retention_checked(referrer_id, referred_id)
-                        continue
+                        continue  # #paid already gone from first successful run
 
                     # Credit referrer with retention bonus
                     reward_amount = REFERRAL_REWARDS["retained"]
                     actual_reward = add_bonus_with_cap(referrer_id, reward_amount)
 
-                    # Record retained event
-                    record_referral_event(
+                    # Transition: delete #paid event, create #retained event
+                    transition_referral_event(
                         referrer_id=referrer_id,
                         referred_id=referred_id,
-                        event_type="retained",
+                        from_states=["paid"],
+                        to_state="retained",
                         reward_amount=actual_reward,
                     )
 
@@ -138,9 +138,8 @@ def handler(event, context):
                     logger.info(
                         f"Skipping retention for {referred_id} - subscription not active (referrer: {referrer_id})"
                     )
-
-                # Clear the retention check flag (regardless of outcome)
-                mark_retention_checked(referrer_id, referred_id)
+                    # Only clear flag for non-retained users (don't delete #paid)
+                    mark_retention_checked(referrer_id, referred_id)
 
             except Exception as e:
                 logger.error(f"Error processing retention for {referred_id}: {e}")

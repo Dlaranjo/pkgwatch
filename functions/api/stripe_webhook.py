@@ -38,7 +38,7 @@ from shared.referral_utils import (
     REFERRAL_REWARDS,
     RETENTION_MONTHS,
     add_bonus_with_cap,
-    record_referral_event,
+    transition_referral_event,
     update_referrer_stats,
 )
 
@@ -378,22 +378,43 @@ def _process_paid_referral_reward(user_id: str, referred_email: str):
         # Calculate retention check date (2 months from now)
         retention_check_date = (datetime.now(timezone.utc) + timedelta(days=30 * RETENTION_MONTHS)).isoformat()
 
-        # Record paid event with retention check
-        record_referral_event(
+        # Transition: delete pending/signup event, create paid event
+        deleted = transition_referral_event(
             referrer_id=referrer_id,
             referred_id=user_id,
-            event_type="paid",
-            referred_email=referred_email,
+            from_states=["pending", "signup"],
+            to_state="paid",
             reward_amount=actual_reward,
-            retention_check_date=retention_check_date,
+            referred_email=referred_email,
+            extra_attrs={
+                "needs_retention_check": "true",
+                "retention_check_date": retention_check_date,
+            },
         )
 
-        # Update referrer stats
+        # Adjust stats: only decrement pending if we deleted a non-expired pending event
+        pending_delta = 0
+        if deleted and deleted.get("event_type") == "pending":
+            ttl = deleted.get("ttl")
+            if not ttl or int(ttl) > int(time.time()):
+                pending_delta = -1  # Pending not yet expired → we own the decrement
+
         update_referrer_stats(
             referrer_id,
             paid_delta=1,
+            pending_delta=pending_delta,
             rewards_delta=actual_reward,
         )
+
+        # Best-effort: clear pending flag on referred user's USER_META
+        # This also prevents a race with the activity gate's conditional write
+        try:
+            table.update_item(
+                Key={"pk": user_id, "sk": "USER_META"},
+                UpdateExpression="REMOVE referral_pending, referral_pending_expires",
+            )
+        except ClientError:
+            pass  # Flag may already be cleared by activity gate
 
         # Mark as processed (idempotency record)
         events_table.put_item(

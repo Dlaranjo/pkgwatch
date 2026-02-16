@@ -110,14 +110,26 @@ def handler(event, context):
         # Get recent referral events
         events = get_referral_events(user_id, limit=20)
         referrals = []
-        seen_users = set()
+
+        # Priority-based dedup: always show the most advanced state per referred user
+        STATE_PRIORITY = {"pending": 0, "signup": 1, "paid": 2, "retained": 3}
+        best_events = {}  # referred_id -> (priority, event_item)
 
         for event_item in events:
             referred_id = event_item.get("referred_id")
-            if referred_id in seen_users:
-                continue
-            seen_users.add(referred_id)
+            event_type = event_item.get("event_type", "pending")
+            priority = STATE_PRIORITY.get(event_type, -1)
+            current = best_events.get(referred_id)
+            if current is None:
+                best_events[referred_id] = (priority, event_item)
+            elif priority > current[0]:
+                logger.warning(
+                    f"Duplicate referral events for {referred_id}: "
+                    f"replacing {current[1].get('event_type')} with {event_type}"
+                )
+                best_events[referred_id] = (priority, event_item)
 
+        for _, event_item in best_events.values():
             event_type = event_item.get("event_type", "")
             status = "credited" if event_type in ("signup", "paid", "retained") else "pending"
 
