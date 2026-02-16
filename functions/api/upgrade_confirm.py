@@ -269,7 +269,7 @@ def handler(event, context):
                     Key={"pk": item["pk"], "sk": item["sk"]},
                     UpdateExpression=(
                         "SET tier = :tier, tier_updated_at = :now, "
-                        "monthly_limit = :limit, requests_this_month = :zero, "
+                        "monthly_limit = :limit, "
                         "payment_failures = :zero"
                     ),
                     ExpressionAttributeValues={

@@ -335,23 +335,6 @@ def handler(event, context):
     }
 
 
-def _customer_exists(customer_id: str) -> bool:
-    """Check if a Stripe customer already exists in our database."""
-    if not customer_id:
-        return False
-
-    table = get_dynamodb().Table(API_KEYS_TABLE)
-    try:
-        response = table.query(
-            IndexName="stripe-customer-index",
-            KeyConditionExpression=Key("stripe_customer_id").eq(customer_id),
-            Limit=1,
-        )
-        return len(response.get("Items", [])) > 0
-    except Exception as e:
-        logger.error(f"Error checking customer existence: {e}")
-        return False
-
 
 def _process_paid_referral_reward(user_id: str, referred_email: str):
     """
@@ -468,20 +451,15 @@ def _handle_checkout_completed(session: dict):
 
     logger.info(f"Subscription tier from price {price_id}: {tier}, period={current_period_start}-{current_period_end}")
 
-    # Check if this is an upgrade (existing customer) vs new signup
-    is_upgrade = customer_id and _customer_exists(customer_id)
-
     # Update user tier in DynamoDB
-    # For existing customers (upgrades), use customer_id lookup
-    # For new customers, use email lookup
+    # For customers with email, use email lookup
+    # For customers without email, use customer_id lookup
     if customer_email:
-        # Reset usage on upgrade to give users a fresh start with new limit
         _update_user_tier(
             customer_email,
             tier,
             customer_id,
             subscription_id,
-            reset_usage=is_upgrade,
             current_period_start=current_period_start,
             current_period_end=current_period_end,
         )
@@ -1084,7 +1062,6 @@ def _update_user_tier(
     tier: str,
     customer_id: str = None,
     subscription_id: str = None,
-    reset_usage: bool = False,
     current_period_start: int = None,
     current_period_end: int = None,
 ):
@@ -1097,7 +1074,6 @@ def _update_user_tier(
         tier: New tier name
         customer_id: Stripe customer ID
         subscription_id: Stripe subscription ID
-        reset_usage: If True, reset requests_this_month to 0 (for upgrades)
         current_period_start: Unix timestamp of billing period start
         current_period_end: Unix timestamp of billing period end
     """
@@ -1160,12 +1136,6 @@ def _update_user_tier(
         # Reset payment failures on successful tier update
         update_expr += ", payment_failures = :zero"
         expr_values[":zero"] = 0
-
-        # Reset usage on upgrade to give fresh start with new limit
-        if reset_usage:
-            update_expr += ", requests_this_month = :zero_usage"
-            expr_values[":zero_usage"] = 0
-            logger.info(f"Resetting usage for {item['pk']} on tier upgrade to {tier}")
 
         table.update_item(
             Key={"pk": item["pk"], "sk": item["sk"]},
@@ -1254,12 +1224,6 @@ def _update_user_tier_by_customer_id(
             update_expr += ", stripe_subscription_id = :sub_id"
             expr_values[":sub_id"] = subscription_id
 
-        # Reset usage on upgrade to give fresh start with new limit
-        if is_upgrade:
-            update_expr += ", requests_this_month = :zero_usage"
-            expr_values[":zero_usage"] = 0
-            logger.info(f"Resetting usage for {item['pk']} on tier upgrade to {tier}")
-
         table.update_item(
             Key={"pk": item["pk"], "sk": item["sk"]},
             UpdateExpression=update_expr,
@@ -1343,12 +1307,6 @@ def _update_user_subscription_state(
                     ":limit": new_limit,
                 }
             )
-
-            # Reset usage on upgrade
-            if is_upgrade:
-                update_expr_parts.append("requests_this_month = :zero_usage")
-                expr_values[":zero_usage"] = 0
-                logger.info(f"Resetting usage for {item['pk']} on tier upgrade to {tier}")
 
         # Store billing cycle fields for per-user reset tracking
         if current_period_start:

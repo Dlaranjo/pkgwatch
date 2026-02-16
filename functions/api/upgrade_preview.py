@@ -203,21 +203,35 @@ def handler(event, context):
         # Generate proration timestamp
         proration_date = int(time.time())
 
-        # Preview with correct Stripe API parameters
-        preview = stripe.Invoice.create_preview(
-            customer=stripe_customer_id,
-            subscription=stripe_subscription_id,
-            subscription_details={
-                "items": [
+        # Preview with Stripe API (v7 uses upcoming(), v8+ uses create_preview())
+        if hasattr(stripe.Invoice, "create_preview"):
+            preview = stripe.Invoice.create_preview(
+                customer=stripe_customer_id,
+                subscription=stripe_subscription_id,
+                subscription_details={
+                    "items": [
+                        {
+                            "id": current_item_id,
+                            "price": new_price_id,
+                        }
+                    ],
+                    "proration_behavior": "always_invoice",
+                    "proration_date": proration_date,
+                },
+            )
+        else:
+            preview = stripe.Invoice.upcoming(
+                customer=stripe_customer_id,
+                subscription=stripe_subscription_id,
+                subscription_items=[
                     {
                         "id": current_item_id,
                         "price": new_price_id,
                     }
                 ],
-                "proration_behavior": "always_invoice",
-                "proration_date": proration_date,
-            },
-        )
+                subscription_proration_behavior="always_invoice",
+                subscription_proration_date=proration_date,
+            )
 
         # Parse preview to extract proration details
         credit_amount = 0

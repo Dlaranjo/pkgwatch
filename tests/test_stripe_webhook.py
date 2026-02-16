@@ -1092,8 +1092,8 @@ class TestUpdateUserTierByCustomerId:
         )
 
     @mock_aws
-    def test_resets_usage_on_upgrade(self, mock_dynamodb):
-        """Should reset usage counter when upgrading tier."""
+    def test_preserves_usage_on_upgrade(self, mock_dynamodb):
+        """Should preserve usage counter when upgrading tier."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1122,7 +1122,7 @@ class TestUpdateUserTierByCustomerId:
         response = table.get_item(Key={"pk": "user_upgrade", "sk": key_hash})
         item = response.get("Item")
         assert item["tier"] == "pro"
-        assert item["requests_this_month"] == 0  # Reset on upgrade
+        assert item["requests_this_month"] == 5000  # Preserved on upgrade
 
     @mock_aws
     def test_warns_on_downgrade_over_limit(self, mock_dynamodb):
@@ -1292,11 +1292,11 @@ class TestUpdateUserSubscriptionStateEdgeCases:
         assert item["cancellation_pending"] is False
         assert item["current_period_start"] == 1704067200
         assert item["current_period_end"] == 1706745600
-        assert item["requests_this_month"] == 0  # Reset on upgrade
+        assert item["requests_this_month"] == 100  # Preserved on upgrade
 
     @mock_aws
-    def test_upgrade_resets_usage_via_subscription_state(self, mock_dynamodb):
-        """Should reset usage when upgrading via _update_user_subscription_state."""
+    def test_preserves_usage_on_upgrade_via_subscription_state(self, mock_dynamodb):
+        """Should preserve usage when upgrading via _update_user_subscription_state."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -1326,7 +1326,7 @@ class TestUpdateUserSubscriptionStateEdgeCases:
         response = table.get_item(Key={"pk": "user_upgrade_state", "sk": key_hash})
         item = response.get("Item")
         assert item["tier"] == "business"
-        assert item["requests_this_month"] == 0  # Reset on upgrade
+        assert item["requests_this_month"] == 4500  # Preserved on upgrade
 
 
 class TestCheckAndClaimEvent:
@@ -2018,7 +2018,7 @@ class TestDoubleChargingPrevention:
 
         response = table.get_item(Key={"pk": "user_sub_idem", "sk": key_hash})
         assert response["Item"]["tier"] == "pro"
-        assert response["Item"]["requests_this_month"] == 0  # Reset on upgrade
+        assert response["Item"]["requests_this_month"] == 1000  # Preserved on upgrade
 
         # Second identical update - should be safe (idempotent)
         _update_user_subscription_state(
@@ -2425,55 +2425,6 @@ class TestRecordBillingEvent:
         assert item["customer_id"] == "unknown"
 
 
-class TestCustomerExists:
-    """Tests for _customer_exists helper function."""
-
-    @mock_aws
-    def test_returns_true_for_existing_customer(self, mock_dynamodb):
-        """Should return True when customer exists."""
-        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
-
-        table = mock_dynamodb.Table("pkgwatch-api-keys")
-
-        key_hash = hashlib.sha256(b"pw_exists").hexdigest()
-        table.put_item(
-            Item={
-                "pk": "user_exists",
-                "sk": key_hash,
-                "key_hash": key_hash,
-                "email": "exists@example.com",
-                "tier": "starter",
-                "stripe_customer_id": "cus_exists",
-                "email_verified": True,
-            }
-        )
-
-        from api.stripe_webhook import _customer_exists
-
-        result = _customer_exists("cus_exists")
-        assert result is True
-
-    @mock_aws
-    def test_returns_false_for_nonexistent_customer(self, mock_dynamodb):
-        """Should return False when customer does not exist."""
-        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
-
-        from api.stripe_webhook import _customer_exists
-
-        result = _customer_exists("cus_nonexistent")
-        assert result is False
-
-    @mock_aws
-    def test_returns_false_for_empty_customer_id(self, mock_dynamodb):
-        """Should return False for empty/None customer_id."""
-        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
-
-        from api.stripe_webhook import _customer_exists
-
-        assert _customer_exists("") is False
-        assert _customer_exists(None) is False
-
-
 class TestHandlerSignatureValidation:
     """Tests for handler-level Stripe signature validation."""
 
@@ -2737,8 +2688,8 @@ class TestUpdateUserTierEdgeCases:
         assert item["last_reset_period_start"] == 1706745600
 
     @mock_aws
-    def test_resets_usage_when_reset_usage_true(self, mock_dynamodb):
-        """Should reset usage when reset_usage=True."""
+    def test_preserves_usage_on_tier_update(self, mock_dynamodb):
+        """Should preserve usage when updating tier (usage only resets on billing cycle)."""
         os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
 
         table = mock_dynamodb.Table("pkgwatch-api-keys")
@@ -2763,12 +2714,11 @@ class TestUpdateUserTierEdgeCases:
             "pro",
             "cus_123",
             "sub_123",
-            reset_usage=True,
         )
 
         response = table.get_item(Key={"pk": "user_reset_flag", "sk": key_hash})
         item = response.get("Item")
-        assert item["requests_this_month"] == 0
+        assert item["requests_this_month"] == 4000
 
 
 class TestSubscriptionUpdatedEdgeCases:
@@ -4297,32 +4247,6 @@ class TestReleaseEventClaimErrorHandling:
             webhook_module._release_event_claim("evt_fail_release", "invoice.paid")
 
         assert "Failed to release event claim" in caplog.text
-
-
-class TestCustomerExistsErrorHandling:
-    """Tests for _customer_exists error handling."""
-
-    @mock_aws
-    def test_returns_false_on_query_error(self, mock_dynamodb, caplog):
-        """Should return False when query raises an exception."""
-        import logging
-        from unittest.mock import MagicMock, patch
-
-        caplog.set_level(logging.ERROR)
-
-        os.environ["API_KEYS_TABLE"] = "pkgwatch-api-keys"
-
-        import api.stripe_webhook as webhook_module
-
-        mock_table = MagicMock()
-        mock_table.query.side_effect = Exception("GSI not ready")
-
-        with patch.object(webhook_module, "get_dynamodb") as mock_ddb:
-            mock_ddb.return_value.Table.return_value = mock_table
-            result = webhook_module._customer_exists("cus_error")
-
-        assert result is False
-        assert "Error checking customer existence" in caplog.text
 
 
 class TestCheckAndClaimEventReraise:

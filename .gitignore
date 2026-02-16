@@ -27,6 +27,7 @@ Thumbs.db
 .env.local
 *.pem
 *.key
+scripts/stripe-env-swap.sh
 
 # Local data
 packages.json

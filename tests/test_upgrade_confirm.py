@@ -397,7 +397,7 @@ class TestUpgradeConfirmHandler:
                     item = response["Item"]
                     assert item["tier"] == "pro"
                     assert item["monthly_limit"] == 100000  # Pro limit
-                    assert item["requests_this_month"] == 0  # Reset on upgrade
+                    assert item["requests_this_month"] == 5000  # Preserved on upgrade
 
     @mock_aws
     def test_updates_all_user_api_keys(self, mock_dynamodb, api_gateway_event):
@@ -483,11 +483,11 @@ class TestUpgradeConfirmHandler:
 
                     assert response1["Item"]["tier"] == "pro"
                     assert response1["Item"]["monthly_limit"] == 100000
-                    assert response1["Item"]["requests_this_month"] == 0
+                    assert response1["Item"]["requests_this_month"] == 1000  # Preserved on upgrade
 
                     assert response2["Item"]["tier"] == "pro"
                     assert response2["Item"]["monthly_limit"] == 100000
-                    assert response2["Item"]["requests_this_month"] == 0
+                    assert response2["Item"]["requests_this_month"] == 2000  # Preserved on upgrade
 
     @mock_aws
     def test_skips_pending_records(self, mock_dynamodb, api_gateway_event):
