@@ -335,7 +335,6 @@ def handler(event, context):
     }
 
 
-
 def _process_paid_referral_reward(user_id: str, referred_email: str):
     """
     Award paid conversion bonus to referrer.

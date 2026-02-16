@@ -268,9 +268,7 @@ def handler(event, context):
                 table.update_item(
                     Key={"pk": item["pk"], "sk": item["sk"]},
                     UpdateExpression=(
-                        "SET tier = :tier, tier_updated_at = :now, "
-                        "monthly_limit = :limit, "
-                        "payment_failures = :zero"
+                        "SET tier = :tier, tier_updated_at = :now, monthly_limit = :limit, payment_failures = :zero"
                     ),
                     ExpressionAttributeValues={
                         ":tier": tier,
