@@ -102,11 +102,13 @@ def update_billing_state(
 
     if tier is not UNSET:
         new_limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
-        common_set_parts.extend([
-            "tier = :tier",
-            "tier_updated_at = :now",
-            "monthly_limit = :limit",
-        ])
+        common_set_parts.extend(
+            [
+                "tier = :tier",
+                "tier_updated_at = :now",
+                "monthly_limit = :limit",
+            ]
+        )
         common_values[":tier"] = tier
         common_values[":now"] = now_iso
         common_values[":limit"] = new_limit

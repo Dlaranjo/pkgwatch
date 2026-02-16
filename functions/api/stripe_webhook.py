@@ -1263,7 +1263,4 @@ def _update_user_subscription_state(
     )
 
     action = f"tier={tier}" if tier else "cancellation state"
-    logger.info(
-        f"Updated records for customer {customer_id}: {action}, "
-        f"cancellation_pending={cancellation_pending}"
-    )
+    logger.info(f"Updated records for customer {customer_id}: {action}, cancellation_pending={cancellation_pending}")
