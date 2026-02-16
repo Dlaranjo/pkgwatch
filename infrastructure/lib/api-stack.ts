@@ -170,6 +170,7 @@ export class ApiStack extends cdk.Stack {
 
     packagesTable.grantReadData(getPackageHandler);
     apiKeysTable.grantReadWriteData(getPackageHandler);
+    referralEventsTable.grantReadWriteData(getPackageHandler);
 
     // Create alias for safe deployments with automatic rollback
     const getPackageAlias = new lambda.Alias(this, "GetPackageAlias", {
@@ -195,6 +196,7 @@ export class ApiStack extends cdk.Stack {
 
     packagesTable.grantReadData(scanHandler);
     apiKeysTable.grantReadWriteData(scanHandler);
+    referralEventsTable.grantReadWriteData(scanHandler);
     if (packageQueue) {
       packageQueue.grantSendMessages(scanHandler);
     }
@@ -241,6 +243,7 @@ export class ApiStack extends cdk.Stack {
 
     apiKeysTable.grantReadWriteData(stripeWebhookHandler);
     billingEventsTable.grantReadWriteData(stripeWebhookHandler);
+    referralEventsTable.grantReadWriteData(stripeWebhookHandler);
     stripeSecret.grantRead(stripeWebhookHandler);
     stripeWebhookSecret.grantRead(stripeWebhookHandler);
     if (alertTopic) {
@@ -491,6 +494,7 @@ export class ApiStack extends cdk.Stack {
     });
 
     apiKeysTable.grantReadWriteData(verifyHandler);
+    referralEventsTable.grantReadWriteData(verifyHandler);
     verifyHandler.addToRolePolicy(sessionSecretPolicy);
 
     // POST /auth/magic-link - Send login link
