@@ -575,21 +575,27 @@ def _trigger_referral_activity_gate(user_id: str, user_meta: dict):
 
     # If we get here, we won the race - proceed with crediting
     try:
-        # Credit referrer with signup bonus (respecting cap)
         reward_amount = REFERRAL_REWARDS["signup"]
-        actual_reward = add_bonus_with_cap(referrer_id, reward_amount)
 
-        # Update referral event from pending to credited
-        update_referral_event_to_credited(referrer_id, user_id, actual_reward)
+        # Transition FIRST — prevents bonus leak if a higher-priority event
+        # (e.g. #paid from a concurrent webhook) already exists
+        credited = update_referral_event_to_credited(referrer_id, user_id, reward_amount)
 
-        # Update referrer stats
-        update_referrer_stats(
-            referrer_id,
-            pending_delta=-1,  # Decrease pending count
-            rewards_delta=actual_reward,
-        )
-
-        logger.info(f"Activity gate: credited referrer {referrer_id} with {actual_reward} for referred user {user_id}")
+        if credited:
+            # Credit AFTER transition succeeds
+            actual_reward = add_bonus_with_cap(referrer_id, reward_amount)
+            update_referrer_stats(
+                referrer_id,
+                pending_delta=-1,
+                rewards_delta=actual_reward,
+            )
+            logger.info(
+                f"Activity gate: credited referrer {referrer_id} with {actual_reward} for referred user {user_id}"
+            )
+        else:
+            # Higher-priority event exists — still decrement pending count
+            update_referrer_stats(referrer_id, pending_delta=-1)
+            logger.info(f"Activity gate: transition skipped for {user_id} (higher-priority event exists), no bonus")
 
     except Exception as e:
         logger.error(f"Error processing activity gate for {user_id}: {e}")

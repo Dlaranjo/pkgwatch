@@ -110,22 +110,22 @@ def handler(event, context):
                         logger.info(f"Retention already processed for {referred_id}, skipping")
                         continue  # #paid already gone from first successful run
 
-                    # Credit referrer with retention bonus
+                    # Transition FIRST — atomic guard prevents duplicate events
                     reward_amount = REFERRAL_REWARDS["retained"]
-                    actual_reward = add_bonus_with_cap(referrer_id, reward_amount)
-
-                    # Transition: delete #paid event, create #retained event
                     result = transition_referral_event(
                         referrer_id=referrer_id,
                         referred_id=referred_id,
                         from_states=["paid"],
                         to_state="retained",
-                        reward_amount=actual_reward,
+                        reward_amount=reward_amount,
                     )
 
                     if not result.created:
                         logger.info(f"Retention transition skipped for {referred_id} (race lost or already exists)")
                         continue
+
+                    # Credit AFTER transition succeeds — no bonus leak on race loss
+                    actual_reward = add_bonus_with_cap(referrer_id, reward_amount)
 
                     # Update referrer stats
                     update_referrer_stats(

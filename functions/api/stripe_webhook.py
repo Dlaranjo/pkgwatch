@@ -371,20 +371,17 @@ def _process_paid_referral_reward(user_id: str, referred_email: str):
             logger.info(f"Paid referral reward already processed for {user_id}")
             return
 
-        # Credit referrer with paid conversion bonus
-        reward_amount = REFERRAL_REWARDS["paid"]
-        actual_reward = add_bonus_with_cap(referrer_id, reward_amount)
-
         # Calculate retention check date (2 months from now)
+        reward_amount = REFERRAL_REWARDS["paid"]
         retention_check_date = (datetime.now(timezone.utc) + timedelta(days=30 * RETENTION_MONTHS)).isoformat()
 
-        # Transition: delete pending/signup event, create paid event
+        # Transition FIRST — atomic guard prevents duplicate events
         result = transition_referral_event(
             referrer_id=referrer_id,
             referred_id=user_id,
             from_states=["pending", "signup"],
             to_state="paid",
-            reward_amount=actual_reward,
+            reward_amount=reward_amount,
             referred_email=referred_email,
             extra_attrs={
                 "needs_retention_check": "true",
@@ -397,6 +394,9 @@ def _process_paid_referral_reward(user_id: str, referred_email: str):
             # or #paid was already created by a concurrent webhook.
             logger.info(f"Paid referral transition skipped for {user_id} (race lost or already exists)")
             return
+
+        # Credit AFTER transition succeeds — no bonus leak on race loss
+        actual_reward = add_bonus_with_cap(referrer_id, reward_amount)
 
         # Adjust stats: only decrement pending if we read a non-expired pending event
         pending_delta = 0
