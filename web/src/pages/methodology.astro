@@ -285,12 +285,12 @@ const components = [
           <h3 class="font-medium text-white mb-4">Health Score Separation</h3>
           <div class="grid md:grid-cols-2 gap-6">
             <div>
-              <div class="text-sm text-zinc-400 mb-2">Abandoned packages (avg score: ~55)</div>
+              <div class="text-sm text-zinc-400 mb-2">Abandoned packages (avg score: ~54)</div>
               <div class="space-y-1.5 text-sm">
-                <div class="flex justify-between"><span class="text-zinc-300">event-stream</span><span class="text-red-400">44</span></div>
-                <div class="flex justify-between"><span class="text-zinc-300">left-pad</span><span class="text-red-400">48</span></div>
-                <div class="flex justify-between"><span class="text-zinc-300">colors</span><span class="text-orange-400">54</span></div>
-                <div class="flex justify-between"><span class="text-zinc-300">request</span><span class="text-yellow-400">62</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">event-stream</span><span class="text-red-400">43</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">left-pad</span><span class="text-red-400">47</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">colors</span><span class="text-orange-400">51</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">request</span><span class="text-orange-400">60</span></div>
                 <div class="flex justify-between"><span class="text-zinc-300">moment</span><span class="text-yellow-400">67</span></div>
               </div>
             </div>
@@ -307,7 +307,7 @@ const components = [
             </div>
           </div>
           <p class="text-sm text-zinc-500 mt-4">
-            30-point average separation between groups. No healthy package scored below the worst abandoned package.
+            32-point average separation between groups. No healthy package scored below the worst abandoned package.
           </p>
         </div>
 
@@ -315,36 +315,36 @@ const components = [
           <h3 class="font-medium text-white mb-4">Abandonment Risk (12-month horizon)</h3>
           <div class="grid md:grid-cols-2 gap-6">
             <div>
-              <div class="text-sm text-zinc-400 mb-2">Abandoned packages (avg risk: ~59%)</div>
+              <div class="text-sm text-zinc-400 mb-2">Abandoned packages (avg risk: ~49%)</div>
               <div class="space-y-1.5 text-sm">
-                <div class="flex justify-between"><span class="text-zinc-300">event-stream</span><span class="text-red-400">86%</span></div>
-                <div class="flex justify-between"><span class="text-zinc-300">colors</span><span class="text-red-400">69%</span></div>
-                <div class="flex justify-between"><span class="text-zinc-300">request</span><span class="text-orange-400">52%</span></div>
-                <div class="flex justify-between"><span class="text-zinc-300">left-pad</span><span class="text-orange-400">51%</span></div>
-                <div class="flex justify-between"><span class="text-zinc-300">moment</span><span class="text-yellow-400">34%</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">event-stream</span><span class="text-red-400">74%</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">colors</span><span class="text-orange-400">54%</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">left-pad</span><span class="text-orange-400">47%</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">request</span><span class="text-orange-400">42%</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">moment</span><span class="text-yellow-400">29%</span></div>
               </div>
             </div>
             <div>
-              <div class="text-sm text-zinc-400 mb-2">Healthy controls (avg risk: ~18%)</div>
+              <div class="text-sm text-zinc-400 mb-2">Healthy controls (avg risk: ~16%)</div>
               <div class="space-y-1.5 text-sm">
-                <div class="flex justify-between"><span class="text-zinc-300">react</span><span class="text-green-400">12%</span></div>
                 <div class="flex justify-between"><span class="text-zinc-300">numpy</span><span class="text-green-400">12%</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">react</span><span class="text-green-400">12%</span></div>
                 <div class="flex justify-between"><span class="text-zinc-300">express</span><span class="text-green-400">13%</span></div>
-                <div class="flex justify-between"><span class="text-zinc-300">requests (py)</span><span class="text-green-400">16%</span></div>
-                <div class="flex justify-between"><span class="text-zinc-300">flask</span><span class="text-green-400">17%</span></div>
-                <div class="flex justify-between"><span class="text-zinc-300">lodash</span><span class="text-yellow-400">35%</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">requests (py)</span><span class="text-green-400">15%</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">flask</span><span class="text-green-400">16%</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">lodash</span><span class="text-yellow-400">29%</span></div>
               </div>
             </div>
           </div>
           <p class="text-sm text-zinc-500 mt-4">
-            41-point average separation. Lodash scores higher risk due to single maintainer and 1+ year since last release.
+            33-point average separation. Lodash scores higher risk due to single maintainer and 1+ year since last release.
           </p>
         </div>
 
         <div class="bg-zinc-800/50 rounded-lg p-6 border border-zinc-700/50">
           <h3 class="font-medium text-white mb-3">Known Limitations</h3>
           <ul class="text-sm text-zinc-400 space-y-2">
-            <li><span class="text-zinc-300">High-adoption masking:</span> Packages like request and moment.js scored 62-67 despite imminent abandonment, because massive download counts boosted their user-centric scores.</li>
+            <li><span class="text-zinc-300">High-adoption masking (partially mitigated):</span> Bus-factor-gated maturity and adoption dampening now reduce this effect &mdash; request dropped from 62 to 60 and is correctly flagged HIGH risk. However, massive download counts still inflate user-centric scores, keeping abandoned packages like moment at 67.</li>
             <li><span class="text-zinc-300">Maintenance mode detection:</span> The model cannot distinguish between "stable and done" (lodash) and "about to be declared maintenance-only" (moment) based on metrics alone.</li>
             <li><span class="text-zinc-300">Small validation set:</span> 11 examples across 2 ecosystems. More case studies will be added as real-world data accumulates.</li>
           </ul>
