@@ -210,6 +210,9 @@ export class PipelineStack extends cdk.Stack {
         // Enable distributed circuit breaker to share state across Lambda instances
         // Without this, each instance has its own circuit (5 failures each = 50 total before all open)
         USE_DISTRIBUTED_CIRCUIT_BREAKER: "true",
+        // Bundlephobia API is permanently failing (circuit breaker v1414, broken since Feb 8)
+        // Data is unused in health scoring. Disable to stop wasted HTTP calls + DynamoDB writes.
+        SKIP_BUNDLEPHOBIA: "true",
       },
     });
 
@@ -361,43 +364,72 @@ export class PipelineStack extends cdk.Stack {
       ],
     });
 
-    // Every 3 days refresh (Tier 2) - runs at 3:00 AM on days 1, 4, 7, 10, 13, 16, 19, 22, 25, 28
-    new events.Rule(this, "ThreeDayRefreshRule", {
-      ruleName: "pkgwatch-three-day-refresh",
-      schedule: events.Schedule.expression(
-        "cron(0 3 1,4,7,10,13,16,19,22,25,28 * ? *)"
-      ),
-      description: "Triggers 3-day package refresh for Tier 2 packages",
-      targets: [
-        new targets.LambdaFunction(refreshDispatcher, {
-          event: events.RuleTargetInput.fromObject({
-            tier: 2,
-            reason: "three_day_refresh",
+    // Every 3 days refresh (Tier 2) - split into 3 sub-batches at 08:00, 10:00, 12:00 UTC
+    // ~594 packages per sub-batch keeps GitHub API calls under 5,000/hr limit
+    // Runs on days 1, 4, 7, 10, 13, 16, 19, 22, 25, 28
+    const tier2Hours = ["8", "10", "12"];
+    tier2Hours.forEach((hour, subBatchIndex) => {
+      new events.Rule(this, `ThreeDayRefreshRule${subBatchIndex}`, {
+        ruleName: `pkgwatch-three-day-refresh-${subBatchIndex}`,
+        schedule: events.Schedule.expression(
+          `cron(0 ${hour} 1,4,7,10,13,16,19,22,25,28 * ? *)`
+        ),
+        description: `Tier 2 sub-batch ${subBatchIndex}/3 at ${hour}:00 UTC`,
+        targets: [
+          new targets.LambdaFunction(refreshDispatcher, {
+            event: events.RuleTargetInput.fromObject({
+              tier: 2,
+              reason: "three_day_refresh",
+              sub_batch: subBatchIndex,
+              total_sub_batches: 3,
+            }),
           }),
-        }),
-      ],
+        ],
+      });
     });
 
-    // Daily tier 3 refresh - spread across 7 days using sub-batches
-    // Each day processes ~1/7 of tier 3 packages (~1,405 per day)
+    // Daily tier 3 refresh - spread across 14 sub-batches (2 per day)
+    // Each sub-batch processes ~707 packages, keeping GitHub API calls under 5,000/hr
     // Uses CRC32 hash for deterministic sub-batch assignment
     const dayNames = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-    dayNames.forEach((day, index) => {
-      new events.Rule(this, `DailyTier3Refresh${day}`, {
-        ruleName: `pkgwatch-daily-tier3-${day.toLowerCase()}`,
+    dayNames.forEach((day, dayIndex) => {
+      // Morning batch at 04:00 UTC
+      new events.Rule(this, `DailyTier3Refresh${day}A`, {
+        ruleName: `pkgwatch-daily-tier3-${day.toLowerCase()}-a`,
         schedule: events.Schedule.cron({
           hour: "4",
           minute: "0",
           weekDay: day,
         }),
-        description: `Tier 3 sub-batch ${index}/7 (${day})`,
+        description: `Tier 3 sub-batch ${dayIndex * 2}/14 (${day} morning)`,
         targets: [
           new targets.LambdaFunction(refreshDispatcher, {
             event: events.RuleTargetInput.fromObject({
               tier: 3,
               reason: "daily_tier3_refresh",
-              sub_batch: index,
-              total_sub_batches: 7,
+              sub_batch: dayIndex * 2,
+              total_sub_batches: 14,
+            }),
+          }),
+        ],
+      });
+
+      // Second batch at 06:00 UTC
+      new events.Rule(this, `DailyTier3Refresh${day}B`, {
+        ruleName: `pkgwatch-daily-tier3-${day.toLowerCase()}-b`,
+        schedule: events.Schedule.cron({
+          hour: "6",
+          minute: "0",
+          weekDay: day,
+        }),
+        description: `Tier 3 sub-batch ${dayIndex * 2 + 1}/14 (${day} second)`,
+        targets: [
+          new targets.LambdaFunction(refreshDispatcher, {
+            event: events.RuleTargetInput.fromObject({
+              tier: 3,
+              reason: "daily_tier3_refresh",
+              sub_batch: dayIndex * 2 + 1,
+              total_sub_batches: 14,
             }),
           }),
         ],

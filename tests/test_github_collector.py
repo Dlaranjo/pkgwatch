@@ -126,6 +126,41 @@ class TestParseGitHubUrl:
         result = parse_github_url("https://github.com/microsoft/TypeScript")
         assert result == ("microsoft", "TypeScript")
 
+    def test_parse_url_with_branch_fragment(self):
+        """Parse monorepo URL with #branch fragment (e.g., emotion.git#main)."""
+        from github_collector import parse_github_url
+
+        result = parse_github_url("git+https://github.com/emotion-js/emotion.git#main")
+        assert result == ("emotion-js", "emotion")
+
+    def test_parse_url_with_readme_fragment(self):
+        """Parse URL with #readme fragment."""
+        from github_collector import parse_github_url
+
+        result = parse_github_url("https://github.com/yt-dlp/yt-dlp#readme")
+        assert result == ("yt-dlp", "yt-dlp")
+
+    def test_parse_url_with_subpath_fragment(self):
+        """Parse monorepo URL with #packages/subdir fragment."""
+        from github_collector import parse_github_url
+
+        result = parse_github_url("git+https://github.com/emotion-js/emotion#packages/cache")
+        assert result == ("emotion-js", "emotion")
+
+    def test_parse_url_with_query_string(self):
+        """Parse URL with query parameters."""
+        from github_collector import parse_github_url
+
+        result = parse_github_url("https://github.com/org/repo?tab=readme")
+        assert result == ("org", "repo")
+
+    def test_parse_url_with_fragment_and_query(self):
+        """Parse URL with both query string and fragment."""
+        from github_collector import parse_github_url
+
+        result = parse_github_url("https://github.com/org/repo.git?ref=v2#main")
+        assert result == ("org", "repo")
+
 
 # =============================================================================
 # GITHUB COLLECTOR INITIALIZATION TESTS

@@ -54,6 +54,7 @@ PACKAGES_TABLE = os.environ.get("PACKAGES_TABLE", "pkgwatch-packages")
 RAW_DATA_BUCKET = os.environ.get("RAW_DATA_BUCKET", "pkgwatch-raw-data")
 GITHUB_TOKEN_SECRET_ARN = os.environ.get("GITHUB_TOKEN_SECRET_ARN")
 API_KEYS_TABLE = os.environ.get("API_KEYS_TABLE", "pkgwatch-api-keys")
+SKIP_BUNDLEPHOBIA = os.environ.get("SKIP_BUNDLEPHOBIA", "false").lower() == "true"
 
 # Configurable thresholds
 STALE_DATA_MAX_AGE_DAYS = int(os.environ.get("STALE_DATA_MAX_AGE_DAYS", "14"))
@@ -104,7 +105,7 @@ def get_github_semaphore() -> asyncio.Semaphore:
 # Global rate limiting with sharded counters
 # Distributes writes across 10 partitions to avoid hot partition issues
 RATE_LIMIT_SHARDS = 10
-GITHUB_HOURLY_LIMIT = 4000  # Leave buffer from 5000/hour limit
+GITHUB_HOURLY_LIMIT = 800  # 800 packages × ~5 API calls each = ~4,000 calls (buffer from 5,000/hr)
 
 # NOTE: npm/PyPI package validation moved to shared/package_validation.py
 
@@ -261,7 +262,7 @@ def _check_and_increment_github_rate_limit_sync() -> bool:
 
     # Per-shard limit with small buffer for in-flight requests
     # 10 Lambdas × 5 semaphore = 50 concurrent, so +5 per shard = 50 total buffer
-    # Results in 4050 total capacity (1.25% over 4000 budget, well under GitHub's 5000 limit)
+    # Results in 850 package capacity (~4,250 API calls, well under GitHub's 5,000/hr limit)
     per_shard_limit = (GITHUB_HOURLY_LIMIT // RATE_LIMIT_SHARDS) + 5
 
     ttl = int(now.timestamp()) + 7200  # 2 hour TTL
@@ -752,7 +753,7 @@ async def collect_package_data(
     if ecosystem == "npm":
         # Determine which collectors to run (selective retry support)
         should_fetch_npm = _should_run_collector("npm", retry_sources)
-        should_fetch_bundlephobia = _should_run_collector("bundlephobia", retry_sources)
+        should_fetch_bundlephobia = not SKIP_BUNDLEPHOBIA and _should_run_collector("bundlephobia", retry_sources)
 
         # If skipping npm due to selective retry, use cached data
         if not should_fetch_npm and existing:

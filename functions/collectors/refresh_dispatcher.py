@@ -101,10 +101,13 @@ def handler(event, context):
         logger.error(f"Error querying packages: {e}")
         raise
 
-    # Sub-batch filtering for spreading tier 3 across days
+    # Sub-batch filtering for spreading collection across hours/days
     sub_batch = event.get("sub_batch")
     total_sub_batches = event.get("total_sub_batches")
     if sub_batch is not None and total_sub_batches:
+        if sub_batch < 0 or sub_batch >= total_sub_batches:
+            logger.error(f"Invalid sub_batch config: sub_batch ({sub_batch}) >= total_sub_batches ({total_sub_batches})")
+            return {"statusCode": 400, "body": "Invalid sub_batch configuration"}
         packages_to_refresh = [
             pk for pk in packages_to_refresh if zlib.crc32(pk.encode()) % total_sub_batches == sub_batch
         ]

@@ -68,6 +68,8 @@ def parse_github_url(url: str) -> Optional[tuple[str, str]]:
     # Normalize URL
     url = url.strip()
     url = url.replace("git+", "").replace("git://", "https://")
+    url = url.split("#")[0]  # Strip fragment identifiers (#main, #readme)
+    url = url.split("?")[0]  # Strip query parameters (?tab=readme)
     if url.endswith(".git"):
         url = url[:-4]
 
