@@ -4106,8 +4106,6 @@ class TestDependentsCountPreservation:
 
     def test_preserves_existing_count_when_depsdev_returns_zero(self):
         """When deps.dev returns 0 dependents, preserve existing positive count."""
-        from package_collector import collect_package_data
-
         depsdev_data = {"dependents_count": 0, "latest_version": "1.0.0"}
         existing = {"dependents_count": 50000}
         combined_data = {"sources": []}
