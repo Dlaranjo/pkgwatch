@@ -161,6 +161,44 @@ class TestParseGitHubUrl:
         result = parse_github_url("https://github.com/org/repo.git?ref=v2#main")
         assert result == ("org", "repo")
 
+    def test_parse_sponsors_url_returns_none(self):
+        """GitHub Sponsors URLs should not be parsed as repo URLs."""
+        from github_collector import parse_github_url
+
+        assert parse_github_url("https://github.com/sponsors/encode") is None
+        assert parse_github_url("https://github.com/sponsors/pallets") is None
+
+    def test_parse_marketplace_url_returns_none(self):
+        """GitHub Marketplace URLs should not be parsed as repo URLs."""
+        from github_collector import parse_github_url
+
+        assert parse_github_url("https://github.com/marketplace/actions") is None
+
+    def test_parse_apps_url_returns_none(self):
+        """GitHub Apps URLs should not be parsed as repo URLs."""
+        from github_collector import parse_github_url
+
+        assert parse_github_url("https://github.com/apps/dependabot") is None
+
+    def test_parse_orgs_url_returns_none(self):
+        """GitHub Orgs URLs should not be parsed as repo URLs."""
+        from github_collector import parse_github_url
+
+        assert parse_github_url("https://github.com/orgs/facebook/repositories") is None
+
+    def test_parse_settings_url_returns_none(self):
+        """GitHub Settings URLs should not be parsed as repo URLs."""
+        from github_collector import parse_github_url
+
+        assert parse_github_url("https://github.com/settings/profile") is None
+
+    def test_repo_named_like_blocked_path_not_filtered(self):
+        """A repo whose name starts with a blocked path word should NOT be filtered."""
+        from github_collector import parse_github_url
+
+        result = parse_github_url("https://github.com/someone/sponsors-tool")
+        assert result == ("someone", "sponsors-tool")
+
 
 # =============================================================================
 # GITHUB COLLECTOR INITIALIZATION TESTS

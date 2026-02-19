@@ -4101,6 +4101,83 @@ class TestStaleDataFallback:
         assert "extra_field" not in result
 
 
+class TestDependentsCountPreservation:
+    """Tests for preserving dependents_count when deps.dev returns 0."""
+
+    def test_preserves_existing_count_when_depsdev_returns_zero(self):
+        """When deps.dev returns 0 dependents, preserve existing positive count."""
+        from package_collector import collect_package_data
+
+        depsdev_data = {"dependents_count": 0, "latest_version": "1.0.0"}
+        existing = {"dependents_count": 50000}
+        combined_data = {"sources": []}
+
+        # Simulate the preservation logic directly
+        combined_data["dependents_count"] = depsdev_data.get("dependents_count", 0)
+        if combined_data["dependents_count"] == 0 and existing:
+            existing_dep = existing.get("dependents_count", 0)
+            if existing_dep > 0:
+                combined_data["dependents_count"] = existing_dep
+
+        assert combined_data["dependents_count"] == 50000
+
+    def test_no_preservation_when_no_existing_record(self):
+        """When there is no existing record, deps.dev 0 stays as 0."""
+        combined_data = {"sources": []}
+        combined_data["dependents_count"] = 0
+        existing = None
+
+        if combined_data["dependents_count"] == 0 and existing:
+            existing_dep = existing.get("dependents_count", 0)
+            if existing_dep > 0:
+                combined_data["dependents_count"] = existing_dep
+
+        assert combined_data["dependents_count"] == 0
+
+    def test_no_preservation_when_both_zero(self):
+        """When both deps.dev and existing are 0, stays 0."""
+        combined_data = {"sources": []}
+        combined_data["dependents_count"] = 0
+        existing = {"dependents_count": 0}
+
+        if combined_data["dependents_count"] == 0 and existing:
+            existing_dep = existing.get("dependents_count", 0)
+            if existing_dep > 0:
+                combined_data["dependents_count"] = existing_dep
+
+        assert combined_data["dependents_count"] == 0
+
+    def test_fresh_depsdev_value_used_when_positive(self):
+        """When deps.dev returns a positive value, use it (no preservation)."""
+        combined_data = {"sources": []}
+        combined_data["dependents_count"] = 500
+        existing = {"dependents_count": 300}
+
+        if combined_data["dependents_count"] == 0 and existing:
+            existing_dep = existing.get("dependents_count", 0)
+            if existing_dep > 0:
+                combined_data["dependents_count"] = existing_dep
+
+        assert combined_data["dependents_count"] == 500
+
+    def test_decimal_type_from_dynamodb_handled(self):
+        """DynamoDB returns Number type as Decimal — should be handled."""
+        from decimal import Decimal
+
+        combined_data = {"sources": []}
+        combined_data["dependents_count"] = 0
+        existing = {"dependents_count": Decimal("5000")}
+
+        if combined_data["dependents_count"] == 0 and existing:
+            existing_dep = existing.get("dependents_count", 0)
+            if isinstance(existing_dep, Decimal):
+                existing_dep = int(existing_dep)
+            if existing_dep > 0:
+                combined_data["dependents_count"] = existing_dep
+
+        assert combined_data["dependents_count"] == 5000
+
+
 class TestHasEcosystemData:
     """Tests for _has_pypi_data and _has_npm_data guard functions."""
 

@@ -710,6 +710,18 @@ async def collect_package_data(
             combined_data["openssf_score"] = depsdev_data.get("openssf_score")
             combined_data["openssf_checks"] = depsdev_data.get("openssf_checks", [])
             combined_data["dependents_count"] = depsdev_data.get("dependents_count", 0)
+            # Preserve existing dependents_count when deps.dev returns 0
+            # (version indexing lag — newly published versions haven't been analyzed yet)
+            if combined_data["dependents_count"] == 0 and existing:
+                existing_dependents = existing.get("dependents_count", 0)
+                if isinstance(existing_dependents, Decimal):
+                    existing_dependents = int(existing_dependents)
+                if existing_dependents > 0:
+                    combined_data["dependents_count"] = existing_dependents
+                    logger.info(
+                        f"Preserved existing dependents_count={existing_dependents} for "
+                        f"{ecosystem}/{name} (deps.dev returned 0 for latest version)"
+                    )
             combined_data["repository_url"] = depsdev_data.get("repository_url")
         else:
             logger.warning(f"Package {ecosystem}/{name} not found in deps.dev")

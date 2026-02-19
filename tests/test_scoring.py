@@ -86,6 +86,92 @@ class TestCalculateHealthScore:
             assert 0 <= value <= 100, f"{name} out of range: {value}"
 
 
+class TestDeprecatedArchivedHealthScoreCap:
+    """Tests for deprecated/archived health score capping."""
+
+    def _high_adoption_data(self, **overrides):
+        """Helper: package data that would normally score ~80+."""
+        data = {
+            "days_since_last_commit": 7,
+            "active_contributors_90d": 20,
+            "weekly_downloads": 50_000_000,
+            "dependents_count": 100_000,
+            "stars": 50000,
+            "commits_90d": 50,
+            "last_published": "2026-01-01T00:00:00Z",
+            "created_at": "2015-01-01T00:00:00Z",
+            "total_contributors": 200,
+            "openssf_score": 8.0,
+            "advisories": [],
+            "openssf_checks": [],
+        }
+        data.update(overrides)
+        return data
+
+    @freeze_time("2026-02-19")
+    def test_deprecated_package_capped_at_35(self):
+        """Deprecated package health score should be capped at 35 (CRITICAL)."""
+        data = self._high_adoption_data(is_deprecated=True)
+        result = calculate_health_score(data)
+        assert result["health_score"] <= 35
+        assert result["risk_level"] == "CRITICAL"
+
+    @freeze_time("2026-02-19")
+    def test_archived_package_capped_at_40(self):
+        """Archived package health score should be capped at 40 (HIGH/CRITICAL boundary)."""
+        data = self._high_adoption_data(archived=True)
+        result = calculate_health_score(data)
+        assert result["health_score"] <= 40
+        assert result["risk_level"] in ["HIGH", "CRITICAL"]
+
+    @freeze_time("2026-02-19")
+    def test_both_deprecated_and_archived_uses_lower_cap(self):
+        """Package that is both deprecated and archived should use 35 cap."""
+        data = self._high_adoption_data(is_deprecated=True, archived=True)
+        result = calculate_health_score(data)
+        assert result["health_score"] <= 35
+        assert result["risk_level"] == "CRITICAL"
+
+    @freeze_time("2026-02-19")
+    def test_cap_does_not_inflate_already_low_scores(self):
+        """If raw score is already below cap, cap should not change it."""
+        data = {
+            "is_deprecated": True,
+            "days_since_last_commit": 400,
+            "active_contributors_90d": 0,
+            "weekly_downloads": 50,
+            "dependents_count": 5,
+            "stars": 10,
+            "commits_90d": 0,
+            "created_at": "2018-01-01T00:00:00Z",
+        }
+        result = calculate_health_score(data)
+        assert result["health_score"] < 35
+
+    @freeze_time("2026-02-19")
+    def test_no_cap_when_not_deprecated_or_archived(self):
+        """Normal packages should not have any cap applied."""
+        data = self._high_adoption_data(is_deprecated=False, archived=False)
+        result = calculate_health_score(data)
+        assert result["health_score"] > 40
+
+    @freeze_time("2026-02-19")
+    def test_component_scores_preserved_despite_cap(self):
+        """Component scores should show raw values even when cap is applied."""
+        data = self._high_adoption_data(is_deprecated=True)
+        result = calculate_health_score(data)
+        assert result["health_score"] <= 35
+        # User-centric should still reflect high adoption
+        assert result["components"]["user_centric"] > 60
+
+    @freeze_time("2026-02-19")
+    def test_deprecated_none_does_not_trigger_cap(self):
+        """is_deprecated=None (DynamoDB edge case) should not trigger cap."""
+        data = self._high_adoption_data(is_deprecated=None, archived=None)
+        result = calculate_health_score(data)
+        assert result["health_score"] > 40
+
+
 class TestMaintainerHealth:
     """Tests for _maintainer_health component."""
 
@@ -301,6 +387,59 @@ class TestConfidence:
 
         assert result["level"] == "HIGH"
         assert result["score"] >= 80
+
+
+class TestConfidenceZeroValuePresence:
+    """Verify that fields with value 0 are counted as present data."""
+
+    @freeze_time("2026-02-19")
+    def test_zero_values_count_as_present(self):
+        """Fields with value 0 should be counted as present, not missing."""
+        data = {
+            "created_at": "2020-01-01T00:00:00Z",
+            "last_updated": "2026-02-18T00:00:00Z",
+            "days_since_last_commit": 0,
+            "weekly_downloads": 1_000_000,
+            "active_contributors_90d": 0,
+            "last_published": "2025-12-01T00:00:00Z",
+            "avg_issue_response_hours": 0,
+            "prs_merged_90d": 0,
+            "prs_opened_90d": 0,
+        }
+        result = _calculate_confidence(data)
+        # All 7 required fields are present (value 0 is NOT missing)
+        assert result["data_quality"] == "high"
+        assert result["interval_margin"] == 5
+
+    @freeze_time("2026-02-19")
+    def test_none_values_still_count_as_missing(self):
+        """Fields with value None should still be counted as missing."""
+        data = {
+            "created_at": "2020-01-01T00:00:00Z",
+            "days_since_last_commit": 7,
+            # All other required fields are absent (None)
+        }
+        result = _calculate_confidence(data)
+        assert result["data_quality"] == "low"
+        assert result["interval_margin"] == 15
+
+    @freeze_time("2026-02-19")
+    def test_all_zero_numeric_fields_count_as_present(self):
+        """All-zero numeric fields should still count as complete data."""
+        data = {
+            "created_at": "2020-01-01T00:00:00Z",
+            "last_updated": "2026-02-18T00:00:00Z",
+            "days_since_last_commit": 0,
+            "weekly_downloads": 0,
+            "active_contributors_90d": 0,
+            "last_published": "2025-12-01T00:00:00Z",
+            "avg_issue_response_hours": 0,
+            "prs_merged_90d": 0,
+            "prs_opened_90d": 0,
+        }
+        result = _calculate_confidence(data)
+        assert result["data_quality"] == "high"
+        assert result["interval_margin"] == 5
 
 
 # =============================================================================

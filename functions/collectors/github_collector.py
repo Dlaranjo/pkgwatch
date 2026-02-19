@@ -73,6 +73,23 @@ def parse_github_url(url: str) -> Optional[tuple[str, str]]:
     if url.endswith(".git"):
         url = url[:-4]
 
+    # Skip non-repository GitHub URLs that match the owner/repo pattern
+    # but are actually system pages (sponsors, marketplace, etc.)
+    # Trailing slash ensures we don't match repos named e.g. "sponsors-tool"
+    NON_REPO_PATHS = [
+        "/sponsors/",
+        "/marketplace/",
+        "/apps/",
+        "/settings/",
+        "/orgs/",
+        "/features/",
+        "/topics/",
+        "/collections/",
+        "/security/",
+    ]
+    if any(path in url for path in NON_REPO_PATHS):
+        return None
+
     # Match GitHub URL pattern
     patterns = [
         r"github\.com[/:]([^/]+)/([^/]+?)(?:\.git)?$",

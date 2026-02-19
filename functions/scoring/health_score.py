@@ -59,6 +59,28 @@ def calculate_health_score(data: dict) -> dict:
 
     # Clamp final score to valid range (0-100)
     health_score = round(max(0, min(100, raw_score * 100)), 1)
+
+    # Apply hard caps for deprecated/archived packages
+    # Deprecated = explicit "don't use this" from maintainer → CRITICAL
+    # Archived = closed to contributions → HIGH/CRITICAL boundary
+    is_deprecated = data.get("is_deprecated", False)
+    is_archived = data.get("archived", False)
+
+    if is_deprecated and is_archived:
+        cap = 35
+    elif is_deprecated:
+        cap = 35
+    elif is_archived:
+        cap = 40
+    else:
+        cap = None
+
+    if cap is not None and health_score > cap:
+        logger.info(
+            f"Health score capped from {health_score} to {cap} (deprecated={is_deprecated}, archived={is_archived})"
+        )
+        health_score = float(cap)
+
     confidence = _calculate_confidence(data)
 
     # Add confidence interval to the score
@@ -435,7 +457,7 @@ def _calculate_confidence(data: dict) -> dict:
         "prs_merged_90d",
         "prs_opened_90d",
     ]
-    present = sum(1 for f in required_fields if data.get(f) is not None and data.get(f) != 0)
+    present = sum(1 for f in required_fields if data.get(f) is not None)
     completeness = present / len(required_fields)
 
     # Package age (cold start penalty)
