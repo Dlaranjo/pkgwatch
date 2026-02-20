@@ -19,6 +19,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+from decimal import Decimal
 from urllib.parse import quote
 
 import boto3
@@ -118,7 +119,7 @@ async def fetch_advisories_for_package(
         }
         if cvss_score is not None:
             try:
-                advisory_record["cvss3Score"] = float(cvss_score)
+                advisory_record["cvss3_score"] = Decimal(str(float(cvss_score)))
             except (TypeError, ValueError):
                 pass
         if adv_data.get("title"):
