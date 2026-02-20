@@ -1188,7 +1188,7 @@ class TestGetPackageInfo:
                         "publishedAt": "2021-02-20T00:00:00Z",
                         "licenses": ["MIT"],
                         "relations": {"dependencies": ["dep1", "dep2"]},
-                        "advisories": [],
+                        "advisoryKeys": [],
                         "links": [{"label": "SOURCE_REPO", "url": "https://github.com/lodash/lodash"}],
                     },
                 )
@@ -1257,13 +1257,24 @@ class TestGetPackageInfo:
             assert result is None
 
     def test_get_package_info_with_advisories(self):
-        """Test package with security advisories."""
+        """Test package with security advisories fetched from detail endpoint."""
         from depsdev_collector import get_package_info
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if "packages/vulnerable-pkg:dependents" in url:
                 return httpx.Response(200, json={"dependentCount": 100})
+            elif "/advisories/GHSA-xxxx-xxxx-xxxx" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "advisoryKey": {"id": "GHSA-xxxx-xxxx-xxxx"},
+                        "url": "https://osv.dev/vulnerability/GHSA-xxxx-xxxx-xxxx",
+                        "title": "Prototype Pollution",
+                        "aliases": ["CVE-2024-0001"],
+                        "cvss3Score": 8.0,
+                    },
+                )
             elif "packages/vulnerable-pkg/versions/1.0.0" in url:
                 return httpx.Response(
                     200,
@@ -1271,12 +1282,8 @@ class TestGetPackageInfo:
                         "publishedAt": "2023-01-01T00:00:00Z",
                         "licenses": ["MIT"],
                         "relations": {},
-                        "advisories": [
-                            {
-                                "id": "GHSA-xxxx-xxxx-xxxx",
-                                "title": "Prototype Pollution",
-                                "severity": "HIGH",
-                            }
+                        "advisoryKeys": [
+                            {"id": "GHSA-xxxx-xxxx-xxxx"},
                         ],
                         "links": [],
                     },
@@ -1299,6 +1306,7 @@ class TestGetPackageInfo:
 
             assert len(result["advisories"]) == 1
             assert result["advisories"][0]["severity"] == "HIGH"
+            assert result["advisories"][0]["id"] == "GHSA-xxxx-xxxx-xxxx"
 
     def test_get_package_info_no_openssf_score(self):
         """Test package without OpenSSF scorecard."""
@@ -1315,7 +1323,7 @@ class TestGetPackageInfo:
                         "publishedAt": "2023-01-01T00:00:00Z",
                         "licenses": ["MIT"],
                         "relations": {},
-                        "advisories": [],
+                        "advisoryKeys": [],
                         "links": [{"label": "SOURCE_REPO", "url": "https://github.com/user/small-pkg"}],
                     },
                 )
@@ -1519,7 +1527,7 @@ class TestDepsDevPackageInfoEdgeCases:
                         "publishedAt": "2023-06-01T00:00:00Z",
                         "licenses": ["MIT"],
                         "relations": {"dependencies": []},
-                        "advisories": [],
+                        "advisoryKeys": [],
                         "links": [],
                     },
                 )
@@ -1562,7 +1570,7 @@ class TestDepsDevPackageInfoEdgeCases:
                         "publishedAt": "2023-12-01T00:00:00Z",
                         "licenses": ["MIT"],
                         "relations": {},
-                        "advisories": [],
+                        "advisoryKeys": [],
                         "links": [],
                     },
                 )
@@ -1634,7 +1642,7 @@ class TestDepsDevPackageInfoEdgeCases:
                         "publishedAt": "2023-01-01T00:00:00Z",
                         "licenses": ["MIT"],
                         "relations": {},
-                        "advisories": [],
+                        "advisoryKeys": [],
                         "links": [],
                     },
                 )
@@ -1670,7 +1678,7 @@ class TestDepsDevPackageInfoEdgeCases:
                         "publishedAt": "2023-01-01T00:00:00Z",
                         "licenses": ["MIT"],
                         "relations": {},
-                        "advisories": [],
+                        "advisoryKeys": [],
                         "links": [],
                     },
                 )
@@ -1690,74 +1698,6 @@ class TestDepsDevPackageInfoEdgeCases:
         with patch.object(httpx.AsyncClient, "__init__", patched_init):
             result = run_async(get_package_info("test-pkg"))
             assert result["dependents_count"] == 0
-
-
-class TestGetAdvisories:
-    """Tests for get_advisories function."""
-
-    def test_successful_fetch(self):
-        """Test successful advisories fetch."""
-        from depsdev_collector import get_advisories
-
-        def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200,
-                json={
-                    "advisories": [
-                        {"id": "GHSA-1", "severity": "HIGH"},
-                        {"id": "GHSA-2", "severity": "MEDIUM"},
-                    ]
-                },
-            )
-
-        original_init = httpx.AsyncClient.__init__
-
-        def patched_init(self, *args, **kwargs):
-            kwargs["transport"] = create_mock_transport(mock_handler)
-            original_init(self, *args, **kwargs)
-
-        with patch.object(httpx.AsyncClient, "__init__", patched_init):
-            result = run_async(get_advisories("vulnerable-pkg"))
-            assert len(result) == 2
-            assert result[0]["id"] == "GHSA-1"
-
-    def test_fetch_failure_returns_empty_list(self):
-        """Test that fetch failure returns empty list."""
-        from depsdev_collector import get_advisories
-
-        def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(500)
-
-        original_init = httpx.AsyncClient.__init__
-
-        def patched_init(self, *args, **kwargs):
-            kwargs["transport"] = create_mock_transport(mock_handler)
-            original_init(self, *args, **kwargs)
-
-        with patch.object(httpx.AsyncClient, "__init__", patched_init):
-            result = run_async(get_advisories("test-pkg"))
-            assert result == []
-
-    def test_pypi_ecosystem(self):
-        """Test advisories fetch for pypi ecosystem."""
-        from depsdev_collector import get_advisories
-
-        requested_url = None
-
-        def mock_handler(request: httpx.Request) -> httpx.Response:
-            nonlocal requested_url
-            requested_url = str(request.url)
-            return httpx.Response(200, json={"advisories": []})
-
-        original_init = httpx.AsyncClient.__init__
-
-        def patched_init(self, *args, **kwargs):
-            kwargs["transport"] = create_mock_transport(mock_handler)
-            original_init(self, *args, **kwargs)
-
-        with patch.object(httpx.AsyncClient, "__init__", patched_init):
-            run_async(get_advisories("requests", ecosystem="pypi"))
-            assert "pypi" in requested_url
 
 
 class TestGetDependencies:
@@ -2508,7 +2448,7 @@ class TestCollectPackageData:
                         "publishedAt": "2021-02-20T00:00:00Z",
                         "licenses": ["MIT"],
                         "relations": {},
-                        "advisories": [],
+                        "advisoryKeys": [],
                         "links": [{"label": "SOURCE_REPO", "url": "https://github.com/lodash/lodash"}],
                     },
                 )
@@ -2641,7 +2581,7 @@ class TestCollectPackageData:
                         "publishedAt": "2023-01-01T00:00:00Z",
                         "licenses": ["MIT"],
                         "relations": {},
-                        "advisories": [],
+                        "advisoryKeys": [],
                         "links": [],
                     },
                 )
@@ -2705,7 +2645,7 @@ class TestCollectPackageData:
                         "publishedAt": "2023-01-01T00:00:00Z",
                         "licenses": ["MIT"],
                         "relations": {},
-                        "advisories": [],
+                        "advisoryKeys": [],
                         "links": [],
                     },
                 )
@@ -3089,7 +3029,7 @@ class TestHandler:
                         "publishedAt": "2023-01-01T00:00:00Z",
                         "licenses": ["MIT"],
                         "relations": {},
-                        "advisories": [],
+                        "advisoryKeys": [],
                         "links": [],
                     },
                 )

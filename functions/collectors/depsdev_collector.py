@@ -53,6 +53,69 @@ def encode_repo_url(url: str) -> str:
     return quote(url, safe="")
 
 
+def cvss_to_severity(score) -> str:
+    """Map CVSS v3 score to severity string per NVD thresholds."""
+    if score is None:
+        return "UNKNOWN"
+    try:
+        score = float(score)
+    except (TypeError, ValueError):
+        return "UNKNOWN"
+    if score >= 9.0:
+        return "CRITICAL"
+    if score >= 7.0:
+        return "HIGH"
+    if score >= 4.0:
+        return "MEDIUM"
+    if score > 0:
+        return "LOW"
+    return "UNKNOWN"
+
+
+MAX_ADVISORY_DETAIL_FETCHES = 50
+
+
+async def fetch_advisory_details(advisory_keys: list, client) -> list[dict]:
+    """
+    Fetch full advisory details from /v3/advisories/{id} for each advisory key.
+
+    The deps.dev version endpoint returns advisoryKeys with only IDs.
+    This function enriches each advisory with title, severity, CVSS score, etc.
+    """
+    if not advisory_keys:
+        return []
+
+    advisories = []
+    for key in advisory_keys[:MAX_ADVISORY_DETAIL_FETCHES]:
+        advisory_id = key.get("id", "")
+        if not advisory_id:
+            continue
+        url = f"{DEPSDEV_API}/advisories/{quote(advisory_id, safe='')}"
+        try:
+            resp = await retry_with_backoff(client.get, url, max_retries=2, base_delay=0.5)
+            if resp.status_code == 404:
+                logger.debug(f"Advisory {advisory_id} not found")
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            cvss3 = data.get("cvss3Score")
+            advisories.append(
+                {
+                    "id": advisory_id,
+                    "url": data.get("url", ""),
+                    "title": data.get("title", ""),
+                    "aliases": data.get("aliases", []),
+                    "cvss3_score": cvss3,
+                    "severity": cvss_to_severity(cvss3),
+                }
+            )
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            logger.warning(f"Failed to fetch advisory {advisory_id}: {e}")
+            advisories.append({"id": advisory_id, "severity": "UNKNOWN"})
+
+    return advisories
+
+
 async def retry_with_backoff(
     func,
     *args,
@@ -257,7 +320,7 @@ async def get_package_info(name: str, ecosystem: str = "npm") -> Optional[dict]:
         "published_at": version_data.get("publishedAt"),
         "licenses": version_data.get("licenses", []),
         "dependencies_direct": len(version_data.get("relations", {}).get("dependencies", [])),
-        "advisories": version_data.get("advisories", []),
+        "advisories": await fetch_advisory_details(version_data.get("advisoryKeys", []), client),
         "repository_url": repo_url,
         "openssf_score": openssf_score,
         "openssf_checks": openssf_checks,
@@ -266,21 +329,6 @@ async def get_package_info(name: str, ecosystem: str = "npm") -> Optional[dict]:
         "dependents_count": dependents_count,
         "source": "deps.dev",
     }
-
-
-async def get_advisories(name: str, ecosystem: str = "npm") -> list:
-    """Get security advisories for a package."""
-    encoded_name = encode_package_name(name)
-
-    client = get_http_client()
-    url = f"{DEPSDEV_API}/systems/{ecosystem}/packages/{encoded_name}:advisories"
-    try:
-        resp = await retry_with_backoff(client.get, url)
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("advisories", [])
-    except httpx.HTTPStatusError:
-        return []
 
 
 @circuit_breaker(DEPSDEV_CIRCUIT)

@@ -136,7 +136,7 @@ class TestGetPackageInfo:
                     {"package": {"name": "dep2"}},
                 ]
             },
-            "advisories": [],
+            "advisoryKeys": [],
             "links": [
                 {"label": "SOURCE_REPO", "url": "https://github.com/lodash/lodash"},
             ],
@@ -377,7 +377,7 @@ class TestGetPackageInfo:
 
 
 class TestSecurityAdvisories:
-    """Tests for advisory data extraction."""
+    """Tests for advisory data extraction from advisoryKeys + detail endpoint."""
 
     def _create_package_response(self):
         """Create a mock deps.dev package API response."""
@@ -389,39 +389,49 @@ class TestSecurityAdvisories:
         }
 
     def _create_version_with_advisories(self):
-        """Create a version response with security advisories."""
+        """Create a version response with advisoryKeys (real deps.dev format)."""
         return {
             "versionKey": {"system": "NPM", "name": "vulnerable-pkg", "version": "1.0.0"},
             "publishedAt": "2024-01-15T00:00:00Z",
             "licenses": ["MIT"],
             "relations": {"dependencies": []},
-            "advisories": [
-                {
-                    "advisoryKey": {"id": "GHSA-xxx-yyy"},
-                    "url": "https://github.com/advisories/GHSA-xxx-yyy",
-                    "title": "Prototype Pollution",
-                    "aliases": ["CVE-2024-1234"],
-                    "severity": "HIGH",
-                },
-                {
-                    "advisoryKey": {"id": "GHSA-aaa-bbb"},
-                    "url": "https://github.com/advisories/GHSA-aaa-bbb",
-                    "title": "ReDoS vulnerability",
-                    "aliases": ["CVE-2024-5678"],
-                    "severity": "MEDIUM",
-                },
+            "advisoryKeys": [
+                {"id": "GHSA-xxx-yyy"},
+                {"id": "GHSA-aaa-bbb"},
             ],
             "links": [],
         }
 
     def test_advisories_extracted(self):
-        """Test that security advisories are extracted."""
+        """Test that advisoryKeys are fetched, enriched with severity from detail endpoint."""
         from depsdev_collector import get_package_info
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
             url = str(request.url)
             if ":dependents" in url:
                 return httpx.Response(200, json={"dependentCount": 100})
+            elif "/advisories/GHSA-xxx-yyy" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "advisoryKey": {"id": "GHSA-xxx-yyy"},
+                        "url": "https://github.com/advisories/GHSA-xxx-yyy",
+                        "title": "Prototype Pollution",
+                        "aliases": ["CVE-2024-1234"],
+                        "cvss3Score": 8.5,
+                    },
+                )
+            elif "/advisories/GHSA-aaa-bbb" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "advisoryKey": {"id": "GHSA-aaa-bbb"},
+                        "url": "https://github.com/advisories/GHSA-aaa-bbb",
+                        "title": "ReDoS vulnerability",
+                        "aliases": ["CVE-2024-5678"],
+                        "cvss3Score": 5.0,
+                    },
+                )
             elif "/versions/" in url:
                 return httpx.Response(200, json=self._create_version_with_advisories())
             elif "/packages/" in url:
@@ -439,25 +449,36 @@ class TestSecurityAdvisories:
 
             assert result is not None
             assert len(result["advisories"]) == 2
-            assert result["advisories"][0]["severity"] == "HIGH"
+            assert result["advisories"][0]["id"] == "GHSA-xxx-yyy"
+            assert result["advisories"][0]["severity"] == "HIGH"  # 8.5 >= 7.0
+            assert result["advisories"][0]["cvss3_score"] == 8.5
+            assert result["advisories"][0]["title"] == "Prototype Pollution"
+            assert result["advisories"][1]["id"] == "GHSA-aaa-bbb"
+            assert result["advisories"][1]["severity"] == "MEDIUM"  # 5.0 >= 4.0
 
-
-class TestGetAdvisories:
-    """Tests for get_advisories function."""
-
-    def test_get_advisories_success(self):
-        """Test successful advisory fetch."""
-        from depsdev_collector import get_advisories
+    def test_no_advisories_returns_empty_list(self):
+        """Version with empty advisoryKeys should return empty advisories list."""
+        from depsdev_collector import get_package_info
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200,
-                json={
-                    "advisories": [
-                        {"advisoryKey": {"id": "GHSA-test"}, "severity": "HIGH"},
-                    ]
-                },
-            )
+            url = str(request.url)
+            if ":dependents" in url:
+                return httpx.Response(200, json={"dependentCount": 100})
+            elif "/versions/" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "versionKey": {"system": "NPM", "name": "clean-pkg", "version": "1.0.0"},
+                        "publishedAt": "2024-01-15T00:00:00Z",
+                        "licenses": ["MIT"],
+                        "relations": {"dependencies": []},
+                        "advisoryKeys": [],
+                        "links": [],
+                    },
+                )
+            elif "/packages/" in url:
+                return httpx.Response(200, json=self._create_package_response())
+            return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
 
@@ -466,16 +487,224 @@ class TestGetAdvisories:
             original_init(self, *args, **kwargs)
 
         with patch.object(httpx.AsyncClient, "__init__", patched_init):
-            result = run_async(get_advisories("lodash"))
+            result = run_async(get_package_info("vulnerable-pkg"))
+            assert result is not None
+            assert result["advisories"] == []
+
+    def test_advisory_detail_404_skipped(self):
+        """Advisory returning 404 from detail endpoint should be skipped."""
+        from depsdev_collector import get_package_info
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if ":dependents" in url:
+                return httpx.Response(200, json={"dependentCount": 100})
+            elif "/advisories/GHSA-xxx-yyy" in url:
+                return httpx.Response(404)
+            elif "/advisories/GHSA-aaa-bbb" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "advisoryKey": {"id": "GHSA-aaa-bbb"},
+                        "url": "https://osv.dev/vulnerability/GHSA-aaa-bbb",
+                        "title": "ReDoS vulnerability",
+                        "aliases": ["CVE-2024-5678"],
+                        "cvss3Score": 5.0,
+                    },
+                )
+            elif "/versions/" in url:
+                return httpx.Response(200, json=self._create_version_with_advisories())
+            elif "/packages/" in url:
+                return httpx.Response(200, json=self._create_package_response())
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_package_info("vulnerable-pkg"))
+            assert result is not None
+            # Only the successful one should be included
+            assert len(result["advisories"]) == 1
+            assert result["advisories"][0]["id"] == "GHSA-aaa-bbb"
+
+    def test_advisory_detail_failure_returns_unknown_severity(self):
+        """Advisory detail 500 should produce entry with UNKNOWN severity."""
+        from depsdev_collector import get_package_info
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if ":dependents" in url:
+                return httpx.Response(200, json={"dependentCount": 100})
+            elif "/advisories/" in url:
+                return httpx.Response(500)
+            elif "/versions/" in url:
+                return httpx.Response(200, json=self._create_version_with_advisories())
+            elif "/packages/" in url:
+                return httpx.Response(200, json=self._create_package_response())
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_package_info("vulnerable-pkg"))
+            assert result is not None
+            assert len(result["advisories"]) == 2
+            assert result["advisories"][0]["severity"] == "UNKNOWN"
+            assert result["advisories"][0]["id"] == "GHSA-xxx-yyy"
+
+    def test_version_without_advisoryKeys_field(self):
+        """Version response missing advisoryKeys entirely should return empty list."""
+        from depsdev_collector import get_package_info
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if ":dependents" in url:
+                return httpx.Response(200, json={"dependentCount": 100})
+            elif "/versions/" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "versionKey": {"system": "NPM", "name": "old-pkg", "version": "1.0.0"},
+                        "publishedAt": "2024-01-15T00:00:00Z",
+                        "licenses": ["MIT"],
+                        "relations": {"dependencies": []},
+                        "links": [],
+                        # No advisoryKeys field at all
+                    },
+                )
+            elif "/packages/" in url:
+                return httpx.Response(200, json=self._create_package_response())
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_package_info("vulnerable-pkg"))
+            assert result is not None
+            assert result["advisories"] == []
+
+
+class TestCvssToSeverity:
+    """Tests for cvss_to_severity mapping function."""
+
+    def test_critical(self):
+        from depsdev_collector import cvss_to_severity
+
+        assert cvss_to_severity(9.0) == "CRITICAL"
+        assert cvss_to_severity(10.0) == "CRITICAL"
+        assert cvss_to_severity(9.8) == "CRITICAL"
+
+    def test_high(self):
+        from depsdev_collector import cvss_to_severity
+
+        assert cvss_to_severity(7.0) == "HIGH"
+        assert cvss_to_severity(8.9) == "HIGH"
+
+    def test_medium(self):
+        from depsdev_collector import cvss_to_severity
+
+        assert cvss_to_severity(4.0) == "MEDIUM"
+        assert cvss_to_severity(6.9) == "MEDIUM"
+
+    def test_low(self):
+        from depsdev_collector import cvss_to_severity
+
+        assert cvss_to_severity(0.1) == "LOW"
+        assert cvss_to_severity(3.9) == "LOW"
+
+    def test_none_score(self):
+        from depsdev_collector import cvss_to_severity
+
+        assert cvss_to_severity(None) == "UNKNOWN"
+
+    def test_zero_score(self):
+        from depsdev_collector import cvss_to_severity
+
+        assert cvss_to_severity(0.0) == "UNKNOWN"
+
+    def test_invalid_type(self):
+        from depsdev_collector import cvss_to_severity
+
+        assert cvss_to_severity("not_a_number") == "UNKNOWN"
+
+
+class TestFetchAdvisoryDetails:
+    """Tests for fetch_advisory_details function."""
+
+    def test_empty_list(self):
+        from depsdev_collector import fetch_advisory_details, get_http_client
+
+        result = run_async(fetch_advisory_details([], get_http_client()))
+        assert result == []
+
+    def test_successful_fetch(self):
+        from depsdev_collector import fetch_advisory_details
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if "/advisories/GHSA-test-1" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "advisoryKey": {"id": "GHSA-test-1"},
+                        "url": "https://osv.dev/vulnerability/GHSA-test-1",
+                        "title": "Test Vulnerability",
+                        "aliases": ["CVE-2024-9999"],
+                        "cvss3Score": 9.8,
+                    },
+                )
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            from depsdev_collector import get_http_client
+
+            client = get_http_client()
+            result = run_async(fetch_advisory_details([{"id": "GHSA-test-1"}], client))
             assert len(result) == 1
-            assert result[0]["severity"] == "HIGH"
+            assert result[0]["id"] == "GHSA-test-1"
+            assert result[0]["severity"] == "CRITICAL"
+            assert result[0]["cvss3_score"] == 9.8
+            assert result[0]["title"] == "Test Vulnerability"
+            assert result[0]["aliases"] == ["CVE-2024-9999"]
 
-    def test_get_advisories_failure(self):
-        """Test advisory fetch failure returns empty list."""
-        from depsdev_collector import get_advisories
+    def test_partial_failure(self):
+        """One advisory fails (500), another succeeds — failed gets UNKNOWN."""
+        from depsdev_collector import fetch_advisory_details
 
         def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(500)
+            url = str(request.url)
+            if "/advisories/GHSA-good" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "advisoryKey": {"id": "GHSA-good"},
+                        "url": "https://osv.dev/vulnerability/GHSA-good",
+                        "title": "Good Advisory",
+                        "aliases": [],
+                        "cvss3Score": 7.5,
+                    },
+                )
+            elif "/advisories/GHSA-bad" in url:
+                return httpx.Response(500)
+            return httpx.Response(404)
 
         original_init = httpx.AsyncClient.__init__
 
@@ -484,7 +713,39 @@ class TestGetAdvisories:
             original_init(self, *args, **kwargs)
 
         with patch.object(httpx.AsyncClient, "__init__", patched_init):
-            result = run_async(get_advisories("lodash"))
+            from depsdev_collector import get_http_client
+
+            client = get_http_client()
+            result = run_async(
+                fetch_advisory_details(
+                    [{"id": "GHSA-bad"}, {"id": "GHSA-good"}],
+                    client,
+                )
+            )
+            assert len(result) == 2
+            assert result[0]["id"] == "GHSA-bad"
+            assert result[0]["severity"] == "UNKNOWN"
+            assert result[1]["id"] == "GHSA-good"
+            assert result[1]["severity"] == "HIGH"
+
+    def test_advisory_404_skipped(self):
+        """Advisory returning 404 should not appear in results."""
+        from depsdev_collector import fetch_advisory_details
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            from depsdev_collector import get_http_client
+
+            client = get_http_client()
+            result = run_async(fetch_advisory_details([{"id": "GHSA-gone"}], client))
             assert result == []
 
 
@@ -513,7 +774,7 @@ class TestDependentsListFormat:
                         "publishedAt": "2024-01-01T00:00:00Z",
                         "licenses": ["MIT"],
                         "relations": {"dependencies": []},
-                        "advisories": [],
+                        "advisoryKeys": [],
                         "links": [],
                     },
                 )
@@ -568,7 +829,7 @@ class TestDependentsFallback:
             "publishedAt": "2026-02-05T00:00:00Z",
             "licenses": ["ISC"],
             "relations": {"dependencies": []},
-            "advisories": [],
+            "advisoryKeys": [],
             "links": [{"label": "SOURCE_REPO", "url": "https://github.com/npm/node-semver"}],
         }
 
@@ -805,7 +1066,7 @@ class TestDependentsFallback:
                         "publishedAt": "2026-01-01T00:00:00Z",
                         "licenses": ["MIT"],
                         "relations": {"dependencies": []},
-                        "advisories": [],
+                        "advisoryKeys": [],
                         "links": [{"label": "SOURCE_REPO", "url": "https://github.com/babel/babel"}],
                     },
                 )
@@ -1093,7 +1354,7 @@ class TestOpenSSFScorecard:
             "publishedAt": "2024-01-15T00:00:00Z",
             "licenses": ["MIT"],
             "relations": {"dependencies": []},
-            "advisories": [],
+            "advisoryKeys": [],
             "links": [
                 {"label": "SOURCE_REPO", "url": "https://github.com/lodash/lodash"},
             ],
@@ -1335,7 +1596,7 @@ class TestGetPackageInfoRepoUrlCleaning:
                         "publishedAt": "2024-01-01T00:00:00Z",
                         "licenses": ["MIT"],
                         "relations": {"dependencies": []},
-                        "advisories": [],
+                        "advisoryKeys": [],
                         "links": [
                             {"label": "SOURCE_REPO", "url": "https://github.com/owner/repo.git"},
                         ],
@@ -1388,7 +1649,7 @@ class TestGetPackageInfoDefaultVersion:
                         "publishedAt": "2024-01-01T00:00:00Z",
                         "licenses": ["MIT"],
                         "relations": {"dependencies": []},
-                        "advisories": [],
+                        "advisoryKeys": [],
                         "links": [],
                     },
                 )
