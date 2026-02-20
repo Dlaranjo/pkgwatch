@@ -134,7 +134,7 @@ paths:
                   data_status:
                     type: string
                     description: Current data collection status
-                    enum: [pending, partial, minimal]
+                    enum: [pending, partial, minimal, complete, abandoned_minimal, abandoned_partial]
                     example: pending
                   message:
                     type: string
@@ -239,6 +239,13 @@ paths:
                   type: string
                   format: email
                   example: user@example.com
+                referral_code:
+                  type: string
+                  description: Optional referral code from another user
+                  pattern: "^[a-zA-Z0-9_-]+$"
+                  minLength: 6
+                  maxLength: 12
+                  example: ABC123
       responses:
         '200':
           description: Verification email sent (same response for existing users)
@@ -249,7 +256,7 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: Check your email for a verification link. If you already have an account, try logging in instead.
+                    example: "Check your email (including spam folder) for a verification link. If you already have an account, we've sent you a sign-in link instead."
         '400':
           $ref: '#/components/responses/BadRequest'
 
@@ -301,7 +308,7 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: Login link sent
+                    example: "If an account exists with this email, a login link has been sent. Check your email (including spam folder)."
 
   /auth/callback:
     get:
@@ -368,6 +375,16 @@ paths:
       description: Creates a new API key for the authenticated user
       security:
         - SessionAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Optional human-readable name for the key
+                  example: Production
       responses:
         '201':
           description: API key created successfully
@@ -380,9 +397,13 @@ paths:
                     type: string
                     description: The API key (only shown once)
                     example: pw_abc123def456
+                  key_id:
+                    type: string
+                    description: Key identifier for management
+                    example: a1b2c3d4e5f6a7b8
                   message:
                     type: string
-                    example: API key created. This key will only be shown once - save it securely!
+                    example: "API key created. Save this key - it won't be shown again."
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -421,6 +442,283 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /badge/{ecosystem}/{name}:
+    get:
+      summary: Health score badge
+      description: Returns an SVG badge showing the package health score. Suitable for embedding in READMEs.
+      security: []
+      parameters:
+        - name: ecosystem
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [npm, pypi]
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: style
+          in: query
+          schema:
+            type: string
+            enum: [flat, flat-square]
+            default: flat
+        - name: label
+          in: query
+          description: Custom label text
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SVG badge image
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+
+  /auth/logout:
+    post:
+      summary: Log out
+      description: Clears the session cookie
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: Session cleared
+
+  /packages/request:
+    post:
+      summary: Request package collection
+      description: |
+        Request data collection for a package not yet tracked.
+        Rate limited to 10 requests per IP per day. No authentication required.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - ecosystem
+              properties:
+                name:
+                  type: string
+                  example: my-package
+                ecosystem:
+                  type: string
+                  enum: [npm, pypi]
+      responses:
+        '200':
+          description: Package queued for collection
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          description: Rate limited (10 requests/IP/day)
+
+  /checkout/create:
+    post:
+      summary: Create checkout session
+      description: Creates a Stripe checkout session for subscribing to a paid tier
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tier
+              properties:
+                tier:
+                  type: string
+                  enum: [starter, pro, business]
+      responses:
+        '200':
+          description: Checkout session URL
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /billing-portal/create:
+    post:
+      summary: Create billing portal session
+      description: Creates a Stripe billing portal session for managing subscriptions
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: Billing portal URL
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /upgrade/preview:
+    post:
+      summary: Preview upgrade
+      description: Preview prorated pricing for a subscription tier change
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tier
+              properties:
+                tier:
+                  type: string
+                  enum: [starter, pro, business]
+      responses:
+        '200':
+          description: Prorated pricing preview
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /upgrade/confirm:
+    post:
+      summary: Confirm upgrade
+      description: Execute a prorated subscription tier upgrade
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tier
+                - proration_date
+              properties:
+                tier:
+                  type: string
+                  enum: [starter, pro, business]
+                proration_date:
+                  type: integer
+                  description: Unix timestamp from the preview response
+      responses:
+        '200':
+          description: Upgrade confirmed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /account/recovery-codes:
+    get:
+      summary: Get recovery codes
+      description: Returns recovery codes for the authenticated user
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: Recovery codes
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Generate recovery codes
+      description: Generates new recovery codes (invalidates existing ones)
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: New recovery codes generated
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      summary: Delete recovery codes
+      description: Removes all recovery codes
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: Recovery codes deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /recovery/initiate:
+    post:
+      summary: Start account recovery
+      description: Initiates account recovery flow by sending a verification email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Recovery initiated (same response whether email exists or not)
+
+  /recovery/verify-code:
+    post:
+      summary: Verify recovery code
+      description: Verifies a recovery code to proceed with account recovery
+      security: []
+      responses:
+        '200':
+          description: Recovery code verified
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /recovery/verify-api-key:
+    post:
+      summary: Verify via API key
+      description: Verifies account ownership using an existing API key
+      security: []
+      responses:
+        '200':
+          description: API key verified
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /referral/status:
+    get:
+      summary: Get referral status
+      description: Returns referral program status and earned credits
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: Referral status
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /referral/add-code:
+    post:
+      summary: Add referral code
+      description: Add a referral code within 14 days of account creation
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - referral_code
+              properties:
+                referral_code:
+                  type: string
+      responses:
+        '200':
+          description: Referral code applied
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /webhooks/stripe:
     post:
@@ -561,6 +859,26 @@ components:
           type: string
           format: date-time
           description: When the health data was last calculated
+        data_quality:
+          type: object
+          description: Data completeness assessment
+          properties:
+            status:
+              type: string
+              enum: [complete, partial, minimal, pending, abandoned_minimal, abandoned_partial]
+              example: complete
+            assessment:
+              type: string
+              enum: [VERIFIED, PARTIAL, UNVERIFIED, UNAVAILABLE]
+              example: VERIFIED
+            explanation:
+              type: string
+              example: All data sources collected successfully
+        feedback_url:
+          type: string
+          format: uri
+          description: URL to report score feedback
+          example: https://github.com/Dlaranjo/pkgwatch/issues/new?title=Score+feedback:+npm/lodash&labels=score-feedback
 
     AbandonmentRisk:
       type: object
@@ -759,11 +1077,38 @@ components:
                 type: boolean
               last_updated:
                 type: string
+              data_quality:
+                type: object
+                description: Compact data quality assessment
+                properties:
+                  assessment:
+                    type: string
+                    enum: [VERIFIED, PARTIAL, UNVERIFIED, UNAVAILABLE]
+                  has_repository:
+                    type: boolean
         not_found:
           type: array
           items:
             type: string
           description: Packages not found in database
+        data_quality:
+          type: object
+          description: Aggregate data quality summary
+          properties:
+            verified_count:
+              type: integer
+            partial_count:
+              type: integer
+            unverified_count:
+              type: integer
+            unavailable_count:
+              type: integer
+        verified_risk_count:
+          type: integer
+          description: Count of HIGH/CRITICAL packages with verified data quality
+        unverified_risk_count:
+          type: integer
+          description: Count of HIGH/CRITICAL packages with unverified data quality
 
     UsageResponse:
       type: object
@@ -831,17 +1176,35 @@ components:
         last_login:
           type: string
           format: date-time
+        bonus_requests:
+          type: integer
+          description: Available bonus request credits
+          example: 0
+        effective_limit:
+          type: integer
+          description: Monthly limit plus bonus credits
+          example: 5000
+        referral_code:
+          type: string
+          nullable: true
+          description: User's referral code for sharing
+          example: abc123
 
     ApiKeyInfo:
       type: object
       properties:
         key_id:
           type: string
-          example: key_abc123
+          example: a1b2c3d4e5f6a7b8
         key_prefix:
           type: string
           description: Masked key showing prefix and suffix for identification
-          example: pw_...abc12345
+          example: pw_....abc12345
+        key_name:
+          type: string
+          nullable: true
+          description: User-assigned name for the key
+          example: Production key
         tier:
           type: string
           enum: [free, starter, pro, business]

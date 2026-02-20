@@ -80,20 +80,32 @@ curl -H "X-API-Key: YOUR_KEY" \\
   "confidence": {
     "score": 87.5,
     "level": "HIGH"
-  }
+  },
+  "advisories": [],
+  "latest_version": "4.21.2",
+  "last_published": "2024-10-08T00:00:00Z",
+  "repository_url": "https://github.com/expressjs/express",
+  "last_updated": "2026-01-07T20:00:00Z",
+  "data_quality": {
+    "status": "complete",
+    "assessment": "VERIFIED",
+    "explanation": "All data sources collected successfully"
+  },
+  "feedback_url": "https://github.com/Dlaranjo/pkgwatch/issues/new?title=Score+feedback:+npm/express&labels=score-feedback"
 }`
     }
   },
   {
     method: 'POST',
     path: '/scan',
-    description: 'Scan multiple packages from a package.json or requirements.txt file.',
+    description: 'Scan multiple packages from a package.json file or pre-parsed dependency map.',
     auth: true,
     body: `{
   "dependencies": {
     "express": "^4.18.0",
     "lodash": "^4.17.21"
-  }
+  },
+  "ecosystem": "npm"  // optional, defaults to "npm"
 }
 
 // OR pass the entire package.json content:
@@ -114,24 +126,30 @@ curl -H "X-API-Key: YOUR_KEY" \\
   "packages": [
     {
       "package": "express",
-      "ecosystem": "npm",
       "health_score": 83.5,
       "risk_level": "LOW",
       "abandonment_risk": {
         "probability": 3.5,
-        "time_horizon_months": 12,
-        "risk_factors": []
+        "time_horizon_months": 12
       },
-      "components": {
-        "maintainer_health": 85.2,
-        "user_centric": 92.1,
-        "evolution_health": 78.4,
-        "community_health": 81.3,
-        "security_health": 72.5
+      "is_deprecated": false,
+      "archived": false,
+      "last_updated": "2026-01-07T20:00:00Z",
+      "data_quality": {
+        "assessment": "VERIFIED",
+        "has_repository": true
       }
     }
   ],
-  "not_found": []
+  "not_found": [],
+  "data_quality": {
+    "verified_count": 1,
+    "partial_count": 0,
+    "unverified_count": 0,
+    "unavailable_count": 0
+  },
+  "verified_risk_count": 0,
+  "unverified_risk_count": 0
 }`
     }
   },
@@ -373,7 +391,8 @@ curl -H "X-API-Key: YOUR_KEY" \
             </p>
             <div class="mt-2 font-mono text-xs text-zinc-500">
               X-RateLimit-Limit: 5000<br>
-              X-RateLimit-Remaining: 4958
+              X-RateLimit-Remaining: 4958<br>
+              X-RateLimit-Reset: 1738368000
             </div>
           </div>
         </div>

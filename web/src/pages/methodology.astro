@@ -15,21 +15,21 @@ const components = [
     weight: 30,
     color: 'blue',
     description: 'Adoption metrics - most predictive of package health',
-    signals: ['Weekly downloads', 'Dependent packages', 'GitHub stars']
+    signals: ['Weekly downloads (50%)', 'Dependent packages (30%)', 'GitHub stars (20%)']
   },
   {
     name: 'Maintainer Health',
     weight: 25,
     color: 'green',
     description: 'Active maintenance and sustainability',
-    signals: ['Days since last commit', 'True bus factor (contribution distribution)', 'PR merge velocity']
+    signals: ['Commit recency (50%)', 'True bus factor (30%)', 'PR merge velocity (20%)']
   },
   {
     name: 'Evolution',
     weight: 20,
     color: 'purple',
     description: 'Development momentum with maturity adjustment',
-    signals: ['Release recency', 'Commit activity', 'Maturity factor for stable packages']
+    signals: ['Release recency (50%)', 'Commit activity (50%)', 'Maturity factor for stable packages']
   },
   {
     name: 'Security',
@@ -43,7 +43,7 @@ const components = [
     weight: 10,
     color: 'orange',
     description: 'Contributor diversity and engagement',
-    signals: ['Total contributors', 'Issue response time']
+    signals: ['Total contributors (60%)', 'Issue response time (40%)']
   }
 ]
 ---
@@ -143,7 +143,10 @@ const components = [
               Packages like <code class="text-zinc-300 bg-zinc-700 px-1 rounded">lodash</code> benefit from this.
             </p>
             <p class="text-sm text-zinc-400">
-              <span class="text-zinc-300">Criteria:</span> 1M+ weekly downloads OR 5K+ dependents with &lt;10 commits/90d
+              <span class="text-zinc-300">Applies:</span> Uses smooth sigmoid transitions centered at ~1M weekly downloads or ~5K dependents, combined with low activity (~10 commits/90d). Benefits scale gradually &mdash; no hard cutoffs. Capped at 0.7 (even the most mature package only gets a 70% floor for evolution sub-scores).
+            </p>
+            <p class="text-sm text-zinc-400 mt-2">
+              <span class="text-zinc-300">Bus factor gate:</span> Single-maintainer packages receive only 33% of the maturity benefit, scaling linearly to full benefit at 3+ maintainers. This prevents the maturity factor from masking genuine abandonment risk in single-maintainer projects.
             </p>
           </div>
 
@@ -174,6 +177,7 @@ const components = [
                 <li>&lt;30% merge rate: Potential maintainer overload or abandonment</li>
                 <li>No PRs: Neutral score (could indicate stable package)</li>
               </ul>
+              <p class="text-xs text-zinc-500 mt-2">Uses a continuous sigmoid function &mdash; scores transition smoothly, not in discrete steps.</p>
             </div>
           </div>
 
@@ -215,6 +219,25 @@ const components = [
         </div>
       </section>
 
+      <!-- Deprecated & Archived Overrides -->
+      <section class="mb-16">
+        <h2 class="text-2xl font-semibold text-white mb-6">Deprecated & Archived Overrides</h2>
+        <div class="bg-zinc-800/50 rounded-lg p-6 border border-zinc-700/50">
+          <p class="text-zinc-400 mb-4">
+            When a package is explicitly deprecated or its repository is archived, normal scoring
+            is overridden with hard caps to ensure these packages are flagged appropriately:
+          </p>
+          <ul class="text-sm text-zinc-400 space-y-2 mb-4">
+            <li><span class="text-zinc-300">Deprecated:</span> Health score capped at 35 (CRITICAL)</li>
+            <li><span class="text-zinc-300">Archived:</span> Health score capped at 40 (HIGH)</li>
+            <li><span class="text-zinc-300">Both:</span> Health score capped at 35 (CRITICAL)</li>
+          </ul>
+          <p class="text-sm text-zinc-500">
+            Abandonment risk is also forced to 95% for deprecated or archived packages, regardless of other factors.
+          </p>
+        </div>
+      </section>
+
       <!-- Abandonment Risk Prediction -->
       <section class="mb-16">
         <div class="flex items-center gap-3 mb-6">
@@ -232,6 +255,10 @@ const components = [
             <li><span class="text-zinc-300">Adoption (20%):</span> Download and dependent count trends</li>
             <li><span class="text-zinc-300">Release (15%):</span> Time since last release</li>
           </ul>
+          <p class="text-sm text-zinc-500 mb-4">
+            High-adoption packages receive up to 30% dampening on inactivity and release risk,
+            reflecting that widely-used packages are less likely to be truly abandoned.
+          </p>
           <div class="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg text-sm">
             <span class="text-amber-400 font-medium">Beta Notice:</span>
             <span class="text-zinc-400 ml-1">
@@ -381,13 +408,13 @@ const components = [
           Every score includes a confidence level and interval indicating data reliability:
         </p>
         <ul class="text-zinc-400 space-y-2 mb-4">
-          <li><span class="text-green-400 font-medium">HIGH:</span> Complete data, package &gt;1 year old, recently updated (±5 point interval)</li>
-          <li><span class="text-yellow-400 font-medium">MEDIUM:</span> Some data missing or package 6-12 months old (±10 point interval)</li>
-          <li><span class="text-orange-400 font-medium">LOW:</span> Significant data gaps or stale information (±15 point interval)</li>
-          <li><span class="text-red-400 font-medium">INSUFFICIENT_DATA:</span> Package &lt;90 days old - scores unreliable</li>
+          <li><span class="text-green-400 font-medium">HIGH:</span> Confidence score &ge;80% (&plusmn;5 point interval)</li>
+          <li><span class="text-yellow-400 font-medium">MEDIUM:</span> Confidence score 50&ndash;79% (&plusmn;10 point interval)</li>
+          <li><span class="text-orange-400 font-medium">LOW:</span> Confidence score &lt;50% (&plusmn;15 point interval)</li>
+          <li><span class="text-red-400 font-medium">INSUFFICIENT_DATA:</span> Package &lt;90 days old &mdash; scores may be unreliable</li>
         </ul>
         <p class="text-sm text-zinc-400">
-          <span class="text-zinc-300">Confidence intervals:</span> Wider intervals for lower data quality reflect increased uncertainty. A score of 75 with HIGH confidence has an interval of [70, 80], while LOW confidence might be [60, 90].
+          <span class="text-zinc-300">How it works:</span> Confidence is a blended score of data completeness (50%), package age (30%), and data freshness (20%). The interval margin is computed independently from data completeness and collection errors &mdash; not directly from the confidence level. Each collection error reduces the confidence score by 10%. GitHub API failures with a known repository URL widen the margin to &plusmn;20 points.
         </p>
       </section>
 

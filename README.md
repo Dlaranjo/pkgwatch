@@ -49,6 +49,15 @@ pkgwatch scan
 
 # Fail CI on HIGH/CRITICAL risk packages
 pkgwatch scan --fail-on HIGH
+
+# Scan all manifests in a monorepo
+pkgwatch scan --recursive
+
+# Output in SARIF format for CI integration
+pkgwatch scan --output sarif
+
+# Check a Python package
+pkgwatch check requests -e pypi
 ```
 
 ### GitHub Action
@@ -109,6 +118,8 @@ See [/methodology](https://pkgwatch.dev/methodology) for full details.
 | `/packages/{ecosystem}/{name}` | GET | API Key | Get package health score |
 | `/scan` | POST | API Key | Scan multiple packages |
 | `/usage` | GET | API Key | Get API usage statistics |
+
+See [full API documentation](https://pkgwatch.dev/docs) for authentication, billing, and key management endpoints.
 
 **Demo mode:** Try the API without an API key (20 requests/hour per IP).
 
@@ -223,9 +234,9 @@ npm run build
 | Tier | Packages | Frequency |
 |------|----------|-----------|
 | Tier 1 | Top 100 | Daily |
-| Tier 2 | Top 500 | Every 3 days |
-| Tier 3 | All 10000 | Weekly |
+| Tier 2 | 101–500 | Every 3 days |
+| Tier 3 | All ~2,500 | Weekly |
 
 ## License
 
-Proprietary - All rights reserved
+CLI, Action, and API client packages are MIT licensed. Backend and infrastructure code is proprietary — all rights reserved.
