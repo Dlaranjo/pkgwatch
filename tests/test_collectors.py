@@ -1692,44 +1692,6 @@ class TestDepsDevPackageInfoEdgeCases:
             assert result["dependents_count"] == 0
 
 
-class TestGetDependentsCount:
-    """Tests for get_dependents_count function."""
-
-    def test_successful_fetch(self):
-        """Test successful dependents count fetch."""
-        from depsdev_collector import get_dependents_count
-
-        def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={"dependentCount": 5000})
-
-        original_init = httpx.AsyncClient.__init__
-
-        def patched_init(self, *args, **kwargs):
-            kwargs["transport"] = create_mock_transport(mock_handler)
-            original_init(self, *args, **kwargs)
-
-        with patch.object(httpx.AsyncClient, "__init__", patched_init):
-            result = run_async(get_dependents_count("lodash"))
-            assert result == 5000
-
-    def test_missing_count_returns_zero(self):
-        """Test that missing dependentCount returns 0."""
-        from depsdev_collector import get_dependents_count
-
-        def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={})
-
-        original_init = httpx.AsyncClient.__init__
-
-        def patched_init(self, *args, **kwargs):
-            kwargs["transport"] = create_mock_transport(mock_handler)
-            original_init(self, *args, **kwargs)
-
-        with patch.object(httpx.AsyncClient, "__init__", patched_init):
-            result = run_async(get_dependents_count("lodash"))
-            assert result == 0
-
-
 class TestGetAdvisories:
     """Tests for get_advisories function."""
 
@@ -4916,6 +4878,9 @@ class TestExtractCachedGitHubFields:
             "bus_factor_confidence": "HIGH",
             "contribution_distribution": [50, 30, 20],
             "archived": False,
+            "avg_issue_response_hours": Decimal("36.5"),
+            "prs_opened_90d": 25,
+            "prs_merged_90d": 20,
             "extra_field": "ignored",
         }
 
@@ -4925,6 +4890,9 @@ class TestExtractCachedGitHubFields:
         assert result["forks"] == 200
         assert result["true_bus_factor"] == 3
         assert result["archived"] is False
+        assert result["avg_issue_response_hours"] == Decimal("36.5")
+        assert result["prs_opened_90d"] == 25
+        assert result["prs_merged_90d"] == 20
         assert "extra_field" not in result
 
     def test_extract_cached_github_fields_partial_data(self):
@@ -4941,6 +4909,98 @@ class TestExtractCachedGitHubFields:
         assert result["stars"] == 500
         assert result["forks"] is None
         assert result.get("contribution_distribution") == []
+        assert result["avg_issue_response_hours"] is None
+        assert result["prs_opened_90d"] is None
+        assert result["prs_merged_90d"] is None
+
+
+class TestStorePackageDataGitHubFields:
+    """Tests for storing GitHub PR/issue fields in DynamoDB."""
+
+    @mock_aws
+    def test_store_persists_pr_and_issue_fields(self):
+        """avg_issue_response_hours (float), prs_opened_90d, prs_merged_90d stored correctly."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
+            from importlib import reload
+
+            import package_collector
+
+            reload(package_collector)
+
+            data = {
+                "latest_version": "1.0.0",
+                "weekly_downloads": 100000,
+                "sources": ["deps.dev", "npm", "github"],
+                "avg_issue_response_hours": 36.5,
+                "prs_opened_90d": 25,
+                "prs_merged_90d": 20,
+            }
+
+            package_collector.store_package_data_sync("npm", "test-pkg", data, tier=2)
+
+            table = dynamodb.Table("pkgwatch-packages")
+            response = table.get_item(Key={"pk": "npm#test-pkg", "sk": "LATEST"})
+
+            item = response["Item"]
+            assert item["avg_issue_response_hours"] == Decimal("36.5")
+            assert item["prs_opened_90d"] == 25
+            assert item["prs_merged_90d"] == 20
+
+    @mock_aws
+    def test_store_omits_none_issue_response(self):
+        """avg_issue_response_hours=None stripped; prs with 0 values stored."""
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        dynamodb.create_table(
+            TableName="pkgwatch-packages",
+            KeySchema=[
+                {"AttributeName": "pk", "KeyType": "HASH"},
+                {"AttributeName": "sk", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "pk", "AttributeType": "S"},
+                {"AttributeName": "sk", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        with patch.dict(os.environ, {"PACKAGES_TABLE": "pkgwatch-packages"}):
+            from importlib import reload
+
+            import package_collector
+
+            reload(package_collector)
+
+            data = {
+                "latest_version": "1.0.0",
+                "sources": ["deps.dev", "github"],
+                "avg_issue_response_hours": None,
+                "prs_opened_90d": 0,
+                "prs_merged_90d": 0,
+            }
+
+            package_collector.store_package_data_sync("npm", "no-issues-pkg", data, tier=3)
+
+            table = dynamodb.Table("pkgwatch-packages")
+            response = table.get_item(Key={"pk": "npm#no-issues-pkg", "sk": "LATEST"})
+
+            item = response["Item"]
+            assert "avg_issue_response_hours" not in item
+            assert item["prs_opened_90d"] == 0
+            assert item["prs_merged_90d"] == 0
 
 
 class TestHasGitHubData:

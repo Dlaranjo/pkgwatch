@@ -187,29 +187,63 @@ async def get_package_info(name: str, ecosystem: str = "npm") -> Optional[dict]:
         except httpx.HTTPStatusError:
             logger.debug(f"Project not found for {name}: {clean_url}")
 
-    # 4. Get dependents count (requires version in the endpoint)
+    # 4. Get dependents count (with version fallback for indexing lag)
     # Note: Dependents endpoint only exists in v3alpha, not stable v3 API
+    # deps.dev may return 404 for newly published versions not yet indexed,
+    # so we walk back up to 3 older non-deprecated versions as fallback.
     dependents_count = 0
     if latest_version:
-        try:
-            encoded_version = quote(latest_version, safe="")
-            dependents_url = (
-                f"{DEPSDEV_API_ALPHA}/systems/{ecosystem}/packages/{encoded_name}/versions/{encoded_version}:dependents"
-            )
-            dependents_resp = await retry_with_backoff(client.get, dependents_url)
-            dependents_resp.raise_for_status()
-            dependents_data = dependents_resp.json()
-            # deps.dev returns dependentCount as an integer
-            dependent_count_value = dependents_data.get("dependentCount")
-            if isinstance(dependent_count_value, int):
-                dependents_count = dependent_count_value
-            elif isinstance(dependent_count_value, list):
-                dependents_count = len(dependent_count_value)
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                logger.debug(f"No dependents data available for {name}@{latest_version}")
-            else:
-                logger.warning(f"Failed to fetch dependents for {name}: HTTP {e.response.status_code}")
+        versions_list = pkg_data.get("versions", [])
+        non_deprecated_versions = [
+            v.get("versionKey", {}).get("version", "")
+            for v in versions_list
+            if v.get("versionKey", {}).get("version") and not v.get("isDeprecated")
+        ]
+
+        # Always try latest first, then walk back through older versions
+        candidates = [latest_version]
+        if latest_version in non_deprecated_versions:
+            idx = non_deprecated_versions.index(latest_version)
+            for i in range(idx - 1, max(idx - 3, -1), -1):
+                candidates.append(non_deprecated_versions[i])
+
+        for candidate_ver in candidates:
+            try:
+                encoded_version = quote(candidate_ver, safe="")
+                dependents_url = (
+                    f"{DEPSDEV_API_ALPHA}/systems/{ecosystem}/packages/"
+                    f"{encoded_name}/versions/{encoded_version}:dependents"
+                )
+                dependents_resp = await retry_with_backoff(client.get, dependents_url)
+                dependents_resp.raise_for_status()
+                dependents_data = dependents_resp.json()
+                dependent_count_value = dependents_data.get("dependentCount")
+                if isinstance(dependent_count_value, int) and dependent_count_value > 0:
+                    dependents_count = dependent_count_value
+                    if candidate_ver != latest_version:
+                        logger.info(
+                            f"Dependents fallback: {name}@{latest_version} -> "
+                            f"{name}@{candidate_ver} (dependents={dependents_count})"
+                        )
+                    break
+                elif isinstance(dependent_count_value, list):
+                    count = len(dependent_count_value)
+                    if count > 0:
+                        dependents_count = count
+                        break
+                # 0 or missing — try next version
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    logger.debug(f"No dependents data for {name}@{candidate_ver}")
+                    continue
+                else:
+                    logger.warning(
+                        f"Failed to fetch dependents for {name}@{candidate_ver}: HTTP {e.response.status_code}"
+                    )
+                    break
+            except httpx.RequestError:
+                logger.warning(f"Network error fetching dependents for {name}@{candidate_ver}")
+                break
 
     # Extract OpenSSF scorecard
     scorecard = project_data.get("scorecardV2", {})
@@ -232,23 +266,6 @@ async def get_package_info(name: str, ecosystem: str = "npm") -> Optional[dict]:
         "dependents_count": dependents_count,
         "source": "deps.dev",
     }
-
-
-async def get_dependents_count(name: str, ecosystem: str = "npm") -> int:
-    """Get count of packages that depend on this one.
-
-    Note: Uses v3alpha API as dependents endpoint doesn't exist in stable v3.
-    """
-    encoded_name = encode_package_name(name)
-
-    client = get_http_client()
-    url = f"{DEPSDEV_API_ALPHA}/systems/{ecosystem}/packages/{encoded_name}:dependents"
-    resp = await retry_with_backoff(client.get, url)
-    resp.raise_for_status()
-    data = resp.json()
-
-    # deps.dev returns dependentCount as an integer
-    return data.get("dependentCount", 0)
 
 
 async def get_advisories(name: str, ecosystem: str = "npm") -> list:

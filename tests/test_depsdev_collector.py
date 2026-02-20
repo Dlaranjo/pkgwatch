@@ -493,27 +493,10 @@ class TestGetAdvisories:
 # =============================================================================
 
 
-class TestGetDependentsCount:
-    """Tests for get_dependents_count function."""
+class TestDependentsListFormat:
+    """Tests for dependentCount list format handling in get_package_info."""
 
-    def test_get_dependents_count_success(self):
-        """Test successful dependents count fetch."""
-        from depsdev_collector import get_dependents_count
-
-        def mock_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json={"dependentCount": 50000})
-
-        original_init = httpx.AsyncClient.__init__
-
-        def patched_init(self, *args, **kwargs):
-            kwargs["transport"] = create_mock_transport(mock_handler)
-            original_init(self, *args, **kwargs)
-
-        with patch.object(httpx.AsyncClient, "__init__", patched_init):
-            result = run_async(get_dependents_count("lodash"))
-            assert result == 50000
-
-    def test_get_dependents_count_as_list(self):
+    def test_dependents_count_as_list(self):
         """Test handling when dependentCount is a list instead of int."""
         from depsdev_collector import get_package_info
 
@@ -555,6 +538,292 @@ class TestGetDependentsCount:
         with patch.object(httpx.AsyncClient, "__init__", patched_init):
             result = run_async(get_package_info("test-pkg"))
             assert result["dependents_count"] == 3  # Length of list
+
+
+# =============================================================================
+# DEPENDENTS VERSION FALLBACK TESTS
+# =============================================================================
+
+
+class TestDependentsFallback:
+    """Tests for dependents version fallback when latest version returns 404."""
+
+    def _create_package_response(self, name="semver", versions=None):
+        """Create mock package response with multiple versions."""
+        if versions is None:
+            versions = [
+                {"versionKey": {"system": "NPM", "name": name, "version": "7.7.1"}, "isDefault": False},
+                {"versionKey": {"system": "NPM", "name": name, "version": "7.7.2"}, "isDefault": False},
+                {"versionKey": {"system": "NPM", "name": name, "version": "7.7.3"}, "isDefault": False},
+                {"versionKey": {"system": "NPM", "name": name, "version": "7.7.4"}, "isDefault": True},
+            ]
+        return {
+            "packageKey": {"system": "NPM", "name": name},
+            "versions": versions,
+        }
+
+    def _create_version_response(self, name="semver", version="7.7.4"):
+        return {
+            "versionKey": {"system": "NPM", "name": name, "version": version},
+            "publishedAt": "2026-02-05T00:00:00Z",
+            "licenses": ["ISC"],
+            "relations": {"dependencies": []},
+            "advisories": [],
+            "links": [{"label": "SOURCE_REPO", "url": "https://github.com/npm/node-semver"}],
+        }
+
+    def test_no_fallback_when_latest_has_dependents(self):
+        """When latest version has dependents, no fallback needed."""
+        from depsdev_collector import get_package_info
+
+        calls = []
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if ":dependents" in url:
+                calls.append(url)
+                return httpx.Response(200, json={"dependentCount": 359105})
+            elif "/versions/" in url:
+                return httpx.Response(200, json=self._create_version_response())
+            elif "/packages/" in url:
+                return httpx.Response(200, json=self._create_package_response())
+            elif "/projects/" in url:
+                return httpx.Response(200, json={})
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_package_info("semver"))
+            assert result["dependents_count"] == 359105
+            # Only one dependents call (no fallback)
+            assert len(calls) == 1
+            assert "7.7.4" in calls[0]
+
+    def test_fallback_to_previous_version_on_404(self):
+        """When latest version returns 404, should try previous versions."""
+        from depsdev_collector import get_package_info
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if ":dependents" in url:
+                if "7.7.4" in url:
+                    raise httpx.HTTPStatusError("Not Found", request=request, response=httpx.Response(404))
+                elif "7.7.3" in url:
+                    return httpx.Response(200, json={"dependentCount": 359105})
+                return httpx.Response(200, json={"dependentCount": 0})
+            elif "/versions/" in url:
+                return httpx.Response(200, json=self._create_version_response())
+            elif "/packages/" in url:
+                return httpx.Response(200, json=self._create_package_response())
+            elif "/projects/" in url:
+                return httpx.Response(200, json={})
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_package_info("semver"))
+            assert result["dependents_count"] == 359105
+
+    def test_multiple_404s_before_success(self):
+        """When multiple versions return 404, should keep trying."""
+        from depsdev_collector import get_package_info
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if ":dependents" in url:
+                if "7.7.4" in url or "7.7.3" in url:
+                    raise httpx.HTTPStatusError("Not Found", request=request, response=httpx.Response(404))
+                elif "7.7.2" in url:
+                    return httpx.Response(200, json={"dependentCount": 350000})
+                return httpx.Response(200, json={"dependentCount": 0})
+            elif "/versions/" in url:
+                return httpx.Response(200, json=self._create_version_response())
+            elif "/packages/" in url:
+                return httpx.Response(200, json=self._create_package_response())
+            elif "/projects/" in url:
+                return httpx.Response(200, json={})
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_package_info("semver"))
+            assert result["dependents_count"] == 350000
+
+    def test_fallback_skips_deprecated_versions(self):
+        """Deprecated versions should be excluded from fallback candidates."""
+        from depsdev_collector import get_package_info
+
+        versions = [
+            {"versionKey": {"system": "NPM", "name": "semver", "version": "7.7.1"}, "isDefault": False},
+            {
+                "versionKey": {"system": "NPM", "name": "semver", "version": "7.7.2"},
+                "isDefault": False,
+                "isDeprecated": True,
+            },
+            {
+                "versionKey": {"system": "NPM", "name": "semver", "version": "7.7.3"},
+                "isDefault": False,
+                "isDeprecated": True,
+            },
+            {"versionKey": {"system": "NPM", "name": "semver", "version": "7.7.4"}, "isDefault": True},
+        ]
+
+        tried_versions = []
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if ":dependents" in url:
+                # Extract version from URL
+                for v in ["7.7.4", "7.7.3", "7.7.2", "7.7.1"]:
+                    if v in url:
+                        tried_versions.append(v)
+                        break
+                if "7.7.4" in url:
+                    raise httpx.HTTPStatusError("Not Found", request=request, response=httpx.Response(404))
+                elif "7.7.1" in url:
+                    return httpx.Response(200, json={"dependentCount": 300000})
+                return httpx.Response(200, json={"dependentCount": 0})
+            elif "/versions/" in url:
+                return httpx.Response(200, json=self._create_version_response())
+            elif "/packages/" in url:
+                return httpx.Response(200, json=self._create_package_response(versions=versions))
+            elif "/projects/" in url:
+                return httpx.Response(200, json={})
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_package_info("semver"))
+            assert result["dependents_count"] == 300000
+            # Should skip 7.7.3 and 7.7.2 (deprecated), go straight to 7.7.1
+            assert "7.7.3" not in tried_versions
+            assert "7.7.2" not in tried_versions
+            assert "7.7.1" in tried_versions
+
+    def test_fallback_returns_zero_when_all_fail(self):
+        """When all versions return 404/0, should return 0."""
+        from depsdev_collector import get_package_info
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if ":dependents" in url:
+                raise httpx.HTTPStatusError("Not Found", request=request, response=httpx.Response(404))
+            elif "/versions/" in url:
+                return httpx.Response(200, json=self._create_version_response())
+            elif "/packages/" in url:
+                return httpx.Response(200, json=self._create_package_response())
+            elif "/projects/" in url:
+                return httpx.Response(200, json={})
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_package_info("semver"))
+            assert result["dependents_count"] == 0
+
+    def test_fallback_handles_list_format(self):
+        """Fallback version returning dependentCount as list should work."""
+        from depsdev_collector import get_package_info
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if ":dependents" in url:
+                if "7.7.4" in url:
+                    raise httpx.HTTPStatusError("Not Found", request=request, response=httpx.Response(404))
+                elif "7.7.3" in url:
+                    return httpx.Response(200, json={"dependentCount": ["pkg1", "pkg2", "pkg3"]})
+                return httpx.Response(200, json={"dependentCount": 0})
+            elif "/versions/" in url:
+                return httpx.Response(200, json=self._create_version_response())
+            elif "/packages/" in url:
+                return httpx.Response(200, json=self._create_package_response())
+            elif "/projects/" in url:
+                return httpx.Response(200, json={})
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_package_info("semver"))
+            assert result["dependents_count"] == 3
+
+    def test_fallback_with_scoped_package(self):
+        """Scoped packages (@babel/core) should work correctly with fallback."""
+        from depsdev_collector import get_package_info
+
+        versions = [
+            {"versionKey": {"system": "NPM", "name": "@babel/core", "version": "7.25.0"}, "isDefault": False},
+            {"versionKey": {"system": "NPM", "name": "@babel/core", "version": "7.26.0"}, "isDefault": True},
+        ]
+        pkg_response = {
+            "packageKey": {"system": "NPM", "name": "@babel/core"},
+            "versions": versions,
+        }
+
+        def mock_handler(request: httpx.Request) -> httpx.Response:
+            url = str(request.url)
+            if ":dependents" in url:
+                if "7.26.0" in url:
+                    raise httpx.HTTPStatusError("Not Found", request=request, response=httpx.Response(404))
+                elif "7.25.0" in url:
+                    return httpx.Response(200, json={"dependentCount": 100000})
+                return httpx.Response(200, json={"dependentCount": 0})
+            elif "/versions/" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "versionKey": {"system": "NPM", "name": "@babel/core", "version": "7.26.0"},
+                        "publishedAt": "2026-01-01T00:00:00Z",
+                        "licenses": ["MIT"],
+                        "relations": {"dependencies": []},
+                        "advisories": [],
+                        "links": [{"label": "SOURCE_REPO", "url": "https://github.com/babel/babel"}],
+                    },
+                )
+            elif "/packages/" in url:
+                return httpx.Response(200, json=pkg_response)
+            elif "/projects/" in url:
+                return httpx.Response(200, json={})
+            return httpx.Response(404)
+
+        original_init = httpx.AsyncClient.__init__
+
+        def patched_init(self, *args, **kwargs):
+            kwargs["transport"] = create_mock_transport(mock_handler)
+            original_init(self, *args, **kwargs)
+
+        with patch.object(httpx.AsyncClient, "__init__", patched_init):
+            result = run_async(get_package_info("@babel/core"))
+            assert result["dependents_count"] == 100000
 
 
 # =============================================================================

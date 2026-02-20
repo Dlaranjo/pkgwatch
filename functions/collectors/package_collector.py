@@ -432,6 +432,10 @@ def _extract_cached_github_fields(existing: dict) -> dict:
         "bus_factor_confidence": existing.get("bus_factor_confidence"),
         "contribution_distribution": existing.get("contribution_distribution", []),
         "archived": existing.get("archived"),
+        # Issue response and PR velocity (confidence signals)
+        "avg_issue_response_hours": existing.get("avg_issue_response_hours"),
+        "prs_opened_90d": existing.get("prs_opened_90d"),
+        "prs_merged_90d": existing.get("prs_merged_90d"),
     }
 
 
@@ -1121,6 +1125,10 @@ async def collect_package_data(
                                     "contribution_distribution", []
                                 )
                                 combined_data["archived"] = github_data.get("archived", False)
+                                # Issue response and PR velocity (confidence signals)
+                                combined_data["avg_issue_response_hours"] = github_data.get("avg_issue_response_hours")
+                                combined_data["prs_opened_90d"] = github_data.get("prs_opened_90d", 0)
+                                combined_data["prs_merged_90d"] = github_data.get("prs_merged_90d", 0)
                             else:
                                 # Check if error is transient or not
                                 error_type = github_data.get("error", "")
@@ -1387,6 +1395,10 @@ def store_package_data_sync(ecosystem: str, name: str, data: dict, tier: int):
         "true_bus_factor": data.get("true_bus_factor"),
         "bus_factor_confidence": data.get("bus_factor_confidence"),
         "contribution_distribution": data.get("contribution_distribution", []),
+        # Issue response and PR velocity (confidence signals)
+        "avg_issue_response_hours": data.get("avg_issue_response_hours"),
+        "prs_opened_90d": data.get("prs_opened_90d", 0),
+        "prs_merged_90d": data.get("prs_merged_90d", 0),
         # Security
         "advisories": data.get("advisories", []),
         "openssf_score": data.get("openssf_score"),
