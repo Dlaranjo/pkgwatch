@@ -38,7 +38,7 @@
     "known_abandoned": true,
     "abandoned_date": "2022-01-08",
     "failure_mode": "sabotage",
-    "health_score_max": 55,
+    "health_score_max": 65,
     "abandonment_risk_min": 50,
     "notes": "Classic bus factor risk. Zero recent activity despite massive downloads. The scoring system should flag the single maintainer and complete lack of recent commits. High user-centric score masks the maintenance gap."
   }

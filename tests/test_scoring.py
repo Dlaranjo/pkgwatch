@@ -14,7 +14,6 @@ from scoring.abandonment_risk import (
 )
 from scoring.health_score import (
     _calculate_confidence,
-    _calculate_gated_maturity_factor,
     _calculate_maturity_factor,
     _community_health,
     _evolution_health,
@@ -1218,102 +1217,52 @@ class TestRealPackageFixtures:
 
 
 # =============================================================================
-# Gated Maturity Factor Tests
+# Evolution Maturity Floor Tests
 # =============================================================================
 
 
-class TestGatedMaturityFactor:
-    """Tests for _calculate_gated_maturity_factor bus-factor gating."""
+class TestEvolutionMaturityFloor:
+    """Verify evolution_health uses full maturity factor as floor."""
 
     @freeze_time("2026-01-07")
-    def test_bus_factor_1_gets_33_percent(self):
-        """Single-maintainer package gets only 33% of maturity benefit."""
+    def test_single_maintainer_gets_full_maturity_floor(self):
+        """Single-maintainer high-adoption package gets full maturity floor."""
         data = {
             "weekly_downloads": 20_000_000,
             "dependents_count": 18_000,
-            "commits_90d": 2,
+            "commits_90d": 0,
             "true_bus_factor": 1,
+            "last_published": "2024-01-01T00:00:00Z",
         }
-        base = _calculate_maturity_factor(data)
-        gated = _calculate_gated_maturity_factor(data)
-
-        assert base > 0, "Base maturity should be positive for high-adoption low-activity"
-        assert gated == pytest.approx(base * (1 / 3.0), abs=0.01)
+        score = _evolution_health(data)
+        maturity = _calculate_maturity_factor(data)
+        assert score >= maturity * 0.95
 
     @freeze_time("2026-01-07")
-    def test_bus_factor_2_gets_67_percent(self):
-        """Two-maintainer package gets 67% of maturity benefit."""
-        data = {
+    def test_bus_factor_does_not_affect_evolution_floor(self):
+        """Bus factor should not reduce the maturity floor in evolution."""
+        base = {
             "weekly_downloads": 20_000_000,
             "dependents_count": 18_000,
-            "commits_90d": 2,
-            "true_bus_factor": 2,
+            "commits_90d": 0,
+            "last_published": "2024-01-01T00:00:00Z",
         }
-        base = _calculate_maturity_factor(data)
-        gated = _calculate_gated_maturity_factor(data)
-
-        assert base > 0, "Base maturity should be positive for high-adoption low-activity"
-        assert gated == pytest.approx(base * (2 / 3.0), abs=0.01)
+        score_bf1 = _evolution_health({**base, "true_bus_factor": 1})
+        score_bf5 = _evolution_health({**base, "true_bus_factor": 5})
+        assert score_bf1 == pytest.approx(score_bf5, abs=0.01)
 
     @freeze_time("2026-01-07")
-    def test_bus_factor_3_gets_full(self):
-        """Package with 3+ maintainers gets full maturity benefit."""
-        data = {
-            "weekly_downloads": 20_000_000,
-            "dependents_count": 18_000,
-            "commits_90d": 2,
-            "true_bus_factor": 3,
-        }
-        base = _calculate_maturity_factor(data)
-        gated = _calculate_gated_maturity_factor(data)
-
-        assert base > 0, "Base maturity should be positive for high-adoption low-activity"
-        assert gated == pytest.approx(base * 1.0, abs=0.01)
-
-    @freeze_time("2026-01-07")
-    def test_falls_back_to_active_contributors(self):
-        """Without true_bus_factor, falls back to active_contributors_90d."""
-        data = {
-            "weekly_downloads": 20_000_000,
-            "dependents_count": 18_000,
-            "commits_90d": 2,
-            "active_contributors_90d": 2,
-        }
-        base = _calculate_maturity_factor(data)
-        gated = _calculate_gated_maturity_factor(data)
-
-        # active_contributors_90d=2 → bf=2 → bus_gate = 2/3 ≈ 0.67
-        assert gated == pytest.approx(base * (2 / 3.0), abs=0.01)
-
-    @freeze_time("2026-01-07")
-    def test_negative_contributors_clamped(self):
-        """Negative active_contributors_90d is clamped, no negative output."""
-        data = {
-            "weekly_downloads": 20_000_000,
-            "dependents_count": 18_000,
-            "commits_90d": 2,
-            "active_contributors_90d": -5,
-        }
-        gated = _calculate_gated_maturity_factor(data)
-
-        # bf = max(1, -5) = 1 → bus_gate = 1/3, result must be non-negative
-        assert gated >= 0, "Gated maturity should never be negative"
-        base = _calculate_maturity_factor(data)
-        assert gated == pytest.approx(base * (1 / 3.0), abs=0.01)
-
-    @freeze_time("2026-01-07")
-    def test_zero_adoption_returns_zero(self):
-        """Package with zero adoption → base maturity ~0 → gated maturity ~0."""
+    def test_zero_adoption_no_maturity_floor(self):
+        """Zero-adoption packages get no maturity floor regardless of bus factor."""
         data = {
             "weekly_downloads": 0,
             "dependents_count": 0,
-            "commits_90d": 2,
-            "true_bus_factor": 3,
+            "commits_90d": 0,
+            "true_bus_factor": 5,
+            "last_published": "2024-01-01T00:00:00Z",
         }
-        gated = _calculate_gated_maturity_factor(data)
-
-        # No adoption means the sigmoid adoption signals are near 0
-        assert gated < 0.01, f"Expected near-zero gated maturity, got {gated}"
+        score = _evolution_health(data)
+        assert score < 0.3
 
 
 # =============================================================================

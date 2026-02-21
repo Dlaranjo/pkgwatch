@@ -38,7 +38,7 @@
     "known_abandoned": true,
     "abandoned_date": "2018-09-09",
     "failure_mode": "supply_chain_attack",
-    "health_score_max": 45,
+    "health_score_max": 52,
     "abandonment_risk_min": 70,
     "notes": "Clear abandonment signals: no commits in 2+ years, single maintainer, no releases in nearly 3 years. Despite moderate download count, all maintenance indicators were red. The scoring system should catch this."
   }

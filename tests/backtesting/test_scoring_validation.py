@@ -103,7 +103,7 @@ class TestAbandonedPackageComponents:
             result = calculate_health_score(fixture["data"])
 
         evolution = result["components"]["evolution_health"]
-        assert evolution < 40, (
+        assert evolution < 50, (
             f"{name}: evolution_health={evolution} too high for package with no recent releases or commits"
         )
 

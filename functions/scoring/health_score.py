@@ -277,26 +277,6 @@ def _calculate_maturity_factor(data: dict) -> float:
     return adoption * activity_low * 0.7
 
 
-def _calculate_gated_maturity_factor(data: dict) -> float:
-    """
-    Maturity factor scaled by bus_factor.
-
-    High-adoption + low-activity + multiple maintainers = likely stable.
-    Single-maintainer packages get only 33% of maturity benefit to avoid
-    masking genuine abandonment (e.g. colors, event-stream).
-    """
-    base = _calculate_maturity_factor(data)  # 0.0-0.7
-    # Gate: require bus_factor >= 3 for full benefit
-    true_bus_factor = data.get("true_bus_factor")
-    if true_bus_factor and true_bus_factor > 0:
-        bf = true_bus_factor
-    else:
-        bf = data.get("active_contributors_90d", 1) or 1
-    bf = max(1, bf)
-    bus_gate = min(bf / 3.0, 1.0)  # bf=1→0.33, bf=2→0.67, bf=3+→1.0
-    return base * bus_gate
-
-
 def _evolution_health(data: dict) -> float:
     """
     Project evolution signals.
@@ -337,10 +317,9 @@ def _evolution_health(data: dict) -> float:
     commits_90d = max(0, data.get("commits_90d_non_bot", data.get("commits_90d", 0)) or 0)  # Clamp negative
     activity_score = min(math.log10(commits_90d + 1) / 1.7, 1.0)
 
-    # Apply bus_factor-gated maturity factor as floor for stable packages
+    # Apply maturity factor as floor for stable high-adoption packages
     # This prevents penalizing mature packages that don't need frequent updates
-    # while avoiding score inflation for abandoned single-maintainer packages
-    gated_maturity = _calculate_gated_maturity_factor(data)
+    gated_maturity = _calculate_maturity_factor(data)
     release_score = max(release_score, gated_maturity)
     activity_score = max(activity_score, gated_maturity)
 
