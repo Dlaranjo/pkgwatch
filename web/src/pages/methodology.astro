@@ -128,10 +128,7 @@ const components = [
               Packages like <code class="text-zinc-300 bg-zinc-700 px-1 rounded">lodash</code> benefit from this.
             </p>
             <p class="text-sm text-zinc-400">
-              <span class="text-zinc-300">Applies:</span> Uses smooth sigmoid transitions centered at ~1M weekly downloads or ~5K dependents, combined with low activity (~10 commits/90d). Benefits scale gradually &mdash; no hard cutoffs. Capped at 0.7 (even the most mature package only gets a 70% floor for evolution sub-scores).
-            </p>
-            <p class="text-sm text-zinc-400 mt-2">
-              <span class="text-zinc-300">Bus factor gate:</span> Single-maintainer packages receive only 33% of the maturity benefit, scaling linearly to full benefit at 3+ maintainers. This prevents the maturity factor from masking genuine abandonment risk in single-maintainer projects.
+              <span class="text-zinc-300">Applies:</span> Uses smooth sigmoid transitions centered at ~1M weekly downloads or ~5K dependents, combined with low activity (~10 commits/90d). Benefits scale gradually &mdash; no hard cutoffs. Capped at 0.7 (even the most mature package only gets a 70% floor for evolution sub-scores). Single-maintainer risk is surfaced independently through maintainer health and abandonment risk scores.
             </p>
           </div>
 
@@ -297,19 +294,19 @@ const components = [
           <h3 class="font-medium text-white mb-4">Health Score Separation</h3>
           <div class="grid md:grid-cols-2 gap-6">
             <div>
-              <div class="text-sm text-zinc-400 mb-2">Abandoned packages (avg score: ~54)</div>
+              <div class="text-sm text-zinc-400 mb-2">Abandoned packages (avg score: ~57)</div>
               <div class="space-y-1.5 text-sm">
-                <div class="flex justify-between"><span class="text-zinc-300">event-stream</span><span class="text-red-400">43</span></div>
-                <div class="flex justify-between"><span class="text-zinc-300">left-pad</span><span class="text-red-400">47</span></div>
-                <div class="flex justify-between"><span class="text-zinc-300">colors</span><span class="text-orange-400">51</span></div>
-                <div class="flex justify-between"><span class="text-zinc-300">request</span><span class="text-orange-400">60</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">left-pad</span><span class="text-orange-400">48</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">event-stream</span><span class="text-orange-400">49</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">colors</span><span class="text-yellow-400">60</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">request</span><span class="text-yellow-400">63</span></div>
                 <div class="flex justify-between"><span class="text-zinc-300">moment</span><span class="text-yellow-400">67</span></div>
               </div>
             </div>
             <div>
               <div class="text-sm text-zinc-400 mb-2">Healthy controls (avg score: ~86)</div>
               <div class="space-y-1.5 text-sm">
-                <div class="flex justify-between"><span class="text-zinc-300">lodash</span><span class="text-yellow-400">65</span></div>
+                <div class="flex justify-between"><span class="text-zinc-300">lodash</span><span class="text-yellow-400">67</span></div>
                 <div class="flex justify-between"><span class="text-zinc-300">requests (py)</span><span class="text-green-400">84</span></div>
                 <div class="flex justify-between"><span class="text-zinc-300">flask</span><span class="text-green-400">84</span></div>
                 <div class="flex justify-between"><span class="text-zinc-300">express</span><span class="text-green-400">90</span></div>
@@ -319,7 +316,7 @@ const components = [
             </div>
           </div>
           <p class="text-sm text-zinc-500 mt-4">
-            32-point average separation between groups. No healthy package scored below the worst abandoned package.
+            29-point average separation between groups. No healthy package scored below the worst abandoned package.
           </p>
         </div>
 
@@ -356,7 +353,7 @@ const components = [
         <div class="bg-zinc-800/50 rounded-lg p-6 border border-zinc-700/50">
           <h3 class="font-medium text-white mb-3">Known Limitations</h3>
           <ul class="text-sm text-zinc-400 space-y-2">
-            <li><span class="text-zinc-300">High-adoption masking (partially mitigated):</span> Bus-factor-gated maturity and adoption dampening now reduce this effect &mdash; request dropped from 62 to 60 and is correctly flagged HIGH risk. However, massive download counts still inflate user-centric scores, keeping abandoned packages like moment at 67.</li>
+            <li><span class="text-zinc-300">High-adoption masking (partially mitigated):</span> Adoption dampening reduces this effect, but massive download counts still inflate user-centric scores. Abandoned packages like colors (60, MEDIUM) and moment (67, MEDIUM) score higher than ideal due to their large user bases. Single-maintainer risk is surfaced independently through abandonment risk probability and maintainer health scores.</li>
             <li><span class="text-zinc-300">Maintenance mode detection:</span> The model cannot distinguish between "stable and done" (lodash) and "about to be declared maintenance-only" (moment) based on metrics alone.</li>
             <li><span class="text-zinc-300">Small validation set:</span> 11 examples across 2 ecosystems. More case studies will be added as real-world data accumulates.</li>
           </ul>
@@ -441,8 +438,17 @@ const components = [
         <div class="space-y-4">
           <div class="bg-zinc-800/50 rounded-lg p-4 border border-zinc-700/50">
             <div class="flex justify-between items-center mb-2">
-              <span class="font-medium text-white">v3.0 - January 2026</span>
+              <span class="font-medium text-white">v3.1 - February 2026</span>
               <span class="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded">Current</span>
+            </div>
+            <ul class="text-sm text-zinc-400 space-y-1">
+              <li>Removed bus factor gate from maturity factor to fix score skew (61.5% of packages were rated HIGH or CRITICAL)</li>
+              <li>Single-maintainer risk now surfaced solely through maintainer health and abandonment risk (no double penalty)</li>
+            </ul>
+          </div>
+          <div class="bg-zinc-800/50 rounded-lg p-4 border border-zinc-700/50">
+            <div class="flex justify-between items-center mb-2">
+              <span class="font-medium text-white">v3.0 - January 2026</span>
             </div>
             <ul class="text-sm text-zinc-400 space-y-1">
               <li>Added issue response time signal to Community Health</li>
